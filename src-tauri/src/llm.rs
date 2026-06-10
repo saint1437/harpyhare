@@ -20,7 +20,9 @@ pub fn build_content(text: &str, images: &[ImageAttachment]) -> Value {
             })
         })
         .collect();
-    blocks.push(json!({"type": "text", "text": text}));
+    if !text.is_empty() {
+        blocks.push(json!({"type": "text", "text": text}));
+    }
     Value::Array(blocks)
 }
 
@@ -51,6 +53,8 @@ pub enum SseOut {
 #[derive(Default)]
 pub struct SseParser {
     buf: String,
+    /// Неполный UTF-8 хвост от предыдущего чанка (буферизуется до следующего вызова feed_bytes).
+    tail: Vec<u8>,
 }
 
 impl SseParser {
@@ -61,14 +65,36 @@ impl SseParser {
     pub fn feed(&mut self, chunk: &str) -> Vec<SseOut> {
         self.buf.push_str(chunk);
         let mut out = Vec::new();
-        while let Some(pos) = self.buf.find("\n\n") {
-            let event_block = self.buf[..pos].to_string();
-            self.buf.drain(..pos + 2);
-            if let Some(parsed) = Self::parse_block(&event_block) {
+        let mut start = 0;
+        while let Some(rel) = self.buf[start..].find("\n\n") {
+            let pos = start + rel;
+            if let Some(parsed) = Self::parse_block(&self.buf[start..pos]) {
                 out.push(parsed);
             }
+            start = pos + 2;
         }
+        self.buf.drain(..start);
         out
+    }
+
+    /// Принимает сырые байты HTTP-чанка; неполный UTF-8 хвост буферизуется до следующего чанка.
+    pub fn feed_bytes(&mut self, chunk: &[u8]) -> Vec<SseOut> {
+        let data = if self.tail.is_empty() {
+            chunk.to_vec()
+        } else {
+            let mut v = std::mem::take(&mut self.tail);
+            v.extend_from_slice(chunk);
+            v
+        };
+        match std::str::from_utf8(&data) {
+            Ok(s) => self.feed(s),
+            Err(e) => {
+                let valid = e.valid_up_to();
+                self.tail = data[valid..].to_vec();
+                let s = std::str::from_utf8(&data[..valid]).expect("проверено valid_up_to");
+                self.feed(s)
+            }
+        }
     }
 
     fn parse_block(block: &str) -> Option<SseOut> {
@@ -149,7 +175,7 @@ mod tests {
     #[test]
     fn sse_parser_handles_chunk_split_mid_event() {
         let mut p = SseParser::new();
-        let (a, b) = SSE_FIXTURE.split_at(95); // разрез посреди data-строки (внутри event 1: content_block_start)
+        let (a, b) = SSE_FIXTURE.split_at(95); // разрез посреди строки события (event-line)
         let mut out = p.feed(a);
         out.extend(p.feed(b));
         let text: String = out
@@ -167,5 +193,40 @@ mod tests {
         let mut p = SseParser::new();
         let out = p.feed("event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n");
         assert!(matches!(&out[0], SseOut::ApiError(m) if m.contains("Overloaded")));
+    }
+
+    // Item 1: пустой text-блок при наличии картинок не должен добавляться
+    #[test]
+    fn empty_text_with_images_has_no_text_block() {
+        let imgs = vec![ImageAttachment { media_type: "image/png".into(), data: "AAAA".into() }];
+        let content = build_content("", &imgs);
+        let arr = content.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["type"], "image");
+    }
+
+    // Item 2: feed_bytes буферизует неполный UTF-8 хвост
+    #[test]
+    fn feed_bytes_handles_utf8_split_across_chunks() {
+        let raw = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Привет\"}}\n\n";
+        let bytes = raw.as_bytes();
+        // режем посреди многобайтового символа внутри "Привет"
+        let cut = raw.find("Привет").unwrap() + 3; // 3 байта = середина второго кириллического символа
+        assert!(std::str::from_utf8(&bytes[..cut]).is_err(), "разрез должен попадать в середину символа");
+        let mut p = SseParser::new();
+        let mut out = p.feed_bytes(&bytes[..cut]);
+        out.extend(p.feed_bytes(&bytes[cut..]));
+        assert_eq!(out, vec![SseOut::TextDelta("Привет".to_string())]);
+    }
+
+    // Item 4: разрез посреди data-JSON
+    #[test]
+    fn sse_parser_handles_chunk_split_mid_data_json() {
+        let raw = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n";
+        let mid = raw.find("text_delta").unwrap() + 5; // внутри data-JSON
+        let mut p = SseParser::new();
+        let mut out = p.feed(&raw[..mid]);
+        out.extend(p.feed(&raw[mid..]));
+        assert_eq!(out, vec![SseOut::TextDelta("hi".to_string())]);
     }
 }
