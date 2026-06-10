@@ -1,5 +1,6 @@
 pub mod settings;
 pub mod audio;
+pub mod capture;
 pub mod state;
 pub mod llm;
 pub mod stt;

@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Артефакт примера record5s (ручная приёмка захвата звука)
+out.wav
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
