@@ -156,7 +156,7 @@ async function main(): Promise<void> {
     try {
       // tauri v2: snake_case-параметры команды приходят camelCase'ом, но text/images
       // уже однословные — имена совпадают (send_to_claude(text, images)).
-      await invoke("send_to_claude", { text: transcript.value, images });
+      await invoke("send_to_claude", { text, images });
     } catch (e) {
       streamUi(false);
       setStatus("error", String(e));
@@ -347,7 +347,12 @@ async function main(): Promise<void> {
           setStatus("transcribing", "Распознаю…");
           break;
         default:
-          setStatus("idle", STATUS_DEFAULT);
+          // stt-error приходит непосредственно перед state-changed(idle):
+          // не затираем показанную ошибку дефолтным текстом — она живёт
+          // до следующей записи или отправки.
+          if (statusEl.dataset.state !== "error") {
+            setStatus("idle", STATUS_DEFAULT);
+          }
       }
     });
 
