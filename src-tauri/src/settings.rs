@@ -45,18 +45,34 @@ impl Settings {
                 s.clamp();
                 Ok(s)
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Settings::default()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok({
+                let mut s = Settings::default();
+                s.clamp();
+                s
+            }),
             Err(e) => Err(e),
         }
     }
 
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
-        use std::os::unix::fs::PermissionsExt;
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(path, serde_json::to_string_pretty(self).unwrap())?;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let tmp = path.with_extension("tmp");
+        {
+            let mut f = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(&tmp)?;
+            f.write_all(json.as_bytes())?;
+        }
+        std::fs::rename(&tmp, path)
     }
 }
 
@@ -97,15 +113,44 @@ mod tests {
         let path = dir.path().join("settings.json");
         let mut s = Settings::default();
         s.groq_api_key = "gsk_test".into();
+        s.model = "claude-sonnet-4-6".into();
+        s.window_opacity = 0.5;
+        s.auto_send = true;
         s.save(&path).unwrap();
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600);
-        assert_eq!(Settings::load(&path).unwrap().groq_api_key, "gsk_test");
+        let loaded = Settings::load(&path).unwrap();
+        assert_eq!(loaded.groq_api_key, "gsk_test");
+        assert_eq!(loaded.model, "claude-sonnet-4-6");
+        assert_eq!(loaded.window_opacity, 0.5);
+        assert!(loaded.auto_send);
     }
 
     #[test]
     fn load_missing_file_gives_defaults() {
         let s = Settings::load(std::path::Path::new("/nonexistent/x.json")).unwrap();
         assert_eq!(s.model, "claude-opus-4-8");
+        assert_eq!(s.hotkey, "V");
+        assert!(!s.auto_send);
+        assert_eq!(s.move_step, 20);
+    }
+
+    #[test]
+    fn load_clamps_out_of_range_values() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.json");
+        std::fs::write(&path, r#"{"window_opacity":0.05,"move_step":999}"#).unwrap();
+        let s = Settings::load(&path).unwrap();
+        assert_eq!(s.window_opacity, 0.2);
+        assert_eq!(s.move_step, 200);
+    }
+
+    #[test]
+    fn save_creates_parent_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nested/deeper/settings.json");
+        Settings::default().save(&path).unwrap();
+        assert!(path.exists());
+        assert!(!path.with_extension("tmp").exists()); // tmp-файл убран rename'ом
     }
 }
