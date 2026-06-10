@@ -44,8 +44,16 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let handle = app.handle();
-            // .env в корне проекта (dotenvy ищет вверх по каталогам; в бандле файла нет — ок).
+            // .env в корне проекта. dotenvy::dotenv() ищет вверх от cwd (работает в dev),
+            // но у .app, запущенного из Finder, cwd = "/" — поэтому добавочно пробуем
+            // путь проекта, зашитый при компиляции (персональная сборка на этой же машине).
             let _ = dotenvy::dotenv();
+            if let Some(project_env) = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .map(|root| root.join(".env"))
+            {
+                let _ = dotenvy::from_path(project_env);
+            }
             let mut settings = settings::Settings::load(&settings_path(handle))
                 .unwrap_or_else(|_| settings::Settings::default());
             // Ключи из .env подхватываются, только если в settings.json они пустые.
