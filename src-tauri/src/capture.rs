@@ -79,7 +79,9 @@ pub struct SystemAudioCapture {
 }
 
 // SAFETY: все поля фактически Send — raw AudioObjectID = u32, Arc<Shared> (Shared: Send+Sync).
-// impl нужен как явная страховка на случай появления не-Send полей в будущем.
+// ВНИМАНИЕ: явный impl ОТКЛЮЧАЕТ авто-проверку компилятора — при добавлении не-Send поля
+// (raw-указатель, Cell и т.п.) ошибки сборки НЕ будет; пересмотри этот impl вручную.
+// Вызывающий (Task 11) обязан держать SystemAudioCapture под Mutex — &mut-доступ не синхронизирован.
 unsafe impl Send for SystemAudioCapture {}
 
 impl SystemAudioCapture {
@@ -188,9 +190,10 @@ impl SystemAudioCapture {
 
     /// Остановить накопление и забрать интерливленный буфер + (sample_rate, channels).
     pub fn stop(&mut self) -> (Vec<f32>, u32, usize) {
-        // store(false) раньше lock: колбэк, прошедший гейт до store, допишет хвостовые
-        // фреймы ДО take (они попадут в результат — ок); записи после take невозможны,
-        // т.к. start() чистит буфер под тем же локом.
+        // store(false) раньше lock. Колбэк, успевший пройти гейт до store, либо допишет
+        // хвостовые фреймы до take (попадут в результат), либо после take — тогда эти
+        // несколько фреймов осядут в пустом буфере и будут отброшены clear()-ом при
+        // следующем start(). Потеря <1 мс хвоста для PTT несущественна.
         self.shared.recording.store(false, Ordering::Release);
         let buf = match self.shared.buf.lock() {
             Ok(mut b) => std::mem::take(&mut *b),
