@@ -78,9 +78,8 @@ pub struct SystemAudioCapture {
     _ctx: Box<CallbackCtx>,
 }
 
-// SAFETY: внутренности (tap/aggregate/proc id) — это идентификаторы объектов Core Audio
-// (числа) и `Arc<Shared>` за мьютексом/атомиком. Сам объект между потоками Tauri ходит
-// под `Mutex` (Task 11), а IO-колбэк трогает только `Arc<Shared>`, который `Send + Sync`.
+// SAFETY: все поля фактически Send — raw AudioObjectID = u32, Arc<Shared> (Shared: Send+Sync).
+// impl нужен как явная страховка на случай появления не-Send полей в будущем.
 unsafe impl Send for SystemAudioCapture {}
 
 impl SystemAudioCapture {
@@ -99,6 +98,21 @@ impl SystemAudioCapture {
 
         // 3. Формат потока tap'а: интерливленный f32. Узнаём rate/channels.
         let asbd = tap.asbd().map_err(CaptureError::from_os)?;
+
+        // Ассерт инвариантов, которые предполагает IO-колбэк: буфер читается как
+        // interleaved f32. Если tap вернул неожиданный формат — лучше ошибка здесь,
+        // чем молчаливая порча данных в io_proc.
+        // Флаги: cat::audio::FormatFlags::IS_FLOAT (1<<0), IS_NON_INTERLEAVED (1<<5).
+        if !asbd.format_flags.contains(cat::audio::FormatFlags::IS_FLOAT)
+            || asbd.format_flags.contains(cat::audio::FormatFlags::IS_NON_INTERLEAVED)
+            || asbd.bits_per_channel != 32
+        {
+            return Err(CaptureError::CoreAudio(format!(
+                "неожиданный формат tap: format_flags={:#010x}, bits_per_channel={}",
+                asbd.format_flags.0, asbd.bits_per_channel
+            )));
+        }
+
         let sample_rate = asbd.sample_rate as u32;
         let channels = asbd.channels_per_frame as usize;
 
@@ -174,6 +188,9 @@ impl SystemAudioCapture {
 
     /// Остановить накопление и забрать интерливленный буфер + (sample_rate, channels).
     pub fn stop(&mut self) -> (Vec<f32>, u32, usize) {
+        // store(false) раньше lock: колбэк, прошедший гейт до store, допишет хвостовые
+        // фреймы ДО take (они попадут в результат — ок); записи после take невозможны,
+        // т.к. start() чистит буфер под тем же локом.
         self.shared.recording.store(false, Ordering::Release);
         let buf = match self.shared.buf.lock() {
             Ok(mut b) => std::mem::take(&mut *b),
@@ -227,10 +244,13 @@ extern "C" fn io_proc(
 
     // SAFETY: tap-формат — f32; `data` указывает на `data_bytes_size` валидных байт,
     // принадлежащих Core Audio только на время этого вызова. Копируем их в свой Vec.
+    debug_assert_eq!(abuf.data_bytes_size % 4, 0); // ловит сюрприз формата в dev-сборке
     let n = abuf.data_bytes_size as usize / std::mem::size_of::<f32>();
     let samples = unsafe { std::slice::from_raw_parts(abuf.data as *const f32, n) };
 
     if let Ok(mut buf) = shared.buf.lock() {
+        // Без верхней границы по дизайну: лимит 10 мин обеспечивает вызывающий
+        // через recording_secs() (Task 11).
         buf.extend_from_slice(samples);
     }
 
