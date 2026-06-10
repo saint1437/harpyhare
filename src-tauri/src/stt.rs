@@ -17,6 +17,7 @@ pub trait SttEngine: Send + Sync {
     async fn transcribe(&self, samples_16k_mono: &[f32]) -> Result<String, SttError>;
 }
 
+#[derive(Clone)]
 pub struct GroqStt {
     api_key: String,
     base_url: String,

@@ -18,6 +18,7 @@ pub enum LlmError {
     Cancelled,
 }
 
+#[derive(Clone)]
 pub struct AnthropicClient {
     api_key: String,
     base_url: String,
