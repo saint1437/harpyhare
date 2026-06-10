@@ -70,7 +70,11 @@ impl SttEngine for GroqStt {
             200 => {
                 let v: serde_json::Value =
                     resp.json().await.map_err(|e| SttError::Other(e.to_string()))?;
-                Ok(v["text"].as_str().unwrap_or_default().trim().to_string())
+                Ok(v["text"]
+                    .as_str()
+                    .ok_or_else(|| SttError::Other("ответ Groq без поля text".into()))?
+                    .trim()
+                    .to_string())
             }
             401 | 403 => Err(SttError::BadApiKey),
             code @ (429 | 500..=599) => Err(SttError::Retryable(code)),
@@ -124,6 +128,17 @@ mod tests {
             let stt = GroqStt::new("k".into()).with_base_url(server.uri());
             assert!(matches!(stt.transcribe(&samples()).await, Err(SttError::Retryable(_))));
         }
+    }
+
+    #[tokio::test]
+    async fn transcribe_200_without_text_field_is_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"unexpected": true})))
+            .mount(&server)
+            .await;
+        let stt = GroqStt::new("k".into()).with_base_url(server.uri());
+        assert!(matches!(stt.transcribe(&samples()).await, Err(SttError::Other(_))));
     }
 
     #[tokio::test]

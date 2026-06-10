@@ -1,6 +1,7 @@
 use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, thiserror::Error)]
@@ -25,14 +26,27 @@ pub struct AnthropicClient {
 
 impl AnthropicClient {
     pub fn new(api_key: String) -> Self {
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .read_timeout(Duration::from_secs(60))
+            .build()
+            .expect("reqwest client");
         Self {
             api_key,
             base_url: "https://api.anthropic.com".into(),
-            client: reqwest::Client::new(),
+            client,
         }
     }
     pub fn with_base_url(mut self, url: String) -> Self {
         self.base_url = url;
+        self
+    }
+    pub fn with_read_timeout(mut self, d: Duration) -> Self {
+        self.client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .read_timeout(d)
+            .build()
+            .expect("reqwest client");
         self
     }
 
@@ -67,7 +81,9 @@ impl AnthropicClient {
                 c = stream.next() => c,
                 _ = cancel.cancelled() => return Err(LlmError::Cancelled),
             };
-            let Some(chunk) = chunk else { break };
+            let Some(chunk) = chunk else {
+                return Err(LlmError::Network("ответ оборван до завершения".into()));
+            };
             let bytes = chunk.map_err(|e| LlmError::Network(e.to_string()))?;
             for out in parser.feed_bytes(&bytes) {
                 match out {
@@ -77,7 +93,6 @@ impl AnthropicClient {
                 }
             }
         }
-        Ok(())
     }
 }
 
@@ -340,6 +355,63 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(*collected.lock().unwrap(), "Привет!");
+    }
+
+    #[tokio::test]
+    async fn stream_times_out_on_silent_server() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_raw(SSE_FIXTURE.as_bytes().to_vec(), "text/event-stream")
+                    .set_delay(std::time::Duration::from_secs(10)),
+            )
+            .mount(&server)
+            .await;
+        let client = AnthropicClient::new("k".into())
+            .with_base_url(server.uri())
+            .with_read_timeout(std::time::Duration::from_millis(200));
+        let err = client
+            .stream_message(
+                build_request_body("claude-opus-4-8", "s", "q", &[]),
+                tokio_util::sync::CancellationToken::new(),
+                |_| {},
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, LlmError::Network(_)), "got: {err:?}");
+    }
+
+    #[tokio::test]
+    async fn stream_eof_without_message_stop_is_error() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        let truncated = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"При\"}}\n\n";
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_raw(truncated.as_bytes().to_vec(), "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+        let client = AnthropicClient::new("k".into()).with_base_url(server.uri());
+        let collected = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let c2 = collected.clone();
+        let err = client
+            .stream_message(
+                build_request_body("claude-opus-4-8", "s", "q", &[]),
+                tokio_util::sync::CancellationToken::new(),
+                move |d| c2.lock().unwrap().push_str(d),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, LlmError::Network(_)));
+        assert_eq!(*collected.lock().unwrap(), "При"); // частичные дельты успели уйти
     }
 
     #[tokio::test]
