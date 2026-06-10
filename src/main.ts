@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   acceptedNewAttachments,
+  ATTACHMENT_LIMIT,
   downscaleFactor,
   extractImageItems,
   toImagePayload,
@@ -70,6 +71,7 @@ async function main(): Promise<void> {
   let settings: Settings = DEFAULT_SETTINGS;
   let attachments: Attachment[] = [];
   let answerMd = "";
+  let renderPending = false;
 
   // --- Статус ----------------------------------------------------------------
   function setStatus(state: string, text: string): void {
@@ -80,7 +82,7 @@ async function main(): Promise<void> {
   // --- Вложения --------------------------------------------------------------
   function renderAttachments(): void {
     attachmentsEl.replaceChildren();
-    attachments.forEach((att, i) => {
+    attachments.forEach((att) => {
       const chip = document.createElement("div");
       chip.className = "chip";
 
@@ -95,7 +97,8 @@ async function main(): Promise<void> {
       remove.setAttribute("aria-label", "Удалить вложение");
       remove.textContent = "×";
       remove.addEventListener("click", () => {
-        attachments.splice(i, 1);
+        const idx = attachments.indexOf(att);
+        if (idx >= 0) attachments.splice(idx, 1);
         renderAttachments();
       });
 
@@ -140,6 +143,7 @@ async function main(): Promise<void> {
 
   // --- Отправка --------------------------------------------------------------
   async function send(): Promise<void> {
+    if (sendBtn.disabled) return;
     const text = transcript.value.trim();
     if (text === "" && attachments.length === 0) return;
     answerMd = "";
@@ -162,6 +166,7 @@ async function main(): Promise<void> {
   sendBtn.addEventListener("click", () => void send());
   stopBtn.addEventListener("click", () => {
     if (isTauri()) void invoke("cancel_stream");
+    streamUi(false);
   });
   clearBtn.addEventListener("click", () => {
     transcript.value = "";
@@ -174,6 +179,13 @@ async function main(): Promise<void> {
   });
   copyAnswerBtn.addEventListener("click", () => {
     void navigator.clipboard.writeText(answerMd);
+  });
+  answerEl.addEventListener("click", (e) => {
+    const a = (e.target as HTMLElement).closest("a");
+    if (!a) return;
+    e.preventDefault();
+    const href = a.getAttribute("href") ?? "";
+    if (isTauri() && /^https?:\/\//.test(href)) void invoke("open_external", { url: href });
   });
   openSettings.addEventListener("click", () => {
     // Пустой диалог наполнит Task 15; пока просто открываем модалку.
@@ -198,11 +210,13 @@ async function main(): Promise<void> {
       for (const file of files.slice(0, slots)) {
         try {
           attachments.push(await fileToAttachment(file));
+          if (attachments.length >= ATTACHMENT_LIMIT) break;
           renderAttachments();
         } catch {
           /* битый кадр пропускаем */
         }
       }
+      renderAttachments();
     })();
   });
 
@@ -280,11 +294,24 @@ async function main(): Promise<void> {
 
     void listen<string>("llm-delta", ({ payload }) => {
       answerMd += payload;
-      answerEl.innerHTML = renderMarkdown(answerMd);
-      answerEl.scrollTop = answerEl.scrollHeight;
+      if (!renderPending) {
+        renderPending = true;
+        requestAnimationFrame(() => {
+          renderPending = false;
+          answerEl.innerHTML = renderMarkdown(answerMd);
+          answerEl.scrollTop = answerEl.scrollHeight;
+        });
+      }
     });
 
-    void listen("llm-done", () => streamUi(false));
+    void listen("llm-done", () => {
+      // Принудительный синхронный рендер финального состояния
+      if (answerMd.length > 0) {
+        answerEl.innerHTML = renderMarkdown(answerMd);
+        answerEl.scrollTop = answerEl.scrollHeight;
+      }
+      streamUi(false);
+    });
 
     void listen<string>("llm-error", ({ payload }) => {
       streamUi(false);

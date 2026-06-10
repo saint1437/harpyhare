@@ -86,6 +86,7 @@ pub fn run() {
             move_window_by,
             set_ptt_suspended,
             open_audio_permission_settings,
+            open_external,
             capture_available,
         ])
         .run(tauri::generate_context!())
@@ -367,6 +368,14 @@ fn open_audio_permission_settings() {
     let _ = std::process::Command::new("open")
         .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture")
         .spawn();
+}
+
+#[tauri::command]
+fn open_external(url: String) {
+    // только web-ссылки: не даём открывать file://, smb:// и т.п.
+    if url.starts_with("https://") || url.starts_with("http://") {
+        let _ = std::process::Command::new("open").arg(url).spawn();
+    }
 }
 
 #[tauri::command]
