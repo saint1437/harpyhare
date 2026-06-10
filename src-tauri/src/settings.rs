@@ -54,6 +54,24 @@ impl Settings {
         }
     }
 
+    /// Подставляет ключи из окружения (.env), если в сохранённых настройках они пустые.
+    /// Сохранённые через UI значения всегда приоритетнее; пустые/пробельные кандидаты игнорируются.
+    pub fn apply_key_fallback(&mut self, anthropic: Option<String>, groq: Option<String>) {
+        fn fill(target: &mut String, candidate: Option<String>) {
+            if !target.is_empty() {
+                return;
+            }
+            if let Some(v) = candidate {
+                let v = v.trim();
+                if !v.is_empty() {
+                    *target = v.to_string();
+                }
+            }
+        }
+        fill(&mut self.anthropic_api_key, anthropic);
+        fill(&mut self.groq_api_key, groq);
+    }
+
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
         use std::io::Write;
         use std::os::unix::fs::OpenOptionsExt;
@@ -89,6 +107,31 @@ mod tests {
         assert_eq!(s.window_opacity, 1.0);
         assert_eq!(s.move_step, 20);
         assert!(s.system_prompt.contains("расшифровку"));
+    }
+
+    #[test]
+    fn env_fallback_fills_only_empty_keys() {
+        let mut s = Settings::default();
+        s.apply_key_fallback(Some("env-ant".into()), Some("env-groq".into()));
+        assert_eq!(s.anthropic_api_key, "env-ant");
+        assert_eq!(s.groq_api_key, "env-groq");
+    }
+
+    #[test]
+    fn env_fallback_does_not_override_saved_keys() {
+        let mut s = Settings::default();
+        s.anthropic_api_key = "saved".into();
+        s.apply_key_fallback(Some("env-ant".into()), Some("env-groq".into()));
+        assert_eq!(s.anthropic_api_key, "saved"); // UI-ключ приоритетнее
+        assert_eq!(s.groq_api_key, "env-groq");
+    }
+
+    #[test]
+    fn env_fallback_ignores_none_and_blank() {
+        let mut s = Settings::default();
+        s.apply_key_fallback(None, Some("   ".into()));
+        assert_eq!(s.anthropic_api_key, "");
+        assert_eq!(s.groq_api_key, "");
     }
 
     #[test]

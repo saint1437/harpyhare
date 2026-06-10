@@ -13,9 +13,17 @@ Push-to-talk приложение для macOS: зажми V → захват с
 
 ```bash
 npm install
+cp .env.example .env   # и впиши ключи API (см. ниже)
 npm run tauri dev      # dev-режим с hot-reload
 npm run tauri build    # production-сборка (.app + .dmg)
 ```
+
+## Ключи API
+
+Два способа задать ключи (можно совмещать):
+
+1. **`.env` в корне проекта** — `ANTHROPIC_API_KEY` и `GROQ_API_KEY`. Файл в `.gitignore` и подхватывается при старте приложения.
+2. **Настройки в приложении** (⚙) — сохраняются в settings.json и **имеют приоритет** над `.env`: значение из `.env` используется, только пока соответствующее поле в настройках пустое.
 
 ## Первый запуск
 

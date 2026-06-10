@@ -25,3 +25,6 @@ out.wav
 *.njsproj
 *.sln
 *.sw?
+
+# секреты
+.env

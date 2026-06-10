@@ -44,8 +44,15 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let handle = app.handle();
-            let settings = settings::Settings::load(&settings_path(handle))
+            // .env в корне проекта (dotenvy ищет вверх по каталогам; в бандле файла нет — ок).
+            let _ = dotenvy::dotenv();
+            let mut settings = settings::Settings::load(&settings_path(handle))
                 .unwrap_or_else(|_| settings::Settings::default());
+            // Ключи из .env подхватываются, только если в settings.json они пустые.
+            settings.apply_key_fallback(
+                std::env::var("ANTHROPIC_API_KEY").ok(),
+                std::env::var("GROQ_API_KEY").ok(),
+            );
 
             // Process tap создаётся один раз. При отказе TCC/ошибке — None в state,
             // UI покажет баннер (команда capture_available) и предложит открыть настройки.
