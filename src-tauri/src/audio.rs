@@ -56,4 +56,34 @@ mod tests {
         assert!(!is_silence(&loud));
         assert!(is_silence(&[])); // пустой буфер — тоже тишина
     }
+
+    #[test]
+    fn resample_48k_to_16k_keeps_duration() {
+        let one_sec_48k: Vec<f32> = (0..48000)
+            .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 48000.0).sin())
+            .collect();
+        let out = resample_to_16k(&one_sec_48k, 48000).unwrap();
+        // длительность сохраняется с точностью до чанка ресемплера
+        assert!((out.len() as i64 - 16000).abs() < 200, "len={}", out.len());
+        // сигнал не деградировал в ноль
+        assert!(rms(&out) > 0.3);
+    }
+
+    #[test]
+    fn resample_16k_is_passthrough() {
+        let buf = vec![0.1f32; 1600];
+        assert_eq!(resample_to_16k(&buf, 16000).unwrap(), buf);
+    }
+
+    #[test]
+    fn wav_encoding_is_valid_16bit_mono_16k() {
+        let samples = vec![0.0f32, 0.5, -0.5, 1.0, -1.0];
+        let bytes = encode_wav_16k_mono(&samples).unwrap();
+        let reader = hound::WavReader::new(std::io::Cursor::new(&bytes)).unwrap();
+        let spec = reader.spec();
+        assert_eq!(spec.sample_rate, 16000);
+        assert_eq!(spec.channels, 1);
+        assert_eq!(spec.bits_per_sample, 16);
+        assert_eq!(reader.len(), 5);
+    }
 }
