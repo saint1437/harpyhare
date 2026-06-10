@@ -1,10 +1,40 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><style>
-  html,body { margin:0; background:transparent; }
-  body { display:flex; align-items:center; justify-content:center; height:36px;
-         background:rgba(20,20,22,.85); border-radius:10px; color:#ff5f57;
-         font:600 13px -apple-system, sans-serif; }
-  .dot { width:8px;height:8px;border-radius:50%;background:#ff5f57;margin-right:7px;
-         animation:p 1s infinite alternate } @keyframes p { to { opacity:.25 } }
+  /* Оверлей «Запись» — тот же язык жидкого стекла, что и главное окно */
+  html { background: transparent; }
+  body {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 36px;
+    border-radius: 18px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,0) 60%),
+      hsl(222 26% 7% / .9);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.12),
+      inset 0 0 0 1px rgba(255,255,255,.05);
+    color: #ffd2cf;
+    font: 600 12.5px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+    letter-spacing: .02em;
+  }
+  .orb {
+    position: relative;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: radial-gradient(circle at 32% 30%, #ffb4ae, #ff5f57 65%);
+    box-shadow: 0 0 12px rgba(255,95,87,.7);
+  }
+  .orb::after {
+    content: ""; position: absolute; inset: -4px; border-radius: 50%;
+    border: 1px solid rgba(255,95,87,.6);
+    animation: ripple 1.3s ease-out infinite;
+  }
+  @keyframes ripple {
+    from { transform: scale(.55); opacity: 1; }
+    to   { transform: scale(1.7); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { .orb::after { animation: none; } }
 </style></head>
-<body><div class="dot"></div>Запись</body></html>
+<body><div class="orb"></div>Запись</body></html>

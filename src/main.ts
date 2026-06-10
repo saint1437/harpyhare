@@ -341,7 +341,7 @@ async function main(): Promise<void> {
     void listen<string>("state-changed", ({ payload }) => {
       switch (payload) {
         case "recording":
-          setStatus("recording", "● Запись…");
+          setStatus("recording", "Запись…");
           break;
         case "transcribing":
           setStatus("transcribing", "Распознаю…");

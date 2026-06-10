@@ -10,6 +10,13 @@
 
   <body>
     <div class="app" id="app">
+      <!-- Атмосфера: дрейфующее свечение за стеклом + зерно -->
+      <div class="aurora" aria-hidden="true">
+        <i class="aurora__blob aurora__blob--mint"></i>
+        <i class="aurora__blob aurora__blob--ice"></i>
+      </div>
+      <div class="grain" aria-hidden="true"></div>
+
       <!-- Баннер отсутствия разрешения на запись системного звука -->
       <div class="banner" id="permission-banner" hidden>
         <span class="banner__text">Нет разрешения на запись системного звука</span>
@@ -18,7 +25,7 @@
         </button>
       </div>
 
-      <!-- Статус-бар: индикатор состояния + шестерёнка -->
+      <!-- Шапка: орб-индикатор + статус + шестерёнка -->
       <header class="statusbar">
         <div class="status" id="status" data-state="idle">
           <span class="status__dot" aria-hidden="true"></span>
@@ -35,20 +42,21 @@
 
       <!-- Композер: расшифровка, вложения, действия -->
       <section class="composer" id="composer">
-        <textarea
-          id="transcript"
-          class="composer__input"
-          spellcheck="false"
-          placeholder="Расшифровка появится здесь — можно править. Cmd+V вставляет скриншот."
-        ></textarea>
-
-        <div class="attachments" id="attachments" aria-label="Вложения"></div>
+        <div class="composer__well">
+          <textarea
+            id="transcript"
+            class="composer__input"
+            spellcheck="false"
+            placeholder="Зажми V у видео — расшифровка появится здесь. Текст можно править, ⌘V вставляет скриншот."
+          ></textarea>
+          <div class="attachments" id="attachments" aria-label="Вложения"></div>
+        </div>
 
         <div class="actions">
-          <button type="button" class="btn btn--ghost" id="clear">Очистить</button>
+          <button type="button" class="btn btn--ghost btn--sm" id="clear">Очистить</button>
           <div class="actions__spacer"></div>
-          <button type="button" class="btn btn--ghost" id="retry" hidden>Повторить</button>
-          <button type="button" class="btn btn--danger" id="stop" hidden>Стоп</button>
+          <button type="button" class="btn btn--ghost btn--sm" id="retry" hidden>Повторить</button>
+          <button type="button" class="btn btn--danger btn--sm" id="stop" hidden>Стоп</button>
           <button type="button" class="btn btn--primary" id="send">
             Отправить <kbd class="kbd">⌘⏎</kbd>
           </button>
@@ -57,11 +65,23 @@
 
       <!-- Ответ Claude (стрим markdown) -->
       <section class="answer-wrap" id="answer-wrap">
+        <div class="answer-wrap__head">
+          <span class="answer-wrap__label">Ответ</span>
+          <span class="answer-wrap__rule" aria-hidden="true"></span>
+          <button type="button" class="btn btn--ghost btn--xs answer__copy" id="copy-answer" hidden>
+            Копировать
+          </button>
+        </div>
         <div class="answer" id="answer" aria-live="polite"></div>
-        <button type="button" class="btn btn--ghost btn--sm answer__copy" id="copy-answer" hidden>
-          Копировать ответ
-        </button>
       </section>
+
+      <!-- Подсказки хоткеев -->
+      <footer class="hints" aria-hidden="true">
+        <span><b>V</b> запись</span>
+        <span><b>⌘⏎</b> отправить</span>
+        <span><b>⌘V</b> скриншот</span>
+        <span><b>⌘←→↑↓</b> окно</span>
+      </footer>
     </div>
 
     <dialog id="settings">
