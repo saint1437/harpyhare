@@ -23,4 +23,13 @@ describe("applyOpacity", () => {
     applyOpacity(el, 7);
     expect(el.style.getPropertyValue("--app-opacity")).toBe("1");
   });
+
+  it("NaN/Infinity игнорируются — значение не меняется", () => {
+    const el = document.createElement("div");
+    applyOpacity(el, 0.5);
+    applyOpacity(el, NaN);
+    expect(el.style.getPropertyValue("--app-opacity")).toBe("0.5");
+    applyOpacity(el, Infinity);
+    expect(el.style.getPropertyValue("--app-opacity")).toBe("0.5");
+  });
 });

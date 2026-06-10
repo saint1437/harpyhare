@@ -20,6 +20,11 @@ describe("extractImageItems", () => {
   it("пустой список → пусто", () => {
     expect(extractImageItems([])).toEqual([]);
   });
+
+  it("svg и не-поддерживаемые image-типы отфильтровываются", () => {
+    const files = extractImageItems([item("image/svg+xml"), item("image/webp"), item("image/gif")]);
+    expect(files.map((f) => f.type)).toEqual(["image/webp", "image/gif"]);
+  });
 });
 
 describe("acceptedNewAttachments", () => {

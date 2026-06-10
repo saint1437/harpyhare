@@ -9,6 +9,7 @@ export function moveDelta(code: string, step: number): { dx: number; dy: number 
 }
 
 export function applyOpacity(root: HTMLElement, value: number): void {
+  if (!Number.isFinite(value)) return;
   const clamped = Math.min(1, Math.max(0.2, value));
   root.style.setProperty("--app-opacity", String(clamped));
 }
