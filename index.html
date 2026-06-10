@@ -1,43 +1,70 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="/src/styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>itech</title>
-    <script type="module" src="/src/main.ts" defer></script>
+    <script type="module" src="/src/main.ts"></script>
   </head>
 
   <body>
-    <main class="container">
-      <h1>Welcome to Tauri</h1>
-
-      <div class="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/src/assets/vite.svg" class="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img
-            src="/src/assets/tauri.svg"
-            class="logo tauri"
-            alt="Tauri logo"
-          />
-        </a>
-        <a href="https://www.typescriptlang.org/docs" target="_blank">
-          <img
-            src="/src/assets/typescript.svg"
-            class="logo typescript"
-            alt="typescript logo"
-          />
-        </a>
+    <div class="app" id="app">
+      <!-- Баннер отсутствия разрешения на запись системного звука -->
+      <div class="banner" id="permission-banner" hidden>
+        <span class="banner__text">Нет разрешения на запись системного звука</span>
+        <button type="button" class="btn btn--ghost btn--sm" id="open-permissions">
+          Открыть настройки
+        </button>
       </div>
-      <p>Click on the Tauri logo to learn more about the framework</p>
 
-      <form class="row" id="greet-form">
-        <input id="greet-input" placeholder="Enter a name..." />
-        <button type="submit">Greet</button>
-      </form>
-      <p id="greet-msg"></p>
-    </main>
+      <!-- Статус-бар: индикатор состояния + шестерёнка -->
+      <header class="statusbar">
+        <div class="status" id="status" data-state="idle">
+          <span class="status__dot" aria-hidden="true"></span>
+          <span class="status__text">Зажми V — записать системный звук</span>
+        </div>
+        <button type="button" class="iconbtn" id="open-settings" aria-label="Настройки">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+               stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+      </header>
+
+      <!-- Композер: расшифровка, вложения, действия -->
+      <section class="composer" id="composer">
+        <textarea
+          id="transcript"
+          class="composer__input"
+          spellcheck="false"
+          placeholder="Расшифровка появится здесь — можно править. Cmd+V вставляет скриншот."
+        ></textarea>
+
+        <div class="attachments" id="attachments" aria-label="Вложения"></div>
+
+        <div class="actions">
+          <button type="button" class="btn btn--ghost" id="clear">Очистить</button>
+          <div class="actions__spacer"></div>
+          <button type="button" class="btn btn--ghost" id="retry" hidden>Повторить</button>
+          <button type="button" class="btn btn--danger" id="stop" hidden>Стоп</button>
+          <button type="button" class="btn btn--primary" id="send">
+            Отправить <kbd class="kbd">⌘⏎</kbd>
+          </button>
+        </div>
+      </section>
+
+      <!-- Ответ Claude (стрим markdown) -->
+      <section class="answer-wrap" id="answer-wrap">
+        <div class="answer" id="answer" aria-live="polite"></div>
+        <button type="button" class="btn btn--ghost btn--sm answer__copy" id="copy-answer" hidden>
+          Копировать ответ
+        </button>
+      </section>
+    </div>
+
+    <!-- Заполняется в Task 15 -->
+    <dialog id="settings"></dialog>
   </body>
 </html>
