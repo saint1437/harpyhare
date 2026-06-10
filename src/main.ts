@@ -192,12 +192,73 @@ async function main(): Promise<void> {
     const href = a.getAttribute("href") ?? "";
     if (isTauri() && /^https?:\/\//.test(href)) void invoke("open_external", { url: href });
   });
+  // --- Настройки: форма -----------------------------------------------------
+  const settingsForm = $<HTMLFormElement>("settings-form");
+
+  /** Заполнить форму настроек из объекта settings */
+  function fillSettingsForm(s: Settings): void {
+    const f = settingsForm;
+    (f.elements.namedItem("anthropic_api_key") as HTMLInputElement).value = s.anthropic_api_key;
+    (f.elements.namedItem("groq_api_key") as HTMLInputElement).value = s.groq_api_key;
+    (f.elements.namedItem("model") as HTMLSelectElement).value = s.model;
+    (f.elements.namedItem("system_prompt") as HTMLTextAreaElement).value = s.system_prompt;
+    (f.elements.namedItem("hotkey") as HTMLInputElement).value = s.hotkey;
+    (f.elements.namedItem("auto_send") as HTMLInputElement).checked = s.auto_send;
+    (f.elements.namedItem("window_opacity") as HTMLInputElement).value = String(s.window_opacity);
+    (f.elements.namedItem("move_step") as HTMLInputElement).value = String(s.move_step);
+  }
+
   openSettings.addEventListener("click", () => {
-    // Пустой диалог наполнит Task 15; пока просто открываем модалку.
+    fillSettingsForm(settings);
     if (typeof settingsDialog.showModal === "function") settingsDialog.showModal();
   });
+
+  // Живой предпросмотр прозрачности при движении ползунка
+  (settingsForm.elements.namedItem("window_opacity") as HTMLInputElement)
+    .addEventListener("input", (e) => {
+      applyOpacity(document.documentElement, Number((e.target as HTMLInputElement).value));
+    });
+
   settingsDialog.addEventListener("click", (e) => {
-    if (e.target === settingsDialog) settingsDialog.close();
+    if (e.target === settingsDialog) settingsDialog.close("cancel");
+  });
+
+  // Обработка закрытия диалога (save или cancel/Esc/клик мимо)
+  settingsDialog.addEventListener("close", () => {
+    if (settingsDialog.returnValue === "save") {
+      const fd = new FormData(settingsForm);
+      const next: Settings = {
+        ...settings,
+        anthropic_api_key: String(fd.get("anthropic_api_key") ?? ""),
+        groq_api_key: String(fd.get("groq_api_key") ?? ""),
+        model: String(fd.get("model") ?? settings.model),
+        system_prompt: String(fd.get("system_prompt") ?? ""),
+        hotkey: String(fd.get("hotkey") ?? "").trim().toUpperCase() || "V",
+        auto_send: (settingsForm.elements.namedItem("auto_send") as HTMLInputElement).checked,
+        window_opacity: Number(fd.get("window_opacity") ?? settings.window_opacity),
+        move_step: Number(fd.get("move_step") ?? settings.move_step),
+      };
+      if (isTauri()) {
+        void (async () => {
+          try {
+            await invoke("set_settings", { newSettings: next });
+            settings = await invoke<Settings>("get_settings");
+            applyOpacity(document.documentElement, settings.window_opacity);
+          } catch (e) {
+            setStatus("error", `Ошибка сохранения настроек: ${String(e)}`);
+            // Откат прозрачности к сохранённому значению при ошибке
+            applyOpacity(document.documentElement, settings.window_opacity);
+          }
+        })();
+      } else {
+        // Мок-режим: обновляем локальные настройки без invoke
+        settings = next;
+        applyOpacity(document.documentElement, settings.window_opacity);
+      }
+    } else {
+      // Отмена / Esc / клик мимо — откат предпросмотра прозрачности
+      applyOpacity(document.documentElement, settings.window_opacity);
+    }
   });
   openPermissions.addEventListener("click", () => {
     if (isTauri()) void invoke("open_audio_permission_settings");
@@ -251,6 +312,9 @@ async function main(): Promise<void> {
     field.addEventListener("focusin", () => suspendPtt(true));
     field.addEventListener("focusout", () => suspendPtt(false));
   }
+  // Suspend PTT while focused inside settings dialog inputs
+  settingsDialog.addEventListener("focusin", () => suspendPtt(true));
+  settingsDialog.addEventListener("focusout", () => suspendPtt(false));
 
   // --- Загрузка настроек + применение прозрачности ---------------------------
   if (isTauri()) {

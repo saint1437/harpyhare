@@ -515,7 +515,7 @@ body {
   align-self: flex-start;
 }
 
-/* --- Settings dialog (наполняет Task 15) — базовый каркас модалки --------- */
+/* --- Settings dialog ------------------------------------------------------- */
 dialog#settings {
   margin: auto;
   max-width: 380px;
@@ -529,4 +529,162 @@ dialog#settings {
 dialog#settings::backdrop {
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(2px);
+}
+
+/* Form layout */
+#settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+}
+
+#settings-form h2 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+/* Labels — stacked by default, row for checkbox */
+#settings-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  letter-spacing: 0.01em;
+}
+
+#settings-form label.row {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* Text/password/number inputs & select */
+#settings-form input[type="text"],
+#settings-form input[type="password"],
+#settings-form input[type="number"],
+#settings-form select {
+  width: 100%;
+  padding: 7px 9px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+#settings-form input[type="text"]:focus,
+#settings-form input[type="password"]:focus,
+#settings-form input[type="number"]:focus,
+#settings-form select:focus {
+  outline: none;
+  border-color: var(--amber-line);
+  background: var(--surface-2);
+  box-shadow: 0 0 0 3px var(--amber-soft);
+}
+
+#settings-form input::placeholder {
+  color: var(--text-faint);
+}
+
+/* Select arrow */
+#settings-form select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%23a4a4ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  padding-right: 28px;
+  cursor: pointer;
+}
+
+/* Textarea */
+#settings-form textarea {
+  width: 100%;
+  padding: 7px 9px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  resize: vertical;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+#settings-form textarea:focus {
+  outline: none;
+  border-color: var(--amber-line);
+  background: var(--surface-2);
+  box-shadow: 0 0 0 3px var(--amber-soft);
+}
+
+/* Checkbox */
+#settings-form input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  accent-color: var(--amber);
+  cursor: pointer;
+}
+
+/* Range — accent amber */
+#settings-form input[type="range"] {
+  width: 100%;
+  height: 4px;
+  accent-color: var(--amber);
+  cursor: pointer;
+  background: transparent;
+}
+
+/* Button row */
+#settings-form menu {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+#settings-form menu button {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 14px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  background: transparent;
+  color: var(--text-dim);
+}
+
+#settings-form menu button:hover {
+  background: var(--surface-2);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+#settings-form menu button.primary {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: #1a1206;
+  font-weight: 600;
+}
+
+#settings-form menu button.primary:hover {
+  background: #ffb53d;
+  border-color: #ffb53d;
 }

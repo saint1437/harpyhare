@@ -1,7 +1,57 @@
-# Tauri + Vanilla TS
+# itech
 
-This template should help get you started developing with Tauri in vanilla HTML, CSS and Typescript.
+Push-to-talk приложение для macOS: зажми V → захват системного звука → распознавание речи через Whisper (Groq) → редактирование текста → отправка в Claude со скриншотами. Ответ приходит стримом прямо в плавающем HUD-окне.
 
-## Recommended IDE Setup
+## Требования
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- macOS 14.2+ (Core Audio process tap для захвата системного звука)
+- Ключ API [Anthropic](https://console.anthropic.com/) (Claude)
+- Ключ API [Groq](https://console.groq.com/) (Whisper STT)
+- VPN для обоих сервисов при работе из РФ
+
+## Запуск и сборка
+
+```bash
+npm install
+npm run tauri dev      # dev-режим с hot-reload
+npm run tauri build    # production-сборка (.app + .dmg)
+```
+
+## Первый запуск
+
+При первом старте macOS покажет диалог «Разрешить itech записывать системный звук?» — нажми **Разрешить**. Если диалог не появился или было отказано — в приложении появится красный баннер; кнопка «Открыть настройки» переведёт в нужную панель системных настроек.
+
+## Горячие клавиши
+
+| Клавиша | Действие |
+|---------|----------|
+| V (зажать) | Начать запись системного звука |
+| Esc | Отменить запись |
+| Cmd+Enter | Отправить текст в Claude |
+| Cmd+V | Вставить скриншот из буфера обмена |
+| Cmd+←/→/↑/↓ | Двигать окно по экрану |
+
+> **ВАЖНО:** хоткей V перехватывает нажатие во **всех** приложениях, пока itech запущен. В полях самого приложения печать работает нормально — PTT снимается при получении фокуса. Изменить клавишу можно в настройках (шестерёнка).
+
+## Настройки
+
+Открываются кнопкой ⚙ в правом верхнем углу. Хранятся в:
+
+```
+~/Library/Application Support/com.itech.voice/settings.json
+```
+
+Файл создаётся с правами 600 (читает только текущий пользователь).
+
+## Тесты
+
+```bash
+# Frontend (TypeScript)
+npx vitest run
+
+# Rust (unit-тесты)
+cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+# Clippy (lint)
+cargo clippy --manifest-path src-tauri/Cargo.toml --lib
+```
