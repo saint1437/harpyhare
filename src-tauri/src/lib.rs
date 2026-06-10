@@ -6,7 +6,10 @@ pub mod settings;
 pub mod state;
 pub mod stt;
 
-use std::sync::Mutex;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
@@ -24,6 +27,7 @@ pub struct App {
     pub llm_cancel: Mutex<Option<CancellationToken>>,
     pub stt: Mutex<stt::GroqStt>,
     pub llm: Mutex<llm::AnthropicClient>,
+    pub recording_gen: AtomicU64,
 }
 
 fn settings_path(app: &AppHandle) -> std::path::PathBuf {
@@ -65,6 +69,7 @@ pub fn run() {
                 llm_cancel: Mutex::new(None),
                 stt: Mutex::new(stt),
                 llm: Mutex::new(llm),
+                recording_gen: AtomicU64::new(0),
             });
 
             if let Err(e) = hotkey::register_ptt(handle, &hotkey) {
@@ -117,14 +122,18 @@ pub fn on_ptt_pressed(app: &AppHandle) {
                 return;
             }
         }
+        let gen = st.recording_gen.fetch_add(1, Ordering::SeqCst) + 1;
         hotkey::register_esc(app);
         emit_state(app, state::RecorderState::Recording);
-        spawn_max_duration_watchdog(app.clone());
+        spawn_max_duration_watchdog(app.clone(), gen);
     }
 }
 
 pub fn on_ptt_released(app: &AppHandle) {
     let st = app.state::<App>();
+    // recording_secs читается отдельным локом от recorder.on(): рассинхрон в пару мс
+    // безвреден, а единственность c.stop() гарантирует FSM — кто первым перевёл
+    // Recording→Transcribing, тот и останавливает capture (второй получит Action::None).
     let secs = st
         .capture
         .lock()
@@ -214,11 +223,14 @@ fn finish_transcription(app: &AppHandle, result: Result<(), String>) {
     emit_state(app, state::RecorderState::Idle);
 }
 
-fn spawn_max_duration_watchdog(app: AppHandle) {
+fn spawn_max_duration_watchdog(app: AppHandle, my_gen: u64) {
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             let st = app.state::<App>();
+            if st.recording_gen.load(Ordering::SeqCst) != my_gen {
+                break;
+            }
             if *st.recorder.lock().unwrap() != state::RecorderState::Recording {
                 break;
             }
@@ -256,7 +268,9 @@ async fn send_to_claude(app: AppHandle, text: String, images: Vec<llm::ImageAtta
     };
     let client = app.state::<App>().llm.lock().unwrap().clone();
     let cancel = CancellationToken::new();
-    *app.state::<App>().llm_cancel.lock().unwrap() = Some(cancel.clone());
+    if let Some(old) = app.state::<App>().llm_cancel.lock().unwrap().replace(cancel.clone()) {
+        old.cancel();
+    }
     let body = llm::build_request_body(&model, &system, &text, &images);
     let app2 = app.clone();
     let res = client
@@ -287,20 +301,19 @@ fn cancel_stream(app: AppHandle) {
 #[tauri::command]
 async fn retry_transcription(app: AppHandle) {
     let samples = app.state::<App>().last_recording.lock().unwrap().clone();
-    if let Some(s) = samples {
-        // Прогоняем машину Idle->Recording->Transcribing, чтобы PTT был заблокирован
-        // на время ретрая. Гварды берём и отпускаем синхронно, до await.
-        {
-            let st = app.state::<App>();
-            st.recorder.lock().unwrap().on(state::Event::PttPressed);
-            st.recorder
-                .lock()
-                .unwrap()
-                .on(state::Event::PttReleased { duration_secs: 1.0 });
+    let Some(s) = samples else { return };
+    {
+        let st = app.state::<App>();
+        let mut rec = st.recorder.lock().unwrap();
+        if *rec != state::RecorderState::Idle {
+            return; // живая запись/транскрипция важнее ретрая
         }
-        emit_state(&app, state::RecorderState::Transcribing);
-        transcribe_and_emit(app, s).await;
+        // прямой перевод: машина не имеет события "retry", а её инварианты
+        // (PTT заблокирован в Transcribing) нам нужны и здесь
+        *rec = state::RecorderState::Transcribing;
     }
+    emit_state(&app, state::RecorderState::Transcribing);
+    transcribe_and_emit(app, s).await;
 }
 
 #[tauri::command]
@@ -314,8 +327,8 @@ fn set_settings(app: AppHandle, mut new_settings: settings::Settings) -> Result<
     let st = app.state::<App>();
     let old = st.settings.lock().unwrap().clone();
     if old.hotkey != new_settings.hotkey {
-        hotkey::unregister_ptt(&app, &old.hotkey);
         hotkey::register_ptt(&app, &new_settings.hotkey)?;
+        hotkey::unregister_ptt(&app, &old.hotkey);
     }
     if old.groq_api_key != new_settings.groq_api_key {
         *st.stt.lock().unwrap() = stt::GroqStt::new(new_settings.groq_api_key.clone());
