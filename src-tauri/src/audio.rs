@@ -1,3 +1,28 @@
+/// Порог RMS, ниже которого запись считается тишиной (стартовое значение по спеке, уточняется вручную).
+pub const SILENCE_RMS_THRESHOLD: f32 = 1e-3;
+
+/// Интерливленный многоканальный буфер -> моно (среднее каналов).
+pub fn downmix_to_mono(interleaved: &[f32], channels: usize) -> Vec<f32> {
+    if channels <= 1 {
+        return interleaved.to_vec();
+    }
+    interleaved
+        .chunks_exact(channels)
+        .map(|frame| frame.iter().sum::<f32>() / channels as f32)
+        .collect()
+}
+
+pub fn rms(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt()
+}
+
+pub fn is_silence(samples: &[f32]) -> bool {
+    rms(samples) < SILENCE_RMS_THRESHOLD
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
