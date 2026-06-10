@@ -147,6 +147,7 @@ async function main(): Promise<void> {
     const text = transcript.value.trim();
     if (text === "" && attachments.length === 0) return;
     answerMd = "";
+    renderPending = false; // сброс на случай Стоп→Отправить в пределах кадра
     answerEl.innerHTML = "";
     copyAnswerBtn.hidden = true;
     setStatus("idle", STATUS_DEFAULT);
@@ -183,6 +184,10 @@ async function main(): Promise<void> {
   answerEl.addEventListener("click", (e) => {
     const a = (e.target as HTMLElement).closest("a");
     if (!a) return;
+    // preventDefault безусловно: ЛЮБАЯ навигация (включая относительные href из
+    // markdown) уводит webview из приложения без кнопки «назад». http(s) уходит
+    // в системный браузер, остальное гасится. В браузерном мок-превью ссылки
+    // мертвы — осознанная цена dev-режима.
     e.preventDefault();
     const href = a.getAttribute("href") ?? "";
     if (isTauri() && /^https?:\/\//.test(href)) void invoke("open_external", { url: href });
@@ -205,6 +210,7 @@ async function main(): Promise<void> {
     const files = extractImageItems(items);
     if (files.length === 0) return; // текстовая вставка — нативно
     e.preventDefault();
+    if (attachments.length >= ATTACHMENT_LIMIT) return; // гонка двух paste подряд
     const slots = acceptedNewAttachments(attachments.length, files.length);
     void (async () => {
       for (const file of files.slice(0, slots)) {
