@@ -1,5 +1,85 @@
+use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tokio_util::sync::CancellationToken;
+
+#[derive(Debug, thiserror::Error)]
+pub enum LlmError {
+    #[error("Неверный ключ Anthropic — проверь в настройках")]
+    BadApiKey,
+    #[error("Anthropic перегружен, попробуй позже ({0})")]
+    Retryable(u16),
+    #[error("Нет соединения — проверь интернет/VPN: {0}")]
+    Network(String),
+    #[error("Ошибка API: {0}")]
+    Api(String),
+    #[error("Остановлено")]
+    Cancelled,
+}
+
+pub struct AnthropicClient {
+    api_key: String,
+    base_url: String,
+    client: reqwest::Client,
+}
+
+impl AnthropicClient {
+    pub fn new(api_key: String) -> Self {
+        Self {
+            api_key,
+            base_url: "https://api.anthropic.com".into(),
+            client: reqwest::Client::new(),
+        }
+    }
+    pub fn with_base_url(mut self, url: String) -> Self {
+        self.base_url = url;
+        self
+    }
+
+    /// Стримит ответ; каждая текстовая дельта уходит в on_delta. Отмена — через token.
+    pub async fn stream_message(
+        &self,
+        body: serde_json::Value,
+        cancel: CancellationToken,
+        mut on_delta: impl FnMut(&str),
+    ) -> Result<(), LlmError> {
+        let send = self
+            .client
+            .post(format!("{}/v1/messages", self.base_url))
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .json(&body)
+            .send();
+        let resp = tokio::select! {
+            r = send => r.map_err(|e| LlmError::Network(e.to_string()))?,
+            _ = cancel.cancelled() => return Err(LlmError::Cancelled),
+        };
+        match resp.status().as_u16() {
+            200 => {}
+            401 | 403 => return Err(LlmError::BadApiKey),
+            code @ (429 | 500..=599) => return Err(LlmError::Retryable(code)),
+            code => return Err(LlmError::Api(format!("HTTP {code}"))),
+        }
+        let mut parser = SseParser::new();
+        let mut stream = resp.bytes_stream();
+        loop {
+            let chunk = tokio::select! {
+                c = stream.next() => c,
+                _ = cancel.cancelled() => return Err(LlmError::Cancelled),
+            };
+            let Some(chunk) = chunk else { break };
+            let bytes = chunk.map_err(|e| LlmError::Network(e.to_string()))?;
+            for out in parser.feed_bytes(&bytes) {
+                match out {
+                    SseOut::TextDelta(t) => on_delta(&t),
+                    SseOut::Done => return Ok(()),
+                    SseOut::ApiError(m) => return Err(LlmError::Api(m)),
+                }
+            }
+        }
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ImageAttachment {
@@ -228,5 +308,86 @@ mod tests {
         let mut out = p.feed(&raw[..mid]);
         out.extend(p.feed(&raw[mid..]));
         assert_eq!(out, vec![SseOut::TextDelta("hi".to_string())]);
+    }
+
+    #[tokio::test]
+    async fn stream_collects_deltas_via_callback() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .and(header("x-api-key", "sk-test"))
+            .and(header("anthropic-version", "2023-06-01"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_raw(SSE_FIXTURE.as_bytes().to_vec(), "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let client = AnthropicClient::new("sk-test".into()).with_base_url(server.uri());
+        let collected = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let c2 = collected.clone();
+        let cancel = tokio_util::sync::CancellationToken::new();
+        client
+            .stream_message(
+                build_request_body("claude-opus-4-8", "s", "q", &[]),
+                cancel,
+                move |delta| c2.lock().unwrap().push_str(delta),
+            )
+            .await
+            .unwrap();
+        assert_eq!(*collected.lock().unwrap(), "Привет!");
+    }
+
+    #[tokio::test]
+    async fn stream_maps_401() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        let client = AnthropicClient::new("bad".into()).with_base_url(server.uri());
+        let err = client
+            .stream_message(
+                build_request_body("claude-opus-4-8", "s", "q", &[]),
+                tokio_util::sync::CancellationToken::new(),
+                |_| {},
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, LlmError::BadApiKey));
+    }
+
+    #[tokio::test]
+    async fn stream_cancellation_stops_early() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_raw(SSE_FIXTURE.as_bytes().to_vec(), "text/event-stream")
+                    .set_delay(std::time::Duration::from_secs(5)),
+            )
+            .mount(&server)
+            .await;
+        let client = AnthropicClient::new("k".into()).with_base_url(server.uri());
+        let cancel = tokio_util::sync::CancellationToken::new();
+        cancel.cancel(); // отменяем сразу
+        let err = client
+            .stream_message(
+                build_request_body("claude-opus-4-8", "s", "q", &[]),
+                cancel,
+                |_| {},
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, LlmError::Cancelled));
     }
 }
