@@ -76,6 +76,15 @@ body {
   height: 100vh;
 }
 
+/*
+ * Прозрачность всего окна: фон рисует только корневой .app-shell, множа графит-канвас
+ * на --app-opacity через альфу. НЕ переопределяем .bg-background глобально — иначе
+ * shadcn DialogContent (тоже bg-background) стал бы полупрозрачным.
+ */
+.app-shell {
+  background-color: color-mix(in oklch, var(--background) calc(var(--app-opacity) * 100%), transparent);
+}
+
 * {
   border-color: var(--border);
 }
