@@ -18,7 +18,7 @@ export const DEFAULT_SETTINGS: Settings = {
   groq_api_key: "",
   model: "claude-opus-4-8",
   system_prompt: "",
-  hotkey: "V",
+  hotkey: "F9",
   auto_send: false,
   window_opacity: 1,
   move_step: 20,

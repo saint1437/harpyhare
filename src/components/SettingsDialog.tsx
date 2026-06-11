@@ -56,7 +56,7 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-[400px]">
+      <DialogContent className="max-w-[400px] max-h-[88vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Настройки</DialogTitle>
         </DialogHeader>

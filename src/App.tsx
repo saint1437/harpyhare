@@ -109,7 +109,12 @@ export default function App() {
     <div className="app-shell relative flex flex-col gap-3 h-screen p-4 rounded-[22px] overflow-hidden">
       {!permissionOk && <PermissionBanner onOpenSettings={() => void openAudioPermissionSettings()} />}
 
-      <StatusBar state={state} error={error} onOpenSettings={() => setSettingsOpen(true)} />
+      <StatusBar
+        state={state}
+        error={error}
+        hotkey={settings.hotkey}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
 
       <Composer
         value={text}
@@ -124,6 +129,7 @@ export default function App() {
           attach.clear();
         }}
         onRetry={onRetry}
+        hotkey={settings.hotkey}
         streaming={stream.streaming}
         showRetry={showRetry}
       />
@@ -134,7 +140,7 @@ export default function App() {
         onCopy={() => void navigator.clipboard.writeText(stream.answer)}
       />
 
-      <HotkeyHints />
+      <HotkeyHints hotkey={settings.hotkey} />
 
       <SettingsDialog
         open={settingsOpen}

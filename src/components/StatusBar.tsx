@@ -2,19 +2,19 @@ import { Settings as SettingsIcon } from "lucide-react";
 import type { RecorderState } from "@/ipc/types";
 import { cn } from "@/lib/utils";
 
-const STATUS_TEXT: Record<RecorderState, string> = {
-  idle: "Зажми V — записать системный звук",
-  recording: "Запись…",
-  transcribing: "Распознаю…",
-};
-
 export interface StatusBarProps {
   state: RecorderState;
   error: string | null;
+  hotkey: string;
   onOpenSettings: () => void;
 }
 
-export function StatusBar({ state, error, onOpenSettings }: StatusBarProps) {
+export function StatusBar({ state, error, hotkey, onOpenSettings }: StatusBarProps) {
+  const statusText: Record<RecorderState, string> = {
+    idle: `Зажми ${hotkey} — записать системный звук`,
+    recording: "Запись…",
+    transcribing: "Распознаю…",
+  };
   const showError = error !== null && state === "idle";
   const dotClass =
     state === "recording"
@@ -35,7 +35,7 @@ export function StatusBar({ state, error, onOpenSettings }: StatusBarProps) {
             showError ? "text-destructive whitespace-normal" : "text-muted-foreground",
           )}
         >
-          {showError ? error : STATUS_TEXT[state]}
+          {showError ? error : statusText[state]}
         </span>
       </div>
       <button

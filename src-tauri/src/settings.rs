@@ -23,7 +23,7 @@ impl Default for Settings {
             groq_api_key: String::new(),
             model: "claude-opus-4-8".into(),
             system_prompt: DEFAULT_SYSTEM_PROMPT.into(),
-            hotkey: "V".into(),
+            hotkey: "F9".into(),
             auto_send: false,
             window_opacity: 1.0,
             move_step: 20,
@@ -102,7 +102,7 @@ mod tests {
     fn defaults_match_spec() {
         let s = Settings::default();
         assert_eq!(s.model, "claude-opus-4-8");
-        assert_eq!(s.hotkey, "V");
+        assert_eq!(s.hotkey, "F9");
         assert!(!s.auto_send);
         assert_eq!(s.window_opacity, 1.0);
         assert_eq!(s.move_step, 20);
@@ -173,7 +173,7 @@ mod tests {
     fn load_missing_file_gives_defaults() {
         let s = Settings::load(std::path::Path::new("/nonexistent/x.json")).unwrap();
         assert_eq!(s.model, "claude-opus-4-8");
-        assert_eq!(s.hotkey, "V");
+        assert_eq!(s.hotkey, "F9");
         assert!(!s.auto_send);
         assert_eq!(s.move_step, 20);
     }

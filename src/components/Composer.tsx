@@ -14,6 +14,7 @@ export interface ComposerProps {
   onStop: () => void;
   onClear: () => void;
   onRetry: () => void;
+  hotkey: string;
   streaming: boolean;
   showRetry: boolean;
 }
@@ -34,7 +35,7 @@ export function Composer(props: ComposerProps) {
             props.onPaste(items);
           }}
           spellCheck={false}
-          placeholder="Зажми V у видео — расшифровка появится здесь. Текст можно править, ⌘V вставляет скриншот."
+          placeholder={`Зажми ${props.hotkey} у видео — расшифровка появится здесь. Текст можно править, ⌘V вставляет скриншот.`}
           className="min-h-24 max-h-44 resize-none border-0 bg-transparent focus-visible:ring-0 shadow-none"
         />
         {props.attachments.length > 0 && (

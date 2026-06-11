@@ -72,6 +72,16 @@ body {
   background: transparent !important;
 }
 
+/*
+ * Цвет текста на body: shadcn Dialog/Select/Tooltip рендерятся в портале на
+ * document.body — ВНЕ .app-shell, где задан text-foreground. Без этого их текст
+ * (поля настроек и т.п.) наследует чёрный по умолчанию и невидим на тёмном фоне.
+ */
+body {
+  color: var(--foreground);
+  color-scheme: dark;
+}
+
 #root {
   height: 100vh;
 }
