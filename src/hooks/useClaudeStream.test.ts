@@ -1,90 +1,87 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EventMap } from "@/ipc/types";
 
-const handlers = new Map<string, (p: unknown) => void>();
-const sendToClaude = vi.fn(async (_text: string, _images: unknown[]) => {});
-const cancelStream = vi.fn(async () => {});
+type Handler = (payload: unknown) => void;
+const handlers: Record<string, Handler> = {};
+const sendToClaude = vi.fn();
+const cancelStream = vi.fn();
 
-vi.mock("@/ipc/commands", () => ({
-  sendToClaude: (text: string, images: unknown[]) => sendToClaude(text, images),
-  cancelStream: () => cancelStream(),
-}));
 vi.mock("@/ipc/events", () => ({
-  onEvent: (name: string, h: (p: unknown) => void) => {
-    handlers.set(name, h);
-    return () => handlers.delete(name);
+  onEvent: (name: string, handler: Handler) => {
+    handlers[name] = handler;
+    return () => delete handlers[name];
   },
 }));
-
-function emit<K extends keyof EventMap>(name: K, payload: EventMap[K]): void {
-  handlers.get(name)?.(payload);
-}
+vi.mock("@/ipc/commands", () => ({
+  sendToClaude: (...args: unknown[]) => sendToClaude(...args),
+  cancelStream: (...args: unknown[]) => cancelStream(...args),
+}));
 
 import { useClaudeStream } from "./useClaudeStream";
 
+function emit(name: string, payload: unknown) {
+  act(() => handlers[name]?.(payload));
+}
+
 beforeEach(() => {
-  handlers.clear();
-  sendToClaude.mockClear();
-  cancelStream.mockClear();
   vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
     cb(0);
     return 0;
   });
+  vi.stubGlobal("cancelAnimationFrame", () => {});
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  for (const k of Object.keys(handlers)) delete handlers[k];
+  vi.clearAllMocks();
+  vi.unstubAllGlobals();
+});
 
-describe("useClaudeStream", () => {
-  it("send запускает стрим и копит дельты до llm-done", async () => {
-    const { result } = renderHook(() => useClaudeStream());
-    await act(async () => {
-      await result.current.send("вопрос", []);
-    });
-    expect(sendToClaude).toHaveBeenCalledWith("вопрос", []);
-    expect(result.current.streaming).toBe(true);
-    act(() => emit("llm-delta", "При"));
-    act(() => emit("llm-delta", "вет"));
-    expect(result.current.answer).toBe("Привет");
-    act(() => emit("llm-done", undefined));
-    expect(result.current.streaming).toBe(false);
+describe("useClaudeStream (per-chat)", () => {
+  it("роутит дельты в нужный чат", () => {
+    const onComplete = vi.fn();
+    const { result } = renderHook(() => useClaudeStream(onComplete));
+    act(() => void result.current.send("A", [{ role: "user", text: "q", images: [] }]));
+    emit("llm-delta", { chatId: "A", delta: "при" });
+    emit("llm-delta", { chatId: "A", delta: "вет" });
+    expect(result.current.partial["A"]).toBe("привет");
+    expect(result.current.streaming["A"]).toBe(true);
   });
 
-  it("llm-error останавливает стрим и отдаёт ошибку", async () => {
-    const { result } = renderHook(() => useClaudeStream());
-    await act(async () => {
-      await result.current.send("q", []);
-    });
-    act(() => emit("llm-error", "Anthropic перегружен"));
-    expect(result.current.streaming).toBe(false);
-    expect(result.current.error).toBe("Anthropic перегружен");
+  it("два параллельных стрима не смешиваются", () => {
+    const { result } = renderHook(() => useClaudeStream(vi.fn()));
+    act(() => void result.current.send("A", [{ role: "user", text: "q", images: [] }]));
+    act(() => void result.current.send("B", [{ role: "user", text: "q", images: [] }]));
+    emit("llm-delta", { chatId: "A", delta: "AAA" });
+    emit("llm-delta", { chatId: "B", delta: "BBB" });
+    expect(result.current.partial["A"]).toBe("AAA");
+    expect(result.current.partial["B"]).toBe("BBB");
   });
 
-  it("stop отменяет стрим", async () => {
-    const { result } = renderHook(() => useClaudeStream());
-    await act(async () => {
-      await result.current.send("q", []);
-    });
-    act(() => result.current.stop());
-    expect(cancelStream).toHaveBeenCalled();
-    expect(result.current.streaming).toBe(false);
+  it("llm-done вызывает onComplete с полным текстом и снимает streaming", () => {
+    const onComplete = vi.fn();
+    const { result } = renderHook(() => useClaudeStream(onComplete));
+    act(() => void result.current.send("A", [{ role: "user", text: "q", images: [] }]));
+    emit("llm-delta", { chatId: "A", delta: "итог" });
+    emit("llm-done", { chatId: "A" });
+    expect(onComplete).toHaveBeenCalledWith("A", "итог");
+    expect(result.current.streaming["A"]).toBeFalsy();
+    expect(result.current.partial["A"]).toBeUndefined();
   });
 
-  it("повторный send очищает прошлый ответ", async () => {
-    const { result } = renderHook(() => useClaudeStream());
-    await act(async () => result.current.send("q1", []));
-    act(() => emit("llm-delta", "старый"));
-    await act(async () => result.current.send("q2", []));
-    expect(result.current.answer).toBe("");
-    await waitFor(() => expect(result.current.streaming).toBe(true));
+  it("после stop поздние дельты игнорируются", () => {
+    const { result } = renderHook(() => useClaudeStream(vi.fn()));
+    act(() => void result.current.send("A", [{ role: "user", text: "q", images: [] }]));
+    act(() => result.current.stop("A"));
+    expect(cancelStream).toHaveBeenCalledWith("A");
+    emit("llm-delta", { chatId: "A", delta: "поздно" });
+    expect(result.current.partial["A"]).toBeUndefined();
   });
 
-  it("запоздалая дельта после stop не меняет ответ", async () => {
-    const { result } = renderHook(() => useClaudeStream());
-    await act(async () => result.current.send("q", []));
-    act(() => emit("llm-delta", "часть"));
-    expect(result.current.answer).toBe("часть");
-    act(() => result.current.stop());
-    act(() => emit("llm-delta", "хвост")); // прилетела после отмены — игнор
-    expect(result.current.answer).toBe("часть");
+  it("llm-error кладёт ошибку в чат и снимает streaming", () => {
+    const { result } = renderHook(() => useClaudeStream(vi.fn()));
+    act(() => void result.current.send("A", [{ role: "user", text: "q", images: [] }]));
+    emit("llm-error", { chatId: "A", message: "сломалось" });
+    expect(result.current.error["A"]).toBe("сломалось");
+    expect(result.current.streaming["A"]).toBeFalsy();
   });
 });
