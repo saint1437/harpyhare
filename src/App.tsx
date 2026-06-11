@@ -24,6 +24,7 @@ import { isTauri } from "@/ipc/env";
 import { onEvent } from "@/ipc/events";
 import type { ChatMessageDto } from "@/ipc/types";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
+import { presetText } from "@/lib/presets";
 
 const RETRYABLE = /перегружен|соединение|VPN|интернет|оборван/i;
 
@@ -94,7 +95,8 @@ export default function App() {
       ...c.messages.map((m) => ({ role: m.role, text: m.text, images: m.images })),
       { role: "user", text: trimmed, images },
     ];
-    void streamRef.current.send(c.id, history);
+    const system = presetText(settingsRef.current.prompt_presets, c.presetId);
+    void streamRef.current.send(c.id, history, system);
   }, []);
 
   const doSend = useCallback(() => {
@@ -227,6 +229,11 @@ export default function App() {
           hotkey={settings.hotkey}
           streaming={activeStreaming}
           showRetry={showRetry}
+          presets={settings.prompt_presets}
+          presetId={active.presetId}
+          onPresetChange={(id) => {
+            chats.setChatPreset(activeId, id);
+          }}
         />
 
         <HotkeyHints hotkey={settings.hotkey} />

@@ -1,4 +1,11 @@
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { extractImageItems } from "@/lib/composer";
 import type { Attachment } from "@/lib/composer";
@@ -17,6 +24,9 @@ export interface ComposerProps {
   hotkey: string;
   streaming: boolean;
   showRetry: boolean;
+  presets: { id: string; name: string }[];
+  presetId: string;
+  onPresetChange: (id: string) => void;
 }
 
 export function Composer(props: ComposerProps) {
@@ -69,6 +79,28 @@ export function Composer(props: ComposerProps) {
             Стоп
           </Button>
         )}
+        <Select
+          value={
+            props.presetId !== "" && props.presets.some((p) => p.id === props.presetId)
+              ? props.presetId
+              : "none"
+          }
+          onValueChange={(v) => {
+            props.onPresetChange(v === "none" ? "" : v);
+          }}
+        >
+          <SelectTrigger className="h-8 w-[140px] text-[12px]">
+            <SelectValue placeholder="Препромпт" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Без препромпта</SelectItem>
+            {props.presets.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name || "Без имени"}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Button onClick={props.onSend} disabled={props.streaming}>
           Отправить{" "}
           <kbd className="ml-1.5 rounded bg-black/20 px-1.5 py-0.5 font-mono text-[10.5px]">⌘⏎</kbd>

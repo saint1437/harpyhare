@@ -2,9 +2,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "./env";
 import { DEFAULT_SETTINGS, type ChatMessageDto, type Settings } from "./types";
 
-export async function sendToClaude(messages: ChatMessageDto[], chatId: string): Promise<void> {
+export async function sendToClaude(
+  messages: ChatMessageDto[],
+  chatId: string,
+  system: string,
+): Promise<void> {
   if (!isTauri()) return;
-  await invoke("send_to_claude", { messages, chatId });
+  await invoke("send_to_claude", { messages, chatId, system });
 }
 
 export async function cancelStream(chatId: string): Promise<void> {
