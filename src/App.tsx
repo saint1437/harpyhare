@@ -28,10 +28,10 @@ import { extractHtmlBlocks } from "@/lib/html-blocks";
 const RETRYABLE = /перегружен|соединение|VPN|интернет|оборван/i;
 
 // Ширина окна: базовая (превью закрыто) и расширенная (превью справа). Прирост =
-// ширина панели (380) + зазор между колонками (gap-3 = 12px), чтобы левая колонка
+// ширина панели (570) + зазор между колонками (gap-3 = 12px), чтобы левая колонка
 // оставалась пиксельно неподвижной. Числа правятся позже.
-const BASE_WIDTH = 760;
-const OPEN_WIDTH = 1152;
+const BASE_WIDTH = 1140;
+const OPEN_WIDTH = 1722;
 
 export default function App() {
   const { settings, save, bumpOpacity } = useSettings();

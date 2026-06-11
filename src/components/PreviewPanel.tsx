@@ -9,7 +9,7 @@ export interface PreviewPanelProps {
  *  но без allow-same-origin iframe изолирован от приложения и его IPC. */
 export function PreviewPanel({ html, onClose }: PreviewPanelProps) {
   return (
-    <aside className="flex w-[380px] flex-col gap-2">
+    <aside className="flex w-[570px] flex-col gap-2">
       <header className="flex items-center gap-2.5">
         <span className="font-mono text-[11px] tracking-wider text-primary uppercase">Превью</span>
         <span
