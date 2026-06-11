@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { extractImageItems } from "@/lib/composer";
-import type { Attachment } from "@/hooks/useAttachments";
+import type { Attachment } from "@/lib/composer";
 import { AttachmentChip } from "./AttachmentChip";
 
 export interface ComposerProps {

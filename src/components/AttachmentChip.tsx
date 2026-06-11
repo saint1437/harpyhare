@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import type { Attachment } from "@/hooks/useAttachments";
+import type { Attachment } from "@/lib/composer";
 
 export interface AttachmentChipProps {
   attachment: Attachment;

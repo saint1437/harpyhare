@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StatusBar } from "@/components/StatusBar";
+import { ChatTabs } from "@/components/ChatTabs";
 import { PermissionBanner } from "@/components/PermissionBanner";
 import { Composer } from "@/components/Composer";
 import { AnswerPanel } from "@/components/AnswerPanel";
@@ -9,7 +10,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { useRecorder } from "@/hooks/useRecorder";
 import { useTranscription } from "@/hooks/useTranscription";
 import { useClaudeStream } from "@/hooks/useClaudeStream";
-import { useAttachments } from "@/hooks/useAttachments";
+import { useChats } from "@/hooks/useChats";
 import { useWindowControls } from "@/hooks/useWindowControls";
 import { usePttSuspend } from "@/hooks/usePttSuspend";
 import {
@@ -20,83 +21,84 @@ import {
 } from "@/ipc/commands";
 import { onEvent } from "@/ipc/events";
 import { isTauri } from "@/ipc/env";
+import type { ChatMessageDto } from "@/ipc/types";
 
 const RETRYABLE = /перегружен|соединение|VPN|интернет|оборван/i;
 
-// Высоты окна: компактное (ответ свёрнут) и полное (ответ раскрыт).
 const COMPACT_HEIGHT = 290;
 const FULL_HEIGHT = 660;
 
 export default function App() {
   const { settings, save } = useSettings();
   const state = useRecorder();
-  const stream = useClaudeStream();
-  const attach = useAttachments();
+  const chats = useChats();
+  const stream = useClaudeStream(chats.appendAssistantMessage);
 
-  const [text, setText] = useState("");
   const [sttError, setSttError] = useState<string | null>(null);
   const [showRetry, setShowRetry] = useState(false);
   const [permissionOk, setPermissionOk] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [answerOpen, setAnswerOpen] = useState(false); // ответ свёрнут по умолчанию
+  const [answerOpen, setAnswerOpen] = useState(false);
 
-  // Свежие значения для стабильных колбэков — чтобы send-логика и подписки
-  // не пересоздавались на каждый keystroke/вставку (и не было окна переподписки).
+  const active = chats.active;
+  const activeId = chats.activeId;
+  const activeStreaming = !!stream.streaming[activeId];
+
+  // Свежие значения для стабильных колбэков (PTT/транскрипция/подписки).
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
-  const textRef = useRef(text);
-  textRef.current = text;
-  const attachmentsRef = useRef(attach.attachments);
-  attachmentsRef.current = attach.attachments;
-  const streamingRef = useRef(stream.streaming);
-  streamingRef.current = stream.streaming;
+  const chatsRef = useRef(chats);
+  chatsRef.current = chats;
+  const streamRef = useRef(stream);
+  streamRef.current = stream;
 
-  const error = sttError ?? stream.error;
+  const error = sttError ?? stream.error[activeId] ?? null;
 
-  // Единая точка отправки: и ручной ⌘⏎/«Отправить», и авто-send после распознавания.
-  // stream.send стабилен (useCallback внутри хука), поэтому dispatchSend тоже стабилен.
-  const send = stream.send;
-  const dispatchSend = useCallback(
-    (raw: string) => {
-      if (streamingRef.current) return; // не шлём поверх активного стрима
-      const trimmed = raw.trim();
-      const images = attachmentsRef.current.map((a) => a.payload);
-      if (trimmed === "" && images.length === 0) return;
-      setSttError(null);
-      void send(trimmed, images);
-    },
-    [send],
-  );
+  // Единая точка отправки активного чата (ручной ⌘⏎/«Отправить» и авто-send).
+  const dispatchSend = useCallback((rawText: string) => {
+    const c = chatsRef.current.active;
+    if (streamRef.current.streaming[c.id]) return; // не шлём поверх своего активного стрима
+    const trimmed = rawText.trim();
+    const images = c.draftAttachments.map((a) => a.payload);
+    if (trimmed === "" && images.length === 0) return;
+    setSttError(null);
+    chatsRef.current.appendUserMessage(c.id, trimmed, images);
+    const history: ChatMessageDto[] = [
+      ...c.messages.map((m) => ({ role: m.role, text: m.text, images: m.images })),
+      { role: "user", text: trimmed, images },
+    ];
+    void streamRef.current.send(c.id, history);
+  }, []);
 
-  // Авто-раскрытие — в момент, когда от Claude приходит успешный ответ (первая
-  // непустая дельта), а не при отправке. Срабатывает один раз на стрим:
-  // ручное сворачивание во время стрима не перебивается. Ошибка до контента не
-  // раскрывает (answer остаётся пустым).
-  const prevAnswerEmpty = useRef(true);
+  const doSend = useCallback(() => dispatchSend(chatsRef.current.active.draft), [dispatchSend]);
+
+  // Авто-раскрытие при появлении контента в активном чате (стрим/история).
+  const hasContent = active.messages.length > 0 || activeStreaming;
+  const prevEmpty = useRef(true);
   useEffect(() => {
-    if (stream.answer.length > 0 && prevAnswerEmpty.current) {
-      setAnswerOpen(true);
-    }
-    prevAnswerEmpty.current = stream.answer.length === 0;
-  }, [stream.answer]);
+    if (hasContent && prevEmpty.current) setAnswerOpen(true);
+    prevEmpty.current = !hasContent;
+  }, [hasContent]);
 
-  // Высота окна следует за состоянием ответа: компактное ↔ полное.
+  // При переключении чата панель раскрыта, если в нём есть переписка.
+  useEffect(() => {
+    setAnswerOpen(active.messages.length > 0 || !!stream.streaming[activeId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
+
+  // Высота окна следует за состоянием панели.
   useEffect(() => {
     void setWindowHeight(answerOpen ? FULL_HEIGHT : COMPACT_HEIGHT);
   }, [answerOpen]);
 
-  const doSend = useCallback(() => dispatchSend(textRef.current), [dispatchSend]);
-
   useTranscription(
-    useCallback(
-      (incoming: string) => {
-        setText(incoming);
-        setSttError(null);
-        setShowRetry(false);
-        if (settingsRef.current.auto_send) dispatchSend(incoming);
-      },
-      [dispatchSend],
-    ),
+    useCallback((incoming: string) => {
+      const c = chatsRef.current.active;
+      chatsRef.current.setDraft(c.id, incoming, c.draftAttachments);
+      setSttError(null);
+      setShowRetry(false);
+      if (settingsRef.current.auto_send) dispatchSend(incoming);
+    }, [dispatchSend]),
   );
 
   useEffect(
@@ -124,13 +126,19 @@ export default function App() {
 
   useEffect(() => {
     if (isTauri()) return;
-    setText("Объясни, чем хвостовая рекурсия отличается от обычной.");
+    chatsRef.current.setDraft(
+      chatsRef.current.active.id,
+      "Объясни, чем хвостовая рекурсия отличается от обычной.",
+      [],
+    );
   }, []);
 
   const onRetry = () => {
     setShowRetry(false);
     void retryTranscription();
   };
+
+  const partial = activeStreaming ? (stream.partial[activeId] ?? "") : null;
 
   return (
     <div className="app-shell relative flex flex-col gap-3 h-screen p-4 rounded-[22px] overflow-hidden">
@@ -141,32 +149,43 @@ export default function App() {
         error={error}
         hotkey={settings.hotkey}
         onOpenSettings={() => setSettingsOpen(true)}
+        tabs={
+          <ChatTabs
+            chats={chats.chats}
+            activeId={activeId}
+            streaming={stream.streaming}
+            onSelect={chats.selectChat}
+            onRemove={chats.removeChat}
+            onNew={chats.newChat}
+          />
+        }
       />
 
       <Composer
-        value={text}
-        onChange={setText}
-        attachments={attach.attachments}
-        onRemoveAttachment={attach.remove}
-        onPaste={(items) => void attach.addFromPaste(items)}
+        value={active.draft}
+        onChange={(v) => chats.setDraft(activeId, v, active.draftAttachments)}
+        attachments={active.draftAttachments}
+        onRemoveAttachment={(i) => chats.removeDraftAttachment(activeId, i)}
+        onPaste={(items) => void chats.addDraftAttachments(activeId, items)}
         onSend={doSend}
-        onStop={stream.stop}
-        onClear={() => {
-          setText("");
-          attach.clear();
-        }}
+        onStop={() => stream.stop(activeId)}
+        onClear={() => chats.setDraft(activeId, "", [])}
         onRetry={onRetry}
         hotkey={settings.hotkey}
-        streaming={stream.streaming}
+        streaming={activeStreaming}
         showRetry={showRetry}
       />
 
       <AnswerPanel
-        answer={stream.answer}
-        streaming={stream.streaming}
+        messages={active.messages}
+        partial={partial}
+        streaming={activeStreaming}
         expanded={answerOpen}
         onToggle={() => setAnswerOpen((o) => !o)}
-        onCopy={() => void navigator.clipboard.writeText(stream.answer)}
+        onCopy={() => {
+          const last = [...active.messages].reverse().find((m) => m.role === "assistant");
+          if (last) void navigator.clipboard.writeText(last.text);
+        }}
       />
 
       <HotkeyHints hotkey={settings.hotkey} />
