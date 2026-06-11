@@ -50,7 +50,7 @@ The backend exposes a **fixed set of commands and events**; the frontend mirrors
 
 - **Commands** are registered in `generate_handler!` in `src-tauri/src/lib.rs`; argument names map snake_case (Rust) → camelCase (JS invoke). The frontend wrappers are in `src/ipc/commands.ts`.
 - **Events** are `app.emit("name", payload)` in `lib.rs`; the frontend listens via `src/ipc/events.ts`, typed by `EventMap` in `src/ipc/types.ts` (`state-changed`, `transcript-ready`, `stt-error`, `llm-delta`, `llm-done`, `llm-error`). LLM-события несут `chatId` (`{ chatId, delta }` / `{ chatId }` / `{ chatId, message }`) — стримы независимы по чатам.
-- `Settings` (9 fields) is defined identically in `src-tauri/src/settings.rs` and `src/ipc/types.ts`.
+- `Settings` (10 fields) is defined identically in `src-tauri/src/settings.rs` and `src/ipc/types.ts`.
 
 ## Frontend architecture (`src/`)
 
@@ -75,7 +75,7 @@ Stack: React 19 + Vite + Tailwind v4 (CSS-first `@theme` tokens in `src/index.cs
 - `llm.rs` — Anthropic request body (image blocks + adaptive thinking; no `thinking` for haiku), incremental `SseParser` (use `feed_bytes` for chunked UTF-8), streaming client with cancellation.
 - `state.rs` — recorder FSM (`Idle → Recording → Transcribing → Idle`); min 0.3s / max 10min, Esc cancel.
 - `settings.rs` — JSON at `~/Library/Application Support/com.itech.voice/settings.json`, written atomically with `0600`.
-- `hotkey.rs` — push-to-talk registration; `parse_hotkey` is the only unit-tested function here.
+- `hotkey.rs` — push-to-talk registration + глобальный toggle-хоткей скрытия/показа окна (`register_toggle` → `on_toggle_visibility`: `hide` ↔ `show`+`set_focus`); `parse_hotkey` is the only unit-tested function here. Обработчики деферятся (`defer`) — инвариант реестра плагина.
 
 ## Non-obvious invariants (do not break these)
 
