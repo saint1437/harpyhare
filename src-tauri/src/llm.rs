@@ -103,6 +103,14 @@ pub struct ImageAttachment {
     pub data: String, // base64
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChatMessage {
+    pub role: String, // "user" | "assistant"
+    pub text: String,
+    #[serde(default)]
+    pub images: Vec<ImageAttachment>,
+}
+
 pub fn build_content(text: &str, images: &[ImageAttachment]) -> Value {
     if images.is_empty() {
         return json!(text);
@@ -122,13 +130,17 @@ pub fn build_content(text: &str, images: &[ImageAttachment]) -> Value {
     Value::Array(blocks)
 }
 
-pub fn build_request_body(model: &str, system: &str, text: &str, images: &[ImageAttachment]) -> Value {
+pub fn build_request_body(model: &str, system: &str, messages: &[ChatMessage]) -> Value {
+    let msgs: Vec<Value> = messages
+        .iter()
+        .map(|m| json!({"role": m.role, "content": build_content(&m.text, &m.images)}))
+        .collect();
     let mut body = json!({
         "model": model,
         "max_tokens": 64000,
         "stream": true,
         "system": system,
-        "messages": [{"role": "user", "content": build_content(text, images)}]
+        "messages": msgs
     });
     // claude-haiku-4-5 не поддерживает adaptive thinking — поле не отправляем (см. спеку)
     if !model.starts_with("claude-haiku") {
@@ -236,18 +248,43 @@ mod tests {
 
     #[test]
     fn request_body_shape_for_opus_includes_adaptive_thinking() {
-        let body = build_request_body("claude-opus-4-8", "sys", "вопрос", &[]);
+        let msgs = vec![ChatMessage {
+            role: "user".into(),
+            text: "вопрос".into(),
+            images: vec![],
+        }];
+        let body = build_request_body("claude-opus-4-8", "sys", &msgs);
         assert_eq!(body["model"], "claude-opus-4-8");
         assert_eq!(body["max_tokens"], 64000);
         assert_eq!(body["stream"], true);
         assert_eq!(body["thinking"]["type"], "adaptive");
         assert_eq!(body["system"], "sys");
         assert_eq!(body["messages"][0]["role"], "user");
+        assert_eq!(body["messages"][0]["content"], "вопрос");
+    }
+
+    #[test]
+    fn request_body_preserves_multi_turn_history() {
+        let msgs = vec![
+            ChatMessage { role: "user".into(), text: "1+1?".into(), images: vec![] },
+            ChatMessage { role: "assistant".into(), text: "2".into(), images: vec![] },
+            ChatMessage { role: "user".into(), text: "а 2+2?".into(), images: vec![] },
+        ];
+        let body = build_request_body("claude-opus-4-8", "sys", &msgs);
+        assert_eq!(body["messages"].as_array().unwrap().len(), 3);
+        assert_eq!(body["messages"][1]["role"], "assistant");
+        assert_eq!(body["messages"][1]["content"], "2");
+        assert_eq!(body["messages"][2]["content"], "а 2+2?");
     }
 
     #[test]
     fn haiku_body_has_no_thinking_field() {
-        let body = build_request_body("claude-haiku-4-5", "sys", "вопрос", &[]);
+        let msgs = vec![ChatMessage {
+            role: "user".into(),
+            text: "вопрос".into(),
+            images: vec![],
+        }];
+        let body = build_request_body("claude-haiku-4-5", "sys", &msgs);
         assert!(body.get("thinking").is_none());
     }
 
@@ -347,9 +384,10 @@ mod tests {
         let collected = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
         let c2 = collected.clone();
         let cancel = tokio_util::sync::CancellationToken::new();
+        let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", "q", &[]),
+                build_request_body("claude-opus-4-8", "s", &msgs),
                 cancel,
                 move |delta| c2.lock().unwrap().push_str(delta),
             )
@@ -375,9 +413,10 @@ mod tests {
         let client = AnthropicClient::new("k".into())
             .with_base_url(server.uri())
             .with_read_timeout(std::time::Duration::from_millis(200));
+        let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", "q", &[]),
+                build_request_body("claude-opus-4-8", "s", &msgs),
                 tokio_util::sync::CancellationToken::new(),
                 |_| {},
             )
@@ -403,9 +442,10 @@ mod tests {
         let client = AnthropicClient::new("k".into()).with_base_url(server.uri());
         let collected = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
         let c2 = collected.clone();
+        let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", "q", &[]),
+                build_request_body("claude-opus-4-8", "s", &msgs),
                 tokio_util::sync::CancellationToken::new(),
                 move |d| c2.lock().unwrap().push_str(d),
             )
@@ -425,9 +465,10 @@ mod tests {
             .mount(&server)
             .await;
         let client = AnthropicClient::new("bad".into()).with_base_url(server.uri());
+        let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", "q", &[]),
+                build_request_body("claude-opus-4-8", "s", &msgs),
                 tokio_util::sync::CancellationToken::new(),
                 |_| {},
             )
@@ -453,9 +494,10 @@ mod tests {
         let client = AnthropicClient::new("k".into()).with_base_url(server.uri());
         let cancel = tokio_util::sync::CancellationToken::new();
         cancel.cancel(); // отменяем сразу
+        let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", "q", &[]),
+                build_request_body("claude-opus-4-8", "s", &msgs),
                 cancel,
                 |_| {},
             )

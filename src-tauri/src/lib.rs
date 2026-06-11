@@ -290,7 +290,8 @@ async fn send_to_claude(app: AppHandle, text: String, images: Vec<llm::ImageAtta
     if let Some(old) = app.state::<App>().llm_cancel.lock().unwrap().replace(cancel.clone()) {
         old.cancel();
     }
-    let body = llm::build_request_body(&model, &system, &text, &images);
+    let messages = vec![llm::ChatMessage { role: "user".into(), text: text.clone(), images: images.clone() }];
+    let body = llm::build_request_body(&model, &system, &messages);
     let app2 = app.clone();
     let res = client
         .stream_message(body, cancel, move |delta| {
