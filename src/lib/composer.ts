@@ -8,6 +8,12 @@ export interface ImagePayload {
   data: string; // base64 без префикса dataURL
 }
 
+/** Вложение в черновике композера: данные для API + dataURL для превью. */
+export interface Attachment {
+  payload: ImagePayload;
+  preview: string;
+}
+
 export function extractImageItems(items: ArrayLike<DataTransferItem>): File[] {
   const files: File[] = [];
   for (const it of Array.from(items)) {
