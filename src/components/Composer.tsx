@@ -45,6 +45,13 @@ export function Composer(props: ComposerProps) {
             if (extractImageItems(items).length > 0) e.preventDefault();
             props.onPaste(items);
           }}
+          onKeyDown={(e) => {
+            // Enter — отправка; Shift+Enter — перенос строки; не мешаем IME-композиции.
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              props.onSend();
+            }
+          }}
           spellCheck={false}
           placeholder={`Зажми ${props.hotkey} у видео — расшифровка появится здесь. Текст можно править, ⌘V вставляет скриншот.`}
           className="max-h-44 min-h-24 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
