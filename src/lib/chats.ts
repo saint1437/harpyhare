@@ -65,7 +65,11 @@ export function deserializeChats(json: string): Chat[] | null {
       id: typeof o.id === "string" ? o.id : uid(),
       title: typeof o.title === "string" ? o.title : "Чат",
       messages: Array.isArray(o.messages)
-        ? o.messages.map((m) => ({ role: m.role, text: m.text, images: [] }))
+        ? o.messages.map((m) => ({
+            role: m.role === "assistant" ? "assistant" : "user",
+            text: typeof m.text === "string" ? m.text : "",
+            images: [],
+          }))
         : [],
       draft: typeof o.draft === "string" ? o.draft : "",
       draftAttachments: [],
