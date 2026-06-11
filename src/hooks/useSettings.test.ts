@@ -52,4 +52,26 @@ describe("useSettings", () => {
     expect(setSettings).toHaveBeenCalled();
     expect(result.current.settings.window_opacity).toBe(0.4);
   });
+
+  it("bumpOpacity меняет прозрачность, применяет и персистит с дебаунсом", async () => {
+    vi.useFakeTimers();
+    getSettings.mockResolvedValue(DEFAULT_SETTINGS);
+    const { result } = renderHook(() => useSettings());
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    setSettings.mockClear();
+    applyOpacity.mockClear();
+    act(() => {
+      result.current.bumpOpacity(-1);
+    });
+    expect(result.current.settings.window_opacity).toBeCloseTo(0.9);
+    expect(applyOpacity).toHaveBeenCalledWith(document.documentElement, 0.9);
+    expect(setSettings).not.toHaveBeenCalled();
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(setSettings).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
 });

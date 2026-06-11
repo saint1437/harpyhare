@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getSettings, setSettings as ipcSet } from "@/ipc/commands";
 import { DEFAULT_SETTINGS, type Settings } from "@/ipc/types";
-import { applyOpacity } from "@/lib/window-controls";
+import { applyOpacity, stepOpacity } from "@/lib/window-controls";
 
 export interface SettingsApi {
   settings: Settings;
   loading: boolean;
   save: (next: Settings) => Promise<string | null>;
+  bumpOpacity: (dir: 1 | -1) => void;
 }
 
 export function useSettings(): SettingsApi {
@@ -45,5 +46,26 @@ export function useSettings(): SettingsApi {
     [settings.window_opacity],
   );
 
-  return { settings, loading, save };
+  const opacityTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(
+    () => () => {
+      clearTimeout(opacityTimer.current);
+    },
+    [],
+  );
+
+  const bumpOpacity = useCallback((dir: 1 | -1) => {
+    setSettings((prev) => {
+      const next = stepOpacity(prev.window_opacity, dir, 0.1);
+      applyOpacity(document.documentElement, next);
+      const updated = { ...prev, window_opacity: next };
+      clearTimeout(opacityTimer.current);
+      opacityTimer.current = setTimeout(() => {
+        void ipcSet(updated);
+      }, 400);
+      return updated;
+    });
+  }, []);
+
+  return { settings, loading, save, bumpOpacity };
 }
