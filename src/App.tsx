@@ -159,7 +159,10 @@ export default function App() {
             activeId={activeId}
             streaming={stream.streaming}
             onSelect={chats.selectChat}
-            onRemove={chats.removeChat}
+            onRemove={(id) => {
+              stream.stop(id); // отменяем фоновый стрим удаляемого чата (иначе запрос дорабатывает впустую)
+              chats.removeChat(id);
+            }}
             onNew={chats.newChat}
           />
         }
