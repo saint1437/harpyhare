@@ -12,11 +12,20 @@ import { useClaudeStream } from "@/hooks/useClaudeStream";
 import { useAttachments } from "@/hooks/useAttachments";
 import { useWindowControls } from "@/hooks/useWindowControls";
 import { usePttSuspend } from "@/hooks/usePttSuspend";
-import { captureAvailable, openAudioPermissionSettings, retryTranscription } from "@/ipc/commands";
+import {
+  captureAvailable,
+  openAudioPermissionSettings,
+  retryTranscription,
+  setWindowHeight,
+} from "@/ipc/commands";
 import { onEvent } from "@/ipc/events";
 import { isTauri } from "@/ipc/env";
 
 const RETRYABLE = /перегружен|соединение|VPN|интернет|оборван/i;
+
+// Высоты окна: компактное (ответ свёрнут) и полное (ответ раскрыт).
+const COMPACT_HEIGHT = 330;
+const FULL_HEIGHT = 660;
 
 export default function App() {
   const { settings, save } = useSettings();
@@ -29,6 +38,7 @@ export default function App() {
   const [showRetry, setShowRetry] = useState(false);
   const [permissionOk, setPermissionOk] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [answerOpen, setAnswerOpen] = useState(false); // ответ свёрнут по умолчанию
 
   // Свежие значения для стабильных колбэков — чтобы send-логика и подписки
   // не пересоздавались на каждый keystroke/вставку (и не было окна переподписки).
@@ -53,10 +63,16 @@ export default function App() {
       const images = attachmentsRef.current.map((a) => a.payload);
       if (trimmed === "" && images.length === 0) return;
       setSttError(null);
+      setAnswerOpen(true); // раскрываем ответ при отправке
       void send(trimmed, images);
     },
     [send],
   );
+
+  // Высота окна следует за состоянием ответа: компактное ↔ полное.
+  useEffect(() => {
+    void setWindowHeight(answerOpen ? FULL_HEIGHT : COMPACT_HEIGHT);
+  }, [answerOpen]);
 
   const doSend = useCallback(() => dispatchSend(textRef.current), [dispatchSend]);
 
@@ -137,6 +153,8 @@ export default function App() {
       <AnswerPanel
         answer={stream.answer}
         streaming={stream.streaming}
+        expanded={answerOpen}
+        onToggle={() => setAnswerOpen((o) => !o)}
         onCopy={() => void navigator.clipboard.writeText(stream.answer)}
       />
 
