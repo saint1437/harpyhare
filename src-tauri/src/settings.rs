@@ -14,6 +14,7 @@ pub struct Settings {
     pub auto_send: bool,
     pub window_opacity: f64,
     pub move_step: u32,
+    pub auto_preview_html: bool,
 }
 
 impl Default for Settings {
@@ -27,6 +28,7 @@ impl Default for Settings {
             auto_send: false,
             window_opacity: 1.0,
             move_step: 20,
+            auto_preview_html: true,
         }
     }
 }
@@ -107,6 +109,7 @@ mod tests {
         assert_eq!(s.window_opacity, 1.0);
         assert_eq!(s.move_step, 20);
         assert!(s.system_prompt.contains("расшифровку"));
+        assert!(s.auto_preview_html);
     }
 
     #[test]
@@ -159,6 +162,7 @@ mod tests {
         s.model = "claude-sonnet-4-6".into();
         s.window_opacity = 0.5;
         s.auto_send = true;
+        s.auto_preview_html = false;
         s.save(&path).unwrap();
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600);
@@ -167,6 +171,16 @@ mod tests {
         assert_eq!(loaded.model, "claude-sonnet-4-6");
         assert_eq!(loaded.window_opacity, 0.5);
         assert!(loaded.auto_send);
+        assert!(!loaded.auto_preview_html);
+    }
+
+    #[test]
+    fn load_missing_auto_preview_html_defaults_true() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.json");
+        std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+        let s = Settings::load(&path).unwrap();
+        assert!(s.auto_preview_html); // старый settings.json без поля → true
     }
 
     #[test]

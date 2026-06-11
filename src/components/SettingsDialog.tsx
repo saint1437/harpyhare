@@ -131,6 +131,15 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
             />
             Отправлять сразу после распознавания
           </label>
+          <label className="flex items-center gap-2.5 text-[12.5px]">
+            <Switch
+              checked={draft.auto_preview_html}
+              onCheckedChange={(v) => {
+                set("auto_preview_html", v);
+              }}
+            />
+            Автопревью HTML из ответа
+          </label>
           <Field label={`Прозрачность окна — ${Math.round(draft.window_opacity * 100)}%`}>
             <Slider
               min={0.2}

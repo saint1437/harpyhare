@@ -11,6 +11,7 @@ export interface Settings {
   auto_send: boolean;
   window_opacity: number;
   move_step: number;
+  auto_preview_html: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -22,6 +23,7 @@ export const DEFAULT_SETTINGS: Settings = {
   auto_send: false,
   window_opacity: 1,
   move_step: 20,
+  auto_preview_html: true,
 };
 
 export const MODELS = ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"] as const;
