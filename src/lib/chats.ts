@@ -1,4 +1,5 @@
 import type { Attachment, ImagePayload } from "@/lib/composer";
+import { TRANSCRIPTION_PRESET_ID } from "@/lib/presets";
 
 export const CHAT_LIMIT = 6;
 const TITLE_MAX = 22;
@@ -19,6 +20,8 @@ export interface Chat {
   draftAttachments: Attachment[];
   /** Заголовок задан вручную (renameChat) — авто-заголовок из первого сообщения его не перезатирает. */
   titlePinned: boolean;
+  /** id выбранного пресета препромпта ("" = без препромпта). */
+  presetId: string;
 }
 
 function uid(): string {
@@ -33,6 +36,7 @@ export function createChat(index: number): Chat {
     draft: "",
     draftAttachments: [],
     titlePinned: false,
+    presetId: TRANSCRIPTION_PRESET_ID,
   };
 }
 
@@ -49,6 +53,7 @@ export function serializeChats(chats: Chat[]): string {
     id: c.id,
     title: c.title,
     titlePinned: c.titlePinned,
+    presetId: c.presetId,
     messages: c.messages.map((m) => ({ role: m.role, text: m.text, images: [] })),
     draft: c.draft,
     draftAttachments: [],
@@ -72,6 +77,7 @@ export function deserializeChats(json: string): Chat[] | null {
       id: typeof o.id === "string" ? o.id : uid(),
       title: typeof o.title === "string" ? o.title : "Чат",
       titlePinned: typeof o.titlePinned === "boolean" ? o.titlePinned : false,
+      presetId: typeof o.presetId === "string" ? o.presetId : "",
       messages: Array.isArray(o.messages)
         ? o.messages.map((m) => ({
             role: m.role === "assistant" ? "assistant" : "user",

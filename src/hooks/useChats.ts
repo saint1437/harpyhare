@@ -29,6 +29,7 @@ const EMPTY_CHAT: Chat = {
   draft: "",
   draftAttachments: [],
   titlePinned: false,
+  presetId: "",
 };
 
 function readAsDataUrl(file: File): Promise<string> {
@@ -69,6 +70,7 @@ export interface ChatsApi {
   newChat: () => void;
   removeChat: (id: string) => void;
   renameChat: (id: string, title: string) => void;
+  setChatPreset: (id: string, presetId: string) => void;
   selectChat: (id: string) => void;
   setDraft: (id: string, draft: string, draftAttachments: Attachment[]) => void;
   addDraftAttachments: (id: string, items: DataTransferItemList) => Promise<void>;
@@ -149,6 +151,13 @@ export function useChats(): ChatsApi {
       const t = title.trim();
       if (t === "") return; // пустое имя — не применяем (оставляем текущее)
       patch(id, (c) => ({ ...c, title: t, titlePinned: true }));
+    },
+    [patch],
+  );
+
+  const setChatPreset = useCallback(
+    (id: string, presetId: string) => {
+      patch(id, (c) => ({ ...c, presetId }));
     },
     [patch],
   );
@@ -235,6 +244,7 @@ export function useChats(): ChatsApi {
     newChat,
     removeChat,
     renameChat,
+    setChatPreset,
     selectChat,
     setDraft,
     addDraftAttachments,

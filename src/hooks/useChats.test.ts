@@ -113,6 +113,19 @@ describe("useChats", () => {
     expect(result.current.active.title).toBe(before);
   });
 
+  it("новый чат ссылается на сид-пресет; setChatPreset меняет ссылку", async () => {
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(1);
+    });
+    expect(result.current.active.presetId).toBe("transcription");
+    const id = result.current.activeId;
+    act(() => {
+      result.current.setChatPreset(id, "mypreset");
+    });
+    expect(result.current.active.presetId).toBe("mypreset");
+  });
+
   it("removeChat не даёт удалить последний и переключает активный", async () => {
     const { result } = renderHook(() => useChats());
     await waitFor(() => {

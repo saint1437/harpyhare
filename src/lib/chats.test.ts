@@ -11,6 +11,7 @@ function chatWith(messages: Chat["messages"], extra: Partial<Chat> = {}): Chat {
     draft: "",
     draftAttachments: [],
     titlePinned: false,
+    presetId: "transcription",
     ...extra,
   };
 }
@@ -93,5 +94,12 @@ describe("serialize/deserialize", () => {
   it("старый json без titlePinned → titlePinned=false", () => {
     const restored = deserializeChats('[{"id":"a","title":"Чат 1","messages":[],"draft":""}]');
     expect(restored?.[0]?.titlePinned).toBe(false);
+  });
+
+  it("сохраняет presetId при round-trip; старый json без него → ''", () => {
+    const chats = [chatWith([], { presetId: "abc" })];
+    expect(deserializeChats(serializeChats(chats))?.[0]?.presetId).toBe("abc");
+    const old = deserializeChats('[{"id":"a","title":"Чат 1","messages":[],"draft":""}]');
+    expect(old?.[0]?.presetId).toBe("");
   });
 });
