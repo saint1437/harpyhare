@@ -124,14 +124,18 @@ export default function App() {
     void captureAvailable().then((ok) => setPermissionOk(ok));
   }, []);
 
+  // Демо-затравка для браузерного превью. Ждём, пока активный чат подгрузится
+  // (activeId непустой), и сеем ровно один раз.
+  const seededDemo = useRef(false);
   useEffect(() => {
-    if (isTauri()) return;
+    if (isTauri() || seededDemo.current || activeId === "") return;
+    seededDemo.current = true;
     chatsRef.current.setDraft(
-      chatsRef.current.active.id,
+      activeId,
       "Объясни, чем хвостовая рекурсия отличается от обычной.",
       [],
     );
-  }, []);
+  }, [activeId]);
 
   const onRetry = () => {
     setShowRetry(false);
