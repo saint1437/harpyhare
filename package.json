@@ -12,7 +12,9 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "knip": "knip"
+    "knip": "knip",
+    "typecheck": "tsc -b",
+    "prepare": "husky"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
