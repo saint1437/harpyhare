@@ -27,6 +27,15 @@ npm run build
 npx vitest run                       # all
 npx vitest run src/hooks/useX.test.ts   # one file
 
+# Lint / format / dead-code (также гоняются на pre-commit через husky+lint-staged)
+npm run lint            # eslint (строгий, type-aware) — без обхода правил TS
+npm run lint:fix        # eslint --fix
+npm run format          # prettier --write (сортирует Tailwind-классы)
+npm run format:check    # prettier --check
+npm run typecheck       # tsc -b
+npm run knip            # неиспользуемые файлы/экспорты/зависимости
+# Pre-commit (husky): lint-staged (eslint --fix + prettier на застейдженных) → tsc -b → knip
+
 # Rust tests / lint  (PATH may need: export PATH="$HOME/.cargo/bin:$PATH")
 cargo test  --manifest-path src-tauri/Cargo.toml --lib
 cargo test  --manifest-path src-tauri/Cargo.toml --lib <test_name>   # one test
