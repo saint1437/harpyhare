@@ -86,6 +86,7 @@ export async function getPreviewHtml(): Promise<string> {
 /** Закрывает текущее окно — для ✕/Esc внутри окна превью. */
 export async function closePreviewWindow(): Promise<void> {
   if (!isTauri()) return;
+  // Динамический импорт — чтобы api/window не попадал в браузерный путь бандла.
   const { getCurrentWindow } = await import("@tauri-apps/api/window");
   await getCurrentWindow().close();
 }
