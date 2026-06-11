@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { HotkeyCapture } from "@/components/HotkeyCapture";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -51,7 +52,7 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
   const save = () => {
     onSave({
       ...draft,
-      hotkey: draft.hotkey.trim().toUpperCase() || "V",
+      hotkey: draft.hotkey.trim() || "V",
     });
   };
 
@@ -114,12 +115,10 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
             />
           </Field>
           <Field label="Push-to-talk клавиша">
-            <Input
+            <HotkeyCapture
               value={draft.hotkey}
-              maxLength={20}
-              placeholder="V"
-              onChange={(e) => {
-                set("hotkey", e.target.value);
+              onChange={(hk) => {
+                set("hotkey", hk);
               }}
             />
           </Field>
