@@ -24,7 +24,7 @@ import { isTauri } from "@/ipc/env";
 const RETRYABLE = /перегружен|соединение|VPN|интернет|оборван/i;
 
 // Высоты окна: компактное (ответ свёрнут) и полное (ответ раскрыт).
-const COMPACT_HEIGHT = 330;
+const COMPACT_HEIGHT = 290;
 const FULL_HEIGHT = 660;
 
 export default function App() {
@@ -63,11 +63,22 @@ export default function App() {
       const images = attachmentsRef.current.map((a) => a.payload);
       if (trimmed === "" && images.length === 0) return;
       setSttError(null);
-      setAnswerOpen(true); // раскрываем ответ при отправке
       void send(trimmed, images);
     },
     [send],
   );
+
+  // Авто-раскрытие — в момент, когда от Claude приходит успешный ответ (первая
+  // непустая дельта), а не при отправке. Срабатывает один раз на стрим:
+  // ручное сворачивание во время стрима не перебивается. Ошибка до контента не
+  // раскрывает (answer остаётся пустым).
+  const prevAnswerEmpty = useRef(true);
+  useEffect(() => {
+    if (stream.answer.length > 0 && prevAnswerEmpty.current) {
+      setAnswerOpen(true);
+    }
+    prevAnswerEmpty.current = stream.answer.length === 0;
+  }, [stream.answer]);
 
   // Высота окна следует за состоянием ответа: компактное ↔ полное.
   useEffect(() => {
