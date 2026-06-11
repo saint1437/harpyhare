@@ -20,6 +20,8 @@
         "height": 660,
         "transparent": true,
         "decorations": false,
+        "alwaysOnTop": true,
+        "visibleOnAllWorkspaces": true,
         "minWidth": 380,
         "minHeight": 480
       },
