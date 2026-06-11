@@ -1,13 +1,34 @@
 import { X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { setPreviewHtml } from "@/ipc/commands";
+import { isTauri } from "@/ipc/env";
 
 export interface PreviewPanelProps {
   html: string;
   onClose: () => void;
 }
 
-/** Встроенная панель HTML-превью (правая колонка окна). JS внутри HTML выполняется,
- *  но без allow-same-origin iframe изолирован от приложения и его IPC. */
+/** Встроенная панель HTML-превью (правая колонка окна). В Tauri контент грузится
+ *  с origin preview://localhost (кастомная схема) — localStorage/сеть работают,
+ *  но cross-origin к приложению и отсутствие capability изолируют превью от IPC и
+ *  ключей. В браузерном моке (вне Tauri) — фолбэк на srcDoc для демо. */
 export function PreviewPanel({ html, onClose }: PreviewPanelProps) {
+  const [src, setSrc] = useState("");
+  const nonce = useRef(0);
+
+  useEffect(() => {
+    if (html === "" || !isTauri()) {
+      setSrc("");
+      return;
+    }
+    nonce.current += 1;
+    const v = nonce.current;
+    // Нонс заставляет WKWebView перезагрузить iframe даже при том же HTML.
+    void setPreviewHtml(html).then(() => {
+      setSrc(`preview://localhost/?v=${v}`);
+    });
+  }, [html]);
+
   return (
     <aside className="flex w-[570px] flex-col gap-2">
       <header className="flex items-center gap-2.5">
@@ -36,6 +57,13 @@ export function PreviewPanel({ html, onClose }: PreviewPanelProps) {
         <div className="grid flex-1 place-items-center">
           <span className="text-[13px] text-muted-foreground">Нет содержимого</span>
         </div>
+      ) : isTauri() ? (
+        <iframe
+          sandbox="allow-scripts allow-same-origin"
+          src={src}
+          title="HTML превью"
+          className="min-h-0 flex-1 rounded-[12px] border-0 bg-white"
+        />
       ) : (
         <iframe
           sandbox="allow-scripts"

@@ -68,3 +68,9 @@ export async function saveChats(json: string): Promise<void> {
   if (!isTauri()) return;
   await invoke("save_chats", { json });
 }
+
+/** Кладёт HTML в бэкенд; следующий запрос к схеме preview:// отдаст его. No-op вне Tauri. */
+export async function setPreviewHtml(html: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("set_preview_html", { html });
+}
