@@ -32,6 +32,7 @@ pub struct App {
     pub llm: Mutex<llm::AnthropicClient>,
     pub recording_gen: AtomicU64,
     pub resize_gen: AtomicU64,
+    pub preview_html: Mutex<String>,
 }
 
 fn settings_path(app: &AppHandle) -> std::path::PathBuf {
@@ -119,6 +120,7 @@ pub fn run() {
                 llm: Mutex::new(llm),
                 recording_gen: AtomicU64::new(0),
                 resize_gen: AtomicU64::new(0),
+                preview_html: Mutex::new(String::new()),
             });
 
             if let Err(e) = hotkey::register_ptt(handle, &hotkey) {
@@ -140,6 +142,8 @@ pub fn run() {
             open_audio_permission_settings,
             open_external,
             capture_available,
+            show_html_preview,
+            get_preview_html,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -401,6 +405,81 @@ fn set_settings(app: AppHandle, mut new_settings: settings::Settings) -> Result<
         .map_err(|e| e.to_string())?;
     *st.settings.lock().unwrap() = new_settings;
     Ok(())
+}
+
+/// Логические размеры окна превью; в физические переводятся через scale_factor.
+const PREVIEW_LOGICAL_HEIGHT: f64 = 480.0;
+const PREVIEW_GAP: f64 = 12.0;
+
+/// Показывает HTML в синглтон-окне превью (label "preview"): создаёт окно над HUD
+/// или заменяет содержимое уже открытого событием preview-html. focus=true — клик
+/// по чипу (окно фокусируется), false — автооткрытие (фокус остаётся у HUD).
+#[tauri::command]
+fn show_html_preview(app: AppHandle, html: String, focus: bool) -> Result<(), String> {
+    if html.trim().is_empty() {
+        return Ok(());
+    }
+    *app.state::<App>().preview_html.lock().unwrap() = html.clone();
+
+    if let Some(w) = app.get_webview_window("preview") {
+        app.emit_to("preview", "preview-html", html)
+            .map_err(|e| e.to_string())?;
+        w.show().map_err(|e| e.to_string())?;
+        if focus {
+            let _ = w.set_focus();
+        }
+        return Ok(());
+    }
+
+    let main = app.get_webview_window("main").ok_or("нет окна main")?;
+    let scale = main.scale_factor().unwrap_or(2.0);
+    let pos = main.outer_position().map_err(|e| e.to_string())?;
+    let size = main.outer_size().map_err(|e| e.to_string())?;
+    let monitor_pos = main
+        .current_monitor()
+        .ok()
+        .flatten()
+        .map(|m| (m.position().x, m.position().y))
+        .unwrap_or((0, 0));
+    let (x, y, w, h) = preview::preview_rect(
+        (pos.x, pos.y),
+        (size.width, size.height),
+        monitor_pos,
+        (PREVIEW_LOGICAL_HEIGHT * scale) as u32,
+        (PREVIEW_GAP * scale) as u32,
+    );
+
+    // Создаём скрытым, позиционируем физическими px, затем показываем — без скачка.
+    let win = tauri::WebviewWindowBuilder::new(
+        &app,
+        "preview",
+        tauri::WebviewUrl::App("index.html?window=preview".into()),
+    )
+    .title("Превью")
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .visible_on_all_workspaces(true)
+    .content_protected(true)
+    .resizable(true)
+    .min_inner_size(360.0, 240.0)
+    .visible(false)
+    .build()
+    .map_err(|e| e.to_string())?;
+    win.set_position(tauri::PhysicalPosition::new(x, y))
+        .map_err(|e| e.to_string())?;
+    win.set_size(tauri::PhysicalSize::new(w, h))
+        .map_err(|e| e.to_string())?;
+    win.show().map_err(|e| e.to_string())?;
+    if focus {
+        let _ = win.set_focus();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn get_preview_html(app: AppHandle) -> String {
+    app.state::<App>().preview_html.lock().unwrap().clone()
 }
 
 #[tauri::command]
