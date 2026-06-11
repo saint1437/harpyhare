@@ -1,6 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { LogicalSize } from "@tauri-apps/api/dpi";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "./env";
 import { DEFAULT_SETTINGS, type ImagePayload, type Settings } from "./types";
 
@@ -57,8 +55,5 @@ export async function openExternal(url: string): Promise<void> {
 /** Меняет высоту главного окна, сохраняя текущую ширину (для сворачивания ответа). */
 export async function setWindowHeight(height: number): Promise<void> {
   if (!isTauri()) return;
-  const win = getCurrentWindow();
-  const factor = await win.scaleFactor();
-  const current = (await win.innerSize()).toLogical(factor);
-  await win.setSize(new LogicalSize(current.width, height));
+  await invoke("set_window_height", { height });
 }

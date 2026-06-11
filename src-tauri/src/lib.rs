@@ -99,6 +99,7 @@ pub fn run() {
             get_settings,
             set_settings,
             move_window_by,
+            set_window_height,
             set_ptt_suspended,
             open_audio_permission_settings,
             open_external,
@@ -365,6 +366,17 @@ fn move_window_by(app: AppHandle, dx: i32, dy: i32) {
         if let Ok(pos) = w.outer_position() {
             let _ = w.set_position(tauri::PhysicalPosition::new(pos.x + dx, pos.y + dy));
         }
+    }
+}
+
+/// Меняет высоту главного окна (логические px), сохраняя текущую ширину.
+/// Делается из Rust (как move_window_by), чтобы не требовать JS-капабилити set-size.
+#[tauri::command]
+fn set_window_height(app: AppHandle, height: f64) {
+    if let Some(w) = app.get_webview_window("main") {
+        let scale = w.scale_factor().unwrap_or(1.0);
+        let width = w.outer_size().map(|s| s.width as f64 / scale).unwrap_or(600.0);
+        let _ = w.set_size(tauri::LogicalSize::new(width, height));
     }
 }
 

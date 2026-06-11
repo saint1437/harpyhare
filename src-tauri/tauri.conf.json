@@ -16,13 +16,13 @@
       {
         "label": "main",
         "title": "itech",
-        "width": 600,
+        "width": 760,
         "height": 330,
         "transparent": true,
         "decorations": false,
         "alwaysOnTop": true,
         "visibleOnAllWorkspaces": true,
-        "minWidth": 420,
+        "minWidth": 480,
         "minHeight": 240
       },
       {
