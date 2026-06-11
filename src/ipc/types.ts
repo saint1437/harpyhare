@@ -28,12 +28,19 @@ export const MODELS = ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5
 
 export type RecorderState = "idle" | "recording" | "transcribing";
 
+/** DTO сообщения для отправки в Anthropic (соответствует Rust llm::ChatMessage). */
+export interface ChatMessageDto {
+  role: "user" | "assistant";
+  text: string;
+  images: ImagePayload[];
+}
+
 /** Карта имя-события → тип payload (для типобезопасного listen). */
 export interface EventMap {
   "state-changed": RecorderState;
   "transcript-ready": string;
   "stt-error": string;
-  "llm-delta": string;
-  "llm-done": void;
-  "llm-error": string;
+  "llm-delta": { chatId: string; delta: string };
+  "llm-done": { chatId: string };
+  "llm-error": { chatId: string; message: string };
 }

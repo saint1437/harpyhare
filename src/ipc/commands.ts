@@ -1,15 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "./env";
-import { DEFAULT_SETTINGS, type ImagePayload, type Settings } from "./types";
+import { DEFAULT_SETTINGS, type ChatMessageDto, type Settings } from "./types";
 
-export async function sendToClaude(text: string, images: ImagePayload[]): Promise<void> {
+export async function sendToClaude(messages: ChatMessageDto[], chatId: string): Promise<void> {
   if (!isTauri()) return;
-  await invoke("send_to_claude", { text, images });
+  await invoke("send_to_claude", { messages, chatId });
 }
 
-export async function cancelStream(): Promise<void> {
+export async function cancelStream(chatId: string): Promise<void> {
   if (!isTauri()) return;
-  await invoke("cancel_stream");
+  await invoke("cancel_stream", { chatId });
 }
 
 export async function retryTranscription(): Promise<void> {
@@ -56,4 +56,15 @@ export async function openExternal(url: string): Promise<void> {
 export async function setWindowHeight(height: number): Promise<void> {
   if (!isTauri()) return;
   await invoke("set_window_height", { height });
+}
+
+/** Возвращает сохранённую JSON-строку чатов (пустая строка, если файла нет). */
+export async function loadChats(): Promise<string> {
+  if (!isTauri()) return "";
+  return invoke<string>("load_chats");
+}
+
+export async function saveChats(json: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("save_chats", { json });
 }
