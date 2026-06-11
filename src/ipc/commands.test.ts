@@ -11,7 +11,7 @@ describe("commands в браузерном режиме", () => {
     expect(await captureAvailable()).toBe(true);
   });
   it("мутации не бросают и резолвятся в undefined", async () => {
-    await expect(sendToClaude("hi", [])).resolves.toBeUndefined();
+    await expect(sendToClaude([{ role: "user", text: "hi", images: [] }], "chat-1")).resolves.toBeUndefined();
     await expect(moveWindowBy(10, 0)).resolves.toBeUndefined();
   });
 });
