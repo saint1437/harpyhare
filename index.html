@@ -2,110 +2,11 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <link rel="stylesheet" href="/src/styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>itech</title>
-    <script type="module" src="/src/main.ts"></script>
   </head>
-
   <body>
-    <div class="app" id="app">
-      <!-- Атмосфера: дрейфующее свечение за стеклом + зерно -->
-      <div class="aurora" aria-hidden="true">
-        <i class="aurora__blob aurora__blob--mint"></i>
-        <i class="aurora__blob aurora__blob--ice"></i>
-      </div>
-      <div class="grain" aria-hidden="true"></div>
-
-      <!-- Баннер отсутствия разрешения на запись системного звука -->
-      <div class="banner" id="permission-banner" hidden>
-        <span class="banner__text">Нет разрешения на запись системного звука</span>
-        <button type="button" class="btn btn--ghost btn--sm" id="open-permissions">
-          Открыть настройки
-        </button>
-      </div>
-
-      <!-- Шапка: орб-индикатор + статус + шестерёнка -->
-      <header class="statusbar">
-        <div class="status" id="status" data-state="idle">
-          <span class="status__dot" aria-hidden="true"></span>
-          <span class="status__text">Зажми V — записать системный звук</span>
-        </div>
-        <button type="button" class="iconbtn" id="open-settings" aria-label="Настройки">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-               stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </button>
-      </header>
-
-      <!-- Композер: расшифровка, вложения, действия -->
-      <section class="composer" id="composer">
-        <div class="composer__well">
-          <textarea
-            id="transcript"
-            class="composer__input"
-            spellcheck="false"
-            placeholder="Зажми V у видео — расшифровка появится здесь. Текст можно править, ⌘V вставляет скриншот."
-          ></textarea>
-          <div class="attachments" id="attachments" aria-label="Вложения"></div>
-        </div>
-
-        <div class="actions">
-          <button type="button" class="btn btn--ghost btn--sm" id="clear">Очистить</button>
-          <div class="actions__spacer"></div>
-          <button type="button" class="btn btn--ghost btn--sm" id="retry" hidden>Повторить</button>
-          <button type="button" class="btn btn--danger btn--sm" id="stop" hidden>Стоп</button>
-          <button type="button" class="btn btn--primary" id="send">
-            Отправить <kbd class="kbd">⌘⏎</kbd>
-          </button>
-        </div>
-      </section>
-
-      <!-- Ответ Claude (стрим markdown) -->
-      <section class="answer-wrap" id="answer-wrap">
-        <div class="answer-wrap__head">
-          <span class="answer-wrap__label">Ответ</span>
-          <span class="answer-wrap__rule" aria-hidden="true"></span>
-          <button type="button" class="btn btn--ghost btn--xs answer__copy" id="copy-answer" hidden>
-            Копировать
-          </button>
-        </div>
-        <div class="answer" id="answer" aria-live="polite"></div>
-      </section>
-
-      <!-- Подсказки хоткеев -->
-      <footer class="hints" aria-hidden="true">
-        <span><b>V</b> запись</span>
-        <span><b>⌘⏎</b> отправить</span>
-        <span><b>⌘V</b> скриншот</span>
-        <span><b>⌘←→↑↓</b> окно</span>
-      </footer>
-    </div>
-
-    <dialog id="settings">
-      <form method="dialog" id="settings-form">
-        <h2>Настройки</h2>
-        <label>Ключ Anthropic <input type="password" name="anthropic_api_key" autocomplete="off" placeholder="sk-ant-…"></label>
-        <label>Ключ Groq <input type="password" name="groq_api_key" autocomplete="off" placeholder="gsk_…"></label>
-        <label>Модель
-          <select name="model">
-            <option value="claude-opus-4-8">claude-opus-4-8</option>
-            <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
-            <option value="claude-haiku-4-5">claude-haiku-4-5</option>
-          </select>
-        </label>
-        <label>Системный промпт <textarea name="system_prompt" rows="3"></textarea></label>
-        <label>Push-to-talk клавиша <input name="hotkey" placeholder="V" maxlength="20"></label>
-        <label class="row"><input type="checkbox" name="auto_send"> Отправлять сразу после распознавания</label>
-        <label>Прозрачность окна <input type="range" name="window_opacity" min="0.2" max="1" step="0.05"></label>
-        <label>Шаг перемещения (Cmd+стрелки), px <input type="number" name="move_step" min="1" max="200"></label>
-        <menu>
-          <button value="cancel" type="submit">Отмена</button>
-          <button value="save" type="submit" class="primary">Сохранить</button>
-        </menu>
-      </form>
-    </dialog>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
