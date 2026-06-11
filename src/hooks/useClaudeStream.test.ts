@@ -3,12 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EventMap } from "@/ipc/types";
 
 const handlers = new Map<string, (p: unknown) => void>();
-const sendToClaude = vi.fn(async () => {});
+const sendToClaude = vi.fn(async (_text: string, _images: unknown[]) => {});
 const cancelStream = vi.fn(async () => {});
 
 vi.mock("@/ipc/commands", () => ({
-  sendToClaude: (...a: unknown[]) => sendToClaude(...a),
-  cancelStream: (...a: unknown[]) => cancelStream(...a),
+  sendToClaude: (text: string, images: unknown[]) => sendToClaude(text, images),
+  cancelStream: () => cancelStream(),
 }));
 vi.mock("@/ipc/events", () => ({
   onEvent: (name: string, h: (p: unknown) => void) => {
