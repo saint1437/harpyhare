@@ -18,3 +18,9 @@ export function applyOpacity(root: HTMLElement, value: number): void {
   const clamped = Math.min(1, Math.max(0.2, value));
   root.style.setProperty("--app-opacity", String(clamped));
 }
+
+/** Шаг прозрачности с клампом [0.2, 1] и округлением до 2 знаков (без float-дрейфа). */
+export function stepOpacity(current: number, dir: 1 | -1, step: number): number {
+  const next = Math.round((current + dir * step) * 100) / 100;
+  return Math.min(1, Math.max(0.2, next));
+}

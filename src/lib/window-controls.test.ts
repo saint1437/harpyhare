@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyOpacity, moveDelta } from "./window-controls";
+import { applyOpacity, moveDelta, stepOpacity } from "./window-controls";
 
 describe("moveDelta", () => {
   it("стрелки → сдвиг на шаг по нужной оси", () => {
@@ -31,5 +31,21 @@ describe("applyOpacity", () => {
     expect(el.style.getPropertyValue("--app-opacity")).toBe("0.5");
     applyOpacity(el, Infinity);
     expect(el.style.getPropertyValue("--app-opacity")).toBe("0.5");
+  });
+});
+
+describe("stepOpacity", () => {
+  it("шаг вверх/вниз", () => {
+    expect(stepOpacity(0.5, 1, 0.1)).toBeCloseTo(0.6);
+    expect(stepOpacity(0.5, -1, 0.1)).toBeCloseTo(0.4);
+  });
+  it("кламп в [0.2, 1]", () => {
+    expect(stepOpacity(0.95, 1, 0.1)).toBe(1);
+    expect(stepOpacity(1, 1, 0.1)).toBe(1);
+    expect(stepOpacity(0.25, -1, 0.1)).toBe(0.2);
+    expect(stepOpacity(0.2, -1, 0.1)).toBe(0.2);
+  });
+  it("без дрейфа float", () => {
+    expect(stepOpacity(0.7, 1, 0.1)).toBe(0.8);
   });
 });
