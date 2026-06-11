@@ -7,6 +7,7 @@ pub mod preview;
 pub mod settings;
 pub mod state;
 pub mod stt;
+pub mod window_geom;
 
 use std::collections::HashMap;
 use std::sync::{
@@ -138,6 +139,7 @@ pub fn run() {
             set_settings,
             move_window_by,
             set_window_height,
+            set_window_width,
             set_ptt_suspended,
             open_audio_permission_settings,
             open_external,
@@ -536,6 +538,69 @@ fn set_window_height(app: AppHandle, height: f64) {
             let win = w.clone();
             let _ = app.run_on_main_thread(move || {
                 let _ = win.set_size(tauri::LogicalSize::new(win_width(&win, width), height));
+            });
+        }
+    });
+}
+
+/// Плавно меняет ширину главного окна (логические px), сохраняя высоту. Растёт вправо
+/// (якорь — левый край); если правый край выходит за монитор — окно сдвигается влево
+/// (кламп через window_geom::clamp_window_x). Тот же ease-out-твин на фоновом потоке
+/// с guard-генератором resize_gen, что и set_window_height.
+#[tauri::command]
+fn set_window_width(app: AppHandle, width: f64) {
+    let Some(w) = app.get_webview_window("main") else {
+        return;
+    };
+    let scale = w.scale_factor().unwrap_or(1.0);
+    let from_w = w.outer_size().map(|s| s.width as f64 / scale).unwrap_or(width);
+    let height = w.outer_size().map(|s| s.height as f64 / scale).unwrap_or(640.0);
+    let from_pos = w.outer_position().unwrap_or(tauri::PhysicalPosition::new(0, 0));
+
+    // Целевой x с клампом по правому краю текущего монитора (физ. px).
+    let target_phys_w = (width * scale).round() as u32;
+    let (mon_x, mon_w) = w
+        .current_monitor()
+        .ok()
+        .flatten()
+        .map(|m| (m.position().x, m.size().width))
+        .unwrap_or((from_pos.x, target_phys_w));
+    let target_x = window_geom::clamp_window_x(from_pos.x, target_phys_w, mon_x, mon_w);
+
+    if (from_w - width).abs() < 1.0 && from_pos.x == target_x {
+        return;
+    }
+    let from_x = from_pos.x;
+    let y = from_pos.y;
+
+    let my_gen = app
+        .state::<App>()
+        .resize_gen
+        .fetch_add(1, Ordering::SeqCst)
+        + 1;
+
+    std::thread::spawn(move || {
+        const STEPS: u32 = 14;
+        for i in 1..=STEPS {
+            if app.state::<App>().resize_gen.load(Ordering::SeqCst) != my_gen {
+                return;
+            }
+            let t = f64::from(i) / f64::from(STEPS);
+            let eased = 1.0 - (1.0 - t).powi(3); // ease-out cubic
+            let cur_w = from_w + (width - from_w) * eased;
+            let cur_x = (f64::from(from_x) + f64::from(target_x - from_x) * eased).round() as i32;
+            let win = w.clone();
+            let _ = app.run_on_main_thread(move || {
+                let _ = win.set_position(tauri::PhysicalPosition::new(cur_x, y));
+                let _ = win.set_size(tauri::LogicalSize::new(cur_w, height));
+            });
+            std::thread::sleep(std::time::Duration::from_millis(13));
+        }
+        if app.state::<App>().resize_gen.load(Ordering::SeqCst) == my_gen {
+            let win = w.clone();
+            let _ = app.run_on_main_thread(move || {
+                let _ = win.set_position(tauri::PhysicalPosition::new(target_x, y));
+                let _ = win.set_size(tauri::LogicalSize::new(width, height));
             });
         }
     });
