@@ -7,6 +7,7 @@ pub mod settings;
 pub mod state;
 pub mod stt;
 
+use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Mutex,
@@ -25,7 +26,7 @@ pub struct App {
     pub recorder: Mutex<state::RecorderState>,
     pub capture: Mutex<Option<capture::SystemAudioCapture>>,
     pub last_recording: Mutex<Option<Vec<f32>>>, // 16к моно — для «Повторить»
-    pub llm_cancel: Mutex<Option<CancellationToken>>,
+    pub llm_cancel: Mutex<HashMap<String, CancellationToken>>,
     pub stt: Mutex<stt::GroqStt>,
     pub llm: Mutex<llm::AnthropicClient>,
     pub recording_gen: AtomicU64,
@@ -37,6 +38,35 @@ fn settings_path(app: &AppHandle) -> std::path::PathBuf {
         .app_data_dir()
         .expect("app_data_dir")
         .join("settings.json")
+}
+
+fn chats_path(app: &AppHandle) -> std::path::PathBuf {
+    app.path()
+        .app_data_dir()
+        .expect("app_data_dir")
+        .join("chats.json")
+}
+
+/// Полезные нагрузки LLM-событий несут chat_id, чтобы фронт роутил дельты по чатам.
+/// camelCase — потому что фронт читает их как { chatId, ... }.
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LlmDelta {
+    chat_id: String,
+    delta: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LlmDone {
+    chat_id: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LlmError {
+    chat_id: String,
+    message: String,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -83,7 +113,7 @@ pub fn run() {
                 recorder: Mutex::new(state::RecorderState::Idle),
                 capture: Mutex::new(capture),
                 last_recording: Mutex::new(None),
-                llm_cancel: Mutex::new(None),
+                llm_cancel: Mutex::new(HashMap::new()),
                 stt: Mutex::new(stt),
                 llm: Mutex::new(llm),
                 recording_gen: AtomicU64::new(0),
@@ -98,6 +128,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             send_to_claude,
             cancel_stream,
+            load_chats,
+            save_chats,
             retry_transcription,
             get_settings,
             set_settings,
@@ -278,9 +310,7 @@ fn spawn_max_duration_watchdog(app: AppHandle, my_gen: u64) {
 // --- Команды ------------------------------------------------------------------
 
 #[tauri::command]
-async fn send_to_claude(app: AppHandle, text: String, images: Vec<llm::ImageAttachment>) {
-    // Всё, что нужно из state, забираем ДО await: клонируем настройки/клиент,
-    // токен кладём в state и тоже клонируем — никаких MutexGuard через await.
+async fn send_to_claude(app: AppHandle, messages: Vec<llm::ChatMessage>, chat_id: String) {
     let (model, system) = {
         let s = app.state::<App>();
         let s = s.settings.lock().unwrap();
@@ -288,35 +318,50 @@ async fn send_to_claude(app: AppHandle, text: String, images: Vec<llm::ImageAtta
     };
     let client = app.state::<App>().llm.lock().unwrap().clone();
     let cancel = CancellationToken::new();
-    if let Some(old) = app.state::<App>().llm_cancel.lock().unwrap().replace(cancel.clone()) {
-        old.cancel();
+    {
+        let st = app.state::<App>();
+        let mut map = st.llm_cancel.lock().unwrap();
+        if let Some(old) = map.insert(chat_id.clone(), cancel.clone()) {
+            old.cancel(); // повторный send в тот же чат отменяет прежний
+        }
     }
-    let messages = vec![llm::ChatMessage { role: "user".into(), text: text.clone(), images: images.clone() }];
     let body = llm::build_request_body(&model, &system, &messages);
     let app2 = app.clone();
+    let cid = chat_id.clone();
     let res = client
         .stream_message(body, cancel, move |delta| {
-            let _ = app2.emit("llm-delta", delta);
+            let _ = app2.emit(
+                "llm-delta",
+                LlmDelta { chat_id: cid.clone(), delta: delta.to_string() },
+            );
         })
         .await;
+    app.state::<App>().llm_cancel.lock().unwrap().remove(&chat_id);
     match res {
-        Ok(()) => {
-            let _ = app.emit("llm-done", ());
-        }
-        Err(llm::LlmError::Cancelled) => {
-            let _ = app.emit("llm-done", ());
+        Ok(()) | Err(llm::LlmError::Cancelled) => {
+            let _ = app.emit("llm-done", LlmDone { chat_id });
         }
         Err(e) => {
-            let _ = app.emit("llm-error", e.to_string());
+            let _ = app.emit("llm-error", LlmError { chat_id, message: e.to_string() });
         }
     }
 }
 
 #[tauri::command]
-fn cancel_stream(app: AppHandle) {
-    if let Some(c) = app.state::<App>().llm_cancel.lock().unwrap().take() {
+fn cancel_stream(app: AppHandle, chat_id: String) {
+    if let Some(c) = app.state::<App>().llm_cancel.lock().unwrap().remove(&chat_id) {
         c.cancel();
     }
+}
+
+#[tauri::command]
+fn load_chats(app: AppHandle) -> String {
+    chats::load(&chats_path(&app))
+}
+
+#[tauri::command]
+fn save_chats(app: AppHandle, json: String) -> Result<(), String> {
+    chats::save(&chats_path(&app), &json).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
