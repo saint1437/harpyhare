@@ -1,5 +1,6 @@
 pub mod audio;
 pub mod capture;
+pub mod chats;
 pub mod hotkey;
 pub mod llm;
 pub mod settings;
