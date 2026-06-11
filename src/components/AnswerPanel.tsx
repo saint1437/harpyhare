@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { HtmlBlockChip } from "@/components/HtmlBlockChip";
+import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { openExternal } from "@/ipc/commands";
 import type { ChatMessage } from "@/lib/chats";
 
@@ -133,6 +134,7 @@ export function AnswerPanel({
             {partial !== null && partial !== "" && (
               <Assistant text={partial} components={components} />
             )}
+            {streaming && (partial === null || partial === "") && <ThinkingIndicator />}
           </>
         )}
       </div>
