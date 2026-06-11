@@ -129,3 +129,8 @@ body {
 .prose-answer th, .prose-answer td { padding: 5px 10px; border: 1px solid var(--border); font-size: 12.5px; }
 .prose-answer th { color: var(--foreground); background: oklch(1 0 0 / 4%); }
 .prose-answer hr { border: 0; height: 1px; margin: 1em 0; background: var(--border); }
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
