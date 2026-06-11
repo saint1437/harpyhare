@@ -197,6 +197,7 @@ export default function App() {
           messages={active.messages}
           partial={partial}
           streaming={activeStreaming}
+          streamStartedAt={stream.startedAt[activeId]}
           onCopy={() => {
             const last = [...active.messages].reverse().find((m) => m.role === "assistant");
             if (last) void navigator.clipboard.writeText(last.text);

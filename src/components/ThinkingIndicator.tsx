@@ -1,18 +1,23 @@
 import { useEffect, useState } from "react";
 
-/** Индикатор фазы ожидания ответа («Думает… {N}с»). Внутренний таймер тикает
- *  раз в секунду с момента маунта (≈ момент отправки запроса). */
-export function ThinkingIndicator() {
-  const [seconds, setSeconds] = useState(0);
+const elapsedSeconds = (startedAt: number) =>
+  Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+
+/** Индикатор фазы ожидания ответа («Думает… {N}с»). Секунды считаются от реального
+ *  начала генерации (startedAt), а не от маунта — счётчик стабилен при переключении
+ *  вкладок (индикатор может размонтироваться/смонтироваться). */
+export function ThinkingIndicator({ startedAt }: { startedAt: number }) {
+  const [seconds, setSeconds] = useState(() => elapsedSeconds(startedAt));
 
   useEffect(() => {
+    setSeconds(elapsedSeconds(startedAt));
     const id = setInterval(() => {
-      setSeconds((s) => s + 1);
+      setSeconds(elapsedSeconds(startedAt));
     }, 1000);
     return () => {
       clearInterval(id);
     };
-  }, []);
+  }, [startedAt]);
 
   return (
     <div className="flex items-center gap-2 text-[13px] text-muted-foreground">

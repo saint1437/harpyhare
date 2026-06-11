@@ -12,6 +12,8 @@ export interface AnswerPanelProps {
   /** Текущий in-flight ответ (если идёт стрим активного чата), иначе null. */
   partial: string | null;
   streaming: boolean;
+  /** Время начала стрима активного чата (Date.now()) — база счётчика «Думает… Nс». */
+  streamStartedAt?: number;
   onCopy: () => void;
   /** Открыть HTML-блок во встроенной панели превью (ошибки обрабатывает владелец). */
   onOpenPreview: (code: string) => void;
@@ -73,6 +75,7 @@ export function AnswerPanel({
   messages,
   partial,
   streaming,
+  streamStartedAt,
   onCopy,
   onOpenPreview,
 }: AnswerPanelProps) {
@@ -134,7 +137,9 @@ export function AnswerPanel({
             {partial !== null && partial !== "" && (
               <Assistant text={partial} components={components} />
             )}
-            {streaming && (partial === null || partial === "") && <ThinkingIndicator />}
+            {streaming && (partial === null || partial === "") && (
+              <ThinkingIndicator startedAt={streamStartedAt ?? Date.now()} />
+            )}
           </>
         )}
       </div>

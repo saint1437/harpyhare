@@ -7,6 +7,8 @@ export interface ClaudeStreams {
   /** Текущий «живой» буфер ответа по чатам (для рендера in-flight реплики). */
   partial: Record<string, string>;
   streaming: Record<string, boolean>;
+  /** Время начала стрима по чатам (Date.now() в send) — для счётчика «Думает… Nс». */
+  startedAt: Record<string, number>;
   error: Record<string, string | null>;
   send: (chatId: string, messages: ChatMessageDto[]) => Promise<void>;
   stop: (chatId: string) => void;
@@ -21,6 +23,7 @@ export function useClaudeStream(
 ): ClaudeStreams {
   const [partial, setPartial] = useState<Record<string, string>>({});
   const [streaming, setStreaming] = useState<Record<string, boolean>>({});
+  const [startedAt, setStartedAt] = useState<Record<string, number>>({});
   const [error, setError] = useState<Record<string, string | null>>({});
 
   // Буферы дельт по чатам и набор активных стримов — в ref'ах, чтобы события
@@ -93,6 +96,7 @@ export function useClaudeStream(
       active.current.add(chatId);
       setPartial((p) => ({ ...p, [chatId]: "" }));
       setStreaming((s) => ({ ...s, [chatId]: true }));
+      setStartedAt((s) => ({ ...s, [chatId]: Date.now() }));
       setError((e) => ({ ...e, [chatId]: null }));
       try {
         await sendToClaude(messages, chatId);
@@ -116,5 +120,5 @@ export function useClaudeStream(
     [dropPartial],
   );
 
-  return { partial, streaming, error, send, stop };
+  return { partial, streaming, startedAt, error, send, stop };
 }
