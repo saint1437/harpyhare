@@ -29,6 +29,9 @@ out.wav
 # секреты
 .env
 
+# мокапы visual companion (superpowers brainstorming)
+.superpowers/
+
 # tsc -b artifacts
 *.tsbuildinfo
 vite.config.js
