@@ -3,6 +3,7 @@ pub mod capture;
 pub mod chats;
 pub mod hotkey;
 pub mod llm;
+pub mod preview;
 pub mod settings;
 pub mod state;
 pub mod stt;
