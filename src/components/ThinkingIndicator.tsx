@@ -15,9 +15,12 @@ export function ThinkingIndicator() {
   }, []);
 
   return (
-    <div className="flex items-center gap-2 text-[13px] text-muted-foreground" aria-live="polite">
+    <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
       <span className="size-2 animate-pulse rounded-full bg-primary" aria-hidden />
-      <span>Думает… {seconds}с</span>
+      {/* Лейбл озвучивается один раз; тикающий счётчик скрыт от скринридера,
+          чтобы polite-регион не зачитывал секунды каждую секунду. */}
+      <span aria-live="polite">Думает…</span>
+      <span aria-hidden> {seconds}с</span>
     </div>
   );
 }

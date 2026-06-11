@@ -10,12 +10,13 @@ afterEach(() => {
 });
 
 describe("ThinkingIndicator", () => {
-  it("показывает «Думает… 0с» на старте и растит счётчик каждую секунду", () => {
+  it("показывает «Думает…» с растущим счётчиком секунд", () => {
     const { getByText } = render(<ThinkingIndicator />);
-    expect(getByText("Думает… 0с")).toBeTruthy();
+    expect(getByText("Думает…")).toBeTruthy();
+    expect(getByText("0с")).toBeTruthy();
     act(() => {
       vi.advanceTimersByTime(2000);
     });
-    expect(getByText("Думает… 2с")).toBeTruthy();
+    expect(getByText("2с")).toBeTruthy();
   });
 });
