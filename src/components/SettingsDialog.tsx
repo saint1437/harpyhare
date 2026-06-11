@@ -120,6 +120,7 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
               step={0.05}
               value={[draft.window_opacity]}
               onValueChange={([v]) => {
+                if (v === undefined) return;
                 set("window_opacity", v);
                 applyOpacity(document.documentElement, v);
               }}

@@ -27,7 +27,7 @@ describe("useChats", () => {
     const { result } = renderHook(() => useChats());
     await waitFor(() => expect(result.current.chats.length).toBe(1));
     expect(result.current.active.messages).toEqual([]);
-    expect(result.current.activeId).toBe(result.current.chats[0].id);
+    expect(result.current.activeId).toBe(result.current.chats[0]?.id);
   });
 
   it("newChat добавляет чат, переключает на него и уважает лимит", async () => {
@@ -35,7 +35,7 @@ describe("useChats", () => {
     await waitFor(() => expect(result.current.chats.length).toBe(1));
     for (let i = 1; i < CHAT_LIMIT; i++) act(() => result.current.newChat());
     expect(result.current.chats.length).toBe(CHAT_LIMIT);
-    expect(result.current.activeId).toBe(result.current.chats[CHAT_LIMIT - 1].id);
+    expect(result.current.activeId).toBe(result.current.chats[CHAT_LIMIT - 1]?.id);
     act(() => result.current.newChat()); // сверх лимита — игнор
     expect(result.current.chats.length).toBe(CHAT_LIMIT);
   });
@@ -49,7 +49,7 @@ describe("useChats", () => {
     expect(result.current.active.title).toBe("длинный вопрос про рек…");
     expect(result.current.active.draft).toBe("");
     expect(result.current.active.messages).toHaveLength(1);
-    expect(result.current.active.messages[0].role).toBe("user");
+    expect(result.current.active.messages[0]?.role).toBe("user");
   });
 
   it("appendAssistantMessage дописывает ответ", async () => {
@@ -59,7 +59,7 @@ describe("useChats", () => {
     act(() => result.current.appendUserMessage(id, "вопрос", []));
     act(() => result.current.appendAssistantMessage(id, "ответ"));
     expect(result.current.active.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
-    expect(result.current.active.messages[1].text).toBe("ответ");
+    expect(result.current.active.messages[1]?.text).toBe("ответ");
   });
 
   it("removeChat не даёт удалить последний и переключает активный", async () => {

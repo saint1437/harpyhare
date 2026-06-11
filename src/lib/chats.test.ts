@@ -54,9 +54,9 @@ describe("serialize/deserialize", () => {
     const chats = [chatWith([{ role: "user", text: "вопрос", images: [] }], { draft: "хвост" })];
     const restored = deserializeChats(serializeChats(chats));
     expect(restored).not.toBeNull();
-    expect(restored![0].messages[0].text).toBe("вопрос");
-    expect(restored![0].draft).toBe("хвост");
-    expect(restored![0].draftAttachments).toEqual([]);
+    expect(restored?.[0]?.messages[0]?.text).toBe("вопрос");
+    expect(restored?.[0]?.draft).toBe("хвост");
+    expect(restored?.[0]?.draftAttachments).toEqual([]);
   });
 
   it("пустая строка → null", () => {

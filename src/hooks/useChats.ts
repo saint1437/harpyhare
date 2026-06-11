@@ -43,7 +43,9 @@ async function fileToAttachment(file: File): Promise<Attachment> {
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(bitmap.width * factor));
   canvas.height = Math.max(1, Math.round(bitmap.height * factor));
-  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("2D-контекст канваса недоступен");
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
   const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
   return { payload: toImagePayload(dataUrl, "image/jpeg"), preview: dataUrl };
@@ -77,8 +79,10 @@ export function useChats(): ChatsApi {
       if (!live) return;
       const restored = deserializeChats(json);
       const initial = restored ?? [createChat(1)];
+      const first = initial[0];
+      if (!first) return; // deserializeChats не возвращает пустой массив — защита для типов
       setChats(initial);
-      setActiveId(initial[0].id);
+      setActiveId(first.id);
       loaded.current = true;
     });
     return () => {
@@ -120,7 +124,7 @@ export function useChats(): ChatsApi {
       setActiveId((cur) => {
         if (cur !== id) return cur;
         const neighbor = next[Math.min(idx, next.length - 1)];
-        return neighbor.id;
+        return neighbor ? neighbor.id : cur;
       });
       return next;
     });
