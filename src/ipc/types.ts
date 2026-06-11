@@ -1,12 +1,14 @@
 import type { ImagePayload } from "@/lib/composer";
+import { type PromptPreset, TRANSCRIPTION_PRESET_ID } from "@/lib/presets";
 
 export type { ImagePayload };
+export type { PromptPreset };
 
 export interface Settings {
   anthropic_api_key: string;
   groq_api_key: string;
   model: string;
-  system_prompt: string;
+  prompt_presets: PromptPreset[];
   hotkey: string;
   auto_send: boolean;
   window_opacity: number;
@@ -19,7 +21,7 @@ export const DEFAULT_SETTINGS: Settings = {
   anthropic_api_key: "",
   groq_api_key: "",
   model: "claude-opus-4-8",
-  system_prompt: "",
+  prompt_presets: [{ id: TRANSCRIPTION_PRESET_ID, name: "Расшифровка речи", text: "" }],
   hotkey: "F9",
   auto_send: false,
   window_opacity: 1,

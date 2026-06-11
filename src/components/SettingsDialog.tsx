@@ -22,6 +22,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { MODELS, type Settings } from "@/ipc/types";
+import type { PromptPreset } from "@/lib/presets";
 import { applyOpacity } from "@/lib/window-controls";
 
 export interface SettingsDialogProps {
@@ -42,6 +43,25 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
     setDraft((d) => ({ ...d, [key]: value }));
   };
 
+  const updatePreset = (index: number, patch: Partial<PromptPreset>) => {
+    setDraft((d) => ({
+      ...d,
+      prompt_presets: d.prompt_presets.map((p, i) => (i === index ? { ...p, ...patch } : p)),
+    }));
+  };
+  const addPreset = () => {
+    setDraft((d) => ({
+      ...d,
+      prompt_presets: [...d.prompt_presets, { id: crypto.randomUUID(), name: "", text: "" }],
+    }));
+  };
+  const removePreset = (index: number) => {
+    setDraft((d) => ({
+      ...d,
+      prompt_presets: d.prompt_presets.filter((_, i) => i !== index),
+    }));
+  };
+
   const handleOpenChange = (next: boolean) => {
     if (!next) {
       applyOpacity(document.documentElement, settings.window_opacity);
@@ -54,6 +74,9 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
       ...draft,
       hotkey: draft.hotkey.trim() || "V",
       toggle_hotkey: draft.toggle_hotkey.trim() || "Cmd+Shift+H",
+      prompt_presets: draft.prompt_presets.filter(
+        (p) => p.name.trim() !== "" || p.text.trim() !== "",
+      ),
     });
   };
 
@@ -106,14 +129,42 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Системный промпт">
-            <Textarea
-              rows={3}
-              value={draft.system_prompt}
-              onChange={(e) => {
-                set("system_prompt", e.target.value);
-              }}
-            />
+          <Field label="Пресеты препромпта">
+            <div className="grid gap-2">
+              {draft.prompt_presets.map((p, i) => (
+                <div key={p.id} className="grid gap-1.5 rounded-md bg-white/5 p-2">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      placeholder="Имя"
+                      value={p.name}
+                      onChange={(e) => {
+                        updatePreset(i, { name: e.target.value });
+                      }}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        removePreset(i);
+                      }}
+                    >
+                      Удалить
+                    </Button>
+                  </div>
+                  <Textarea
+                    rows={3}
+                    placeholder="Текст препромпта"
+                    value={p.text}
+                    onChange={(e) => {
+                      updatePreset(i, { text: e.target.value });
+                    }}
+                  />
+                </div>
+              ))}
+              <Button variant="ghost" size="sm" onClick={addPreset}>
+                + Добавить пресет
+              </Button>
+            </div>
           </Field>
           <Field label="Push-to-talk клавиша">
             <HotkeyCapture
