@@ -4,12 +4,19 @@ use std::path::Path;
 pub const DEFAULT_SYSTEM_PROMPT: &str = "Ты получаешь расшифровку русской речи из аудио (могут быть ошибки распознавания). Ответь на вопрос или прокомментируй сказанное кратко и по делу, на русском.";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptPreset {
+    pub id: String,
+    pub name: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     pub anthropic_api_key: String,
     pub groq_api_key: String,
     pub model: String,
-    pub system_prompt: String,
+    pub prompt_presets: Vec<PromptPreset>,
     pub hotkey: String,
     pub auto_send: bool,
     pub window_opacity: f64,
@@ -24,7 +31,11 @@ impl Default for Settings {
             anthropic_api_key: String::new(),
             groq_api_key: String::new(),
             model: "claude-opus-4-8".into(),
-            system_prompt: DEFAULT_SYSTEM_PROMPT.into(),
+            prompt_presets: vec![PromptPreset {
+                id: "transcription".into(),
+                name: "Расшифровка речи".into(),
+                text: DEFAULT_SYSTEM_PROMPT.into(),
+            }],
             hotkey: "F9".into(),
             auto_send: false,
             window_opacity: 1.0,
@@ -110,7 +121,9 @@ mod tests {
         assert!(!s.auto_send);
         assert_eq!(s.window_opacity, 1.0);
         assert_eq!(s.move_step, 20);
-        assert!(s.system_prompt.contains("расшифровку"));
+        assert_eq!(s.prompt_presets.len(), 1);
+        assert_eq!(s.prompt_presets[0].id, "transcription");
+        assert!(s.prompt_presets[0].text.contains("расшифровку"));
         assert!(s.auto_preview_html);
         assert_eq!(s.toggle_hotkey, "Cmd+Shift+H");
     }
@@ -167,6 +180,7 @@ mod tests {
         s.auto_send = true;
         s.auto_preview_html = false;
         s.toggle_hotkey = "F10".into();
+        s.prompt_presets = vec![test_preset()];
         s.save(&path).unwrap();
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600);
@@ -177,6 +191,8 @@ mod tests {
         assert!(loaded.auto_send);
         assert!(!loaded.auto_preview_html);
         assert_eq!(loaded.toggle_hotkey, "F10");
+        assert_eq!(loaded.prompt_presets.len(), 1);
+        assert_eq!(loaded.prompt_presets[0].name, "Тест");
     }
 
     #[test]
@@ -223,5 +239,28 @@ mod tests {
         Settings::default().save(&path).unwrap();
         assert!(path.exists());
         assert!(!path.with_extension("tmp").exists()); // tmp-файл убран rename'ом
+    }
+
+    fn test_preset() -> PromptPreset {
+        PromptPreset { id: "p1".into(), name: "Тест".into(), text: "текст".into() }
+    }
+
+    #[test]
+    fn load_missing_prompt_presets_defaults_to_seed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.json");
+        std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+        let s = Settings::load(&path).unwrap();
+        assert_eq!(s.prompt_presets.len(), 1);
+        assert_eq!(s.prompt_presets[0].id, "transcription");
+    }
+
+    #[test]
+    fn load_old_system_prompt_is_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.json");
+        std::fs::write(&path, r#"{"system_prompt":"старое","auto_send":false}"#).unwrap();
+        let s = Settings::load(&path).unwrap();
+        assert_eq!(s.prompt_presets[0].id, "transcription");
     }
 }

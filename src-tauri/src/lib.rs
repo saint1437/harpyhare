@@ -336,11 +336,16 @@ fn spawn_max_duration_watchdog(app: AppHandle, my_gen: u64) {
 // --- Команды ------------------------------------------------------------------
 
 #[tauri::command]
-async fn send_to_claude(app: AppHandle, messages: Vec<llm::ChatMessage>, chat_id: String) {
-    let (model, system) = {
+async fn send_to_claude(
+    app: AppHandle,
+    messages: Vec<llm::ChatMessage>,
+    chat_id: String,
+    system: String,
+) {
+    let model = {
         let s = app.state::<App>();
         let s = s.settings.lock().unwrap();
-        (s.model.clone(), s.system_prompt.clone())
+        s.model.clone()
     };
     let client = app.state::<App>().llm.lock().unwrap().clone();
     let cancel = CancellationToken::new();
