@@ -25,7 +25,8 @@ export function PreviewPanel({ html, onClose }: PreviewPanelProps) {
     const v = nonce.current;
     // Нонс заставляет WKWebView перезагрузить iframe даже при том же HTML.
     void setPreviewHtml(html).then(() => {
-      setSrc(`preview://localhost/?v=${v}`);
+      // Игнорируем устаревший ответ, если html успел смениться (гонка быстрых открытий).
+      if (v === nonce.current) setSrc(`preview://localhost/?v=${v}`);
     });
   }, [html]);
 

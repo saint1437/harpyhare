@@ -25,6 +25,23 @@ describe("PreviewPanel", () => {
     });
   });
 
+  it("нонс растёт при смене html (cache-bust)", async () => {
+    const { container, rerender } = render(
+      <PreviewPanel html="<p>a</p>" onClose={() => undefined} />,
+    );
+    await waitFor(() => {
+      expect(container.querySelector("iframe")?.getAttribute("src")).toBe(
+        "preview://localhost/?v=1",
+      );
+    });
+    rerender(<PreviewPanel html="<p>b</p>" onClose={() => undefined} />);
+    await waitFor(() => {
+      expect(container.querySelector("iframe")?.getAttribute("src")).toBe(
+        "preview://localhost/?v=2",
+      );
+    });
+  });
+
   it("пустой html — заглушка, без iframe", () => {
     const { container, getByText } = render(<PreviewPanel html="" onClose={() => undefined} />);
     expect(container.querySelector("iframe")).toBeNull();
