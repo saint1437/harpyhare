@@ -18,6 +18,7 @@ import {
   openAudioPermissionSettings,
   retryTranscription,
   setWindowHeight,
+  showHtmlPreview,
 } from "@/ipc/commands";
 import { isTauri } from "@/ipc/env";
 import { onEvent } from "@/ipc/events";
@@ -149,6 +150,12 @@ export default function App() {
     void retryTranscription();
   };
 
+  const openPreview = useCallback((code: string) => {
+    showHtmlPreview(code, true).catch((e: unknown) => {
+      setSttError(`Превью: ${String(e)}`);
+    });
+  }, []);
+
   const partial = activeStreaming ? (stream.partial[activeId] ?? "") : null;
 
   return (
@@ -214,6 +221,7 @@ export default function App() {
           const last = [...active.messages].reverse().find((m) => m.role === "assistant");
           if (last) void navigator.clipboard.writeText(last.text);
         }}
+        onOpenPreview={openPreview}
       />
 
       <HotkeyHints hotkey={settings.hotkey} />

@@ -83,6 +83,12 @@ export async function getPreviewHtml(): Promise<string> {
   return invoke<string>("get_preview_html");
 }
 
+/** Показывает HTML в окне превью (создаёт или переиспользует). focus — отдать ли окну фокус. */
+export async function showHtmlPreview(html: string, focus: boolean): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("show_html_preview", { html, focus });
+}
+
 /** Закрывает текущее окно — для ✕/Esc внутри окна превью. */
 export async function closePreviewWindow(): Promise<void> {
   if (!isTauri()) return;

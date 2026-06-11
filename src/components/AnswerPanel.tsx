@@ -1,8 +1,9 @@
 import { ChevronRight } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { isValidElement, useEffect, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
-import Markdown from "react-markdown";
+import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { HtmlBlockChip } from "@/components/HtmlBlockChip";
 import { openExternal } from "@/ipc/commands";
 import type { ChatMessage } from "@/lib/chats";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,8 @@ export interface AnswerPanelProps {
   expanded: boolean;
   onToggle: () => void;
   onCopy: () => void;
+  /** Открыть HTML-блок в окне превью (ошибки обрабатывает владелец). */
+  onOpenPreview: (code: string) => void;
 }
 
 const markdownComponents = {
@@ -32,10 +35,33 @@ const markdownComponents = {
   ),
 };
 
-function Assistant({ text }: { text: string }) {
+/** ```html-блок → чип превью; остальные языки — обычный <pre>.
+ *  Семантика «что считается html-блоком» должна оставаться согласованной
+ *  с lib/html-blocks.ts (автооткрытие): line-start ```html без инфо-строки. */
+function makePre(onOpenPreview: (code: string) => void) {
+  return function PreBlock({ children }: { children?: ReactNode }) {
+    const code = isValidElement<{ className?: string; children?: ReactNode }>(children)
+      ? children
+      : null;
+    const text = code?.props.children;
+    if (code && /\blanguage-html\b/i.test(code.props.className ?? "") && typeof text === "string") {
+      return (
+        <HtmlBlockChip
+          code={text}
+          onOpen={() => {
+            onOpenPreview(text);
+          }}
+        />
+      );
+    }
+    return <pre>{children}</pre>;
+  };
+}
+
+function Assistant({ text, components }: { text: string; components: Components }) {
   return (
     <div className="prose-answer text-[13.5px] leading-relaxed text-foreground/90">
-      <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+      <Markdown remarkPlugins={[remarkGfm]} components={components}>
         {text}
       </Markdown>
     </div>
@@ -49,6 +75,7 @@ export function AnswerPanel({
   expanded,
   onToggle,
   onCopy,
+  onOpenPreview,
 }: AnswerPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -57,6 +84,11 @@ export function AnswerPanel({
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, partial, expanded]);
+
+  const components = useMemo<Components>(
+    () => ({ ...markdownComponents, pre: makePre(onOpenPreview) }),
+    [onOpenPreview],
+  );
 
   const empty = messages.length === 0 && !partial;
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
@@ -106,10 +138,12 @@ export function AnswerPanel({
                     {m.text}
                   </div>
                 ) : (
-                  <Assistant key={i} text={m.text} />
+                  <Assistant key={i} text={m.text} components={components} />
                 ),
               )}
-              {partial !== null && partial !== "" && <Assistant text={partial} />}
+              {partial !== null && partial !== "" && (
+                <Assistant text={partial} components={components} />
+              )}
             </>
           )}
         </div>
