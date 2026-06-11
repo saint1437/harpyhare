@@ -22,6 +22,7 @@
         "decorations": false,
         "alwaysOnTop": true,
         "visibleOnAllWorkspaces": true,
+        "contentProtected": true,
         "minWidth": 480,
         "minHeight": 240
       },
@@ -37,6 +38,7 @@
         "transparent": true,
         "resizable": false,
         "skipTaskbar": true,
+        "contentProtected": true,
         "visible": false,
         "visibleOnAllWorkspaces": true,
         "focus": false,
