@@ -120,6 +120,7 @@ pub fn run() {
             let stt = stt::GroqStt::new(settings.groq_api_key.clone());
             let llm = llm::AnthropicClient::new(settings.anthropic_api_key.clone());
             let hotkey = settings.hotkey.clone();
+            let toggle_hotkey = settings.toggle_hotkey.clone();
 
             app.manage(App {
                 settings: Mutex::new(settings),
@@ -136,6 +137,9 @@ pub fn run() {
 
             if let Err(e) = hotkey::register_ptt(handle, &hotkey) {
                 eprintln!("не удалось зарегистрировать PTT-хоткей {hotkey:?}: {e}");
+            }
+            if let Err(e) = hotkey::register_toggle(handle, &toggle_hotkey) {
+                eprintln!("не удалось зарегистрировать toggle-хоткей {toggle_hotkey:?}: {e}");
             }
             Ok(())
         })
@@ -219,6 +223,20 @@ pub fn on_cancel(app: &AppHandle) {
         }
         hotkey::unregister_esc(app);
         emit_state(app, state::RecorderState::Idle);
+    }
+}
+
+/// Тоггл видимости главного окна по глобальному хоткею. Деферится из обработчика
+/// шортката (инвариант hotkey.rs), поэтому выполняется уже после освобождения
+/// мьютекса реестра плагина.
+pub fn on_toggle_visibility(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        if w.is_visible().unwrap_or(true) {
+            let _ = w.hide();
+        } else {
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
     }
 }
 
@@ -403,6 +421,10 @@ fn set_settings(app: AppHandle, mut new_settings: settings::Settings) -> Result<
     if old.hotkey != new_settings.hotkey {
         hotkey::register_ptt(&app, &new_settings.hotkey)?;
         hotkey::unregister_ptt(&app, &old.hotkey);
+    }
+    if old.toggle_hotkey != new_settings.toggle_hotkey {
+        hotkey::register_toggle(&app, &new_settings.toggle_hotkey)?;
+        hotkey::unregister_toggle(&app, &old.toggle_hotkey);
     }
     if old.groq_api_key != new_settings.groq_api_key {
         *st.stt.lock().unwrap() = stt::GroqStt::new(new_settings.groq_api_key.clone());

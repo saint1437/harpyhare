@@ -55,6 +55,27 @@ pub fn unregister_ptt(app: &AppHandle, hotkey: &str) {
     }
 }
 
+/// Регистрирует глобальный хоткей скрытия/показа окна: Pressed -> [`crate::on_toggle_visibility`].
+/// Обработчик деферится (см. [`defer`]) — однократное действие на нажатие.
+pub fn register_toggle(app: &AppHandle, hotkey: &str) -> Result<(), String> {
+    let shortcut =
+        parse_hotkey(hotkey).ok_or_else(|| format!("Не удалось разобрать хоткей: {hotkey:?}"))?;
+    app.global_shortcut()
+        .on_shortcut(shortcut, |app, _shortcut, event| {
+            if event.state == ShortcutState::Pressed {
+                defer(app, crate::on_toggle_visibility);
+            }
+        })
+        .map_err(|e| e.to_string())
+}
+
+/// Снимает регистрацию хоткея скрытия/показа. Ошибки глотаем (как `unregister_ptt`).
+pub fn unregister_toggle(app: &AppHandle, hotkey: &str) {
+    if let Some(shortcut) = parse_hotkey(hotkey) {
+        let _ = app.global_shortcut().unregister(shortcut);
+    }
+}
+
 /// Регистрирует Escape на время записи: Pressed -> [`crate::on_cancel`].
 /// Обработчик деферится по той же причине (см. [`defer`]): on_cancel зовёт
 /// unregister_esc — под локом плагина это был бы дедлок.
