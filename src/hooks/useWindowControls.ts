@@ -3,12 +3,26 @@ import { moveWindowBy } from "@/ipc/commands";
 import { moveDelta } from "@/lib/window-controls";
 
 /**
- * Cmd/Ctrl+стрелки → move_window_by. Cmd+Enter обрабатывает App (для send),
- * поэтому здесь Enter тоже ловим и зовём onSend.
+ * Cmd/Ctrl+стрелки → move_window_by. Cmd+Enter → onSend.
+ * Cmd+Shift+= / Cmd+Shift+- → onOpacityStep(±1) (прозрачность при фокусе HUD).
  */
-export function useWindowControls(moveStep: number, onSend: () => void): void {
+export function useWindowControls(
+  moveStep: number,
+  onSend: () => void,
+  onOpacityStep: (dir: 1 | -1) => void,
+): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey && e.shiftKey && e.code === "Equal") {
+        e.preventDefault();
+        onOpacityStep(1);
+        return;
+      }
+      if (e.metaKey && e.shiftKey && e.code === "Minus") {
+        e.preventDefault();
+        onOpacityStep(-1);
+        return;
+      }
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.code === "Enter") {
         e.preventDefault();
@@ -25,5 +39,5 @@ export function useWindowControls(moveStep: number, onSend: () => void): void {
     return () => {
       document.removeEventListener("keydown", onKey);
     };
-  }, [moveStep, onSend]);
+  }, [moveStep, onSend, onOpacityStep]);
 }

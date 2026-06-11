@@ -29,7 +29,7 @@ const COMPACT_HEIGHT = 290;
 const FULL_HEIGHT = 660;
 
 export default function App() {
-  const { settings, save } = useSettings();
+  const { settings, save, bumpOpacity } = useSettings();
   const state = useRecorder();
   const chats = useChats();
   const stream = useClaudeStream(chats.appendAssistantMessage);
@@ -122,7 +122,7 @@ export default function App() {
     }
   }, [state]);
 
-  useWindowControls(settings.move_step, doSend);
+  useWindowControls(settings.move_step, doSend, bumpOpacity);
   usePttSuspend();
 
   useEffect(() => {
