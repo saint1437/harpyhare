@@ -1,4 +1,3 @@
-import { ChevronRight } from "lucide-react";
 import { isValidElement, useEffect, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
@@ -6,17 +5,14 @@ import remarkGfm from "remark-gfm";
 import { HtmlBlockChip } from "@/components/HtmlBlockChip";
 import { openExternal } from "@/ipc/commands";
 import type { ChatMessage } from "@/lib/chats";
-import { cn } from "@/lib/utils";
 
 export interface AnswerPanelProps {
   messages: ChatMessage[];
   /** Текущий in-flight ответ (если идёт стрим активного чата), иначе null. */
   partial: string | null;
   streaming: boolean;
-  expanded: boolean;
-  onToggle: () => void;
   onCopy: () => void;
-  /** Открыть HTML-блок в окне превью (ошибки обрабатывает владелец). */
+  /** Открыть HTML-блок во встроенной панели превью (ошибки обрабатывает владелец). */
   onOpenPreview: (code: string) => void;
 }
 
@@ -76,18 +72,16 @@ export function AnswerPanel({
   messages,
   partial,
   streaming,
-  expanded,
-  onToggle,
   onCopy,
   onOpenPreview,
 }: AnswerPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (expanded && scrollRef.current) {
+    if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, partial, expanded]);
+  }, [messages, partial]);
 
   const components = useMemo<Components>(
     () => ({ ...markdownComponents, pre: makePre(onOpenPreview) }),
@@ -96,20 +90,12 @@ export function AnswerPanel({
 
   const empty = messages.length === 0 && !partial;
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-  const canCopy = expanded && !streaming && lastAssistant !== undefined;
+  const canCopy = !streaming && lastAssistant !== undefined;
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex items-center gap-2.5">
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={expanded}
-          className="flex items-center gap-1 font-mono text-[11px] tracking-wider text-primary uppercase hover:brightness-125"
-        >
-          <ChevronRight className={cn("size-3.5 transition-transform", expanded && "rotate-90")} />
-          Диалог
-        </button>
+        <span className="font-mono text-[11px] tracking-wider text-primary uppercase">Чат</span>
         <span
           className="h-px flex-1 bg-gradient-to-r from-primary/40 via-border to-transparent"
           aria-hidden
@@ -125,33 +111,31 @@ export function AnswerPanel({
         )}
       </div>
 
-      {expanded && (
-        <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1.5">
-          {empty ? (
-            <div className="grid h-full place-items-center">
-              <span className="text-[13px] text-muted-foreground">Диалог появится здесь</span>
-            </div>
-          ) : (
-            <>
-              {messages.map((m, i) =>
-                m.role === "user" ? (
-                  <div
-                    key={i}
-                    className="max-w-[85%] self-end rounded-lg bg-white/5 px-3 py-1.5 text-[13px] break-words whitespace-pre-wrap text-foreground/80"
-                  >
-                    {m.text}
-                  </div>
-                ) : (
-                  <Assistant key={i} text={m.text} components={components} />
-                ),
-              )}
-              {partial !== null && partial !== "" && (
-                <Assistant text={partial} components={components} />
-              )}
-            </>
-          )}
-        </div>
-      )}
+      <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1.5">
+        {empty ? (
+          <div className="grid h-full place-items-center">
+            <span className="text-[13px] text-muted-foreground">Чат появится здесь</span>
+          </div>
+        ) : (
+          <>
+            {messages.map((m, i) =>
+              m.role === "user" ? (
+                <div
+                  key={i}
+                  className="max-w-[85%] self-end rounded-lg bg-white/5 px-3 py-1.5 text-[13px] break-words whitespace-pre-wrap text-foreground/80"
+                >
+                  {m.text}
+                </div>
+              ) : (
+                <Assistant key={i} text={m.text} components={components} />
+              ),
+            )}
+            {partial !== null && partial !== "" && (
+              <Assistant text={partial} components={components} />
+            )}
+          </>
+        )}
+      </div>
     </section>
   );
 }

@@ -1,27 +1,16 @@
 import { X } from "lucide-react";
-import { useEffect } from "react";
-import { usePreviewHtml } from "@/hooks/usePreviewHtml";
-import { closePreviewWindow } from "@/ipc/commands";
 
-/** Окно HTML-превью (label "preview"): шапка с drag-зоной + sandbox-iframe.
- *  JS внутри HTML выполняется, но без allow-same-origin iframe изолирован
- *  от приложения и его IPC. */
-export default function PreviewApp() {
-  const html = usePreviewHtml();
+export interface PreviewPanelProps {
+  html: string;
+  onClose: () => void;
+}
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") void closePreviewWindow();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-    };
-  }, []);
-
+/** Встроенная панель HTML-превью (правая колонка окна). JS внутри HTML выполняется,
+ *  но без allow-same-origin iframe изолирован от приложения и его IPC. */
+export function PreviewPanel({ html, onClose }: PreviewPanelProps) {
   return (
-    <div className="app-shell flex h-screen flex-col gap-2 overflow-hidden rounded-[22px] p-3">
-      <header data-tauri-drag-region className="flex items-center gap-2.5">
+    <aside className="flex w-[380px] flex-col gap-2">
+      <header className="flex items-center gap-2.5">
         <span className="font-mono text-[11px] tracking-wider text-primary uppercase">Превью</span>
         <span
           className="h-px flex-1 bg-gradient-to-r from-primary/40 via-border to-transparent"
@@ -37,7 +26,7 @@ export default function PreviewApp() {
         <button
           type="button"
           aria-label="Закрыть"
-          onClick={() => void closePreviewWindow()}
+          onClick={onClose}
           className="text-muted-foreground transition-colors hover:text-foreground"
         >
           <X className="size-3.5" />
@@ -55,6 +44,6 @@ export default function PreviewApp() {
           className="min-h-0 flex-1 rounded-[12px] border-0 bg-white"
         />
       )}
-    </div>
+    </aside>
   );
 }

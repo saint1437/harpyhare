@@ -4,6 +4,7 @@ import { ChatTabs } from "@/components/ChatTabs";
 import { Composer } from "@/components/Composer";
 import { HotkeyHints } from "@/components/HotkeyHints";
 import { PermissionBanner } from "@/components/PermissionBanner";
+import { PreviewPanel } from "@/components/PreviewPanel";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { StatusBar } from "@/components/StatusBar";
 import { useChats } from "@/hooks/useChats";
@@ -17,8 +18,7 @@ import {
   captureAvailable,
   openAudioPermissionSettings,
   retryTranscription,
-  setWindowHeight,
-  showHtmlPreview,
+  setWindowWidth,
 } from "@/ipc/commands";
 import { isTauri } from "@/ipc/env";
 import { onEvent } from "@/ipc/events";
@@ -27,8 +27,11 @@ import { extractHtmlBlocks } from "@/lib/html-blocks";
 
 const RETRYABLE = /перегружен|соединение|VPN|интернет|оборван/i;
 
-const COMPACT_HEIGHT = 290;
-const FULL_HEIGHT = 660;
+// Ширина окна: базовая (превью закрыто) и расширенная (превью справа). Прирост =
+// ширина панели (380) + зазор между колонками (gap-3 = 12px), чтобы левая колонка
+// оставалась пиксельно неподвижной. Числа правятся позже.
+const BASE_WIDTH = 760;
+const OPEN_WIDTH = 1152;
 
 export default function App() {
   const { settings, save, bumpOpacity } = useSettings();
@@ -39,7 +42,8 @@ export default function App() {
   const [showRetry, setShowRetry] = useState(false);
   const [permissionOk, setPermissionOk] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [answerOpen, setAnswerOpen] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // Свежие значения для стабильных колбэков (PTT/транскрипция/подписки).
   const settingsRef = useRef(settings);
@@ -47,20 +51,25 @@ export default function App() {
   const chatsRef = useRef(chats);
   chatsRef.current = chats;
 
-  // llm-done: дописать ответ в историю; если включено автопревью, чат активен
-  // и в ответе есть ```html — показать последний блок (без кражи фокуса у HUD).
-  const onAssistantDone = useCallback((chatId: string, text: string) => {
-    chatsRef.current.appendAssistantMessage(chatId, text);
-    if (!settingsRef.current.auto_preview_html) return;
-    if (chatId !== chatsRef.current.activeId) return;
-    const blocks = extractHtmlBlocks(text);
-    const last = blocks[blocks.length - 1];
-    if (last !== undefined) {
-      showHtmlPreview(last, false).catch((e: unknown) => {
-        setSttError(`Превью: ${String(e)}`);
-      });
-    }
+  // Открыть встроенную панель превью с данным HTML.
+  const openPreview = useCallback((code: string) => {
+    setPreviewHtml(code);
+    setPreviewOpen(true);
   }, []);
+
+  // llm-done: дописать ответ в историю; если включено автопревью, чат активен
+  // и в ответе есть ```html — открыть панель с последним блоком.
+  const onAssistantDone = useCallback(
+    (chatId: string, text: string) => {
+      chatsRef.current.appendAssistantMessage(chatId, text);
+      if (!settingsRef.current.auto_preview_html) return;
+      if (chatId !== chatsRef.current.activeId) return;
+      const blocks = extractHtmlBlocks(text);
+      const last = blocks[blocks.length - 1];
+      if (last !== undefined) openPreview(last);
+    },
+    [openPreview],
+  );
 
   const stream = useClaudeStream(onAssistantDone);
   const streamRef = useRef(stream);
@@ -92,24 +101,10 @@ export default function App() {
     dispatchSend(chatsRef.current.active.draft);
   }, [dispatchSend]);
 
-  // Авто-раскрытие при появлении контента в активном чате (стрим/история).
-  const hasContent = active.messages.length > 0 || activeStreaming;
-  const prevEmpty = useRef(true);
+  // Ширина окна следует за состоянием панели превью (расширяется вправо).
   useEffect(() => {
-    if (hasContent && prevEmpty.current) setAnswerOpen(true);
-    prevEmpty.current = !hasContent;
-  }, [hasContent]);
-
-  // При переключении чата панель раскрыта, если в нём есть переписка.
-  useEffect(() => {
-    setAnswerOpen(active.messages.length > 0 || !!stream.streaming[activeId]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId]);
-
-  // Высота окна следует за состоянием панели.
-  useEffect(() => {
-    void setWindowHeight(answerOpen ? FULL_HEIGHT : COMPACT_HEIGHT);
-  }, [answerOpen]);
+    void setWindowWidth(previewOpen ? OPEN_WIDTH : BASE_WIDTH);
+  }, [previewOpen]);
 
   useTranscription(
     useCallback(
@@ -167,81 +162,82 @@ export default function App() {
     void retryTranscription();
   };
 
-  const openPreview = useCallback((code: string) => {
-    showHtmlPreview(code, true).catch((e: unknown) => {
-      setSttError(`Превью: ${String(e)}`);
-    });
-  }, []);
-
   const partial = activeStreaming ? (stream.partial[activeId] ?? "") : null;
 
   return (
-    <div className="app-shell relative flex h-screen flex-col gap-3 overflow-hidden rounded-[22px] p-4">
-      {!permissionOk && (
-        <PermissionBanner onOpenSettings={() => void openAudioPermissionSettings()} />
+    <div className="app-shell relative flex h-screen gap-3 overflow-hidden rounded-[22px] p-4">
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        {!permissionOk && (
+          <PermissionBanner onOpenSettings={() => void openAudioPermissionSettings()} />
+        )}
+
+        <StatusBar
+          state={state}
+          error={error}
+          hotkey={settings.hotkey}
+          onOpenSettings={() => {
+            setSettingsOpen(true);
+          }}
+          tabs={
+            <ChatTabs
+              chats={chats.chats}
+              activeId={activeId}
+              streaming={stream.streaming}
+              onSelect={chats.selectChat}
+              onRemove={(id) => {
+                stream.stop(id); // отменяем фоновый стрим удаляемого чата
+                chats.removeChat(id);
+              }}
+              onNew={chats.newChat}
+            />
+          }
+        />
+
+        <AnswerPanel
+          messages={active.messages}
+          partial={partial}
+          streaming={activeStreaming}
+          onCopy={() => {
+            const last = [...active.messages].reverse().find((m) => m.role === "assistant");
+            if (last) void navigator.clipboard.writeText(last.text);
+          }}
+          onOpenPreview={openPreview}
+        />
+
+        <Composer
+          value={active.draft}
+          onChange={(v) => {
+            chats.setDraft(activeId, v, active.draftAttachments);
+          }}
+          attachments={active.draftAttachments}
+          onRemoveAttachment={(i) => {
+            chats.removeDraftAttachment(activeId, i);
+          }}
+          onPaste={(items) => void chats.addDraftAttachments(activeId, items)}
+          onSend={doSend}
+          onStop={() => {
+            stream.stop(activeId);
+          }}
+          onClear={() => {
+            chats.setDraft(activeId, "", []);
+          }}
+          onRetry={onRetry}
+          hotkey={settings.hotkey}
+          streaming={activeStreaming}
+          showRetry={showRetry}
+        />
+
+        <HotkeyHints hotkey={settings.hotkey} />
+      </div>
+
+      {previewOpen && (
+        <PreviewPanel
+          html={previewHtml}
+          onClose={() => {
+            setPreviewOpen(false);
+          }}
+        />
       )}
-
-      <StatusBar
-        state={state}
-        error={error}
-        hotkey={settings.hotkey}
-        onOpenSettings={() => {
-          setSettingsOpen(true);
-        }}
-        tabs={
-          <ChatTabs
-            chats={chats.chats}
-            activeId={activeId}
-            streaming={stream.streaming}
-            onSelect={chats.selectChat}
-            onRemove={(id) => {
-              stream.stop(id); // отменяем фоновый стрим удаляемого чата (иначе запрос дорабатывает впустую)
-              chats.removeChat(id);
-            }}
-            onNew={chats.newChat}
-          />
-        }
-      />
-
-      <Composer
-        value={active.draft}
-        onChange={(v) => {
-          chats.setDraft(activeId, v, active.draftAttachments);
-        }}
-        attachments={active.draftAttachments}
-        onRemoveAttachment={(i) => {
-          chats.removeDraftAttachment(activeId, i);
-        }}
-        onPaste={(items) => void chats.addDraftAttachments(activeId, items)}
-        onSend={doSend}
-        onStop={() => {
-          stream.stop(activeId);
-        }}
-        onClear={() => {
-          chats.setDraft(activeId, "", []);
-        }}
-        onRetry={onRetry}
-        hotkey={settings.hotkey}
-        streaming={activeStreaming}
-        showRetry={showRetry}
-      />
-
-      <AnswerPanel
-        messages={active.messages}
-        partial={partial}
-        streaming={activeStreaming}
-        expanded={answerOpen}
-        onToggle={() => {
-          setAnswerOpen((o) => !o);
-        }}
-        onCopy={() => {
-          const last = [...active.messages].reverse().find((m) => m.role === "assistant");
-          if (last) void navigator.clipboard.writeText(last.text);
-        }}
-        onOpenPreview={openPreview}
-      />
-
-      <HotkeyHints hotkey={settings.hotkey} />
 
       <SettingsDialog
         open={settingsOpen}
