@@ -158,6 +158,7 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
                     onChange={(e) => {
                       updatePreset(i, { text: e.target.value });
                     }}
+                    className="field-sizing-fixed max-h-32 overflow-y-auto"
                   />
                 </div>
               ))}

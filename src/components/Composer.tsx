@@ -92,7 +92,7 @@ export function Composer(props: ComposerProps) {
           <SelectTrigger className="h-8 w-[140px] text-[12px]">
             <SelectValue placeholder="Препромпт" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent position="popper">
             <SelectItem value="none">Без препромпта</SelectItem>
             {props.presets.map((p) => (
               <SelectItem key={p.id} value={p.id}>
