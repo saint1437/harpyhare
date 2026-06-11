@@ -3,6 +3,7 @@ pub mod capture;
 pub mod chats;
 pub mod hotkey;
 pub mod llm;
+pub mod preview_protocol;
 pub mod settings;
 pub mod state;
 pub mod stt;
@@ -32,6 +33,7 @@ pub struct App {
     pub llm: Mutex<llm::AnthropicClient>,
     pub recording_gen: AtomicU64,
     pub resize_gen: AtomicU64,
+    pub preview_html: Mutex<String>,
 }
 
 fn settings_path(app: &AppHandle) -> std::path::PathBuf {
@@ -75,6 +77,16 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .register_uri_scheme_protocol("preview", |ctx, _request| {
+            let html = ctx
+                .app_handle()
+                .state::<App>()
+                .preview_html
+                .lock()
+                .unwrap()
+                .clone();
+            preview_protocol::preview_response(&html)
+        })
         .setup(|app| {
             let handle = app.handle();
             // .env в корне проекта. dotenvy::dotenv() ищет вверх от cwd (работает в dev),
@@ -119,6 +131,7 @@ pub fn run() {
                 llm: Mutex::new(llm),
                 recording_gen: AtomicU64::new(0),
                 resize_gen: AtomicU64::new(0),
+                preview_html: Mutex::new(String::new()),
             });
 
             if let Err(e) = hotkey::register_ptt(handle, &hotkey) {
@@ -140,6 +153,7 @@ pub fn run() {
             open_audio_permission_settings,
             open_external,
             capture_available,
+            set_preview_html,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -503,4 +517,10 @@ fn open_external(url: String) {
 #[tauri::command]
 fn capture_available(app: AppHandle) -> bool {
     app.state::<App>().capture.lock().unwrap().is_some()
+}
+
+/// Сохраняет HTML, который отдаст кастомная схема preview:// при следующем запросе.
+#[tauri::command]
+fn set_preview_html(app: AppHandle, html: String) {
+    *app.state::<App>().preview_html.lock().unwrap() = html;
 }
