@@ -30,17 +30,35 @@ export default function App() {
   const [permissionOk, setPermissionOk] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  // Свежие значения для стабильных колбэков — чтобы send-логика и подписки
+  // не пересоздавались на каждый keystroke/вставку (и не было окна переподписки).
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const textRef = useRef(text);
+  textRef.current = text;
+  const attachmentsRef = useRef(attach.attachments);
+  attachmentsRef.current = attach.attachments;
+  const streamingRef = useRef(stream.streaming);
+  streamingRef.current = stream.streaming;
 
   const error = sttError ?? stream.error;
 
-  const doSend = useCallback(() => {
-    if (stream.streaming) return;
-    if (text.trim() === "" && attach.attachments.length === 0) return;
-    setSttError(null);
-    void stream.send(text, attach.attachments.map((a) => a.payload));
-  }, [stream, text, attach.attachments]);
+  // Единая точка отправки: и ручной ⌘⏎/«Отправить», и авто-send после распознавания.
+  // stream.send стабилен (useCallback внутри хука), поэтому dispatchSend тоже стабилен.
+  const send = stream.send;
+  const dispatchSend = useCallback(
+    (raw: string) => {
+      if (streamingRef.current) return; // не шлём поверх активного стрима
+      const trimmed = raw.trim();
+      const images = attachmentsRef.current.map((a) => a.payload);
+      if (trimmed === "" && images.length === 0) return;
+      setSttError(null);
+      void send(trimmed, images);
+    },
+    [send],
+  );
+
+  const doSend = useCallback(() => dispatchSend(textRef.current), [dispatchSend]);
 
   useTranscription(
     useCallback(
@@ -48,11 +66,9 @@ export default function App() {
         setText(incoming);
         setSttError(null);
         setShowRetry(false);
-        if (settingsRef.current.auto_send) {
-          void stream.send(incoming, attach.attachments.map((a) => a.payload));
-        }
+        if (settingsRef.current.auto_send) dispatchSend(incoming);
       },
-      [stream, attach.attachments],
+      [dispatchSend],
     ),
   );
 
