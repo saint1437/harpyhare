@@ -1,7 +1,0 @@
-{
-  "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "preview",
-  "description": "Минимальные права окна HTML-превью",
-  "windows": ["preview"],
-  "permissions": ["core:default", "core:window:allow-close", "core:window:allow-start-dragging"]
-}
