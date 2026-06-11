@@ -20,6 +20,10 @@ import {
 
 const SAVE_DEBOUNCE_MS = 500;
 
+// Стабильная заглушка на короткое окно до завершения первичной загрузки с диска,
+// чтобы вызывающие никогда не получали undefined вместо активного чата.
+const EMPTY_CHAT: Chat = { id: "", title: "", messages: [], draft: "", draftAttachments: [] };
+
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const fr = new FileReader();
@@ -195,9 +199,6 @@ export function useChats(): ChatsApi {
     [patch],
   );
 
-  // chats may be empty before first load — provide a stable fallback so callers
-  // never receive undefined (though they should always await load first).
-  const EMPTY_CHAT: Chat = { id: "", title: "", messages: [], draft: "", draftAttachments: [] };
   const active = chats.find((c) => c.id === effectiveActiveId) ?? chats[0] ?? EMPTY_CHAT;
 
   return {
