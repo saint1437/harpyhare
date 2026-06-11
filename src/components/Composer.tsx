@@ -65,18 +65,13 @@ export function Composer(props: ComposerProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={props.onClear}>
+        <Button variant="ghost" size="sm" className="w-[120px]" onClick={props.onClear}>
           Очистить
         </Button>
         <div className="flex-1" />
         {props.showRetry && (
-          <Button variant="ghost" size="sm" onClick={props.onRetry}>
+          <Button variant="ghost" size="sm" className="w-[120px]" onClick={props.onRetry}>
             Повторить
-          </Button>
-        )}
-        {props.streaming && (
-          <Button variant="destructive" size="sm" onClick={props.onStop}>
-            Стоп
           </Button>
         )}
         <Select
@@ -89,7 +84,7 @@ export function Composer(props: ComposerProps) {
             props.onPresetChange(v === "none" ? "" : v);
           }}
         >
-          <SelectTrigger className="h-8 w-[140px] text-[12px]">
+          <SelectTrigger className="h-8 w-[120px] text-[12px]">
             <SelectValue placeholder="Препромпт" />
           </SelectTrigger>
           <SelectContent position="popper">
@@ -101,9 +96,13 @@ export function Composer(props: ComposerProps) {
             ))}
           </SelectContent>
         </Select>
-        <Button onClick={props.onSend} disabled={props.streaming}>
-          Отправить{" "}
-          <kbd className="ml-1.5 rounded bg-black/20 px-1.5 py-0.5 font-mono text-[10.5px]">⌘⏎</kbd>
+        {props.streaming && (
+          <Button variant="destructive" size="sm" className="w-[120px]" onClick={props.onStop}>
+            Стоп
+          </Button>
+        )}
+        <Button size="sm" className="w-[120px]" onClick={props.onSend} disabled={props.streaming}>
+          Отправить
         </Button>
       </div>
     </section>
