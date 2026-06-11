@@ -37,14 +37,18 @@ const markdownComponents = {
 
 /** ```html-блок → чип превью; остальные языки — обычный <pre>.
  *  Семантика «что считается html-блоком» должна оставаться согласованной
- *  с lib/html-blocks.ts (автооткрытие): line-start ```html без инфо-строки. */
+ *  с lib/html-blocks.ts (автооткрытие): line-start ```html без инфо-строки.
+ *  Точное сравнение токена класса — чтобы language-html-template и т.п. не матчились. */
 function makePre(onOpenPreview: (code: string) => void) {
   return function PreBlock({ children }: { children?: ReactNode }) {
     const code = isValidElement<{ className?: string; children?: ReactNode }>(children)
       ? children
       : null;
     const text = code?.props.children;
-    if (code && /\blanguage-html\b/i.test(code.props.className ?? "") && typeof text === "string") {
+    const isHtml = (code?.props.className ?? "")
+      .split(/\s+/)
+      .some((c) => c.toLowerCase() === "language-html");
+    if (code && isHtml && typeof text === "string") {
       return (
         <HtmlBlockChip
           code={text}
