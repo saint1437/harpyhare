@@ -51,10 +51,15 @@ npm run tauri build    # production-сборка (.app + .dmg)
 
 Файл создаётся с правами 600 (читает только текущий пользователь).
 
+## Стек
+
+- **Frontend:** React 19 + Vite + TypeScript + Tailwind v4 + shadcn/ui + react-markdown. Слои: `src/ipc` (типизированная граница над Tauri — единственное место, знающее про invoke/listen), `src/lib` (чистая логика), `src/hooks` (по хуку на слайс контракта), `src/components` (на shadcn-примитивах).
+- **Backend:** Rust (Tauri 2) — захват системного звука (Core Audio process tap), Groq STT, стрим Anthropic.
+
 ## Тесты
 
 ```bash
-# Frontend (TypeScript)
+# Frontend (TypeScript): чистая логика + хуки
 npx vitest run
 
 # Rust (unit-тесты)
