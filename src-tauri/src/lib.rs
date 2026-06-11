@@ -144,17 +144,10 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-// --- Эмиссия состояния + управление оверлеем ---------------------------------
+// --- Эмиссия состояния --------------------------------------------------------
 
 fn emit_state(app: &AppHandle, s: state::RecorderState) {
     let _ = app.emit("state-changed", s);
-    if let Some(w) = app.get_webview_window("overlay") {
-        let _ = if s == state::RecorderState::Recording {
-            w.show()
-        } else {
-            w.hide()
-        };
-    }
 }
 
 // --- Обработчики хоткеев -------------------------------------------------------

@@ -11,14 +11,7 @@ export default defineConfig(async () => ({
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
   },
-  build: {
-    rollupOptions: {
-      input: {
-        main: "index.html",
-        overlay: "overlay.html",
-      },
-    },
-  },
+  build: {},
   clearScreen: false,
   server: {
     port: 1420,

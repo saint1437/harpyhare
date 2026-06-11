@@ -25,24 +25,6 @@
         "contentProtected": true,
         "minWidth": 480,
         "minHeight": 240
-      },
-      {
-        "label": "overlay",
-        "url": "overlay.html",
-        "width": 140,
-        "height": 36,
-        "x": 1280,
-        "y": 8,
-        "alwaysOnTop": true,
-        "decorations": false,
-        "transparent": true,
-        "resizable": false,
-        "skipTaskbar": true,
-        "contentProtected": true,
-        "visible": false,
-        "visibleOnAllWorkspaces": true,
-        "focus": false,
-        "acceptFirstMouse": false
       }
     ],
     "security": {
