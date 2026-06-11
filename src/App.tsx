@@ -188,6 +188,7 @@ export default function App() {
                 stream.stop(id); // отменяем фоновый стрим удаляемого чата
                 chats.removeChat(id);
               }}
+              onRename={chats.renameChat}
               onNew={chats.newChat}
             />
           }

@@ -22,7 +22,14 @@ const SAVE_DEBOUNCE_MS = 500;
 
 // Стабильная заглушка на короткое окно до завершения первичной загрузки с диска,
 // чтобы вызывающие никогда не получали undefined вместо активного чата.
-const EMPTY_CHAT: Chat = { id: "", title: "", messages: [], draft: "", draftAttachments: [] };
+const EMPTY_CHAT: Chat = {
+  id: "",
+  title: "",
+  messages: [],
+  draft: "",
+  draftAttachments: [],
+  titlePinned: false,
+};
 
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -61,6 +68,7 @@ export interface ChatsApi {
   active: Chat;
   newChat: () => void;
   removeChat: (id: string) => void;
+  renameChat: (id: string, title: string) => void;
   selectChat: (id: string) => void;
   setDraft: (id: string, draft: string, draftAttachments: Attachment[]) => void;
   addDraftAttachments: (id: string, items: DataTransferItemList) => Promise<void>;
@@ -136,6 +144,15 @@ export function useChats(): ChatsApi {
     });
   }, []);
 
+  const renameChat = useCallback(
+    (id: string, title: string) => {
+      const t = title.trim();
+      if (t === "") return; // пустое имя — не применяем (оставляем текущее)
+      patch(id, (c) => ({ ...c, title: t, titlePinned: true }));
+    },
+    [patch],
+  );
+
   const selectChat = useCallback((id: string) => {
     setActiveId(id);
   }, []);
@@ -190,7 +207,7 @@ export function useChats(): ChatsApi {
         const isFirst = c.messages.length === 0;
         return {
           ...c,
-          title: isFirst ? chatTitle(text, i + 1) : c.title,
+          title: isFirst && !c.titlePinned ? chatTitle(text, i + 1) : c.title,
           messages: [...c.messages, { role: "user", text, images }],
           draft: "",
           draftAttachments: [],
@@ -217,6 +234,7 @@ export function useChats(): ChatsApi {
     active,
     newChat,
     removeChat,
+    renameChat,
     selectChat,
     setDraft,
     addDraftAttachments,

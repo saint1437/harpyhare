@@ -17,6 +17,8 @@ export interface Chat {
   messages: ChatMessage[];
   draft: string;
   draftAttachments: Attachment[];
+  /** Заголовок задан вручную (renameChat) — авто-заголовок из первого сообщения его не перезатирает. */
+  titlePinned: boolean;
 }
 
 function uid(): string {
@@ -24,7 +26,14 @@ function uid(): string {
 }
 
 export function createChat(index: number): Chat {
-  return { id: uid(), title: `Чат ${index}`, messages: [], draft: "", draftAttachments: [] };
+  return {
+    id: uid(),
+    title: `Чат ${index}`,
+    messages: [],
+    draft: "",
+    draftAttachments: [],
+    titlePinned: false,
+  };
 }
 
 /** Заголовок из первого вопроса (обрезка по TITLE_MAX) либо «Чат N». */
@@ -39,6 +48,7 @@ export function serializeChats(chats: Chat[]): string {
   const stripped = chats.map((c) => ({
     id: c.id,
     title: c.title,
+    titlePinned: c.titlePinned,
     messages: c.messages.map((m) => ({ role: m.role, text: m.text, images: [] })),
     draft: c.draft,
     draftAttachments: [],
@@ -61,6 +71,7 @@ export function deserializeChats(json: string): Chat[] | null {
     return {
       id: typeof o.id === "string" ? o.id : uid(),
       title: typeof o.title === "string" ? o.title : "Чат",
+      titlePinned: typeof o.titlePinned === "boolean" ? o.titlePinned : false,
       messages: Array.isArray(o.messages)
         ? o.messages.map((m) => ({
             role: m.role === "assistant" ? "assistant" : "user",

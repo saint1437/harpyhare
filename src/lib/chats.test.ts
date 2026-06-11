@@ -4,7 +4,15 @@ import { chatTitle, createChat, deserializeChats, serializeChats, type Chat } fr
 const img = { media_type: "image/png", data: "AAAA" };
 
 function chatWith(messages: Chat["messages"], extra: Partial<Chat> = {}): Chat {
-  return { id: "x", title: "Чат 1", messages, draft: "", draftAttachments: [], ...extra };
+  return {
+    id: "x",
+    title: "Чат 1",
+    messages,
+    draft: "",
+    draftAttachments: [],
+    titlePinned: false,
+    ...extra,
+  };
 }
 
 describe("createChat", () => {
@@ -73,5 +81,17 @@ describe("serialize/deserialize", () => {
 
   it("пустой массив → null (фронт создаст стартовый чат)", () => {
     expect(deserializeChats("[]")).toBeNull();
+  });
+
+  it("сохраняет titlePinned при round-trip", () => {
+    const chats = [chatWith([], { title: "Моё имя", titlePinned: true })];
+    const restored = deserializeChats(serializeChats(chats));
+    expect(restored?.[0]?.title).toBe("Моё имя");
+    expect(restored?.[0]?.titlePinned).toBe(true);
+  });
+
+  it("старый json без titlePinned → titlePinned=false", () => {
+    const restored = deserializeChats('[{"id":"a","title":"Чат 1","messages":[],"draft":""}]');
+    expect(restored?.[0]?.titlePinned).toBe(false);
   });
 });

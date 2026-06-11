@@ -83,6 +83,36 @@ describe("useChats", () => {
     expect(result.current.active.messages[1]?.text).toBe("ответ");
   });
 
+  it("renameChat меняет заголовок и закрепляет его (авто-заголовок не перезатирает)", async () => {
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(1);
+    });
+    const id = result.current.activeId;
+    act(() => {
+      result.current.renameChat(id, "Собес Acme");
+    });
+    expect(result.current.active.title).toBe("Собес Acme");
+    // первое сообщение после ручного имени НЕ перезатирает заголовок
+    act(() => {
+      result.current.appendUserMessage(id, "расскажи о себе", []);
+    });
+    expect(result.current.active.title).toBe("Собес Acme");
+  });
+
+  it("renameChat игнорирует пустое имя", async () => {
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(1);
+    });
+    const id = result.current.activeId;
+    const before = result.current.active.title;
+    act(() => {
+      result.current.renameChat(id, "   ");
+    });
+    expect(result.current.active.title).toBe(before);
+  });
+
   it("removeChat не даёт удалить последний и переключает активный", async () => {
     const { result } = renderHook(() => useChats());
     await waitFor(() => {
