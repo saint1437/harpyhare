@@ -15,16 +15,15 @@ export function useSettings(): SettingsApi {
 
   useEffect(() => {
     let live = true;
-    void (async () => {
-      try {
-        const s = await getSettings();
+    void getSettings()
+      .then((s) => {
         if (!live) return;
         setSettings(s);
         applyOpacity(document.documentElement, s.window_opacity);
-      } finally {
+      })
+      .finally(() => {
         if (live) setLoading(false);
-      }
-    })();
+      });
     return () => {
       live = false;
     };

@@ -25,10 +25,11 @@ export function Composer(props: ComposerProps) {
       <div className="rounded-xl bg-card/60 ring-1 ring-border transition-[box-shadow] ring-inset focus-within:ring-primary/50">
         <Textarea
           value={props.value}
-          onChange={(e) => props.onChange(e.target.value)}
+          onChange={(e) => {
+            props.onChange(e.target.value);
+          }}
           onPaste={(e) => {
-            const items = e.clipboardData?.items;
-            if (!items) return;
+            const items = e.clipboardData.items;
             // Гасим нативную вставку только если в буфере есть картинки —
             // текстовая вставка остаётся нативной (строгий паритет со старым кодом).
             if (extractImageItems(items).length > 0) e.preventDefault();
@@ -44,7 +45,9 @@ export function Composer(props: ComposerProps) {
               <AttachmentChip
                 key={att.preview}
                 attachment={att}
-                onRemove={() => props.onRemoveAttachment(i)}
+                onRemove={() => {
+                  props.onRemoveAttachment(i);
+                }}
               />
             ))}
           </div>

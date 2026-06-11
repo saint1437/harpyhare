@@ -1,26 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { StatusBar } from "@/components/StatusBar";
-import { ChatTabs } from "@/components/ChatTabs";
-import { PermissionBanner } from "@/components/PermissionBanner";
-import { Composer } from "@/components/Composer";
 import { AnswerPanel } from "@/components/AnswerPanel";
-import { SettingsDialog } from "@/components/SettingsDialog";
+import { ChatTabs } from "@/components/ChatTabs";
+import { Composer } from "@/components/Composer";
 import { HotkeyHints } from "@/components/HotkeyHints";
-import { useSettings } from "@/hooks/useSettings";
-import { useRecorder } from "@/hooks/useRecorder";
-import { useTranscription } from "@/hooks/useTranscription";
-import { useClaudeStream } from "@/hooks/useClaudeStream";
+import { PermissionBanner } from "@/components/PermissionBanner";
+import { SettingsDialog } from "@/components/SettingsDialog";
+import { StatusBar } from "@/components/StatusBar";
 import { useChats } from "@/hooks/useChats";
-import { useWindowControls } from "@/hooks/useWindowControls";
+import { useClaudeStream } from "@/hooks/useClaudeStream";
 import { usePttSuspend } from "@/hooks/usePttSuspend";
+import { useRecorder } from "@/hooks/useRecorder";
+import { useSettings } from "@/hooks/useSettings";
+import { useTranscription } from "@/hooks/useTranscription";
+import { useWindowControls } from "@/hooks/useWindowControls";
 import {
   captureAvailable,
   openAudioPermissionSettings,
   retryTranscription,
   setWindowHeight,
 } from "@/ipc/commands";
-import { onEvent } from "@/ipc/events";
 import { isTauri } from "@/ipc/env";
+import { onEvent } from "@/ipc/events";
 import type { ChatMessageDto } from "@/ipc/types";
 
 const RETRYABLE = /перегружен|соединение|VPN|интернет|оборван/i;
@@ -70,7 +70,9 @@ export default function App() {
     void streamRef.current.send(c.id, history);
   }, []);
 
-  const doSend = useCallback(() => dispatchSend(chatsRef.current.active.draft), [dispatchSend]);
+  const doSend = useCallback(() => {
+    dispatchSend(chatsRef.current.active.draft);
+  }, [dispatchSend]);
 
   // Авто-раскрытие при появлении контента в активном чате (стрим/история).
   const hasContent = active.messages.length > 0 || activeStreaming;
@@ -124,7 +126,9 @@ export default function App() {
   usePttSuspend();
 
   useEffect(() => {
-    void captureAvailable().then((ok) => setPermissionOk(ok));
+    void captureAvailable().then((ok) => {
+      setPermissionOk(ok);
+    });
   }, []);
 
   // Демо-затравка для браузерного превью. Ждём, пока активный чат подгрузится
@@ -157,7 +161,9 @@ export default function App() {
         state={state}
         error={error}
         hotkey={settings.hotkey}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => {
+          setSettingsOpen(true);
+        }}
         tabs={
           <ChatTabs
             chats={chats.chats}
@@ -175,13 +181,21 @@ export default function App() {
 
       <Composer
         value={active.draft}
-        onChange={(v) => chats.setDraft(activeId, v, active.draftAttachments)}
+        onChange={(v) => {
+          chats.setDraft(activeId, v, active.draftAttachments);
+        }}
         attachments={active.draftAttachments}
-        onRemoveAttachment={(i) => chats.removeDraftAttachment(activeId, i)}
+        onRemoveAttachment={(i) => {
+          chats.removeDraftAttachment(activeId, i);
+        }}
         onPaste={(items) => void chats.addDraftAttachments(activeId, items)}
         onSend={doSend}
-        onStop={() => stream.stop(activeId)}
-        onClear={() => chats.setDraft(activeId, "", [])}
+        onStop={() => {
+          stream.stop(activeId);
+        }}
+        onClear={() => {
+          chats.setDraft(activeId, "", []);
+        }}
         onRetry={onRetry}
         hotkey={settings.hotkey}
         streaming={activeStreaming}
@@ -193,7 +207,9 @@ export default function App() {
         partial={partial}
         streaming={activeStreaming}
         expanded={answerOpen}
-        onToggle={() => setAnswerOpen((o) => !o)}
+        onToggle={() => {
+          setAnswerOpen((o) => !o);
+        }}
         onCopy={() => {
           const last = [...active.messages].reverse().find((m) => m.role === "assistant");
           if (last) void navigator.clipboard.writeText(last.text);
@@ -205,7 +221,9 @@ export default function App() {
       <SettingsDialog
         open={settingsOpen}
         settings={settings}
-        onClose={() => setSettingsOpen(false)}
+        onClose={() => {
+          setSettingsOpen(false);
+        }}
         onSave={(next) => {
           void save(next).then((err) => {
             if (err) setSttError(`Ошибка сохранения настроек: ${err}`);

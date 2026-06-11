@@ -12,10 +12,17 @@ export function onEvent<K extends keyof EventMap>(
   name: K,
   handler: (payload: EventMap[K]) => void,
 ): Unlisten {
-  if (!isTauri()) return () => {};
+  if (!isTauri())
+    return () => {
+      /* no-op в браузере */
+    };
   let live = true;
-  let off: Unlisten = () => {};
-  void listen<EventMap[K]>(name, (e) => handler(e.payload)).then((un) => {
+  let off: Unlisten = () => {
+    /* no-op до резолва listen */
+  };
+  void listen<EventMap[K]>(name, (e) => {
+    handler(e.payload);
+  }).then((un) => {
     if (live) off = un;
     else un();
   });

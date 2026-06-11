@@ -22,6 +22,8 @@ export function useWindowControls(moveStep: number, onSend: () => void): void {
       }
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+    };
   }, [moveStep, onSend]);
 }

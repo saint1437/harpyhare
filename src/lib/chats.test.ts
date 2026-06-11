@@ -43,11 +43,15 @@ describe("serialize/deserialize", () => {
       ),
     ];
     const json = serializeChats(chats);
-    const parsed = JSON.parse(json);
-    expect(parsed[0].messages[0].images).toEqual([]);
-    expect(parsed[0].messages[0].text).toBe("что тут?");
-    expect(parsed[0].draft).toBe("недописанное");
-    expect(parsed[0].draftAttachments).toEqual([]);
+    const parsed = JSON.parse(json) as {
+      messages: { text: string; images: unknown[] }[];
+      draft: string;
+      draftAttachments: unknown[];
+    }[];
+    expect(parsed[0]?.messages[0]?.images).toEqual([]);
+    expect(parsed[0]?.messages[0]?.text).toBe("что тут?");
+    expect(parsed[0]?.draft).toBe("недописанное");
+    expect(parsed[0]?.draftAttachments).toEqual([]);
   });
 
   it("round-trip восстанавливает чаты с пустыми вложениями", () => {

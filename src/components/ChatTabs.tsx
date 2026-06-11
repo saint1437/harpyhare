@@ -26,7 +26,9 @@ export function ChatTabs({ chats, activeId, streaming, onSelect, onRemove, onNew
           >
             <button
               type="button"
-              onClick={() => onSelect(c.id)}
+              onClick={() => {
+                onSelect(c.id);
+              }}
               title={c.title}
               className={cn(
                 "flex items-center gap-1.5 rounded-md py-1 pr-2 pl-2.5 font-mono text-[11px]",
@@ -41,7 +43,9 @@ export function ChatTabs({ chats, activeId, streaming, onSelect, onRemove, onNew
             {chats.length > 1 && (
               <button
                 type="button"
-                onClick={() => onRemove(c.id)}
+                onClick={() => {
+                  onRemove(c.id);
+                }}
                 aria-label={`Удалить ${c.title}`}
                 className="mr-1 grid size-4 place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-white/10 hover:text-foreground"
               >

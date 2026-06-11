@@ -25,7 +25,7 @@ export function useClaudeStream(
 
   // Буферы дельт по чатам и набор активных стримов — в ref'ах, чтобы события
   // (подписанные один раз) видели свежие значения без переподписки.
-  const buffers = useRef<Record<string, string>>({});
+  const buffers = useRef<Map<string, string>>(new Map());
   const active = useRef<Set<string>>(new Set());
   const raf = useRef(0);
   const pending = useRef(false);
@@ -37,7 +37,7 @@ export function useClaudeStream(
     pending.current = false;
     setPartial((prev) => {
       const next = { ...prev };
-      for (const id of active.current) next[id] = buffers.current[id] ?? "";
+      for (const id of active.current) next[id] = buffers.current.get(id) ?? "";
       return next;
     });
   }, []);
@@ -49,25 +49,24 @@ export function useClaudeStream(
   }, [flush]);
 
   const dropPartial = useCallback((chatId: string) => {
-    delete buffers.current[chatId];
+    buffers.current.delete(chatId);
     setPartial((prev) => {
       if (!(chatId in prev)) return prev;
-      const next = { ...prev };
-      delete next[chatId];
-      return next;
+      const { [chatId]: _omit, ...rest } = prev;
+      return rest;
     });
   }, []);
 
   useEffect(() => {
     const offDelta = onEvent("llm-delta", ({ chatId, delta }) => {
       if (!active.current.has(chatId)) return;
-      buffers.current[chatId] = (buffers.current[chatId] ?? "") + delta;
+      buffers.current.set(chatId, (buffers.current.get(chatId) ?? "") + delta);
       scheduleFlush();
     });
     const offDone = onEvent("llm-done", ({ chatId }) => {
       if (!active.current.has(chatId)) return;
       active.current.delete(chatId);
-      const text = buffers.current[chatId] ?? "";
+      const text = buffers.current.get(chatId) ?? "";
       onCompleteRef.current(chatId, text);
       dropPartial(chatId);
       setStreaming((s) => ({ ...s, [chatId]: false }));
@@ -90,7 +89,7 @@ export function useClaudeStream(
 
   const send = useCallback(
     async (chatId: string, messages: ChatMessageDto[]) => {
-      buffers.current[chatId] = "";
+      buffers.current.set(chatId, "");
       active.current.add(chatId);
       setPartial((p) => ({ ...p, [chatId]: "" }));
       setStreaming((s) => ({ ...s, [chatId]: true }));

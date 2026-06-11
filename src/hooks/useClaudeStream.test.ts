@@ -2,25 +2,29 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Handler = (payload: unknown) => void;
-const handlers: Record<string, Handler> = {};
-const sendToClaude = vi.fn();
-const cancelStream = vi.fn();
+const handlers = new Map<string, Handler>();
+const sendToClaude = vi.fn<(...args: unknown[]) => Promise<void>>();
+const cancelStream = vi.fn<(...args: unknown[]) => void>();
 
 vi.mock("@/ipc/events", () => ({
   onEvent: (name: string, handler: Handler) => {
-    handlers[name] = handler;
-    return () => delete handlers[name];
+    handlers.set(name, handler);
+    return () => {
+      handlers.delete(name);
+    };
   },
 }));
 vi.mock("@/ipc/commands", () => ({
   sendToClaude: (...args: unknown[]) => sendToClaude(...args),
-  cancelStream: (...args: unknown[]) => cancelStream(...args),
+  cancelStream: (...args: unknown[]) => {
+    cancelStream(...args);
+  },
 }));
 
 import { useClaudeStream } from "./useClaudeStream";
 
 function emit(name: string, payload: unknown) {
-  act(() => handlers[name]?.(payload));
+  act(() => handlers.get(name)?.(payload));
 }
 
 beforeEach(() => {
@@ -28,10 +32,12 @@ beforeEach(() => {
     cb(0);
     return 0;
   });
-  vi.stubGlobal("cancelAnimationFrame", () => {});
+  vi.stubGlobal("cancelAnimationFrame", () => {
+    /* no-op */
+  });
 });
 afterEach(() => {
-  for (const k of Object.keys(handlers)) delete handlers[k];
+  handlers.clear();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
@@ -71,7 +77,9 @@ describe("useClaudeStream (per-chat)", () => {
   it("после stop поздние дельты игнорируются", () => {
     const { result } = renderHook(() => useClaudeStream(vi.fn()));
     act(() => void result.current.send("A", [{ role: "user", text: "q", images: [] }]));
-    act(() => result.current.stop("A"));
+    act(() => {
+      result.current.stop("A");
+    });
     expect(cancelStream).toHaveBeenCalledWith("A");
     emit("llm-delta", { chatId: "A", delta: "поздно" });
     expect(result.current.partial["A"]).toBeUndefined();

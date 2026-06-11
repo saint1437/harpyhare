@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -7,12 +8,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Slider } from "@/components/ui/slider";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -20,6 +17,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { MODELS, type Settings } from "@/ipc/types";
 import { applyOpacity } from "@/lib/window-controls";
 
@@ -37,8 +37,9 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
     if (open) setDraft(settings);
   }, [open, settings]);
 
-  const set = <K extends keyof Settings>(key: K, value: Settings[K]) =>
+  const set = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     setDraft((d) => ({ ...d, [key]: value }));
+  };
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
@@ -68,7 +69,9 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
               autoComplete="off"
               placeholder="sk-ant-…"
               value={draft.anthropic_api_key}
-              onChange={(e) => set("anthropic_api_key", e.target.value)}
+              onChange={(e) => {
+                set("anthropic_api_key", e.target.value);
+              }}
             />
           </Field>
           <Field label="Ключ Groq">
@@ -77,11 +80,18 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
               autoComplete="off"
               placeholder="gsk_…"
               value={draft.groq_api_key}
-              onChange={(e) => set("groq_api_key", e.target.value)}
+              onChange={(e) => {
+                set("groq_api_key", e.target.value);
+              }}
             />
           </Field>
           <Field label="Модель">
-            <Select value={draft.model} onValueChange={(v) => set("model", v)}>
+            <Select
+              value={draft.model}
+              onValueChange={(v) => {
+                set("model", v);
+              }}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -98,7 +108,9 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
             <Textarea
               rows={3}
               value={draft.system_prompt}
-              onChange={(e) => set("system_prompt", e.target.value)}
+              onChange={(e) => {
+                set("system_prompt", e.target.value);
+              }}
             />
           </Field>
           <Field label="Push-to-talk клавиша">
@@ -106,11 +118,18 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
               value={draft.hotkey}
               maxLength={20}
               placeholder="V"
-              onChange={(e) => set("hotkey", e.target.value)}
+              onChange={(e) => {
+                set("hotkey", e.target.value);
+              }}
             />
           </Field>
           <label className="flex items-center gap-2.5 text-[12.5px]">
-            <Switch checked={draft.auto_send} onCheckedChange={(v) => set("auto_send", v)} />
+            <Switch
+              checked={draft.auto_send}
+              onCheckedChange={(v) => {
+                set("auto_send", v);
+              }}
+            />
             Отправлять сразу после распознавания
           </label>
           <Field label={`Прозрачность окна — ${Math.round(draft.window_opacity * 100)}%`}>
@@ -132,13 +151,20 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
               min={1}
               max={200}
               value={draft.move_step}
-              onChange={(e) => set("move_step", Number(e.target.value))}
+              onChange={(e) => {
+                set("move_step", Number(e.target.value));
+              }}
             />
           </Field>
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => handleOpenChange(false)}>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              handleOpenChange(false);
+            }}
+          >
             Отмена
           </Button>
           <Button onClick={save}>Сохранить</Button>

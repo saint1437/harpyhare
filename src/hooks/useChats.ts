@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadChats, saveChats } from "@/ipc/commands";
 import {
+  CHAT_LIMIT,
+  chatTitle,
+  createChat,
+  deserializeChats,
+  serializeChats,
+  type Chat,
+} from "@/lib/chats";
+import {
   acceptedNewAttachments,
   ATTACHMENT_LIMIT,
   downscaleFactor,
@@ -9,14 +17,6 @@ import {
   type Attachment,
   type ImagePayload,
 } from "@/lib/composer";
-import {
-  CHAT_LIMIT,
-  chatTitle,
-  createChat,
-  deserializeChats,
-  serializeChats,
-  type Chat,
-} from "@/lib/chats";
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -27,8 +27,12 @@ const EMPTY_CHAT: Chat = { id: "", title: "", messages: [], draft: "", draftAtta
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const fr = new FileReader();
-    fr.onload = () => resolve(fr.result as string);
-    fr.onerror = () => reject(fr.error);
+    fr.onload = () => {
+      resolve(fr.result as string);
+    };
+    fr.onerror = () => {
+      reject(new Error(fr.error?.message ?? "Ошибка чтения файла"));
+    };
     fr.readAsDataURL(file);
   });
 }
@@ -100,7 +104,9 @@ export function useChats(): ChatsApi {
     saveTimer.current = setTimeout(() => {
       void saveChats(serializeChats(chats));
     }, SAVE_DEBOUNCE_MS);
-    return () => clearTimeout(saveTimer.current);
+    return () => {
+      clearTimeout(saveTimer.current);
+    };
   }, [chats]);
 
   const patch = useCallback((id: string, fn: (c: Chat) => Chat) => {
@@ -130,11 +136,14 @@ export function useChats(): ChatsApi {
     });
   }, []);
 
-  const selectChat = useCallback((id: string) => setActiveId(id), []);
+  const selectChat = useCallback((id: string) => {
+    setActiveId(id);
+  }, []);
 
   const setDraft = useCallback(
-    (id: string, draft: string, draftAttachments: Attachment[]) =>
-      patch(id, (c) => ({ ...c, draft, draftAttachments })),
+    (id: string, draft: string, draftAttachments: Attachment[]) => {
+      patch(id, (c) => ({ ...c, draft, draftAttachments }));
+    },
     [patch],
   );
 
@@ -165,38 +174,38 @@ export function useChats(): ChatsApi {
   );
 
   const removeDraftAttachment = useCallback(
-    (id: string, index: number) =>
+    (id: string, index: number) => {
       patch(id, (c) => ({
         ...c,
         draftAttachments: c.draftAttachments.filter((_, i) => i !== index),
-      })),
+      }));
+    },
     [patch],
   );
 
-  const appendUserMessage = useCallback(
-    (id: string, text: string, images: ImagePayload[]) =>
-      setChats((prev) =>
-        prev.map((c, i) => {
-          if (c.id !== id) return c;
-          const isFirst = c.messages.length === 0;
-          return {
-            ...c,
-            title: isFirst ? chatTitle(text, i + 1) : c.title,
-            messages: [...c.messages, { role: "user", text, images }],
-            draft: "",
-            draftAttachments: [],
-          };
-        }),
-      ),
-    [],
-  );
+  const appendUserMessage = useCallback((id: string, text: string, images: ImagePayload[]) => {
+    setChats((prev) =>
+      prev.map((c, i) => {
+        if (c.id !== id) return c;
+        const isFirst = c.messages.length === 0;
+        return {
+          ...c,
+          title: isFirst ? chatTitle(text, i + 1) : c.title,
+          messages: [...c.messages, { role: "user", text, images }],
+          draft: "",
+          draftAttachments: [],
+        };
+      }),
+    );
+  }, []);
 
   const appendAssistantMessage = useCallback(
-    (id: string, text: string) =>
+    (id: string, text: string) => {
       patch(id, (c) => ({
         ...c,
         messages: [...c.messages, { role: "assistant", text, images: [] }],
-      })),
+      }));
+    },
     [patch],
   );
 

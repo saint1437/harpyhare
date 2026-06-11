@@ -1,8 +1,8 @@
-import { useEffect, useRef } from "react";
 import { ChevronRight } from "lucide-react";
+import { useEffect, useRef } from "react";
+import type { ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ReactNode } from "react";
 import { openExternal } from "@/ipc/commands";
 import type { ChatMessage } from "@/lib/chats";
 import { cn } from "@/lib/utils";

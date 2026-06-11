@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
 import { Settings as SettingsIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import type { RecorderState } from "@/ipc/types";
 import { cn } from "@/lib/utils";
 
