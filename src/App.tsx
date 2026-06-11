@@ -23,6 +23,7 @@ import {
 import { isTauri } from "@/ipc/env";
 import { onEvent } from "@/ipc/events";
 import type { ChatMessageDto } from "@/ipc/types";
+import { extractHtmlBlocks } from "@/lib/html-blocks";
 
 const RETRYABLE = /перегружен|соединение|VPN|интернет|оборван/i;
 
@@ -33,7 +34,6 @@ export default function App() {
   const { settings, save, bumpOpacity } = useSettings();
   const state = useRecorder();
   const chats = useChats();
-  const stream = useClaudeStream(chats.appendAssistantMessage);
 
   const [sttError, setSttError] = useState<string | null>(null);
   const [showRetry, setShowRetry] = useState(false);
@@ -41,17 +41,34 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [answerOpen, setAnswerOpen] = useState(false);
 
-  const active = chats.active;
-  const activeId = chats.activeId;
-  const activeStreaming = !!stream.streaming[activeId];
-
   // Свежие значения для стабильных колбэков (PTT/транскрипция/подписки).
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const chatsRef = useRef(chats);
   chatsRef.current = chats;
+
+  // llm-done: дописать ответ в историю; если включено автопревью, чат активен
+  // и в ответе есть ```html — показать последний блок (без кражи фокуса у HUD).
+  const onAssistantDone = useCallback((chatId: string, text: string) => {
+    chatsRef.current.appendAssistantMessage(chatId, text);
+    if (!settingsRef.current.auto_preview_html) return;
+    if (chatId !== chatsRef.current.activeId) return;
+    const blocks = extractHtmlBlocks(text);
+    const last = blocks[blocks.length - 1];
+    if (last !== undefined) {
+      showHtmlPreview(last, false).catch((e: unknown) => {
+        setSttError(`Превью: ${String(e)}`);
+      });
+    }
+  }, []);
+
+  const stream = useClaudeStream(onAssistantDone);
   const streamRef = useRef(stream);
   streamRef.current = stream;
+
+  const active = chats.active;
+  const activeId = chats.activeId;
+  const activeStreaming = !!stream.streaming[activeId];
 
   const error = sttError ?? stream.error[activeId] ?? null;
 
