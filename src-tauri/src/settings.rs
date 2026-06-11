@@ -15,6 +15,7 @@ pub struct Settings {
     pub window_opacity: f64,
     pub move_step: u32,
     pub auto_preview_html: bool,
+    pub toggle_hotkey: String,
 }
 
 impl Default for Settings {
@@ -29,6 +30,7 @@ impl Default for Settings {
             window_opacity: 1.0,
             move_step: 20,
             auto_preview_html: true,
+            toggle_hotkey: "Cmd+Shift+H".into(),
         }
     }
 }
@@ -110,6 +112,7 @@ mod tests {
         assert_eq!(s.move_step, 20);
         assert!(s.system_prompt.contains("расшифровку"));
         assert!(s.auto_preview_html);
+        assert_eq!(s.toggle_hotkey, "Cmd+Shift+H");
     }
 
     #[test]
@@ -163,6 +166,7 @@ mod tests {
         s.window_opacity = 0.5;
         s.auto_send = true;
         s.auto_preview_html = false;
+        s.toggle_hotkey = "F10".into();
         s.save(&path).unwrap();
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600);
@@ -172,6 +176,7 @@ mod tests {
         assert_eq!(loaded.window_opacity, 0.5);
         assert!(loaded.auto_send);
         assert!(!loaded.auto_preview_html);
+        assert_eq!(loaded.toggle_hotkey, "F10");
     }
 
     #[test]
@@ -181,6 +186,15 @@ mod tests {
         std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
         let s = Settings::load(&path).unwrap();
         assert!(s.auto_preview_html); // старый settings.json без поля → true
+    }
+
+    #[test]
+    fn load_missing_toggle_hotkey_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.json");
+        std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+        let s = Settings::load(&path).unwrap();
+        assert_eq!(s.toggle_hotkey, "Cmd+Shift+H"); // старый json без поля → дефолт
     }
 
     #[test]

@@ -53,6 +53,7 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
     onSave({
       ...draft,
       hotkey: draft.hotkey.trim() || "V",
+      toggle_hotkey: draft.toggle_hotkey.trim() || "Cmd+Shift+H",
     });
   };
 
@@ -119,6 +120,14 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
               value={draft.hotkey}
               onChange={(hk) => {
                 set("hotkey", hk);
+              }}
+            />
+          </Field>
+          <Field label="Скрыть/показать окно">
+            <HotkeyCapture
+              value={draft.toggle_hotkey}
+              onChange={(hk) => {
+                set("toggle_hotkey", hk);
               }}
             />
           </Field>
