@@ -28,6 +28,7 @@ pub struct App {
     pub stt: Mutex<stt::GroqStt>,
     pub llm: Mutex<llm::AnthropicClient>,
     pub recording_gen: AtomicU64,
+    pub resize_gen: AtomicU64,
 }
 
 fn settings_path(app: &AppHandle) -> std::path::PathBuf {
@@ -85,6 +86,7 @@ pub fn run() {
                 stt: Mutex::new(stt),
                 llm: Mutex::new(llm),
                 recording_gen: AtomicU64::new(0),
+                resize_gen: AtomicU64::new(0),
             });
 
             if let Err(e) = hotkey::register_ptt(handle, &hotkey) {
@@ -369,15 +371,59 @@ fn move_window_by(app: AppHandle, dx: i32, dy: i32) {
     }
 }
 
-/// Меняет высоту главного окна (логические px), сохраняя текущую ширину.
+/// Плавно меняет высоту главного окна (логические px), сохраняя текущую ширину.
+/// Анимация — ease-out-cubic за ~180мс: фоновый поток шлёт set_size по кадрам на
+/// главный поток (UI-операции macOS обязаны быть на main thread). Генерация
+/// (resize_gen) отменяет предыдущую анимацию при быстром повторном переключении.
 /// Делается из Rust (как move_window_by), чтобы не требовать JS-капабилити set-size.
 #[tauri::command]
 fn set_window_height(app: AppHandle, height: f64) {
-    if let Some(w) = app.get_webview_window("main") {
-        let scale = w.scale_factor().unwrap_or(1.0);
-        let width = w.outer_size().map(|s| s.width as f64 / scale).unwrap_or(600.0);
-        let _ = w.set_size(tauri::LogicalSize::new(width, height));
+    let Some(w) = app.get_webview_window("main") else {
+        return;
+    };
+    let scale = w.scale_factor().unwrap_or(1.0);
+    let width = w.outer_size().map(|s| s.width as f64 / scale).unwrap_or(760.0);
+    let from = w.outer_size().map(|s| s.height as f64 / scale).unwrap_or(height);
+    if (from - height).abs() < 1.0 {
+        return;
     }
+
+    let my_gen = app
+        .state::<App>()
+        .resize_gen
+        .fetch_add(1, Ordering::SeqCst)
+        + 1;
+
+    std::thread::spawn(move || {
+        const STEPS: u32 = 14;
+        for i in 1..=STEPS {
+            // Новый ресайз начался — прекращаем устаревшую анимацию.
+            if app.state::<App>().resize_gen.load(Ordering::SeqCst) != my_gen {
+                return;
+            }
+            let t = f64::from(i) / f64::from(STEPS);
+            let eased = 1.0 - (1.0 - t).powi(3); // ease-out cubic
+            let h = from + (height - from) * eased;
+            let win = w.clone();
+            let _ = app.run_on_main_thread(move || {
+                let _ = win.set_size(tauri::LogicalSize::new(win_width(&win, width), h));
+            });
+            std::thread::sleep(std::time::Duration::from_millis(13));
+        }
+        if app.state::<App>().resize_gen.load(Ordering::SeqCst) == my_gen {
+            let win = w.clone();
+            let _ = app.run_on_main_thread(move || {
+                let _ = win.set_size(tauri::LogicalSize::new(win_width(&win, width), height));
+            });
+        }
+    });
+}
+
+/// Текущая логическая ширина окна (на случай ручного ресайза во время анимации);
+/// падает обратно на стартовую ширину.
+fn win_width(win: &tauri::WebviewWindow, fallback: f64) -> f64 {
+    let scale = win.scale_factor().unwrap_or(1.0);
+    win.outer_size().map(|s| s.width as f64 / scale).unwrap_or(fallback)
 }
 
 #[tauri::command]
