@@ -414,6 +414,8 @@ const PREVIEW_GAP: f64 = 12.0;
 /// Показывает HTML в синглтон-окне превью (label "preview"): создаёт окно над HUD
 /// или заменяет содержимое уже открытого событием preview-html. focus=true — клик
 /// по чипу (окно фокусируется), false — автооткрытие (фокус остаётся у HUD).
+/// Синхронная команда выполняется на main thread — build()/set_position здесь
+/// безопасны без run_on_main_thread (в отличие от анимации в set_window_height).
 #[tauri::command]
 fn show_html_preview(app: AppHandle, html: String, focus: bool) -> Result<(), String> {
     if html.trim().is_empty() {
@@ -432,7 +434,7 @@ fn show_html_preview(app: AppHandle, html: String, focus: bool) -> Result<(), St
     }
 
     let main = app.get_webview_window("main").ok_or("нет окна main")?;
-    let scale = main.scale_factor().unwrap_or(2.0);
+    let scale = main.scale_factor().unwrap_or(1.0);
     let pos = main.outer_position().map_err(|e| e.to_string())?;
     let size = main.outer_size().map_err(|e| e.to_string())?;
     let monitor_pos = main
