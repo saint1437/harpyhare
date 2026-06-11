@@ -77,4 +77,14 @@ describe("useClaudeStream", () => {
     expect(result.current.answer).toBe("");
     await waitFor(() => expect(result.current.streaming).toBe(true));
   });
+
+  it("запоздалая дельта после stop не меняет ответ", async () => {
+    const { result } = renderHook(() => useClaudeStream());
+    await act(async () => result.current.send("q", []));
+    act(() => emit("llm-delta", "часть"));
+    expect(result.current.answer).toBe("часть");
+    act(() => result.current.stop());
+    act(() => emit("llm-delta", "хвост")); // прилетела после отмены — игнор
+    expect(result.current.answer).toBe("часть");
+  });
 });
