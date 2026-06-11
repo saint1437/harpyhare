@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { extractImageItems } from "@/lib/composer";
 import type { Attachment } from "@/hooks/useAttachments";
 import { AttachmentChip } from "./AttachmentChip";
 
@@ -26,7 +27,11 @@ export function Composer(props: ComposerProps) {
           onChange={(e) => props.onChange(e.target.value)}
           onPaste={(e) => {
             const items = e.clipboardData?.items;
-            if (items) props.onPaste(items);
+            if (!items) return;
+            // Гасим нативную вставку только если в буфере есть картинки —
+            // текстовая вставка остаётся нативной (строгий паритет со старым кодом).
+            if (extractImageItems(items).length > 0) e.preventDefault();
+            props.onPaste(items);
           }}
           spellCheck={false}
           placeholder="Зажми V у видео — расшифровка появится здесь. Текст можно править, ⌘V вставляет скриншот."
