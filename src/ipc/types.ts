@@ -45,4 +45,6 @@ export interface EventMap {
   "llm-delta": { chatId: string; delta: string };
   "llm-done": { chatId: string };
   "llm-error": { chatId: string; message: string };
+  /** Замена содержимого уже открытого окна превью (эмитится только окну preview). */
+  "preview-html": string;
 }

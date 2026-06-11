@@ -68,3 +68,24 @@ export async function saveChats(json: string): Promise<void> {
   if (!isTauri()) return;
   await invoke("save_chats", { json });
 }
+
+/** Демо-контент превью для браузера (вне Tauri) — визуальная итерация по ?window=preview. */
+const DEMO_PREVIEW_HTML = `<!doctype html>
+<html><body style="font-family: system-ui; padding: 24px">
+<h2>Демо превью</h2>
+<p>В Tauri здесь рендерится HTML из ответа Claude.</p>
+<button onclick="this.textContent='живой JS!'">Нажми меня</button>
+</body></html>`;
+
+/** Текущий HTML окна превью (пустая строка, если ещё ничего не показывали). */
+export async function getPreviewHtml(): Promise<string> {
+  if (!isTauri()) return DEMO_PREVIEW_HTML;
+  return invoke<string>("get_preview_html");
+}
+
+/** Закрывает текущее окно — для ✕/Esc внутри окна превью. */
+export async function closePreviewWindow(): Promise<void> {
+  if (!isTauri()) return;
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  await getCurrentWindow().close();
+}
