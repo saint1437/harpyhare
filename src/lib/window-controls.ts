@@ -1,10 +1,15 @@
 export function moveDelta(code: string, step: number): { dx: number; dy: number } | null {
   switch (code) {
-    case "ArrowLeft": return { dx: -step, dy: 0 };
-    case "ArrowRight": return { dx: step, dy: 0 };
-    case "ArrowUp": return { dx: 0, dy: -step };
-    case "ArrowDown": return { dx: 0, dy: step };
-    default: return null;
+    case "ArrowLeft":
+      return { dx: -step, dy: 0 };
+    case "ArrowRight":
+      return { dx: step, dy: 0 };
+    case "ArrowUp":
+      return { dx: 0, dy: -step };
+    case "ArrowDown":
+      return { dx: 0, dy: step };
+    default:
+      return null;
   }
 }
 

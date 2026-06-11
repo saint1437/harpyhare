@@ -92,13 +92,16 @@ export default function App() {
   }, [answerOpen]);
 
   useTranscription(
-    useCallback((incoming: string) => {
-      const c = chatsRef.current.active;
-      chatsRef.current.setDraft(c.id, incoming, c.draftAttachments);
-      setSttError(null);
-      setShowRetry(false);
-      if (settingsRef.current.auto_send) dispatchSend(incoming);
-    }, [dispatchSend]),
+    useCallback(
+      (incoming: string) => {
+        const c = chatsRef.current.active;
+        chatsRef.current.setDraft(c.id, incoming, c.draftAttachments);
+        setSttError(null);
+        setShowRetry(false);
+        if (settingsRef.current.auto_send) dispatchSend(incoming);
+      },
+      [dispatchSend],
+    ),
   );
 
   useEffect(
@@ -145,8 +148,10 @@ export default function App() {
   const partial = activeStreaming ? (stream.partial[activeId] ?? "") : null;
 
   return (
-    <div className="app-shell relative flex flex-col gap-3 h-screen p-4 rounded-[22px] overflow-hidden">
-      {!permissionOk && <PermissionBanner onOpenSettings={() => void openAudioPermissionSettings()} />}
+    <div className="app-shell relative flex h-screen flex-col gap-3 overflow-hidden rounded-[22px] p-4">
+      {!permissionOk && (
+        <PermissionBanner onOpenSettings={() => void openAudioPermissionSettings()} />
+      )}
 
       <StatusBar
         state={state}

@@ -63,23 +63,26 @@ export function AnswerPanel({
   const canCopy = expanded && !streaming && lastAssistant !== undefined;
 
   return (
-    <section className="flex-1 min-h-0 flex flex-col gap-2">
+    <section className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex items-center gap-2.5">
         <button
           type="button"
           onClick={onToggle}
           aria-expanded={expanded}
-          className="flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-primary hover:brightness-125"
+          className="flex items-center gap-1 font-mono text-[11px] tracking-wider text-primary uppercase hover:brightness-125"
         >
           <ChevronRight className={cn("size-3.5 transition-transform", expanded && "rotate-90")} />
           Диалог
         </button>
-        <span className="flex-1 h-px bg-gradient-to-r from-primary/40 via-border to-transparent" aria-hidden />
+        <span
+          className="h-px flex-1 bg-gradient-to-r from-primary/40 via-border to-transparent"
+          aria-hidden
+        />
         {canCopy && (
           <button
             type="button"
             onClick={onCopy}
-            className="font-mono text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+            className="font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
           >
             Копировать
           </button>
@@ -87,9 +90,9 @@ export function AnswerPanel({
       </div>
 
       {expanded && (
-        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto pr-1.5 flex flex-col gap-3">
+        <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1.5">
           {empty ? (
-            <div className="h-full grid place-items-center">
+            <div className="grid h-full place-items-center">
               <span className="text-[13px] text-muted-foreground">Диалог появится здесь</span>
             </div>
           ) : (
@@ -98,7 +101,7 @@ export function AnswerPanel({
                 m.role === "user" ? (
                   <div
                     key={i}
-                    className="self-end max-w-[85%] rounded-lg bg-white/5 px-3 py-1.5 text-[13px] text-foreground/80 whitespace-pre-wrap break-words"
+                    className="max-w-[85%] self-end rounded-lg bg-white/5 px-3 py-1.5 text-[13px] break-words whitespace-pre-wrap text-foreground/80"
                   >
                     {m.text}
                   </div>

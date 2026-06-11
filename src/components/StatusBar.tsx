@@ -29,24 +29,24 @@ export function StatusBar({ state, error, hotkey, tabs, onOpenSettings }: Status
 
   return (
     <header className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between gap-2 min-h-7">
-        <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
-          <span className={cn("size-2.5 rounded-full shrink-0", dotClass)} aria-hidden />
+      <div className="flex min-h-7 items-center justify-between gap-2">
+        <div className="no-scrollbar flex min-w-0 items-center gap-2 overflow-x-auto">
+          <span className={cn("size-2.5 shrink-0 rounded-full", dotClass)} aria-hidden />
           {tabs}
         </div>
         <button
           type="button"
           onClick={onOpenSettings}
           aria-label="Настройки"
-          className="grid place-items-center size-7 shrink-0 rounded-full text-muted-foreground transition-[color,background,transform] hover:text-foreground hover:bg-white/5 hover:rotate-45 focus-visible:outline-2 focus-visible:outline-ring"
+          className="grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground transition-[color,background,transform] hover:rotate-45 hover:bg-white/5 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
         >
           <SettingsIcon className="size-4" />
         </button>
       </div>
       <span
         className={cn(
-          "font-mono text-[11.5px] truncate",
-          showError ? "text-destructive whitespace-normal" : "text-muted-foreground",
+          "truncate font-mono text-[11.5px]",
+          showError ? "whitespace-normal text-destructive" : "text-muted-foreground",
         )}
       >
         {showError ? error : statusText[state]}

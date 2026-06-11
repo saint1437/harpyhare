@@ -112,22 +112,19 @@ export function useChats(): ChatsApi {
     });
   }, []);
 
-  const removeChat = useCallback(
-    (id: string) => {
-      setChats((prev) => {
-        if (prev.length <= 1) return prev; // последний не удаляем
-        const idx = prev.findIndex((c) => c.id === id);
-        const next = prev.filter((c) => c.id !== id);
-        setActiveId((cur) => {
-          if (cur !== id) return cur;
-          const neighbor = next[Math.min(idx, next.length - 1)];
-          return neighbor.id;
-        });
-        return next;
+  const removeChat = useCallback((id: string) => {
+    setChats((prev) => {
+      if (prev.length <= 1) return prev; // последний не удаляем
+      const idx = prev.findIndex((c) => c.id === id);
+      const next = prev.filter((c) => c.id !== id);
+      setActiveId((cur) => {
+        if (cur !== id) return cur;
+        const neighbor = next[Math.min(idx, next.length - 1)];
+        return neighbor.id;
       });
-    },
-    [],
-  );
+      return next;
+    });
+  }, []);
 
   const selectChat = useCallback((id: string) => setActiveId(id), []);
 

@@ -13,14 +13,14 @@ export interface ChatTabsProps {
 
 export function ChatTabs({ chats, activeId, streaming, onSelect, onRemove, onNew }: ChatTabsProps) {
   return (
-    <div className="flex items-center gap-1 min-w-0">
+    <div className="flex min-w-0 items-center gap-1">
       {chats.map((c, i) => {
         const isActive = c.id === activeId;
         return (
           <div
             key={c.id}
             className={cn(
-              "group relative flex items-center shrink-0 rounded-md transition-colors",
+              "group relative flex shrink-0 items-center rounded-md transition-colors",
               isActive ? "bg-white/10" : "hover:bg-white/5",
             )}
           >
@@ -29,12 +29,12 @@ export function ChatTabs({ chats, activeId, streaming, onSelect, onRemove, onNew
               onClick={() => onSelect(c.id)}
               title={c.title}
               className={cn(
-                "flex items-center gap-1.5 pl-2.5 pr-2 py-1 font-mono text-[11px] rounded-md",
+                "flex items-center gap-1.5 rounded-md py-1 pr-2 pl-2.5 font-mono text-[11px]",
                 isActive ? "text-foreground" : "text-muted-foreground",
               )}
             >
               {streaming[c.id] && (
-                <span className="size-1.5 rounded-full bg-primary animate-pulse" aria-hidden />
+                <span className="size-1.5 animate-pulse rounded-full bg-primary" aria-hidden />
               )}
               <span className="max-w-[88px] truncate">{c.title || `Чат ${i + 1}`}</span>
             </button>
@@ -43,7 +43,7 @@ export function ChatTabs({ chats, activeId, streaming, onSelect, onRemove, onNew
                 type="button"
                 onClick={() => onRemove(c.id)}
                 aria-label={`Удалить ${c.title}`}
-                className="grid place-items-center size-4 mr-1 rounded text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground hover:bg-white/10 transition-opacity"
+                className="mr-1 grid size-4 place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-white/10 hover:text-foreground"
               >
                 <X className="size-3" />
               </button>
@@ -56,7 +56,7 @@ export function ChatTabs({ chats, activeId, streaming, onSelect, onRemove, onNew
         onClick={onNew}
         disabled={chats.length >= CHAT_LIMIT}
         aria-label="Новый чат"
-        className="grid place-items-center size-6 shrink-0 rounded-md text-muted-foreground transition-colors hover:text-foreground hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed"
+        className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
       >
         <Plus className="size-3.5" />
       </button>

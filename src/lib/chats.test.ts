@@ -35,7 +35,10 @@ describe("serialize/deserialize", () => {
   it("стрипает картинки из сообщений и черновые вложения", () => {
     const chats = [
       chatWith(
-        [{ role: "user", text: "что тут?", images: [img] }, { role: "assistant", text: "кот", images: [] }],
+        [
+          { role: "user", text: "что тут?", images: [img] },
+          { role: "assistant", text: "кот", images: [] },
+        ],
         { draft: "недописанное", draftAttachments: [{ payload: img, preview: "data:..." }] },
       ),
     ];

@@ -56,7 +56,7 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-[400px] max-h-[88vh] overflow-y-auto">
+      <DialogContent className="max-h-[88vh] max-w-[400px] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Настройки</DialogTitle>
         </DialogHeader>
@@ -110,10 +110,7 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
             />
           </Field>
           <label className="flex items-center gap-2.5 text-[12.5px]">
-            <Switch
-              checked={draft.auto_send}
-              onCheckedChange={(v) => set("auto_send", v)}
-            />
+            <Switch checked={draft.auto_send} onCheckedChange={(v) => set("auto_send", v)} />
             Отправлять сразу после распознавания
           </label>
           <Field label={`Прозрачность окна — ${Math.round(draft.window_opacity * 100)}%`}>

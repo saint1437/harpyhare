@@ -10,10 +10,13 @@ export function HotkeyHints({ hotkey }: HotkeyHintsProps) {
     ["⌘←→↑↓", "окно"],
   ];
   return (
-    <footer className="flex justify-center gap-4 text-[10.5px] text-muted-foreground select-none" aria-hidden>
+    <footer
+      className="flex justify-center gap-4 text-[10.5px] text-muted-foreground select-none"
+      aria-hidden
+    >
       {hints.map(([k, label]) => (
         <span key={label}>
-          <b className="font-mono font-semibold text-[10px] text-foreground/80">{k}</b> {label}
+          <b className="font-mono text-[10px] font-semibold text-foreground/80">{k}</b> {label}
         </span>
       ))}
     </footer>

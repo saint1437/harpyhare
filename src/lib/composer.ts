@@ -1,7 +1,12 @@
 export const ATTACHMENT_LIMIT = 5;
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // лимит Anthropic API на изображение
 
-export const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+export const SUPPORTED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+]);
 
 export interface ImagePayload {
   media_type: string;

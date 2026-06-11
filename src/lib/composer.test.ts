@@ -9,7 +9,11 @@ import {
 } from "./composer";
 
 const item = (type: string) =>
-  ({ kind: "file", type, getAsFile: () => new File([new Uint8Array(4)], "x", { type }) }) as unknown as DataTransferItem;
+  ({
+    kind: "file",
+    type,
+    getAsFile: () => new File([new Uint8Array(4)], "x", { type }),
+  }) as unknown as DataTransferItem;
 
 describe("extractImageItems", () => {
   it("берёт только image/*", () => {

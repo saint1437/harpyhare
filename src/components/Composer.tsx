@@ -22,7 +22,7 @@ export interface ComposerProps {
 export function Composer(props: ComposerProps) {
   return (
     <section className="flex flex-col gap-2.5">
-      <div className="rounded-xl bg-card/60 ring-1 ring-inset ring-border focus-within:ring-primary/50 transition-[box-shadow]">
+      <div className="rounded-xl bg-card/60 ring-1 ring-border transition-[box-shadow] ring-inset focus-within:ring-primary/50">
         <Textarea
           value={props.value}
           onChange={(e) => props.onChange(e.target.value)}
@@ -36,12 +36,16 @@ export function Composer(props: ComposerProps) {
           }}
           spellCheck={false}
           placeholder={`Зажми ${props.hotkey} у видео — расшифровка появится здесь. Текст можно править, ⌘V вставляет скриншот.`}
-          className="min-h-24 max-h-44 resize-none border-0 bg-transparent focus-visible:ring-0 shadow-none"
+          className="max-h-44 min-h-24 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
         />
         {props.attachments.length > 0 && (
           <div className="flex flex-wrap gap-2 px-3 pb-3">
             {props.attachments.map((att, i) => (
-              <AttachmentChip key={att.preview} attachment={att} onRemove={() => props.onRemoveAttachment(i)} />
+              <AttachmentChip
+                key={att.preview}
+                attachment={att}
+                onRemove={() => props.onRemoveAttachment(i)}
+              />
             ))}
           </div>
         )}
@@ -63,7 +67,8 @@ export function Composer(props: ComposerProps) {
           </Button>
         )}
         <Button onClick={props.onSend} disabled={props.streaming}>
-          Отправить <kbd className="ml-1.5 px-1.5 py-0.5 rounded bg-black/20 font-mono text-[10.5px]">⌘⏎</kbd>
+          Отправить{" "}
+          <kbd className="ml-1.5 rounded bg-black/20 px-1.5 py-0.5 font-mono text-[10.5px]">⌘⏎</kbd>
         </Button>
       </div>
     </section>
