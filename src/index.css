@@ -6,6 +6,8 @@
 /* Прозрачность окна Tauri управляется слайдером настроек (дефолт 90%, как в Settings). */
 :root {
   --app-opacity: 0.9;
+  /* Размер шрифта чата (слайдер настроек, applyChatFontSize). */
+  --chat-font-size: 13.5px;
 
   --radius: 0.625rem;
 
@@ -145,7 +147,7 @@ body {
   background: color-mix(in oklch, var(--primary) 14%, transparent);
   color: oklch(0.8 0.09 18);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.89em; /* масштабируется вместе с --chat-font-size (12px при базовых 13.5px) */
 }
 .prose-answer pre {
   margin: 0.65em 0 0.85em;

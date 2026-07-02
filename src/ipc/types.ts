@@ -7,7 +7,6 @@ export type { PromptPreset };
 export interface Settings {
   anthropic_api_key: string;
   groq_api_key: string;
-  model: string;
   prompt_presets: PromptPreset[];
   hotkey: string;
   auto_send: boolean;
@@ -17,12 +16,13 @@ export interface Settings {
   toggle_hotkey: string;
   /** Anthropic fast mode (research preview): до ~2.5x токенов/сек на opus-4-8, дороже. */
   fast_mode: boolean;
+  /** Размер шрифта чата, px (модель — свойство чата, см. lib/models). */
+  chat_font_size: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   anthropic_api_key: "",
   groq_api_key: "",
-  model: "claude-opus-4-8",
   prompt_presets: [{ id: TRANSCRIPTION_PRESET_ID, name: "Расшифровка речи", text: "" }],
   hotkey: "F9",
   auto_send: false,
@@ -31,9 +31,8 @@ export const DEFAULT_SETTINGS: Settings = {
   auto_preview_html: true,
   toggle_hotkey: "Cmd+Shift+H",
   fast_mode: false,
+  chat_font_size: 13.5,
 };
-
-export const MODELS = ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"] as const;
 
 export type RecorderState = "idle" | "recording" | "transcribing";
 

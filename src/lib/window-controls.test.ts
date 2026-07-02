@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyOpacity, moveDelta, stepOpacity } from "./window-controls";
+import { applyChatFontSize, applyOpacity, moveDelta, stepOpacity } from "./window-controls";
 
 describe("moveDelta", () => {
   it("стрелки → сдвиг на шаг по нужной оси", () => {
@@ -31,6 +31,20 @@ describe("applyOpacity", () => {
     expect(el.style.getPropertyValue("--app-opacity")).toBe("0.5");
     applyOpacity(el, Infinity);
     expect(el.style.getPropertyValue("--app-opacity")).toBe("0.5");
+  });
+});
+
+describe("applyChatFontSize", () => {
+  it("ставит --chat-font-size в px с клампом 10..20", () => {
+    const el = document.createElement("div");
+    applyChatFontSize(el, 15);
+    expect(el.style.getPropertyValue("--chat-font-size")).toBe("15px");
+    applyChatFontSize(el, 5);
+    expect(el.style.getPropertyValue("--chat-font-size")).toBe("10px");
+    applyChatFontSize(el, 99);
+    expect(el.style.getPropertyValue("--chat-font-size")).toBe("20px");
+    applyChatFontSize(el, NaN);
+    expect(el.style.getPropertyValue("--chat-font-size")).toBe("20px"); // не изменилось
   });
 });
 

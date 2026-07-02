@@ -1,4 +1,5 @@
 import type { Attachment, ImagePayload } from "@/lib/composer";
+import { DEFAULT_MODEL } from "@/lib/models";
 import { TRANSCRIPTION_PRESET_ID } from "@/lib/presets";
 
 export const CHAT_LIMIT = 6;
@@ -24,6 +25,8 @@ export interface Chat {
   presetId: string;
   /** Слать ли thinking (adaptive) в Anthropic: true — умнее, false — быстрее первый токен. */
   thinkingEnabled: boolean;
+  /** Модель Anthropic этого чата (селект в Composer). */
+  model: string;
 }
 
 function uid(): string {
@@ -40,6 +43,7 @@ export function createChat(index: number): Chat {
     titlePinned: false,
     presetId: TRANSCRIPTION_PRESET_ID,
     thinkingEnabled: true,
+    model: DEFAULT_MODEL,
   };
 }
 
@@ -58,6 +62,7 @@ export function serializeChats(chats: Chat[]): string {
     titlePinned: c.titlePinned,
     presetId: c.presetId,
     thinkingEnabled: c.thinkingEnabled,
+    model: c.model,
     messages: c.messages.map((m) => ({ role: m.role, text: m.text, images: [] })),
     draft: c.draft,
     draftAttachments: [],
@@ -84,6 +89,7 @@ export function deserializeChats(json: string): Chat[] | null {
       presetId: typeof o.presetId === "string" ? o.presetId : "",
       // legacy-чаты без поля ведут себя как раньше (thinking включён)
       thinkingEnabled: typeof o.thinkingEnabled === "boolean" ? o.thinkingEnabled : true,
+      model: typeof o.model === "string" && o.model !== "" ? o.model : DEFAULT_MODEL,
       messages: Array.isArray(o.messages)
         ? o.messages.map((m) => ({
             role: m.role === "assistant" ? "assistant" : "user",

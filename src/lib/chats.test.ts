@@ -13,6 +13,7 @@ function chatWith(messages: Chat["messages"], extra: Partial<Chat> = {}): Chat {
     titlePinned: false,
     presetId: "transcription",
     thinkingEnabled: true,
+    model: "claude-opus-4-8",
     ...extra,
   };
 }
@@ -109,5 +110,12 @@ describe("serialize/deserialize", () => {
     expect(deserializeChats(serializeChats(chats))?.[0]?.thinkingEnabled).toBe(false);
     const old = deserializeChats('[{"id":"a","title":"Чат 1","messages":[],"draft":""}]');
     expect(old?.[0]?.thinkingEnabled).toBe(true);
+  });
+
+  it("сохраняет model при round-trip; старый json без него → дефолтная модель", () => {
+    const chats = [chatWith([], { model: "claude-haiku-4-5" })];
+    expect(deserializeChats(serializeChats(chats))?.[0]?.model).toBe("claude-haiku-4-5");
+    const old = deserializeChats('[{"id":"a","title":"Чат 1","messages":[],"draft":""}]');
+    expect(old?.[0]?.model).toBe("claude-opus-4-8");
   });
 });

@@ -9,6 +9,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { extractImageItems } from "@/lib/composer";
 import type { Attachment } from "@/lib/composer";
+import { MODELS, modelLabel } from "@/lib/models";
 import { AttachmentChip } from "./AttachmentChip";
 
 export interface ComposerProps {
@@ -30,6 +31,9 @@ export interface ComposerProps {
   /** Режим ответа этого чата: thinking (умнее) или без него (быстрее первый токен). */
   thinkingEnabled: boolean;
   onThinkingChange: (enabled: boolean) => void;
+  /** Модель Anthropic этого чата. */
+  model: string;
+  onModelChange: (model: string) => void;
 }
 
 export function Composer(props: ComposerProps) {
@@ -84,6 +88,18 @@ export function Composer(props: ComposerProps) {
             Повторить
           </Button>
         )}
+        <Select value={props.model} onValueChange={props.onModelChange}>
+          <SelectTrigger className="h-8 w-[120px] text-[12px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent position="popper">
+            {MODELS.map((m) => (
+              <SelectItem key={m} value={m}>
+                {modelLabel(m)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select
           value={props.thinkingEnabled ? "on" : "off"}
           onValueChange={(v) => {

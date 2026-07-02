@@ -31,6 +31,7 @@ const EMPTY_CHAT: Chat = {
   titlePinned: false,
   presetId: "",
   thinkingEnabled: true,
+  model: "claude-opus-4-8",
 };
 
 function readAsDataUrl(file: File): Promise<string> {
@@ -73,6 +74,7 @@ export interface ChatsApi {
   renameChat: (id: string, title: string) => void;
   setChatPreset: (id: string, presetId: string) => void;
   setChatThinking: (id: string, enabled: boolean) => void;
+  setChatModel: (id: string, model: string) => void;
   selectChat: (id: string) => void;
   setDraft: (id: string, draft: string, draftAttachments: Attachment[]) => void;
   addDraftAttachments: (id: string, items: DataTransferItemList) => Promise<void>;
@@ -171,6 +173,13 @@ export function useChats(): ChatsApi {
     [patch],
   );
 
+  const setChatModel = useCallback(
+    (id: string, model: string) => {
+      patch(id, (c) => ({ ...c, model }));
+    },
+    [patch],
+  );
+
   const selectChat = useCallback((id: string) => {
     setActiveId(id);
   }, []);
@@ -255,6 +264,7 @@ export function useChats(): ChatsApi {
     renameChat,
     setChatPreset,
     setChatThinking,
+    setChatModel,
     selectChat,
     setDraft,
     addDraftAttachments,

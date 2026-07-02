@@ -12,7 +12,13 @@ describe("commands в браузерном режиме", () => {
   });
   it("мутации не бросают и резолвятся в undefined", async () => {
     await expect(
-      sendToClaude([{ role: "user", text: "hi", images: [] }], "chat-1", "", true),
+      sendToClaude(
+        [{ role: "user", text: "hi", images: [] }],
+        "chat-1",
+        "",
+        true,
+        "claude-opus-4-8",
+      ),
     ).resolves.toBeUndefined();
     await expect(moveWindowBy(10, 0)).resolves.toBeUndefined();
   });

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getSettings, setSettings as ipcSet } from "@/ipc/commands";
 import { DEFAULT_SETTINGS, type Settings } from "@/ipc/types";
-import { applyOpacity, stepOpacity } from "@/lib/window-controls";
+import { applyChatFontSize, applyOpacity, stepOpacity } from "@/lib/window-controls";
 
 export interface SettingsApi {
   settings: Settings;
@@ -21,6 +21,7 @@ export function useSettings(): SettingsApi {
         if (!live) return;
         setSettings(s);
         applyOpacity(document.documentElement, s.window_opacity);
+        applyChatFontSize(document.documentElement, s.chat_font_size);
       })
       .finally(() => {
         if (live) setLoading(false);
@@ -37,13 +38,15 @@ export function useSettings(): SettingsApi {
         const fresh = await getSettings();
         setSettings(fresh);
         applyOpacity(document.documentElement, fresh.window_opacity);
+        applyChatFontSize(document.documentElement, fresh.chat_font_size);
         return null;
       } catch (e) {
         applyOpacity(document.documentElement, settings.window_opacity);
+        applyChatFontSize(document.documentElement, settings.chat_font_size);
         return String(e);
       }
     },
-    [settings.window_opacity],
+    [settings.window_opacity, settings.chat_font_size],
   );
 
   const opacityTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);

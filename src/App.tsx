@@ -97,7 +97,7 @@ export default function App() {
       { role: "user", text: trimmed, images },
     ];
     const system = presetText(settingsRef.current.prompt_presets, c.presetId);
-    void streamRef.current.send(c.id, history, system, c.thinkingEnabled);
+    void streamRef.current.send(c.id, history, system, c.thinkingEnabled, c.model);
   }, []);
 
   const doSend = useCallback(() => {
@@ -257,6 +257,10 @@ export default function App() {
           thinkingEnabled={active.thinkingEnabled}
           onThinkingChange={(enabled) => {
             chats.setChatThinking(activeId, enabled);
+          }}
+          model={active.model}
+          onModelChange={(model) => {
+            chats.setChatModel(activeId, model);
           }}
         />
 

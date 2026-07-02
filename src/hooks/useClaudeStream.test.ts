@@ -46,7 +46,16 @@ describe("useClaudeStream (per-chat)", () => {
   it("роутит дельты в нужный чат", () => {
     const onComplete = vi.fn();
     const { result } = renderHook(() => useClaudeStream(onComplete));
-    act(() => void result.current.send("A", [{ role: "user", text: "q", images: [] }], "", true));
+    act(
+      () =>
+        void result.current.send(
+          "A",
+          [{ role: "user", text: "q", images: [] }],
+          "",
+          true,
+          "claude-opus-4-8",
+        ),
+    );
     emit("llm-delta", { chatId: "A", delta: "при" });
     emit("llm-delta", { chatId: "A", delta: "вет" });
     expect(result.current.partial["A"]).toBe("привет");
@@ -55,8 +64,26 @@ describe("useClaudeStream (per-chat)", () => {
 
   it("два параллельных стрима не смешиваются", () => {
     const { result } = renderHook(() => useClaudeStream(vi.fn()));
-    act(() => void result.current.send("A", [{ role: "user", text: "q", images: [] }], "", true));
-    act(() => void result.current.send("B", [{ role: "user", text: "q", images: [] }], "", true));
+    act(
+      () =>
+        void result.current.send(
+          "A",
+          [{ role: "user", text: "q", images: [] }],
+          "",
+          true,
+          "claude-opus-4-8",
+        ),
+    );
+    act(
+      () =>
+        void result.current.send(
+          "B",
+          [{ role: "user", text: "q", images: [] }],
+          "",
+          true,
+          "claude-opus-4-8",
+        ),
+    );
     emit("llm-delta", { chatId: "A", delta: "AAA" });
     emit("llm-delta", { chatId: "B", delta: "BBB" });
     expect(result.current.partial["A"]).toBe("AAA");
@@ -66,7 +93,16 @@ describe("useClaudeStream (per-chat)", () => {
   it("llm-done вызывает onComplete с полным текстом и снимает streaming", () => {
     const onComplete = vi.fn();
     const { result } = renderHook(() => useClaudeStream(onComplete));
-    act(() => void result.current.send("A", [{ role: "user", text: "q", images: [] }], "", true));
+    act(
+      () =>
+        void result.current.send(
+          "A",
+          [{ role: "user", text: "q", images: [] }],
+          "",
+          true,
+          "claude-opus-4-8",
+        ),
+    );
     emit("llm-delta", { chatId: "A", delta: "итог" });
     emit("llm-done", { chatId: "A" });
     expect(onComplete).toHaveBeenCalledWith("A", "итог");
@@ -76,7 +112,16 @@ describe("useClaudeStream (per-chat)", () => {
 
   it("после stop поздние дельты игнорируются", () => {
     const { result } = renderHook(() => useClaudeStream(vi.fn()));
-    act(() => void result.current.send("A", [{ role: "user", text: "q", images: [] }], "", true));
+    act(
+      () =>
+        void result.current.send(
+          "A",
+          [{ role: "user", text: "q", images: [] }],
+          "",
+          true,
+          "claude-opus-4-8",
+        ),
+    );
     act(() => {
       result.current.stop("A");
     });
@@ -87,7 +132,16 @@ describe("useClaudeStream (per-chat)", () => {
 
   it("llm-error кладёт ошибку в чат и снимает streaming", () => {
     const { result } = renderHook(() => useClaudeStream(vi.fn()));
-    act(() => void result.current.send("A", [{ role: "user", text: "q", images: [] }], "", true));
+    act(
+      () =>
+        void result.current.send(
+          "A",
+          [{ role: "user", text: "q", images: [] }],
+          "",
+          true,
+          "claude-opus-4-8",
+        ),
+    );
     emit("llm-error", { chatId: "A", message: "сломалось" });
     expect(result.current.error["A"]).toBe("сломалось");
     expect(result.current.streaming["A"]).toBeFalsy();

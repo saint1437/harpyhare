@@ -24,3 +24,10 @@ export function stepOpacity(current: number, dir: 1 | -1, step: number): number 
   const next = Math.round((current + dir * step) * 100) / 100;
   return Math.min(1, Math.max(0.2, next));
 }
+
+/** Размер шрифта чата: пишет --chat-font-size (px) с клампом [10, 20]. */
+export function applyChatFontSize(root: HTMLElement, px: number): void {
+  if (!Number.isFinite(px)) return;
+  const clamped = Math.min(20, Math.max(10, px));
+  root.style.setProperty("--chat-font-size", `${String(clamped)}px`);
+}

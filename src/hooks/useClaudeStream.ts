@@ -15,6 +15,7 @@ export interface ClaudeStreams {
     messages: ChatMessageDto[],
     system: string,
     thinking: boolean,
+    model: string,
   ) => Promise<void>;
   stop: (chatId: string) => void;
 }
@@ -96,7 +97,13 @@ export function useClaudeStream(
   }, [scheduleFlush, dropPartial]);
 
   const send = useCallback(
-    async (chatId: string, messages: ChatMessageDto[], system: string, thinking: boolean) => {
+    async (
+      chatId: string,
+      messages: ChatMessageDto[],
+      system: string,
+      thinking: boolean,
+      model: string,
+    ) => {
       buffers.current.set(chatId, "");
       active.current.add(chatId);
       setPartial((p) => ({ ...p, [chatId]: "" }));
@@ -104,7 +111,7 @@ export function useClaudeStream(
       setStartedAt((s) => ({ ...s, [chatId]: Date.now() }));
       setError((e) => ({ ...e, [chatId]: null }));
       try {
-        await sendToClaude(messages, chatId, system, thinking);
+        await sendToClaude(messages, chatId, system, thinking, model);
       } catch (e) {
         active.current.delete(chatId);
         dropPartial(chatId);

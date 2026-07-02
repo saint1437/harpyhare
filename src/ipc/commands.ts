@@ -7,9 +7,10 @@ export async function sendToClaude(
   chatId: string,
   system: string,
   thinking: boolean,
+  model: string,
 ): Promise<void> {
   if (!isTauri()) return;
-  await invoke("send_to_claude", { messages, chatId, system, thinking });
+  await invoke("send_to_claude", { messages, chatId, system, thinking, model });
 }
 
 export async function cancelStream(chatId: string): Promise<void> {

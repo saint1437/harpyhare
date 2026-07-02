@@ -126,6 +126,19 @@ describe("useChats", () => {
     expect(result.current.active.presetId).toBe("mypreset");
   });
 
+  it("новый чат — с дефолтной моделью; setChatModel меняет по чату", async () => {
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(1);
+    });
+    expect(result.current.active.model).toBe("claude-opus-4-8");
+    const id = result.current.activeId;
+    act(() => {
+      result.current.setChatModel(id, "claude-haiku-4-5");
+    });
+    expect(result.current.active.model).toBe("claude-haiku-4-5");
+  });
+
   it("новый чат — с thinking; setChatThinking выключает его по чату", async () => {
     const { result } = renderHook(() => useChats());
     await waitFor(() => {

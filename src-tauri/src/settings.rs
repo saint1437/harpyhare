@@ -15,7 +15,6 @@ pub struct PromptPreset {
 pub struct Settings {
     pub anthropic_api_key: String,
     pub groq_api_key: String,
-    pub model: String,
     pub prompt_presets: Vec<PromptPreset>,
     pub hotkey: String,
     pub auto_send: bool,
@@ -25,6 +24,8 @@ pub struct Settings {
     pub toggle_hotkey: String,
     /// Anthropic fast mode (research preview): до ~2.5x токенов/сек на opus-4-8, дороже.
     pub fast_mode: bool,
+    /// Размер шрифта чата, px (модель теперь свойство чата, а не настроек).
+    pub chat_font_size: f64,
 }
 
 impl Default for Settings {
@@ -32,7 +33,6 @@ impl Default for Settings {
         Self {
             anthropic_api_key: String::new(),
             groq_api_key: String::new(),
-            model: "claude-opus-4-8".into(),
             prompt_presets: vec![PromptPreset {
                 id: "transcription".into(),
                 name: "Расшифровка речи".into(),
@@ -45,6 +45,7 @@ impl Default for Settings {
             auto_preview_html: true,
             toggle_hotkey: "Cmd+Shift+H".into(),
             fast_mode: false,
+            chat_font_size: 13.5,
         }
     }
 }
@@ -53,6 +54,10 @@ impl Settings {
     pub fn clamp(&mut self) {
         self.window_opacity = self.window_opacity.clamp(0.2, 1.0);
         self.move_step = self.move_step.clamp(1, 200);
+        if !self.chat_font_size.is_finite() {
+            self.chat_font_size = 13.5;
+        }
+        self.chat_font_size = self.chat_font_size.clamp(10.0, 20.0);
     }
 
     pub fn load(path: &Path) -> std::io::Result<Self> {
@@ -119,7 +124,6 @@ mod tests {
     #[test]
     fn defaults_match_spec() {
         let s = Settings::default();
-        assert_eq!(s.model, "claude-opus-4-8");
         assert_eq!(s.hotkey, "F9");
         assert!(!s.auto_send);
         assert_eq!(s.window_opacity, 0.9);
@@ -130,6 +134,31 @@ mod tests {
         assert!(s.auto_preview_html);
         assert_eq!(s.toggle_hotkey, "Cmd+Shift+H");
         assert!(!s.fast_mode);
+        assert_eq!(s.chat_font_size, 13.5);
+    }
+
+    #[test]
+    fn clamp_limits_chat_font_size() {
+        let mut s = Settings::default();
+        s.chat_font_size = 5.0;
+        s.clamp();
+        assert_eq!(s.chat_font_size, 10.0);
+        s.chat_font_size = 99.0;
+        s.clamp();
+        assert_eq!(s.chat_font_size, 20.0);
+        s.chat_font_size = f64::NAN;
+        s.clamp();
+        assert_eq!(s.chat_font_size, 13.5);
+    }
+
+    #[test]
+    fn load_old_model_field_is_ignored() {
+        // модель переехала в чат: старый settings.json с полем model просто игнорируется
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.json");
+        std::fs::write(&path, r#"{"model":"claude-haiku-4-5","auto_send":true}"#).unwrap();
+        let s = Settings::load(&path).unwrap();
+        assert!(s.auto_send);
     }
 
     #[test]
@@ -188,7 +217,7 @@ mod tests {
         let path = dir.path().join("settings.json");
         let mut s = Settings::default();
         s.groq_api_key = "gsk_test".into();
-        s.model = "claude-sonnet-4-6".into();
+        s.chat_font_size = 15.0;
         s.window_opacity = 0.5;
         s.auto_send = true;
         s.auto_preview_html = false;
@@ -199,7 +228,7 @@ mod tests {
         assert_eq!(mode & 0o777, 0o600);
         let loaded = Settings::load(&path).unwrap();
         assert_eq!(loaded.groq_api_key, "gsk_test");
-        assert_eq!(loaded.model, "claude-sonnet-4-6");
+        assert_eq!(loaded.chat_font_size, 15.0);
         assert_eq!(loaded.window_opacity, 0.5);
         assert!(loaded.auto_send);
         assert!(!loaded.auto_preview_html);
@@ -229,7 +258,6 @@ mod tests {
     #[test]
     fn load_missing_file_gives_defaults() {
         let s = Settings::load(std::path::Path::new("/nonexistent/x.json")).unwrap();
-        assert_eq!(s.model, "claude-opus-4-8");
         assert_eq!(s.hotkey, "F9");
         assert!(!s.auto_send);
         assert_eq!(s.move_step, 20);

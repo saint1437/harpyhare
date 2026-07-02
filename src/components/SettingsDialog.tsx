@@ -11,19 +11,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { MODELS, type Settings } from "@/ipc/types";
+import type { Settings } from "@/ipc/types";
 import type { PromptPreset } from "@/lib/presets";
-import { applyOpacity } from "@/lib/window-controls";
+import { applyChatFontSize, applyOpacity } from "@/lib/window-controls";
 
 export interface SettingsDialogProps {
   open: boolean;
@@ -64,7 +57,9 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
+      // откат живых превью несохранённых значений
       applyOpacity(document.documentElement, settings.window_opacity);
+      applyChatFontSize(document.documentElement, settings.chat_font_size);
       onClose();
     }
   };
@@ -109,25 +104,6 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
                 set("groq_api_key", e.target.value);
               }}
             />
-          </Field>
-          <Field label="Модель">
-            <Select
-              value={draft.model}
-              onValueChange={(v) => {
-                set("model", v);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MODELS.map((m) => (
-                  <SelectItem key={m} value={m}>
-                    {m}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </Field>
           <Field label="Пресеты препромпта">
             <div className="grid gap-2">
@@ -210,6 +186,19 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
             />
             Fast mode (Opus 4.8) — до 2.5x быстрее, дороже
           </label>
+          <Field label={`Размер шрифта чата — ${draft.chat_font_size}px`}>
+            <Slider
+              min={11}
+              max={18}
+              step={0.5}
+              value={[draft.chat_font_size]}
+              onValueChange={([v]) => {
+                if (v === undefined) return;
+                set("chat_font_size", v);
+                applyChatFontSize(document.documentElement, v);
+              }}
+            />
+          </Field>
           <Field label={`Прозрачность окна — ${Math.round(draft.window_opacity * 100)}%`}>
             <Slider
               min={0.2}

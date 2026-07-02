@@ -469,12 +469,9 @@ async fn send_to_claude(
     chat_id: String,
     system: String,
     thinking: bool,
+    model: String,
 ) {
-    let (model, fast) = {
-        let s = app.state::<App>();
-        let s = s.settings.lock().unwrap();
-        (s.model.clone(), s.fast_mode)
-    };
+    let fast = app.state::<App>().settings.lock().unwrap().fast_mode;
     let client = app.state::<App>().llm.lock().unwrap().clone();
     let cancel = CancellationToken::new();
     {

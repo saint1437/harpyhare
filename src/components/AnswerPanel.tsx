@@ -109,7 +109,7 @@ const MarkdownChunk = memo(function MarkdownChunk({
 
 function Assistant({ text, components }: { text: string; components: Components }) {
   return (
-    <div className="prose-answer text-[13.5px] leading-relaxed text-foreground/90">
+    <div className="prose-answer text-[length:var(--chat-font-size)] leading-relaxed text-foreground/90">
       <MarkdownChunk text={text} components={components} />
     </div>
   );
@@ -120,7 +120,7 @@ function Assistant({ text, components }: { text: string; components: Components 
 function StreamingAssistant({ text, components }: { text: string; components: Components }) {
   const [stable, tail] = splitStableTail(text);
   return (
-    <div className="prose-answer text-[13.5px] leading-relaxed text-foreground/90">
+    <div className="prose-answer text-[length:var(--chat-font-size)] leading-relaxed text-foreground/90">
       {stable !== "" && <MarkdownChunk text={stable} components={components} />}
       {tail !== "" && <MarkdownChunk text={tail} components={components} />}
     </div>
@@ -182,7 +182,7 @@ export function AnswerPanel({
               m.role === "user" ? (
                 <div
                   key={i}
-                  className="max-w-[85%] self-end rounded-lg bg-white/5 px-3 py-1.5 text-[13px] break-words whitespace-pre-wrap text-foreground/80"
+                  className="max-w-[85%] self-end rounded-lg bg-white/5 px-3 py-1.5 text-[length:var(--chat-font-size)] break-words whitespace-pre-wrap text-foreground/80"
                 >
                   {m.text}
                 </div>
