@@ -642,6 +642,12 @@ fn move_window_by(app: AppHandle, dx: i32, dy: i32) {
     if let Some(w) = app.get_webview_window("main") {
         if let Ok(pos) = w.outer_position() {
             let _ = w.set_position(tauri::PhysicalPosition::new(pos.x + dx, pos.y + dy));
+            // WebKit прячет указатель мыши при нажатии клавиш над текстовым полем
+            // («до движения мыши»), а окно уезжает из-под курсора — указатель
+            // «пропадает», пока не шевельнёшь мышь. Отменяем скрытие после сдвига.
+            let _ = app.run_on_main_thread(|| {
+                objc2_app_kit::NSCursor::setHiddenUntilMouseMoves(false);
+            });
         }
     }
 }
