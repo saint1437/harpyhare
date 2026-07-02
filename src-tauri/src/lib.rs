@@ -11,9 +11,10 @@ pub mod window_geom;
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex,
 };
+use futures_util::StreamExt;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
@@ -31,9 +32,27 @@ pub struct App {
     pub llm_cancel: Mutex<HashMap<String, CancellationToken>>,
     pub stt: Mutex<stt::GroqStt>,
     pub llm: Mutex<llm::AnthropicClient>,
+    pub stt_stream: Mutex<Option<SttStream>>,
     pub recording_gen: AtomicU64,
     pub resize_gen: AtomicU64,
     pub preview_html: Mutex<String>,
+}
+
+/// Идущая стриминговая транскрипция: запрос к Groq открыт на нажатии PTT,
+/// тело наполняется 16кГц-чанками по мере записи.
+pub struct SttStream {
+    handle: tauri::async_runtime::JoinHandle<Result<String, stt::SttError>>,
+    cancel: CancellationToken,
+    /// Стрим неполон (переполнение канала загрузки) — результату верить нельзя,
+    /// после остановки уходим на классическую транскрипцию по полному буферу.
+    broken: Arc<AtomicBool>,
+}
+
+/// Отменяет стриминговую транскрипцию (Esc, тишина, слишком короткая запись, ошибки).
+fn cancel_stt_stream(app: &AppHandle) {
+    if let Some(s) = app.state::<App>().stt_stream.lock().unwrap().take() {
+        s.cancel.cancel();
+    }
 }
 
 fn settings_path(app: &AppHandle) -> std::path::PathBuf {
@@ -140,6 +159,7 @@ pub fn run() {
                 llm_cancel: Mutex::new(HashMap::new()),
                 stt: Mutex::new(stt),
                 llm: Mutex::new(llm),
+                stt_stream: Mutex::new(None),
                 recording_gen: AtomicU64::new(0),
                 resize_gen: AtomicU64::new(0),
                 preview_html: Mutex::new(String::new()),
@@ -189,8 +209,50 @@ pub fn on_ptt_pressed(app: &AppHandle) {
     }
     let action = st.recorder.lock().unwrap().on(state::Event::PttPressed);
     if action == state::Action::StartCapture {
+        // Стриминговая транскрипция: запрос к Groq открывается прямо сейчас,
+        // тело (WAV-заголовок + PCM) наполняется по мере записи. К моменту
+        // отпускания PTT почти всё аудио уже на сервере — «отпустил → текст»
+        // сжимается до инференса. При любой ошибке — фолбэк на классику.
+        let stt_client = st.stt.lock().unwrap().clone();
+        let cancel = CancellationToken::new();
+        let broken = Arc::new(AtomicBool::new(false));
+        let (tx, rx) = tokio::sync::mpsc::channel::<Result<Vec<u8>, std::io::Error>>(256);
+        let header = audio::wav_header_streaming().to_vec();
+        let body_stream = futures_util::stream::iter([Ok::<Vec<u8>, std::io::Error>(header)])
+            .chain(futures_util::stream::unfold(rx, |mut rx| async move {
+                rx.recv().await.map(|item| (item, rx))
+            }));
+        let handle = {
+            let cancel = cancel.clone();
+            tauri::async_runtime::spawn(async move {
+                stt_client
+                    .transcribe_stream(reqwest::Body::wrap_stream(body_stream), cancel)
+                    .await
+            })
+        };
+        if let Some(old) = st.stt_stream.lock().unwrap().replace(SttStream {
+            handle,
+            cancel,
+            broken: Arc::clone(&broken),
+        }) {
+            old.cancel.cancel(); // защитно: висящих стримов быть не должно
+        }
+
+        // Sink для консьюмера захвата: 16кГц-чанки → PCM-байты → канал тела запроса.
+        // try_send: консьюмер нельзя блокировать; переполнение канала = загрузка
+        // безнадёжно отстала → помечаем стрим неполным (фолбэк после стопа).
+        let sink: capture::ChunkSink = Box::new(move |samples: &[f32]| {
+            if broken.load(Ordering::Relaxed) {
+                return;
+            }
+            if tx.try_send(Ok(audio::f32_to_i16le_bytes(samples))).is_err() {
+                broken.store(true, Ordering::Relaxed);
+            }
+        });
+
         if let Some(c) = st.capture.lock().unwrap().as_mut() {
-            if let Err(e) = c.start() {
+            if let Err(e) = c.start(Some(sink)) {
+                cancel_stt_stream(app);
                 let _ = app.emit("stt-error", e.to_string());
                 st.recorder.lock().unwrap().on(state::Event::Cancel);
                 return;
@@ -201,13 +263,10 @@ pub fn on_ptt_pressed(app: &AppHandle) {
         emit_state(app, state::RecorderState::Recording);
         spawn_max_duration_watchdog(app.clone(), gen);
 
-        // Пока пользователь говорит — греем соединения: через секунды будет загрузка
-        // в Groq и, вероятно, запрос в Anthropic. Если пул уже тёплый, это дешёвый GET.
-        let stt_client = st.stt.lock().unwrap().clone();
+        // Пока пользователь говорит — греем Anthropic: после расшифровки, вероятно,
+        // будет запрос за ответом. Groq греть не нужно — стриминговый запрос уже ушёл.
         let llm_client = st.llm.lock().unwrap().clone();
-        tauri::async_runtime::spawn(async move {
-            tokio::join!(stt_client.warm_up(), llm_client.warm_up());
-        });
+        tauri::async_runtime::spawn(async move { llm_client.warm_up().await });
     }
 }
 
@@ -236,6 +295,7 @@ pub fn on_cancel(app: &AppHandle) {
     let st = app.state::<App>();
     let action = st.recorder.lock().unwrap().on(state::Event::Cancel);
     if action == state::Action::Discard {
+        cancel_stt_stream(app); // сначала обрываем загрузку, потом стоп записи
         if let Some(c) = st.capture.lock().unwrap().as_mut() {
             let _ = c.stop();
         }
@@ -264,6 +324,7 @@ fn finish_recording(app: &AppHandle, action: state::Action) {
     let st = app.state::<App>();
     match action {
         state::Action::Discard => {
+            cancel_stt_stream(app);
             if let Some(c) = st.capture.lock().unwrap().as_mut() {
                 let _ = c.stop();
             }
@@ -271,30 +332,74 @@ fn finish_recording(app: &AppHandle, action: state::Action) {
         }
         state::Action::Transcribe => {
             emit_state(app, state::RecorderState::Transcribing);
-            let raw = st.capture.lock().unwrap().as_mut().map(|c| c.stop());
-            let Some((buf, rate, ch)) = raw else {
+            let t = std::time::Instant::now();
+            // stop() возвращает готовый 16кГц-моно: ресемплинг шёл во время записи,
+            // здесь только дрен хвоста (миллисекунды). EOF тела загрузки уже отправлен.
+            let stopped = st.capture.lock().unwrap().as_mut().map(|c| c.stop());
+            let Some(stopped) = stopped else {
+                cancel_stt_stream(app);
                 return finish_transcription(app, Err("нет аудио-буфера".into()));
             };
-            let t = std::time::Instant::now();
-            let mono = audio::downmix_to_mono(&buf, ch);
-            let s16k = match audio::resample_to_16k(&mono, rate) {
+            let s16k = match stopped {
                 Ok(v) => v,
-                Err(e) => return finish_transcription(app, Err(e.to_string())),
+                Err(e) => {
+                    cancel_stt_stream(app);
+                    return finish_transcription(app, Err(e.to_string()));
+                }
             };
             eprintln!(
-                "[perf] downmix+resample {:.1}s audio in {:?}",
+                "[perf] stop → 16k моно готов ({:.1}s audio) за {:?}",
                 s16k.len() as f32 / audio::TARGET_SAMPLE_RATE as f32,
                 t.elapsed()
             );
             if audio::is_silence(&s16k) {
+                cancel_stt_stream(app);
                 return finish_transcription(app, Err("Тишина — нечего распознавать".into()));
             }
             *st.last_recording.lock().unwrap() = Some(s16k.clone());
             let app2 = app.clone();
-            tauri::async_runtime::spawn(async move { transcribe_and_emit(app2, s16k).await });
+            tauri::async_runtime::spawn(async move { finish_transcribe(app2, s16k).await });
         }
         _ => {}
     }
+}
+
+/// Дожидается стриминговой транскрипции; при любой её проблеме (кроме неверного
+/// ключа) — классическая транскрипция по накопленному буферу.
+async fn finish_transcribe(app: AppHandle, samples: Vec<f32>) {
+    let t = std::time::Instant::now();
+    let stream = app.state::<App>().stt_stream.lock().unwrap().take();
+    if let Some(s) = stream {
+        if s.broken.load(Ordering::Relaxed) {
+            eprintln!("[perf] stt stream неполон — фолбэк на классическую загрузку");
+            s.cancel.cancel();
+        } else {
+            match s.handle.await {
+                Ok(Ok(text)) => {
+                    eprintln!("[perf] stop → transcript (stream) {:?}", t.elapsed());
+                    return deliver_transcript(&app, text);
+                }
+                Ok(Err(stt::SttError::BadApiKey)) => {
+                    // классика упадёт с тем же 401 — не делаем второй запрос
+                    return finish_transcription(&app, Err(stt::SttError::BadApiKey.to_string()));
+                }
+                Ok(Err(e)) => {
+                    eprintln!("[perf] stt stream не удался ({e}) — фолбэк на классику");
+                }
+                Err(e) => {
+                    eprintln!("[perf] stt stream задача упала ({e}) — фолбэк на классику");
+                }
+            }
+        }
+    }
+    transcribe_and_emit(app, samples).await;
+}
+
+fn deliver_transcript(app: &AppHandle, text: String) {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    let _ = app.clipboard().write_text(text.clone());
+    let _ = app.emit("transcript-ready", text);
+    finish_transcription(app, Ok(()));
 }
 
 async fn transcribe_and_emit(app: AppHandle, samples: Vec<f32>) {
@@ -306,12 +411,7 @@ async fn transcribe_and_emit(app: AppHandle, samples: Vec<f32>) {
     let res = stt_client.transcribe(&samples).await;
     eprintln!("[perf] stt transcribe (wav+upload+inference) {:?}", t.elapsed());
     match res {
-        Ok(text) => {
-            use tauri_plugin_clipboard_manager::ClipboardExt;
-            let _ = app.clipboard().write_text(text.clone());
-            let _ = app.emit("transcript-ready", text);
-            finish_transcription(&app, Ok(()));
-        }
+        Ok(text) => deliver_transcript(&app, text),
         Err(e) => finish_transcription(&app, Err(e.to_string())),
     }
 }
