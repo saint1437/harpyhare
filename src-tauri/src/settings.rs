@@ -23,6 +23,8 @@ pub struct Settings {
     pub move_step: u32,
     pub auto_preview_html: bool,
     pub toggle_hotkey: String,
+    /// Anthropic fast mode (research preview): до ~2.5x токенов/сек на opus-4-8, дороже.
+    pub fast_mode: bool,
 }
 
 impl Default for Settings {
@@ -38,10 +40,11 @@ impl Default for Settings {
             }],
             hotkey: "F9".into(),
             auto_send: false,
-            window_opacity: 1.0,
+            window_opacity: 0.9,
             move_step: 20,
             auto_preview_html: true,
             toggle_hotkey: "Cmd+Shift+H".into(),
+            fast_mode: false,
         }
     }
 }
@@ -119,13 +122,23 @@ mod tests {
         assert_eq!(s.model, "claude-opus-4-8");
         assert_eq!(s.hotkey, "F9");
         assert!(!s.auto_send);
-        assert_eq!(s.window_opacity, 1.0);
+        assert_eq!(s.window_opacity, 0.9);
         assert_eq!(s.move_step, 20);
         assert_eq!(s.prompt_presets.len(), 1);
         assert_eq!(s.prompt_presets[0].id, "transcription");
         assert!(s.prompt_presets[0].text.contains("расшифровку"));
         assert!(s.auto_preview_html);
         assert_eq!(s.toggle_hotkey, "Cmd+Shift+H");
+        assert!(!s.fast_mode);
+    }
+
+    #[test]
+    fn load_missing_fast_mode_defaults_false() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.json");
+        std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+        let s = Settings::load(&path).unwrap();
+        assert!(!s.fast_mode); // старый settings.json без поля → false
     }
 
     #[test]

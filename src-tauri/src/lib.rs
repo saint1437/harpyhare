@@ -12,7 +12,7 @@ pub mod window_geom;
 use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    Mutex,
+    Arc, Mutex,
 };
 use tauri::{AppHandle, Emitter, Manager};
 use tokio_util::sync::CancellationToken;
@@ -122,6 +122,16 @@ pub fn run() {
             let hotkey = settings.hotkey.clone();
             let toggle_hotkey = settings.toggle_hotkey.clone();
 
+            // Прогрев TLS-соединений к Groq/Anthropic на старте: первый реальный
+            // запрос не платит DNS+TCP+TLS (h2 keep-alive дальше держит пул тёплым).
+            {
+                let stt = stt.clone();
+                let llm = llm.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::join!(stt.warm_up(), llm.warm_up());
+                });
+            }
+
             app.manage(App {
                 settings: Mutex::new(settings),
                 recorder: Mutex::new(state::RecorderState::Idle),
@@ -190,6 +200,14 @@ pub fn on_ptt_pressed(app: &AppHandle) {
         hotkey::register_esc(app);
         emit_state(app, state::RecorderState::Recording);
         spawn_max_duration_watchdog(app.clone(), gen);
+
+        // Пока пользователь говорит — греем соединения: через секунды будет загрузка
+        // в Groq и, вероятно, запрос в Anthropic. Если пул уже тёплый, это дешёвый GET.
+        let stt_client = st.stt.lock().unwrap().clone();
+        let llm_client = st.llm.lock().unwrap().clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::join!(stt_client.warm_up(), llm_client.warm_up());
+        });
     }
 }
 
@@ -257,11 +275,17 @@ fn finish_recording(app: &AppHandle, action: state::Action) {
             let Some((buf, rate, ch)) = raw else {
                 return finish_transcription(app, Err("нет аудио-буфера".into()));
             };
+            let t = std::time::Instant::now();
             let mono = audio::downmix_to_mono(&buf, ch);
             let s16k = match audio::resample_to_16k(&mono, rate) {
                 Ok(v) => v,
                 Err(e) => return finish_transcription(app, Err(e.to_string())),
             };
+            eprintln!(
+                "[perf] downmix+resample {:.1}s audio in {:?}",
+                s16k.len() as f32 / audio::TARGET_SAMPLE_RATE as f32,
+                t.elapsed()
+            );
             if audio::is_silence(&s16k) {
                 return finish_transcription(app, Err("Тишина — нечего распознавать".into()));
             }
@@ -278,7 +302,10 @@ async fn transcribe_and_emit(app: AppHandle, samples: Vec<f32>) {
     // Клонируем готовый клиент из state (шарит пул соединений), чтобы не держать
     // MutexGuard через .await.
     let stt_client = app.state::<App>().stt.lock().unwrap().clone();
-    match stt_client.transcribe(&samples).await {
+    let t = std::time::Instant::now();
+    let res = stt_client.transcribe(&samples).await;
+    eprintln!("[perf] stt transcribe (wav+upload+inference) {:?}", t.elapsed());
+    match res {
         Ok(text) => {
             use tauri_plugin_clipboard_manager::ClipboardExt;
             let _ = app.clipboard().write_text(text.clone());
@@ -341,11 +368,12 @@ async fn send_to_claude(
     messages: Vec<llm::ChatMessage>,
     chat_id: String,
     system: String,
+    thinking: bool,
 ) {
-    let model = {
+    let (model, fast) = {
         let s = app.state::<App>();
         let s = s.settings.lock().unwrap();
-        s.model.clone()
+        (s.model.clone(), s.fast_mode)
     };
     let client = app.state::<App>().llm.lock().unwrap().clone();
     let cancel = CancellationToken::new();
@@ -356,17 +384,54 @@ async fn send_to_claude(
             old.cancel(); // повторный send в тот же чат отменяет прежний
         }
     }
-    let body = llm::build_request_body(&model, &system, &messages);
-    let app2 = app.clone();
-    let cid = chat_id.clone();
+    let body = llm::build_request_body(&model, &system, &messages, thinking, fast);
+
+    // Коалесинг дельт: SSE отдаёт десятки событий/сек, а каждый emit — это
+    // JSON-сериализация + IPC + пробуждение webview. Копим в буфер и флашим
+    // ~40 раз/сек; финальный дрен обязан случиться ДО llm-done, иначе фронт
+    // (который на done снимает чат с active) потеряет хвост ответа.
+    let pending = Arc::new(Mutex::new(String::new()));
+    let flush_stop = CancellationToken::new();
+    let flusher = {
+        let pending = Arc::clone(&pending);
+        let app2 = app.clone();
+        let cid = chat_id.clone();
+        let stop = flush_stop.clone();
+        tauri::async_runtime::spawn(async move {
+            let drain = |p: &Mutex<String>| std::mem::take(&mut *p.lock().unwrap());
+            let mut tick = tokio::time::interval(std::time::Duration::from_millis(25));
+            loop {
+                tokio::select! {
+                    _ = tick.tick() => {}
+                    _ = stop.cancelled() => break,
+                }
+                let delta = drain(&pending);
+                if !delta.is_empty() {
+                    let _ = app2.emit("llm-delta", LlmDelta { chat_id: cid.clone(), delta });
+                }
+            }
+            let delta = drain(&pending);
+            if !delta.is_empty() {
+                let _ = app2.emit("llm-delta", LlmDelta { chat_id: cid.clone(), delta });
+            }
+        })
+    };
+
+    let started = std::time::Instant::now();
+    let mut got_first = false;
+    let pending_in = Arc::clone(&pending);
     let res = client
         .stream_message(body, cancel, move |delta| {
-            let _ = app2.emit(
-                "llm-delta",
-                LlmDelta { chat_id: cid.clone(), delta: delta.to_string() },
-            );
+            if !got_first {
+                got_first = true;
+                eprintln!("[perf] llm ttfb (первая текстовая дельта) {:?}", started.elapsed());
+            }
+            pending_in.lock().unwrap().push_str(delta);
         })
         .await;
+    flush_stop.cancel();
+    let _ = flusher.await; // дожидаемся финального дрена перед done/error
+    eprintln!("[perf] llm stream total {:?}", started.elapsed());
     app.state::<App>().llm_cancel.lock().unwrap().remove(&chat_id);
     match res {
         Ok(()) | Err(llm::LlmError::Cancelled) => {

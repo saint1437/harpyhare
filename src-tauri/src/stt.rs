@@ -27,12 +27,31 @@ pub struct GroqStt {
 
 impl GroqStt {
     pub fn new(api_key: String) -> Self {
+        // Тёплый пул как в llm.rs: h2-пинги в простое + пул без экспирации —
+        // загрузка WAV не платит TLS-handshake (~200–500мс) после простоя.
+        let client = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .pool_idle_timeout(None)
+            .http2_keep_alive_interval(std::time::Duration::from_secs(30))
+            .http2_keep_alive_while_idle(true)
+            .build()
+            .expect("reqwest client");
         Self {
             api_key,
             base_url: "https://api.groq.com".into(),
             timeout: std::time::Duration::from_secs(60),
-            client: reqwest::Client::new(),
+            client,
         }
+    }
+
+    /// Прогрев соединения: дешёвый GET ради DNS+TCP+TLS, ответ не важен.
+    pub async fn warm_up(&self) {
+        let _ = self
+            .client
+            .get(format!("{}/openai/v1/models", self.base_url))
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await;
     }
     pub fn with_base_url(mut self, url: String) -> Self {
         self.base_url = url;

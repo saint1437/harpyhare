@@ -22,6 +22,8 @@ export interface Chat {
   titlePinned: boolean;
   /** id выбранного пресета препромпта ("" = без препромпта). */
   presetId: string;
+  /** Слать ли thinking (adaptive) в Anthropic: true — умнее, false — быстрее первый токен. */
+  thinkingEnabled: boolean;
 }
 
 function uid(): string {
@@ -37,6 +39,7 @@ export function createChat(index: number): Chat {
     draftAttachments: [],
     titlePinned: false,
     presetId: TRANSCRIPTION_PRESET_ID,
+    thinkingEnabled: true,
   };
 }
 
@@ -54,6 +57,7 @@ export function serializeChats(chats: Chat[]): string {
     title: c.title,
     titlePinned: c.titlePinned,
     presetId: c.presetId,
+    thinkingEnabled: c.thinkingEnabled,
     messages: c.messages.map((m) => ({ role: m.role, text: m.text, images: [] })),
     draft: c.draft,
     draftAttachments: [],
@@ -78,6 +82,8 @@ export function deserializeChats(json: string): Chat[] | null {
       title: typeof o.title === "string" ? o.title : "Чат",
       titlePinned: typeof o.titlePinned === "boolean" ? o.titlePinned : false,
       presetId: typeof o.presetId === "string" ? o.presetId : "",
+      // legacy-чаты без поля ведут себя как раньше (thinking включён)
+      thinkingEnabled: typeof o.thinkingEnabled === "boolean" ? o.thinkingEnabled : true,
       messages: Array.isArray(o.messages)
         ? o.messages.map((m) => ({
             role: m.role === "assistant" ? "assistant" : "user",

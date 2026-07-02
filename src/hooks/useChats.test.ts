@@ -126,6 +126,19 @@ describe("useChats", () => {
     expect(result.current.active.presetId).toBe("mypreset");
   });
 
+  it("новый чат — с thinking; setChatThinking выключает его по чату", async () => {
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(1);
+    });
+    expect(result.current.active.thinkingEnabled).toBe(true);
+    const id = result.current.activeId;
+    act(() => {
+      result.current.setChatThinking(id, false);
+    });
+    expect(result.current.active.thinkingEnabled).toBe(false);
+  });
+
   it("removeChat не даёт удалить последний и переключает активный", async () => {
     const { result } = renderHook(() => useChats());
     await waitFor(() => {

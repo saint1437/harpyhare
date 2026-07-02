@@ -27,6 +27,9 @@ export interface ComposerProps {
   presets: { id: string; name: string }[];
   presetId: string;
   onPresetChange: (id: string) => void;
+  /** Режим ответа этого чата: thinking (умнее) или без него (быстрее первый токен). */
+  thinkingEnabled: boolean;
+  onThinkingChange: (enabled: boolean) => void;
 }
 
 export function Composer(props: ComposerProps) {
@@ -81,6 +84,20 @@ export function Composer(props: ComposerProps) {
             Повторить
           </Button>
         )}
+        <Select
+          value={props.thinkingEnabled ? "on" : "off"}
+          onValueChange={(v) => {
+            props.onThinkingChange(v === "on");
+          }}
+        >
+          <SelectTrigger className="h-8 w-[120px] text-[12px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent position="popper">
+            <SelectItem value="on">Thinking</SelectItem>
+            <SelectItem value="off">Без thinking</SelectItem>
+          </SelectContent>
+        </Select>
         <Select
           value={
             props.presetId !== "" && props.presets.some((p) => p.id === props.presetId)

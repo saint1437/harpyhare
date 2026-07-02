@@ -65,8 +65,9 @@ describe("useSettings", () => {
     act(() => {
       result.current.bumpOpacity(-1);
     });
-    expect(result.current.settings.window_opacity).toBeCloseTo(0.9);
-    expect(applyOpacity).toHaveBeenCalledWith(document.documentElement, 0.9);
+    // дефолт 0.9, шаг 0.1 вниз → 0.8
+    expect(result.current.settings.window_opacity).toBeCloseTo(0.8);
+    expect(applyOpacity).toHaveBeenCalledWith(document.documentElement, 0.8);
     expect(setSettings).not.toHaveBeenCalled();
     act(() => {
       vi.advanceTimersByTime(400);

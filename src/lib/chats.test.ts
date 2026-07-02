@@ -12,6 +12,7 @@ function chatWith(messages: Chat["messages"], extra: Partial<Chat> = {}): Chat {
     draftAttachments: [],
     titlePinned: false,
     presetId: "transcription",
+    thinkingEnabled: true,
     ...extra,
   };
 }
@@ -101,5 +102,12 @@ describe("serialize/deserialize", () => {
     expect(deserializeChats(serializeChats(chats))?.[0]?.presetId).toBe("abc");
     const old = deserializeChats('[{"id":"a","title":"Чат 1","messages":[],"draft":""}]');
     expect(old?.[0]?.presetId).toBe("");
+  });
+
+  it("сохраняет thinkingEnabled при round-trip; старый json без него → true", () => {
+    const chats = [chatWith([], { thinkingEnabled: false })];
+    expect(deserializeChats(serializeChats(chats))?.[0]?.thinkingEnabled).toBe(false);
+    const old = deserializeChats('[{"id":"a","title":"Чат 1","messages":[],"draft":""}]');
+    expect(old?.[0]?.thinkingEnabled).toBe(true);
   });
 });

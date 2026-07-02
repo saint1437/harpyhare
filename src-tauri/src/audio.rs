@@ -43,9 +43,11 @@ pub fn resample_to_16k(mono: &[f32], src_rate: u32) -> Result<Vec<f32>, AudioErr
     if src_rate == TARGET_SAMPLE_RATE {
         return Ok(mono.to_vec());
     }
+    // Параметры «речевого» качества: Whisper всё равно считает log-mel по 16кГц,
+    // студийный sinc_len=128 тут не даёт ничего, кроме ~4x лишнего CPU на release-пути PTT.
     let params = SincInterpolationParameters {
-        sinc_len: 128,
-        f_cutoff: 0.95,
+        sinc_len: 32,
+        f_cutoff: 0.91,
         interpolation: SincInterpolationType::Linear,
         oversampling_factor: 128,
         window: WindowFunction::Blackman2,
@@ -86,14 +88,17 @@ pub fn encode_wav_16k_mono(samples: &[f32]) -> Result<Vec<u8>, AudioError> {
         bits_per_sample: 16,
         sample_format: hound::SampleFormat::Int,
     };
-    let mut cursor = std::io::Cursor::new(Vec::new());
+    let mut cursor = std::io::Cursor::new(Vec::with_capacity(44 + samples.len() * 2));
     {
         let mut writer = hound::WavWriter::new(&mut cursor, spec)
             .map_err(|e| AudioError::Wav(e.to_string()))?;
+        // Пакетный writer вместо посэмплового write_sample: без повторных проверок
+        // заголовка на каждый сэмпл (минуты аудио кодируются в разы быстрее).
+        let mut w16 = writer.get_i16_writer(samples.len() as u32);
         for s in samples {
-            let v = (s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
-            writer.write_sample(v).map_err(|e| AudioError::Wav(e.to_string()))?;
+            w16.write_sample((s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16);
         }
+        w16.flush().map_err(|e| AudioError::Wav(e.to_string()))?;
         writer.finalize().map_err(|e| AudioError::Wav(e.to_string()))?;
     }
     Ok(cursor.into_inner())

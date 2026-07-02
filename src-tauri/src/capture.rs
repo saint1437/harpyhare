@@ -183,6 +183,9 @@ impl SystemAudioCapture {
     pub fn start(&mut self) -> Result<(), CaptureError> {
         if let Ok(mut buf) = self.shared.buf.lock() {
             buf.clear();
+            // Предвыделяем ~10с: первые расширения Vec не реаллоцируют буфер
+            // из RT-колбэка Core Audio (дальше рост амортизированный и редкий).
+            buf.reserve(self.shared.sample_rate as usize * self.shared.channels * 10);
         }
         self.shared.recording.store(true, Ordering::Release);
         Ok(())

@@ -15,6 +15,8 @@ export interface Settings {
   move_step: number;
   auto_preview_html: boolean;
   toggle_hotkey: string;
+  /** Anthropic fast mode (research preview): до ~2.5x токенов/сек на opus-4-8, дороже. */
+  fast_mode: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -24,10 +26,11 @@ export const DEFAULT_SETTINGS: Settings = {
   prompt_presets: [{ id: TRANSCRIPTION_PRESET_ID, name: "Расшифровка речи", text: "" }],
   hotkey: "F9",
   auto_send: false,
-  window_opacity: 1,
+  window_opacity: 0.9,
   move_step: 20,
   auto_preview_html: true,
   toggle_hotkey: "Cmd+Shift+H",
+  fast_mode: false,
 };
 
 export const MODELS = ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"] as const;

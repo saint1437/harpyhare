@@ -6,9 +6,10 @@ export async function sendToClaude(
   messages: ChatMessageDto[],
   chatId: string,
   system: string,
+  thinking: boolean,
 ): Promise<void> {
   if (!isTauri()) return;
-  await invoke("send_to_claude", { messages, chatId, system });
+  await invoke("send_to_claude", { messages, chatId, system, thinking });
 }
 
 export async function cancelStream(chatId: string): Promise<void> {

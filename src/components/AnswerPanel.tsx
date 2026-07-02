@@ -1,4 +1,4 @@
-import { isValidElement, useEffect, useMemo, useRef } from "react";
+import { isValidElement, memo, useEffect, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -6,6 +6,7 @@ import { HtmlBlockChip } from "@/components/HtmlBlockChip";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { openExternal } from "@/ipc/commands";
 import type { ChatMessage } from "@/lib/chats";
+import { splitStableTail } from "@/lib/stream-markdown";
 
 export interface AnswerPanelProps {
   messages: ChatMessage[];
@@ -61,12 +62,38 @@ function makePre(onOpenPreview: (code: string) => void) {
   };
 }
 
+/** Один markdown-чанк. memo критичен: во время стрима панель ререндерится на каждый
+ *  флаш дельт, и без него react-markdown перепарсивал бы ВСЮ историю каждый раз. */
+const MarkdownChunk = memo(function MarkdownChunk({
+  text,
+  components,
+}: {
+  text: string;
+  components: Components;
+}) {
+  return (
+    <Markdown remarkPlugins={[remarkGfm]} components={components}>
+      {text}
+    </Markdown>
+  );
+});
+
 function Assistant({ text, components }: { text: string; components: Components }) {
   return (
     <div className="prose-answer text-[13.5px] leading-relaxed text-foreground/90">
-      <Markdown remarkPlugins={[remarkGfm]} components={components}>
-        {text}
-      </Markdown>
+      <MarkdownChunk text={text} components={components} />
+    </div>
+  );
+}
+
+/** Стримящийся ответ: завершённые блоки — стабильный префикс, который парсится один раз
+ *  (memo у MarkdownChunk), каждый флаш перепарсивает только активный хвост. */
+function StreamingAssistant({ text, components }: { text: string; components: Components }) {
+  const [stable, tail] = splitStableTail(text);
+  return (
+    <div className="prose-answer text-[13.5px] leading-relaxed text-foreground/90">
+      {stable !== "" && <MarkdownChunk text={stable} components={components} />}
+      {tail !== "" && <MarkdownChunk text={tail} components={components} />}
     </div>
   );
 }
@@ -135,7 +162,7 @@ export function AnswerPanel({
               ),
             )}
             {partial !== null && partial !== "" && (
-              <Assistant text={partial} components={components} />
+              <StreamingAssistant text={partial} components={components} />
             )}
             {streaming && (partial === null || partial === "") && (
               <ThinkingIndicator startedAt={streamStartedAt ?? Date.now()} />

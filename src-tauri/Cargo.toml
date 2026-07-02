@@ -39,3 +39,8 @@ dotenvy = "0.15.7"
 tempfile = "3.27.0"
 wiremock = "0.6.5"
 
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+

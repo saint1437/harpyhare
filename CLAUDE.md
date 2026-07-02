@@ -49,15 +49,15 @@ Design/spec history lives in `docs/superpowers/specs/` and `docs/superpowers/pla
 The backend exposes a **fixed set of commands and events**; the frontend mirrors them 1:1. When changing one side, change the other and keep names identical.
 
 - **Commands** are registered in `generate_handler!` in `src-tauri/src/lib.rs`; argument names map snake_case (Rust) → camelCase (JS invoke). The frontend wrappers are in `src/ipc/commands.ts`.
-- **Events** are `app.emit("name", payload)` in `lib.rs`; the frontend listens via `src/ipc/events.ts`, typed by `EventMap` in `src/ipc/types.ts` (`state-changed`, `transcript-ready`, `stt-error`, `llm-delta`, `llm-done`, `llm-error`). LLM-события несут `chatId` (`{ chatId, delta }` / `{ chatId }` / `{ chatId, message }`) — стримы независимы по чатам.
-- `Settings` (10 fields) is defined identically in `src-tauri/src/settings.rs` and `src/ipc/types.ts`. Глобального системного промпта в Settings нет — вместо него `prompt_presets: {id,name,text}[]` (сид «Расшифровка речи», id `transcription`); чат хранит `presetId`, текст резолвится на фронте (`lib/presets.presetText`) и уходит параметром `system` в `send_to_claude(messages, chat_id, system)` при каждом запросе (Anthropic API stateless). Старые чаты без `presetId` → без препромпта (legacy = none).
+- **Events** are `app.emit("name", payload)` in `lib.rs`; the frontend listens via `src/ipc/events.ts`, typed by `EventMap` in `src/ipc/types.ts` (`state-changed`, `transcript-ready`, `stt-error`, `llm-delta`, `llm-done`, `llm-error`). LLM-события несут `chatId` (`{ chatId, delta }` / `{ chatId }` / `{ chatId, message }`) — стримы независимы по чатам. `llm-delta` коалесируются на стороне Rust (флашер ~25мс в `send_to_claude`); финальный дрен буфера обязан уйти **до** `llm-done`, иначе фронт потеряет хвост ответа.
+- `Settings` (11 fields) is defined identically in `src-tauri/src/settings.rs` and `src/ipc/types.ts`. Глобального системного промпта в Settings нет — вместо него `prompt_presets: {id,name,text}[]` (сид «Расшифровка речи», id `transcription`); чат хранит `presetId`, текст резолвится на фронте (`lib/presets.presetText`) и уходит параметром `system` в `send_to_claude(messages, chat_id, system, thinking)` при каждом запросе (Anthropic API stateless). Старые чаты без `presetId` → без препромпта (legacy = none). `thinking` — per-chat флаг (`Chat.thinkingEnabled`, select в Composer): true → `thinking:{type:"adaptive"}` (кроме haiku), false → поле не отправляется. `Settings.fast_mode` → `speed:"fast"` + beta-заголовок `fast-mode-2026-02-01`, только для `claude-opus-4-8`.
 
 ## Frontend architecture (`src/`)
 
 Strict layering — keep each layer's responsibility intact:
 
 - **`src/ipc/`** — the **only** place that imports `@tauri-apps/api`. `commands.ts` (typed `invoke`), `events.ts` (`onEvent`), `types.ts`, `env.ts` (`isTauri`). Every command/event no-ops in the browser so the UI runs without a backend.
-- **`src/lib/`** — framework-free pure logic with unit tests: `composer.ts` (attachment limit/downscale, `Attachment` type), `chats.ts` (chat model, `CHAT_LIMIT`, serialize/deserialize), `window-controls.ts` (`moveDelta`/`applyOpacity`).
+- **`src/lib/`** — framework-free pure logic with unit tests: `composer.ts` (attachment limit/downscale, `Attachment` type), `chats.ts` (chat model, `CHAT_LIMIT`, serialize/deserialize), `window-controls.ts` (`moveDelta`/`applyOpacity`), `stream-markdown.ts` (`splitStableTail` — деление стрима на стабильный префикс/хвост для мемоизации markdown-парса).
 - **`src/hooks/`** — one hook per contract slice (`useClaudeStream`, `useChats`, `useSettings`, `useRecorder`, `useTranscription`, `useWindowControls`, `usePttSuspend`). `useChats` owns the chat list, per-chat drafts/attachments, and disk persistence. Hooks depend on `ipc`, never on `@tauri-apps` directly; tested with `renderHook` + `vi.mock("@/ipc/...")`.
 - **`src/components/`** — presentational, built on shadcn/ui primitives in `src/components/ui/` (run `npx shadcn@latest add <name>` to add more). `App.tsx` composes hooks + components.
 
@@ -72,7 +72,8 @@ Stack: React 19 + Vite + Tailwind v4 (CSS-first `@theme` tokens in `src/index.cs
 - `audio.rs` — downmix → resample (rubato, 48k→16k) → WAV (hound); RMS silence gate.
 - `capture.rs` — system-audio capture via **Core Audio process tap** (`cidre`). The risky native piece; one-time tap creation, gated by an `AtomicBool`. Manual acceptance via `examples/record5s.rs`.
 - `stt.rs` — `GroqStt` (whisper-large-v3-turbo, `language=ru`), error mapping.
-- `llm.rs` — Anthropic request body (image blocks + adaptive thinking; no `thinking` for haiku), incremental `SseParser` (use `feed_bytes` for chunked UTF-8), streaming client with cancellation.
+- `llm.rs` — Anthropic request body (image blocks; `thinking` по флагу, no `thinking` for haiku; prompt-cache брейкпоинты на system и последнем сообщении; `speed:"fast"` при fast_mode+opus-4-8), incremental `SseParser` (use `feed_bytes` for chunked UTF-8), streaming client with cancellation.
+- Оба reqwest-клиента (`stt`/`llm`) держат пул «вечно тёплым» (`http2_keep_alive_*`, `pool_idle_timeout(None)`) и имеют `warm_up()`; прогрев зовётся на старте приложения и на нажатии PTT. Перф-тайминги пишутся в stderr с префиксом `[perf]`.
 - `state.rs` — recorder FSM (`Idle → Recording → Transcribing → Idle`); min 0.3s / max 10min, Esc cancel.
 - `settings.rs` — JSON at `~/Library/Application Support/com.itech.voice/settings.json`, written atomically with `0600`.
 - `hotkey.rs` — push-to-talk registration + глобальный toggle-хоткей скрытия/показа окна (`register_toggle` → `on_toggle_visibility`: `hide` ↔ `show`+`set_focus`); `parse_hotkey` is the only unit-tested function here. Обработчики деферятся (`defer`) — инвариант реестра плагина.

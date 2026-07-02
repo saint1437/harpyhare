@@ -10,7 +10,12 @@ export interface ClaudeStreams {
   /** Время начала стрима по чатам (Date.now() в send) — для счётчика «Думает… Nс». */
   startedAt: Record<string, number>;
   error: Record<string, string | null>;
-  send: (chatId: string, messages: ChatMessageDto[], system: string) => Promise<void>;
+  send: (
+    chatId: string,
+    messages: ChatMessageDto[],
+    system: string,
+    thinking: boolean,
+  ) => Promise<void>;
   stop: (chatId: string) => void;
 }
 
@@ -91,7 +96,7 @@ export function useClaudeStream(
   }, [scheduleFlush, dropPartial]);
 
   const send = useCallback(
-    async (chatId: string, messages: ChatMessageDto[], system: string) => {
+    async (chatId: string, messages: ChatMessageDto[], system: string, thinking: boolean) => {
       buffers.current.set(chatId, "");
       active.current.add(chatId);
       setPartial((p) => ({ ...p, [chatId]: "" }));
@@ -99,7 +104,7 @@ export function useClaudeStream(
       setStartedAt((s) => ({ ...s, [chatId]: Date.now() }));
       setError((e) => ({ ...e, [chatId]: null }));
       try {
-        await sendToClaude(messages, chatId, system);
+        await sendToClaude(messages, chatId, system, thinking);
       } catch (e) {
         active.current.delete(chatId);
         dropPartial(chatId);

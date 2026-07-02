@@ -201,6 +201,15 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
             />
             Автопревью HTML из ответа
           </label>
+          <label className="flex items-center gap-2.5 text-[12.5px]">
+            <Switch
+              checked={draft.fast_mode}
+              onCheckedChange={(v) => {
+                set("fast_mode", v);
+              }}
+            />
+            Fast mode (Opus 4.8) — до 2.5x быстрее, дороже
+          </label>
           <Field label={`Прозрачность окна — ${Math.round(draft.window_opacity * 100)}%`}>
             <Slider
               min={0.2}

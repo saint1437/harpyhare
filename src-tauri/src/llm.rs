@@ -25,17 +25,26 @@ pub struct AnthropicClient {
     client: reqwest::Client,
 }
 
+/// Клиент с «вечно тёплым» пулом: h2-пинги в простое + пул без экспирации,
+/// чтобы каждый запрос попадал в уже установленное TLS-соединение
+/// (холодный handshake к api.anthropic.com — это ~200–500мс TTFB).
+fn build_http_client(read_timeout: Duration) -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .read_timeout(read_timeout)
+        .pool_idle_timeout(None)
+        .http2_keep_alive_interval(Duration::from_secs(30))
+        .http2_keep_alive_while_idle(true)
+        .build()
+        .expect("reqwest client")
+}
+
 impl AnthropicClient {
     pub fn new(api_key: String) -> Self {
-        let client = reqwest::Client::builder()
-            .connect_timeout(Duration::from_secs(10))
-            .read_timeout(Duration::from_secs(60))
-            .build()
-            .expect("reqwest client");
         Self {
             api_key,
             base_url: "https://api.anthropic.com".into(),
-            client,
+            client: build_http_client(Duration::from_secs(60)),
         }
     }
     pub fn with_base_url(mut self, url: String) -> Self {
@@ -43,12 +52,18 @@ impl AnthropicClient {
         self
     }
     pub fn with_read_timeout(mut self, d: Duration) -> Self {
-        self.client = reqwest::Client::builder()
-            .connect_timeout(Duration::from_secs(10))
-            .read_timeout(d)
-            .build()
-            .expect("reqwest client");
+        self.client = build_http_client(d);
         self
+    }
+
+    /// Прогрев соединения: дешёвый GET ради DNS+TCP+TLS, ответ не важен.
+    pub async fn warm_up(&self) {
+        let _ = self
+            .client
+            .get(format!("{}/v1/models", self.base_url))
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await;
     }
 
     /// Стримит ответ; каждая текстовая дельта уходит в on_delta. Отмена — через token.
@@ -58,13 +73,16 @@ impl AnthropicClient {
         cancel: CancellationToken,
         mut on_delta: impl FnMut(&str),
     ) -> Result<(), LlmError> {
-        let send = self
+        let mut req = self
             .client
             .post(format!("{}/v1/messages", self.base_url))
             .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
-            .json(&body)
-            .send();
+            .header("anthropic-version", "2023-06-01");
+        // fast mode — research preview: beta-заголовок обязателен вместе с body.speed
+        if body.get("speed").is_some() {
+            req = req.header("anthropic-beta", "fast-mode-2026-02-01");
+        }
+        let send = req.json(&body).send();
         let resp = tokio::select! {
             r = send => r.map_err(|e| LlmError::Network(e.to_string()))?,
             _ = cancel.cancelled() => return Err(LlmError::Cancelled),
@@ -111,8 +129,11 @@ pub struct ChatMessage {
     pub images: Vec<ImageAttachment>,
 }
 
-pub fn build_content(text: &str, images: &[ImageAttachment]) -> Value {
-    if images.is_empty() {
+/// `cache_breakpoint` — поставить cache_control на последний блок (используется
+/// только для последнего сообщения истории: брейкпоинт prompt-кэша, см. build_request_body).
+/// С брейкпоинтом контент всегда уходит массивом блоков (на строку маркер не повесить).
+pub fn build_content(text: &str, images: &[ImageAttachment], cache_breakpoint: bool) -> Value {
+    if images.is_empty() && !cache_breakpoint {
         return json!(text);
     }
     let mut blocks: Vec<Value> = images
@@ -127,24 +148,55 @@ pub fn build_content(text: &str, images: &[ImageAttachment]) -> Value {
     if !text.is_empty() {
         blocks.push(json!({"type": "text", "text": text}));
     }
+    if blocks.is_empty() {
+        return json!(text); // пустое сообщение — фронт таких не шлёт, но не ломаемся
+    }
+    if cache_breakpoint {
+        if let Some(last) = blocks.last_mut() {
+            last["cache_control"] = json!({"type": "ephemeral"});
+        }
+    }
     Value::Array(blocks)
 }
 
-pub fn build_request_body(model: &str, system: &str, messages: &[ChatMessage]) -> Value {
+/// `thinking=false` — поле thinking не отправляется вовсе (на Opus 4.8 это «без размышлений»);
+/// haiku его не поддерживает независимо от флага. `fast=true` + opus-4-8 → speed:"fast"
+/// (beta-заголовок добавляет stream_message).
+///
+/// Prompt caching: чат stateless и каждый запрос повторяет всю историю, поэтому ставим два
+/// брейкпоинта — на system-блоке и на последнем блоке последнего сообщения. Follow-up в том же
+/// чате читает весь префикс из кэша (~0.1x цены, заметно ниже TTFB на историях с картинками).
+/// Короткие промпты ниже минимума кэшируемого префикса просто молча не кэшируются.
+pub fn build_request_body(
+    model: &str,
+    system: &str,
+    messages: &[ChatMessage],
+    thinking: bool,
+    fast: bool,
+) -> Value {
+    let last = messages.len().saturating_sub(1);
     let msgs: Vec<Value> = messages
         .iter()
-        .map(|m| json!({"role": m.role, "content": build_content(&m.text, &m.images)}))
+        .enumerate()
+        .map(|(i, m)| json!({"role": m.role, "content": build_content(&m.text, &m.images, i == last)}))
         .collect();
+    let system_value = if system.is_empty() {
+        json!("")
+    } else {
+        json!([{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}])
+    };
     let mut body = json!({
         "model": model,
         "max_tokens": 64000,
         "stream": true,
-        "system": system,
+        "system": system_value,
         "messages": msgs
     });
-    // claude-haiku-4-5 не поддерживает adaptive thinking — поле не отправляем (см. спеку)
-    if !model.starts_with("claude-haiku") {
+    if thinking && !model.starts_with("claude-haiku") {
         body["thinking"] = json!({"type": "adaptive"});
+    }
+    if fast && model == "claude-opus-4-8" {
+        body["speed"] = json!("fast");
     }
     body
 }
@@ -228,7 +280,7 @@ mod tests {
 
     #[test]
     fn text_only_content_is_plain_string() {
-        assert_eq!(build_content("привет", &[]), json!("привет"));
+        assert_eq!(build_content("привет", &[], false), json!("привет"));
     }
 
     #[test]
@@ -238,12 +290,28 @@ mod tests {
             data: "AAAA".into(),
         }];
         assert_eq!(
-            build_content("что на скриншоте?", &imgs),
+            build_content("что на скриншоте?", &imgs, false),
             json!([
                 {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAA"}},
                 {"type": "text", "text": "что на скриншоте?"}
             ])
         );
+    }
+
+    #[test]
+    fn cache_breakpoint_lands_on_last_block() {
+        // текст без картинок: массив из одного text-блока с cache_control
+        let content = build_content("вопрос", &[], true);
+        assert_eq!(
+            content,
+            json!([{"type": "text", "text": "вопрос", "cache_control": {"type": "ephemeral"}}])
+        );
+        // картинки + текст: маркер на последнем (текстовом) блоке
+        let imgs = vec![ImageAttachment { media_type: "image/png".into(), data: "AAAA".into() }];
+        let content = build_content("что тут?", &imgs, true);
+        let arr = content.as_array().unwrap();
+        assert!(arr[0].get("cache_control").is_none());
+        assert_eq!(arr[1]["cache_control"]["type"], "ephemeral");
     }
 
     #[test]
@@ -253,14 +321,18 @@ mod tests {
             text: "вопрос".into(),
             images: vec![],
         }];
-        let body = build_request_body("claude-opus-4-8", "sys", &msgs);
+        let body = build_request_body("claude-opus-4-8", "sys", &msgs, true, false);
         assert_eq!(body["model"], "claude-opus-4-8");
         assert_eq!(body["max_tokens"], 64000);
         assert_eq!(body["stream"], true);
         assert_eq!(body["thinking"]["type"], "adaptive");
-        assert_eq!(body["system"], "sys");
+        // system — блок с брейкпоинтом prompt-кэша
+        assert_eq!(body["system"][0]["text"], "sys");
+        assert_eq!(body["system"][0]["cache_control"]["type"], "ephemeral");
         assert_eq!(body["messages"][0]["role"], "user");
-        assert_eq!(body["messages"][0]["content"], "вопрос");
+        // единственное сообщение = последнее → блок с cache_control
+        assert_eq!(body["messages"][0]["content"][0]["text"], "вопрос");
+        assert!(body.get("speed").is_none());
     }
 
     #[test]
@@ -270,11 +342,17 @@ mod tests {
             ChatMessage { role: "assistant".into(), text: "2".into(), images: vec![] },
             ChatMessage { role: "user".into(), text: "а 2+2?".into(), images: vec![] },
         ];
-        let body = build_request_body("claude-opus-4-8", "sys", &msgs);
+        let body = build_request_body("claude-opus-4-8", "sys", &msgs, true, false);
         assert_eq!(body["messages"].as_array().unwrap().len(), 3);
+        // не-последние сообщения остаются плоскими строками (стабильный префикс для кэша)
         assert_eq!(body["messages"][1]["role"], "assistant");
         assert_eq!(body["messages"][1]["content"], "2");
-        assert_eq!(body["messages"][2]["content"], "а 2+2?");
+        // последнее несёт брейкпоинт
+        assert_eq!(body["messages"][2]["content"][0]["text"], "а 2+2?");
+        assert_eq!(
+            body["messages"][2]["content"][0]["cache_control"]["type"],
+            "ephemeral"
+        );
     }
 
     #[test]
@@ -284,8 +362,34 @@ mod tests {
             text: "вопрос".into(),
             images: vec![],
         }];
-        let body = build_request_body("claude-haiku-4-5", "sys", &msgs);
+        let body = build_request_body("claude-haiku-4-5", "sys", &msgs, true, false);
         assert!(body.get("thinking").is_none());
+    }
+
+    #[test]
+    fn thinking_disabled_omits_field_entirely() {
+        let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
+        let body = build_request_body("claude-opus-4-8", "sys", &msgs, false, false);
+        assert!(body.get("thinking").is_none());
+    }
+
+    #[test]
+    fn fast_mode_only_for_opus_4_8() {
+        let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
+        let body = build_request_body("claude-opus-4-8", "", &msgs, true, true);
+        assert_eq!(body["speed"], "fast");
+        // на других моделях speed не отправляем — там он не поддержан
+        let body = build_request_body("claude-sonnet-4-6", "", &msgs, true, true);
+        assert!(body.get("speed").is_none());
+        let body = build_request_body("claude-haiku-4-5", "", &msgs, true, true);
+        assert!(body.get("speed").is_none());
+    }
+
+    #[test]
+    fn empty_system_stays_plain_string() {
+        let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
+        let body = build_request_body("claude-opus-4-8", "", &msgs, true, false);
+        assert_eq!(body["system"], "");
     }
 
     const SSE_FIXTURE: &str = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\"}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"При\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"вет!\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
@@ -332,7 +436,7 @@ mod tests {
     #[test]
     fn empty_text_with_images_has_no_text_block() {
         let imgs = vec![ImageAttachment { media_type: "image/png".into(), data: "AAAA".into() }];
-        let content = build_content("", &imgs);
+        let content = build_content("", &imgs, false);
         let arr = content.as_array().unwrap();
         assert_eq!(arr.len(), 1);
         assert_eq!(arr[0]["type"], "image");
@@ -387,13 +491,40 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs),
+                build_request_body("claude-opus-4-8", "s", &msgs, true, false),
                 cancel,
                 move |delta| c2.lock().unwrap().push_str(delta),
             )
             .await
             .unwrap();
         assert_eq!(*collected.lock().unwrap(), "Привет!");
+    }
+
+    #[tokio::test]
+    async fn fast_mode_sends_beta_header() {
+        use wiremock::matchers::{header, method};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(header("anthropic-beta", "fast-mode-2026-02-01"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_raw(SSE_FIXTURE.as_bytes().to_vec(), "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+        let client = AnthropicClient::new("k".into()).with_base_url(server.uri());
+        let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
+        // без заголовка мок не сматчится (404) и стрим вернёт ошибку
+        client
+            .stream_message(
+                build_request_body("claude-opus-4-8", "s", &msgs, true, true),
+                tokio_util::sync::CancellationToken::new(),
+                |_| {},
+            )
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -416,7 +547,7 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs),
+                build_request_body("claude-opus-4-8", "s", &msgs, true, false),
                 tokio_util::sync::CancellationToken::new(),
                 |_| {},
             )
@@ -445,7 +576,7 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs),
+                build_request_body("claude-opus-4-8", "s", &msgs, true, false),
                 tokio_util::sync::CancellationToken::new(),
                 move |d| c2.lock().unwrap().push_str(d),
             )
@@ -468,7 +599,7 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs),
+                build_request_body("claude-opus-4-8", "s", &msgs, true, false),
                 tokio_util::sync::CancellationToken::new(),
                 |_| {},
             )
@@ -497,7 +628,7 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs),
+                build_request_body("claude-opus-4-8", "s", &msgs, true, false),
                 cancel,
                 |_| {},
             )
