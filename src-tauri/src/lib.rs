@@ -180,6 +180,7 @@ pub fn run() {
             if let Err(e) = hotkey::register_toggle(handle, &toggle_hotkey) {
                 eprintln!("не удалось зарегистрировать toggle-хоткей {toggle_hotkey:?}: {e}");
             }
+            install_move_keys_monitor(handle.clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -201,6 +202,58 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Перемещение окна Cmd/Ctrl+стрелками через локальный NSEvent-монитор,
+/// ПЕРЕХВАТЫВАЮЩИЙ keyDown до WKWebView (возврат null = событие поглощено).
+///
+/// Зачем так: если событие доходит до WebKit при фокусе в текстовом поле,
+/// web-процесс просит UI-процесс спрятать указатель мыши «до движения мыши»
+/// (стандартное «прячем курсор при печати»), а окно уезжает из-под курсора —
+/// указатель «пропадает». Пост-фактум unhide гонится с этим IPC и проигрывает.
+/// Монитор же не даёт WebKit увидеть keydown вообще: курсор не прячется,
+/// каретка не прыгает, а JS-обработчик Cmd+стрелок остаётся мокам браузера.
+///
+/// Вызывать на главном потоке (setup). Монитор живёт всё время работы приложения.
+fn install_move_keys_monitor(app: AppHandle) {
+    use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags};
+
+    let block = block2::RcBlock::new(
+        move |ev: std::ptr::NonNull<NSEvent>| -> *mut NSEvent {
+            let pass = ev.as_ptr();
+            let event = unsafe { ev.as_ref() };
+            let flags = event.modifierFlags();
+            if !flags.contains(NSEventModifierFlags::Command)
+                && !flags.contains(NSEventModifierFlags::Control)
+            {
+                return pass;
+            }
+            // 123..126 — Left, Right, Down, Up
+            let (dx, dy) = match event.keyCode() {
+                123 => (-1i32, 0i32),
+                124 => (1, 0),
+                125 => (0, 1),
+                126 => (0, -1),
+                _ => return pass,
+            };
+            let step = app.state::<App>().settings.lock().unwrap().move_step as i32;
+            if let Some(w) = app.get_webview_window("main") {
+                if let Ok(pos) = w.outer_position() {
+                    let _ = w.set_position(tauri::PhysicalPosition::new(
+                        pos.x + dx * step,
+                        pos.y + dy * step,
+                    ));
+                }
+            }
+            std::ptr::null_mut() // поглощаем: WebKit событие не увидит
+        },
+    );
+    // SAFETY: блок возвращает либо исходный указатель события, либо null — как
+    // требует контракт монитора. Токен намеренно утекает: монитор нужен до выхода.
+    let monitor = unsafe {
+        NSEvent::addLocalMonitorForEventsMatchingMask_handler(NSEventMask::KeyDown, &block)
+    };
+    std::mem::forget(monitor);
 }
 
 // --- Эмиссия состояния --------------------------------------------------------
