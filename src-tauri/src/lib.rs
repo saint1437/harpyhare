@@ -195,6 +195,8 @@ pub fn run() {
             move_window_by,
             set_window_width,
             set_ptt_suspended,
+            close_app,
+            hide_main_window,
             open_audio_permission_settings,
             open_external,
             capture_available,
@@ -775,6 +777,20 @@ fn set_ptt_suspended(app: AppHandle, suspended: bool) {
         hotkey::unregister_ptt(&app, &hk);
     } else {
         let _ = hotkey::register_ptt(&app, &hk);
+    }
+}
+
+#[tauri::command]
+fn close_app(app: AppHandle) {
+    app.exit(0);
+}
+
+/// Скрыть главное окно (жёлтая кнопка «светофора»); вернуть — глобальным
+/// toggle-хоткеем (см. on_toggle_visibility).
+#[tauri::command]
+fn hide_main_window(app: AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.hide();
     }
 }
 

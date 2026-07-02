@@ -7,11 +7,24 @@ export interface StatusBarProps {
   state: RecorderState;
   error: string | null;
   hotkey: string;
+  /** Глобальный хоткей показа окна — подсказка на кнопке «Скрыть». */
+  toggleHotkey: string;
   tabs: ReactNode;
   onOpenSettings: () => void;
+  onClose: () => void;
+  onHide: () => void;
 }
 
-export function StatusBar({ state, error, hotkey, tabs, onOpenSettings }: StatusBarProps) {
+export function StatusBar({
+  state,
+  error,
+  hotkey,
+  toggleHotkey,
+  tabs,
+  onOpenSettings,
+  onClose,
+  onHide,
+}: StatusBarProps) {
   const statusText: Record<RecorderState, string> = {
     idle: `Зажми ${hotkey} — записать системный звук`,
     recording: "Запись…",
@@ -28,9 +41,31 @@ export function StatusBar({ state, error, hotkey, tabs, onOpenSettings }: Status
           : "bg-muted-foreground";
 
   return (
-    <header className="flex flex-col gap-1.5">
-      <div className="flex min-h-7 items-center justify-between gap-2">
+    // data-tauri-drag-region: пустые места шапки таскают окно (кнопки/табы кликабельны,
+    // т.к. Tauri проверяет атрибут строго на target события).
+    <header className="flex flex-col gap-1.5" data-tauri-drag-region>
+      <div className="flex min-h-7 items-center justify-between gap-2" data-tauri-drag-region>
         <div className="no-scrollbar flex min-w-0 items-center gap-2 overflow-x-auto">
+          <div className="group flex shrink-0 items-center gap-1.5 pr-1">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Закрыть приложение"
+              title="Закрыть приложение"
+              className="grid size-3 place-items-center rounded-full bg-[#ff5f57] text-[8px] leading-none font-bold text-black/0 transition-colors group-hover:text-black/50 hover:brightness-90"
+            >
+              ×
+            </button>
+            <button
+              type="button"
+              onClick={onHide}
+              aria-label="Скрыть окно"
+              title={`Скрыть окно — вернуть: ${toggleHotkey}`}
+              className="grid size-3 place-items-center rounded-full bg-[#febc2e] text-[8px] leading-none font-bold text-black/0 transition-colors group-hover:text-black/50 hover:brightness-90"
+            >
+              −
+            </button>
+          </div>
           <span className={cn("size-2.5 shrink-0 rounded-full", dotClass)} aria-hidden />
           {tabs}
         </div>
@@ -48,6 +83,7 @@ export function StatusBar({ state, error, hotkey, tabs, onOpenSettings }: Status
           "truncate font-mono text-[11.5px]",
           showError ? "whitespace-normal text-destructive" : "text-muted-foreground",
         )}
+        data-tauri-drag-region
       >
         {showError ? error : statusText[state]}
       </span>

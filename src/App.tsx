@@ -17,6 +17,8 @@ import { useTranscription } from "@/hooks/useTranscription";
 import { useWindowControls } from "@/hooks/useWindowControls";
 import {
   captureAvailable,
+  closeApp,
+  hideMainWindow,
   openAudioPermissionSettings,
   retryTranscription,
   setWindowWidth,
@@ -199,9 +201,12 @@ export default function App() {
           state={state}
           error={error}
           hotkey={settings.hotkey}
+          toggleHotkey={settings.toggle_hotkey}
           onOpenSettings={() => {
             setSettingsOpen(true);
           }}
+          onClose={() => void closeApp()}
+          onHide={() => void hideMainWindow()}
           tabs={
             <ChatTabs
               chats={chats.chats}

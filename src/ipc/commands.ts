@@ -50,6 +50,17 @@ export async function setPttSuspended(suspended: boolean): Promise<void> {
   await invoke("set_ptt_suspended", { suspended });
 }
 
+export async function closeApp(): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("close_app");
+}
+
+/** Скрыть окно (вернуть — глобальным toggle-хоткеем). */
+export async function hideMainWindow(): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("hide_main_window");
+}
+
 export async function openAudioPermissionSettings(): Promise<void> {
   if (!isTauri()) return;
   await invoke("open_audio_permission_settings");
