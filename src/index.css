@@ -3,34 +3,34 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Прозрачность окна Tauri управляется слайдером настроек. */
+/* Прозрачность окна Tauri управляется слайдером настроек (дефолт 90%, как в Settings). */
 :root {
-  --app-opacity: 1;
+  --app-opacity: 0.9;
 
   --radius: 0.625rem;
 
-  /* Графит-канвас */
-  --background: oklch(0.145 0.004 285);
-  --foreground: oklch(0.94 0 0);
-  --card: oklch(0.18 0.003 285);
-  --card-foreground: oklch(0.94 0 0);
-  --popover: oklch(0.18 0.003 285);
-  --popover-foreground: oklch(0.94 0 0);
-  --muted: oklch(0.22 0.003 285);
-  --muted-foreground: oklch(0.62 0.006 285);
+  /* Серый канвас (светлее прежнего графита, но тема остаётся тёмной) */
+  --background: oklch(0.28 0.004 285);
+  --foreground: oklch(0.95 0 0);
+  --card: oklch(0.32 0.003 285);
+  --card-foreground: oklch(0.95 0 0);
+  --popover: oklch(0.32 0.003 285);
+  --popover-foreground: oklch(0.95 0 0);
+  --muted: oklch(0.36 0.003 285);
+  --muted-foreground: oklch(0.72 0.006 285);
 
   /* Оксблад-акцент */
   --primary: oklch(0.45 0.16 18);
   --primary-foreground: oklch(0.97 0.01 30);
-  --secondary: oklch(0.22 0.004 285);
-  --secondary-foreground: oklch(0.94 0 0);
-  --accent: oklch(0.24 0.02 18);
-  --accent-foreground: oklch(0.94 0 0);
+  --secondary: oklch(0.36 0.004 285);
+  --secondary-foreground: oklch(0.95 0 0);
+  --accent: oklch(0.38 0.02 18);
+  --accent-foreground: oklch(0.95 0 0);
   --destructive: oklch(0.55 0.2 18);
   --destructive-foreground: oklch(0.97 0.01 30);
 
-  --border: oklch(1 0 0 / 8%);
-  --input: oklch(1 0 0 / 10%);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 14%);
   --ring: oklch(0.45 0.16 18 / 50%);
 
   /* Доп. токены приложения */
@@ -151,7 +151,7 @@ body {
   margin: 0.65em 0 0.85em;
   padding: 12px 14px;
   border-radius: 9px;
-  background: oklch(0.12 0 0);
+  background: oklch(0.22 0.003 285); /* темнее серого канваса, чтобы код читался блоком */
   border: 1px solid var(--border);
   overflow-x: auto;
 }
