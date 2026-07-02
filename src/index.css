@@ -160,6 +160,60 @@ body {
   background: none;
   color: oklch(0.85 0.01 285);
 }
+
+/*
+ * Подсветка кода (highlight.js классы от rehype-highlight).
+ * Палитра согласована с темой: оксблад-розовый для ключевых слов,
+ * приглушённая зелень для строк, янтарь для чисел/типов, серый для комментариев.
+ */
+.prose-answer .hljs-comment,
+.prose-answer .hljs-quote {
+  color: oklch(0.6 0.01 285);
+  font-style: italic;
+}
+.prose-answer .hljs-keyword,
+.prose-answer .hljs-selector-tag,
+.prose-answer .hljs-tag,
+.prose-answer .hljs-name,
+.prose-answer .hljs-meta {
+  color: oklch(0.72 0.14 15);
+}
+.prose-answer .hljs-string,
+.prose-answer .hljs-regexp,
+.prose-answer .hljs-addition {
+  color: oklch(0.76 0.09 140);
+}
+.prose-answer .hljs-number,
+.prose-answer .hljs-literal,
+.prose-answer .hljs-built_in,
+.prose-answer .hljs-type,
+.prose-answer .hljs-class,
+.prose-answer .hljs-title.class_ {
+  color: oklch(0.79 0.1 70);
+}
+.prose-answer .hljs-title,
+.prose-answer .hljs-title.function_,
+.prose-answer .hljs-section {
+  color: oklch(0.8 0.06 220);
+}
+.prose-answer .hljs-attr,
+.prose-answer .hljs-attribute,
+.prose-answer .hljs-variable,
+.prose-answer .hljs-template-variable,
+.prose-answer .hljs-property,
+.prose-answer .hljs-selector-class,
+.prose-answer .hljs-selector-id {
+  color: oklch(0.8 0.05 320);
+}
+.prose-answer .hljs-deletion {
+  color: oklch(0.68 0.16 20);
+}
+.prose-answer .hljs-emphasis {
+  font-style: italic;
+}
+.prose-answer .hljs-strong {
+  font-weight: 600;
+}
 .prose-answer blockquote {
   margin: 0.65em 0;
   padding: 2px 0 2px 12px;

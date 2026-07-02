@@ -153,6 +153,25 @@ export default function App() {
   useEffect(() => {
     if (isTauri() || seededDemo.current || activeId === "") return;
     seededDemo.current = true;
+    // Ответ с кодом — чтобы в браузерном моке было видно подсветку/markdown-стили.
+    chatsRef.current.appendUserMessage(activeId, "Покажи пример хвостовой рекурсии на JS.", []);
+    chatsRef.current.appendAssistantMessage(
+      activeId,
+      "Хвостовая рекурсия — рекурсивный вызов **последним действием**:\n\n" +
+        "```js\n" +
+        "// обычная: после вызова ещё умножение\n" +
+        "function fact(n) {\n" +
+        "  if (n <= 1) return 1;\n" +
+        "  return n * fact(n - 1);\n" +
+        "}\n\n" +
+        "// хвостовая: аккумулятор несёт результат\n" +
+        "function factTail(n, acc = 1) {\n" +
+        "  if (n <= 1) return acc;\n" +
+        "  return factTail(n - 1, n * acc);\n" +
+        "}\n" +
+        "```\n\n" +
+        "Движок может заменить кадр стека, а не наращивать его.",
+    );
     chatsRef.current.setDraft(
       activeId,
       "Объясни, чем хвостовая рекурсия отличается от обычной.",

@@ -1,6 +1,7 @@
 import { isValidElement, memo, useEffect, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { HtmlBlockChip } from "@/components/HtmlBlockChip";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
@@ -19,6 +20,34 @@ export interface AnswerPanelProps {
   /** Открыть HTML-блок во встроенной панели превью (ошибки обрабатывает владелец). */
   onOpenPreview: (code: string) => void;
 }
+
+/** Подсветка кода (highlight.js через rehype): common-набор языков lowlight,
+ *  автоопределение для непомеченных блоков ограничено subset'ом (скорость и
+ *  стабильность на стриме). `html` — plainText: чип превью требует сырой текст,
+ *  подсветка превратила бы children в массив span'ов и сломала бы его. */
+const REHYPE_PLUGINS: NonNullable<Parameters<typeof Markdown>[0]["rehypePlugins"]> = [
+  [
+    rehypeHighlight,
+    {
+      detect: true,
+      plainText: ["html"],
+      subset: [
+        "javascript",
+        "typescript",
+        "python",
+        "json",
+        "bash",
+        "css",
+        "xml",
+        "sql",
+        "yaml",
+        "rust",
+        "go",
+        "java",
+      ],
+    },
+  ],
+];
 
 const markdownComponents = {
   a: ({ href, children }: { href?: string; children?: ReactNode }) => (
@@ -72,7 +101,7 @@ const MarkdownChunk = memo(function MarkdownChunk({
   components: Components;
 }) {
   return (
-    <Markdown remarkPlugins={[remarkGfm]} components={components}>
+    <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={REHYPE_PLUGINS} components={components}>
       {text}
     </Markdown>
   );
