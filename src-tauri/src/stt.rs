@@ -86,7 +86,15 @@ impl GroqStt {
             }
             401 | 403 => Err(SttError::BadApiKey),
             code @ (429 | 500..=599) => Err(SttError::Retryable(code)),
-            code => Err(SttError::Other(format!("Groq HTTP {code}"))),
+            code => {
+                // Тело ошибки Groq содержит причину — показываем её, а не голый код.
+                let body = resp.text().await.unwrap_or_default();
+                let msg = serde_json::from_str::<serde_json::Value>(&body)
+                    .ok()
+                    .and_then(|v| v["error"]["message"].as_str().map(str::to_string))
+                    .unwrap_or_else(|| format!("Groq HTTP {code}"));
+                Err(SttError::Other(msg))
+            }
         }
     }
 

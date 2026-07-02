@@ -62,6 +62,7 @@ export default function App() {
   // и в ответе есть ```html — открыть панель с последним блоком.
   const onAssistantDone = useCallback(
     (chatId: string, text: string) => {
+      if (text === "") return; // ответ без текста не пишем в историю (API отвергает пустой content)
       chatsRef.current.appendAssistantMessage(chatId, text);
       if (!settingsRef.current.auto_preview_html) return;
       if (chatId !== chatsRef.current.activeId) return;

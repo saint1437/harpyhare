@@ -91,7 +91,16 @@ impl AnthropicClient {
             200 => {}
             401 | 403 => return Err(LlmError::BadApiKey),
             code @ (429 | 500..=599) => return Err(LlmError::Retryable(code)),
-            code => return Err(LlmError::Api(format!("HTTP {code}"))),
+            code => {
+                // В теле ошибки API лежит человекочитаемая причина (низкий баланс,
+                // невалидное поле и т.п.) — показываем её, а не голый код.
+                let body = resp.text().await.unwrap_or_default();
+                let msg = serde_json::from_str::<Value>(&body)
+                    .ok()
+                    .and_then(|v| v["error"]["message"].as_str().map(str::to_string))
+                    .unwrap_or_else(|| format!("HTTP {code}"));
+                return Err(LlmError::Api(msg));
+            }
         }
         let mut parser = SseParser::new();
         let mut stream = resp.bytes_stream();
@@ -174,8 +183,14 @@ pub fn build_request_body(
     thinking: bool,
     fast: bool,
 ) -> Value {
-    let last = messages.len().saturating_sub(1);
-    let msgs: Vec<Value> = messages
+    // Пустые сообщения (ответ без текста и т.п.) отбрасываем: API отвергает
+    // пустой content, и один такой элемент навсегда ломал бы отправку чата.
+    let kept: Vec<&ChatMessage> = messages
+        .iter()
+        .filter(|m| !m.text.is_empty() || !m.images.is_empty())
+        .collect();
+    let last = kept.len().saturating_sub(1);
+    let msgs: Vec<Value> = kept
         .iter()
         .enumerate()
         .map(|(i, m)| json!({"role": m.role, "content": build_content(&m.text, &m.images, i == last)}))
@@ -386,6 +401,21 @@ mod tests {
     }
 
     #[test]
+    fn empty_messages_are_dropped_from_history() {
+        let msgs = vec![
+            ChatMessage { role: "user".into(), text: "1+1?".into(), images: vec![] },
+            ChatMessage { role: "assistant".into(), text: "".into(), images: vec![] },
+            ChatMessage { role: "user".into(), text: "а 2+2?".into(), images: vec![] },
+        ];
+        let body = build_request_body("claude-opus-4-8", "s", &msgs, true, false);
+        let arr = body["messages"].as_array().unwrap();
+        assert_eq!(arr.len(), 2, "пустой assistant выброшен");
+        assert_eq!(arr[0]["content"], "1+1?");
+        // брейкпоинт кэша — на последнем из оставшихся
+        assert_eq!(arr[1]["content"][0]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
     fn empty_system_stays_plain_string() {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let body = build_request_body("claude-opus-4-8", "", &msgs, true, false);
@@ -584,6 +614,34 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, LlmError::Network(_)));
         assert_eq!(*collected.lock().unwrap(), "При"); // частичные дельты успели уйти
+    }
+
+    #[tokio::test]
+    async fn stream_surfaces_api_error_message_from_body() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                "type": "error",
+                "error": {"type": "invalid_request_error", "message": "Your credit balance is too low"}
+            })))
+            .mount(&server)
+            .await;
+        let client = AnthropicClient::new("k".into()).with_base_url(server.uri());
+        let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
+        let err = client
+            .stream_message(
+                build_request_body("claude-opus-4-8", "s", &msgs, true, false),
+                tokio_util::sync::CancellationToken::new(),
+                |_| {},
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&err, LlmError::Api(m) if m.contains("credit balance")),
+            "got: {err:?}"
+        );
     }
 
     #[tokio::test]
