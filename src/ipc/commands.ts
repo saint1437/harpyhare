@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { FALLBACK_MODELS, type ModelInfo } from "@/lib/models";
 import { isTauri } from "./env";
 import { DEFAULT_SETTINGS, type ChatMessageDto, type Settings } from "./types";
 
@@ -11,6 +12,12 @@ export async function sendToClaude(
 ): Promise<void> {
   if (!isTauri()) return;
   await invoke("send_to_claude", { messages, chatId, system, thinking, model });
+}
+
+/** Модели аккаунта (GET /v1/models на стороне Rust, с кэшем и фолбэком). */
+export async function listModels(): Promise<ModelInfo[]> {
+  if (!isTauri()) return FALLBACK_MODELS;
+  return invoke<ModelInfo[]>("list_models");
 }
 
 export async function cancelStream(chatId: string): Promise<void> {

@@ -33,6 +33,8 @@ pub struct App {
     pub stt: Mutex<stt::GroqStt>,
     pub llm: Mutex<llm::AnthropicClient>,
     pub stt_stream: Mutex<Option<SttStream>>,
+    /// Модели аккаунта из GET /v1/models (фолбэк-список до первого успешного фетча).
+    pub models: Mutex<Vec<llm::ModelInfo>>,
     pub recording_gen: AtomicU64,
     pub resize_gen: AtomicU64,
     pub preview_html: Mutex<String>,
@@ -141,13 +143,19 @@ pub fn run() {
             let hotkey = settings.hotkey.clone();
             let toggle_hotkey = settings.toggle_hotkey.clone();
 
-            // Прогрев TLS-соединений к Groq/Anthropic на старте: первый реальный
-            // запрос не платит DNS+TCP+TLS (h2 keep-alive дальше держит пул тёплым).
+            // Прогрев TLS-соединений к Groq/Anthropic на старте + первичный фетч
+            // списка моделей аккаунта (заодно тот же прогрев).
             {
                 let stt = stt.clone();
                 let llm = llm.clone();
+                let handle = handle.clone();
                 tauri::async_runtime::spawn(async move {
-                    tokio::join!(stt.warm_up(), llm.warm_up());
+                    let (_, models) = tokio::join!(stt.warm_up(), llm.list_models());
+                    if let Ok(models) = models {
+                        if !models.is_empty() {
+                            *handle.state::<App>().models.lock().unwrap() = models;
+                        }
+                    }
                 });
             }
 
@@ -160,6 +168,7 @@ pub fn run() {
                 stt: Mutex::new(stt),
                 llm: Mutex::new(llm),
                 stt_stream: Mutex::new(None),
+                models: Mutex::new(llm::fallback_models()),
                 recording_gen: AtomicU64::new(0),
                 resize_gen: AtomicU64::new(0),
                 preview_html: Mutex::new(String::new()),
@@ -176,6 +185,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             send_to_claude,
             cancel_stream,
+            list_models,
             load_chats,
             save_chats,
             retry_transcription,
@@ -472,6 +482,13 @@ async fn send_to_claude(
     model: String,
 ) {
     let fast = app.state::<App>().settings.lock().unwrap().fast_mode;
+    // thinking-гейтинг по capabilities модели (Models API), не по хардкоду имён
+    let model_info = {
+        let st = app.state::<App>();
+        let models = st.models.lock().unwrap();
+        models.iter().find(|m| m.id == model).cloned()
+    };
+    let thinking_field = llm::thinking_value(model_info.as_ref(), &model, thinking);
     let client = app.state::<App>().llm.lock().unwrap().clone();
     let cancel = CancellationToken::new();
     {
@@ -481,7 +498,7 @@ async fn send_to_claude(
             old.cancel(); // повторный send в тот же чат отменяет прежний
         }
     }
-    let body = llm::build_request_body(&model, &system, &messages, thinking, fast);
+    let body = llm::build_request_body(&model, &system, &messages, thinking_field, fast);
 
     // Коалесинг дельт: SSE отдаёт десятки событий/сек, а каждый emit — это
     // JSON-сериализация + IPC + пробуждение webview. Копим в буфер и флашим
@@ -544,6 +561,20 @@ async fn send_to_claude(
 fn cancel_stream(app: AppHandle, chat_id: String) {
     if let Some(c) = app.state::<App>().llm_cancel.lock().unwrap().remove(&chat_id) {
         c.cancel();
+    }
+}
+
+/// Модели аккаунта: живой фетч с обновлением кэша; при ошибке — кэш
+/// (фолбэк-список, если фетч ни разу не удавался).
+#[tauri::command]
+async fn list_models(app: AppHandle) -> Vec<llm::ModelInfo> {
+    let client = app.state::<App>().llm.lock().unwrap().clone();
+    match client.list_models().await {
+        Ok(models) if !models.is_empty() => {
+            *app.state::<App>().models.lock().unwrap() = models.clone();
+            models
+        }
+        _ => app.state::<App>().models.lock().unwrap().clone(),
     }
 }
 

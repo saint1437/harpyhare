@@ -25,6 +25,78 @@ pub struct AnthropicClient {
     client: reqwest::Client,
 }
 
+/// Модель из `GET /v1/models` + выжимка capabilities, влияющая на сборку запроса.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelInfo {
+    pub id: String,
+    pub display_name: String,
+    /// Принимает `thinking: {type:"adaptive"}` (capabilities.thinking.types.adaptive).
+    pub adaptive: bool,
+    /// Thinking нельзя выключить (Fable/Mythos «думают всегда»). Capabilities этого
+    /// не выражают — единственное оставшееся модельное исключение по имени.
+    pub always_thinks: bool,
+}
+
+/// Эвристика на случай недоступных capabilities (оффлайн/старый API).
+fn fallback_adaptive(id: &str) -> bool {
+    !id.starts_with("claude-haiku")
+}
+
+fn always_thinks(id: &str) -> bool {
+    id.starts_with("claude-fable") || id.starts_with("claude-mythos")
+}
+
+fn model_info_from_json(v: &Value) -> Option<ModelInfo> {
+    let id = v["id"].as_str()?.to_string();
+    let display_name = v["display_name"].as_str().unwrap_or(&id).to_string();
+    let adaptive = v["capabilities"]["thinking"]["types"]["adaptive"]["supported"]
+        .as_bool()
+        .unwrap_or_else(|| fallback_adaptive(&id));
+    Some(ModelInfo {
+        always_thinks: always_thinks(&id),
+        adaptive,
+        id,
+        display_name,
+    })
+}
+
+/// Стартовый список до первого успешного `GET /v1/models` (и оффлайн-фолбэк).
+pub fn fallback_models() -> Vec<ModelInfo> {
+    [
+        ("claude-opus-4-8", "Claude Opus 4.8", true),
+        ("claude-sonnet-4-6", "Claude Sonnet 4.6", true),
+        ("claude-haiku-4-5", "Claude Haiku 4.5", false),
+    ]
+    .into_iter()
+    .map(|(id, name, adaptive)| ModelInfo {
+        id: id.into(),
+        display_name: name.into(),
+        adaptive,
+        always_thinks: false,
+    })
+    .collect()
+}
+
+/// Значение поля `thinking` для запроса. Семантика по моделям:
+/// вкл → adaptive там, где он поддержан; выкл → явный disabled там, где thinking
+/// выключаем (на Sonnet 5 «пропустить поле» означает adaptive, поэтому omit мало);
+/// Fable думает всегда — поле опускаем в обоих случаях.
+pub fn thinking_value(info: Option<&ModelInfo>, model_id: &str, requested: bool) -> Option<Value> {
+    let adaptive = info.map_or_else(|| fallback_adaptive(model_id), |m| m.adaptive);
+    let always = info.map_or_else(|| always_thinks(model_id), |m| m.always_thinks);
+    if always {
+        return None; // всегда думает; и adaptive, и disabled слать бессмысленно/опасно
+    }
+    if requested {
+        adaptive.then(|| json!({"type": "adaptive"}))
+    } else if adaptive {
+        Some(json!({"type": "disabled"}))
+    } else {
+        None // без adaptive thinking по умолчанию и так выключен
+    }
+}
+
 /// Клиент с «вечно тёплым» пулом: h2-пинги в простое + пул без экспирации,
 /// чтобы каждый запрос попадал в уже установленное TLS-соединение
 /// (холодный handshake к api.anthropic.com — это ~200–500мс TTFB).
@@ -64,6 +136,31 @@ impl AnthropicClient {
             .timeout(Duration::from_secs(5))
             .send()
             .await;
+    }
+
+    /// Модели, доступные аккаунту (`GET /v1/models`, бесплатный запрос).
+    /// API отдаёт список от новых к старым — порядок сохраняем.
+    pub async fn list_models(&self) -> Result<Vec<ModelInfo>, LlmError> {
+        let resp = self
+            .client
+            .get(format!("{}/v1/models?limit=100", self.base_url))
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .timeout(Duration::from_secs(15))
+            .send()
+            .await
+            .map_err(|e| LlmError::Network(e.to_string()))?;
+        if resp.status().as_u16() != 200 {
+            return Err(LlmError::Api(format!("models HTTP {}", resp.status().as_u16())));
+        }
+        let v: Value = resp
+            .json()
+            .await
+            .map_err(|e| LlmError::Network(e.to_string()))?;
+        Ok(v["data"]
+            .as_array()
+            .map(|arr| arr.iter().filter_map(model_info_from_json).collect())
+            .unwrap_or_default())
     }
 
     /// Стримит ответ; каждая текстовая дельта уходит в on_delta. Отмена — через token.
@@ -168,9 +265,8 @@ pub fn build_content(text: &str, images: &[ImageAttachment], cache_breakpoint: b
     Value::Array(blocks)
 }
 
-/// `thinking=false` — поле thinking не отправляется вовсе (на Opus 4.8 это «без размышлений»);
-/// haiku его не поддерживает независимо от флага. `fast=true` + opus-4-8 → speed:"fast"
-/// (beta-заголовок добавляет stream_message).
+/// `thinking` — готовое значение поля (см. [`thinking_value`]; None = не отправлять).
+/// `fast=true` + opus-4-8 → speed:"fast" (beta-заголовок добавляет stream_message).
 ///
 /// Prompt caching: чат stateless и каждый запрос повторяет всю историю, поэтому ставим два
 /// брейкпоинта — на system-блоке и на последнем блоке последнего сообщения. Follow-up в том же
@@ -180,7 +276,7 @@ pub fn build_request_body(
     model: &str,
     system: &str,
     messages: &[ChatMessage],
-    thinking: bool,
+    thinking: Option<Value>,
     fast: bool,
 ) -> Value {
     // Пустые сообщения (ответ без текста и т.п.) отбрасываем: API отвергает
@@ -207,9 +303,10 @@ pub fn build_request_body(
         "system": system_value,
         "messages": msgs
     });
-    if thinking && !model.starts_with("claude-haiku") {
-        body["thinking"] = json!({"type": "adaptive"});
+    if let Some(t) = thinking {
+        body["thinking"] = t;
     }
+    // fast mode — research preview только на opus-4-8; capabilities его не выражают
     if fast && model == "claude-opus-4-8" {
         body["speed"] = json!("fast");
     }
@@ -293,6 +390,84 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// Хелпер тестов: «thinking включён на adaptive-модели».
+    fn adaptive() -> Option<Value> {
+        Some(json!({"type": "adaptive"}))
+    }
+
+    #[test]
+    fn thinking_value_semantics() {
+        // включён: adaptive там, где поддержан
+        assert_eq!(
+            thinking_value(None, "claude-opus-4-8", true),
+            Some(json!({"type": "adaptive"}))
+        );
+        // выключен: явный disabled (на Sonnet 5 omit означал бы adaptive)
+        assert_eq!(
+            thinking_value(None, "claude-opus-4-8", false),
+            Some(json!({"type": "disabled"}))
+        );
+        // haiku (эвристика): adaptive не поддержан — поле не шлём в обоих случаях
+        assert_eq!(thinking_value(None, "claude-haiku-4-5", true), None);
+        assert_eq!(thinking_value(None, "claude-haiku-4-5", false), None);
+        // fable думает всегда — поле опускаем в обоих случаях
+        assert_eq!(thinking_value(None, "claude-fable-5", true), None);
+        assert_eq!(thinking_value(None, "claude-fable-5", false), None);
+        // capabilities из API приоритетнее эвристик по имени
+        let info = ModelInfo {
+            id: "claude-newmodel-9".into(),
+            display_name: "New".into(),
+            adaptive: false,
+            always_thinks: false,
+        };
+        assert_eq!(thinking_value(Some(&info), "claude-newmodel-9", true), None);
+    }
+
+    #[test]
+    fn model_info_parses_capabilities() {
+        let v = json!({
+            "id": "claude-haiku-4-5-20251001",
+            "display_name": "Claude Haiku 4.5",
+            "capabilities": {"thinking": {"supported": true, "types": {
+                "enabled": {"supported": true}, "adaptive": {"supported": false}
+            }}}
+        });
+        let m = model_info_from_json(&v).unwrap();
+        assert_eq!(m.display_name, "Claude Haiku 4.5");
+        assert!(!m.adaptive);
+        assert!(!m.always_thinks);
+        // без capabilities — эвристика по имени
+        let m = model_info_from_json(&json!({"id": "claude-sonnet-5"})).unwrap();
+        assert!(m.adaptive);
+        assert_eq!(m.display_name, "claude-sonnet-5");
+    }
+
+    #[tokio::test]
+    async fn list_models_fetches_and_parses() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .and(header("x-api-key", "sk-test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": [
+                    {"id": "claude-sonnet-5", "display_name": "Claude Sonnet 5",
+                     "capabilities": {"thinking": {"types": {"adaptive": {"supported": true}}}}},
+                    {"id": "claude-haiku-4-5-20251001", "display_name": "Claude Haiku 4.5",
+                     "capabilities": {"thinking": {"types": {"adaptive": {"supported": false}}}}}
+                ]
+            })))
+            .mount(&server)
+            .await;
+        let client = AnthropicClient::new("sk-test".into()).with_base_url(server.uri());
+        let models = client.list_models().await.unwrap();
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0].id, "claude-sonnet-5");
+        assert!(models[0].adaptive);
+        assert!(!models[1].adaptive);
+    }
+
     #[test]
     fn text_only_content_is_plain_string() {
         assert_eq!(build_content("привет", &[], false), json!("привет"));
@@ -336,7 +511,7 @@ mod tests {
             text: "вопрос".into(),
             images: vec![],
         }];
-        let body = build_request_body("claude-opus-4-8", "sys", &msgs, true, false);
+        let body = build_request_body("claude-opus-4-8", "sys", &msgs, adaptive(), false);
         assert_eq!(body["model"], "claude-opus-4-8");
         assert_eq!(body["max_tokens"], 64000);
         assert_eq!(body["stream"], true);
@@ -357,7 +532,7 @@ mod tests {
             ChatMessage { role: "assistant".into(), text: "2".into(), images: vec![] },
             ChatMessage { role: "user".into(), text: "а 2+2?".into(), images: vec![] },
         ];
-        let body = build_request_body("claude-opus-4-8", "sys", &msgs, true, false);
+        let body = build_request_body("claude-opus-4-8", "sys", &msgs, adaptive(), false);
         assert_eq!(body["messages"].as_array().unwrap().len(), 3);
         // не-последние сообщения остаются плоскими строками (стабильный префикс для кэша)
         assert_eq!(body["messages"][1]["role"], "assistant");
@@ -371,32 +546,41 @@ mod tests {
     }
 
     #[test]
-    fn haiku_body_has_no_thinking_field() {
-        let msgs = vec![ChatMessage {
-            role: "user".into(),
-            text: "вопрос".into(),
-            images: vec![],
-        }];
-        let body = build_request_body("claude-haiku-4-5", "sys", &msgs, true, false);
+    fn thinking_none_omits_field_entirely() {
+        // гейтинг живёт в thinking_value; body просто отражает решение
+        let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
+        let body = build_request_body(
+            "claude-haiku-4-5",
+            "sys",
+            &msgs,
+            thinking_value(None, "claude-haiku-4-5", true),
+            false,
+        );
         assert!(body.get("thinking").is_none());
     }
 
     #[test]
-    fn thinking_disabled_omits_field_entirely() {
+    fn thinking_off_sends_explicit_disabled() {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
-        let body = build_request_body("claude-opus-4-8", "sys", &msgs, false, false);
-        assert!(body.get("thinking").is_none());
+        let body = build_request_body(
+            "claude-opus-4-8",
+            "sys",
+            &msgs,
+            thinking_value(None, "claude-opus-4-8", false),
+            false,
+        );
+        assert_eq!(body["thinking"]["type"], "disabled");
     }
 
     #[test]
     fn fast_mode_only_for_opus_4_8() {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
-        let body = build_request_body("claude-opus-4-8", "", &msgs, true, true);
+        let body = build_request_body("claude-opus-4-8", "", &msgs, adaptive(), true);
         assert_eq!(body["speed"], "fast");
         // на других моделях speed не отправляем — там он не поддержан
-        let body = build_request_body("claude-sonnet-4-6", "", &msgs, true, true);
+        let body = build_request_body("claude-sonnet-4-6", "", &msgs, adaptive(), true);
         assert!(body.get("speed").is_none());
-        let body = build_request_body("claude-haiku-4-5", "", &msgs, true, true);
+        let body = build_request_body("claude-haiku-4-5", "", &msgs, adaptive(), true);
         assert!(body.get("speed").is_none());
     }
 
@@ -407,7 +591,7 @@ mod tests {
             ChatMessage { role: "assistant".into(), text: "".into(), images: vec![] },
             ChatMessage { role: "user".into(), text: "а 2+2?".into(), images: vec![] },
         ];
-        let body = build_request_body("claude-opus-4-8", "s", &msgs, true, false);
+        let body = build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false);
         let arr = body["messages"].as_array().unwrap();
         assert_eq!(arr.len(), 2, "пустой assistant выброшен");
         assert_eq!(arr[0]["content"], "1+1?");
@@ -418,7 +602,7 @@ mod tests {
     #[test]
     fn empty_system_stays_plain_string() {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
-        let body = build_request_body("claude-opus-4-8", "", &msgs, true, false);
+        let body = build_request_body("claude-opus-4-8", "", &msgs, adaptive(), false);
         assert_eq!(body["system"], "");
     }
 
@@ -521,7 +705,7 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs, true, false),
+                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false),
                 cancel,
                 move |delta| c2.lock().unwrap().push_str(delta),
             )
@@ -549,7 +733,7 @@ mod tests {
         // без заголовка мок не сматчится (404) и стрим вернёт ошибку
         client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs, true, true),
+                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), true),
                 tokio_util::sync::CancellationToken::new(),
                 |_| {},
             )
@@ -577,7 +761,7 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs, true, false),
+                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false),
                 tokio_util::sync::CancellationToken::new(),
                 |_| {},
             )
@@ -606,7 +790,7 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs, true, false),
+                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false),
                 tokio_util::sync::CancellationToken::new(),
                 move |d| c2.lock().unwrap().push_str(d),
             )
@@ -632,7 +816,7 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs, true, false),
+                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false),
                 tokio_util::sync::CancellationToken::new(),
                 |_| {},
             )
@@ -657,7 +841,7 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs, true, false),
+                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false),
                 tokio_util::sync::CancellationToken::new(),
                 |_| {},
             )
@@ -686,7 +870,7 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs, true, false),
+                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false),
                 cancel,
                 |_| {},
             )

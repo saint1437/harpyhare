@@ -9,7 +9,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { extractImageItems } from "@/lib/composer";
 import type { Attachment } from "@/lib/composer";
-import { MODELS, modelLabel } from "@/lib/models";
+import { modelLabel, selectableModels, thinkingLocked, type ModelInfo } from "@/lib/models";
 import { AttachmentChip } from "./AttachmentChip";
 
 export interface ComposerProps {
@@ -34,9 +34,14 @@ export interface ComposerProps {
   /** Модель Anthropic этого чата. */
   model: string;
   onModelChange: (model: string) => void;
+  /** Модели аккаунта (useModels). */
+  models: ModelInfo[];
 }
 
 export function Composer(props: ComposerProps) {
+  const models = selectableModels(props.models, props.model);
+  // модель без выключаемого thinking (haiku/fable) — селект thinking заблокирован
+  const lockedThinking = thinkingLocked(models, props.model);
   return (
     <section className="flex flex-col gap-2.5">
       <div className="rounded-xl bg-card/60 ring-1 ring-border transition-[box-shadow] ring-inset focus-within:ring-primary/50">
@@ -93,8 +98,8 @@ export function Composer(props: ComposerProps) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent position="popper">
-            {MODELS.map((m) => (
-              <SelectItem key={m} value={m}>
+            {models.map((m) => (
+              <SelectItem key={m.id} value={m.id}>
                 {modelLabel(m)}
               </SelectItem>
             ))}
@@ -102,6 +107,7 @@ export function Composer(props: ComposerProps) {
         </Select>
         <Select
           value={props.thinkingEnabled ? "on" : "off"}
+          disabled={lockedThinking}
           onValueChange={(v) => {
             props.onThinkingChange(v === "on");
           }}

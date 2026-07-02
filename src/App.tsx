@@ -9,6 +9,7 @@ import { SettingsDialog } from "@/components/SettingsDialog";
 import { StatusBar } from "@/components/StatusBar";
 import { useChats } from "@/hooks/useChats";
 import { useClaudeStream } from "@/hooks/useClaudeStream";
+import { useModels } from "@/hooks/useModels";
 import { usePttSuspend } from "@/hooks/usePttSuspend";
 import { useRecorder } from "@/hooks/useRecorder";
 import { useSettings } from "@/hooks/useSettings";
@@ -38,6 +39,7 @@ export default function App() {
   const { settings, save, bumpOpacity } = useSettings();
   const state = useRecorder();
   const chats = useChats();
+  const models = useModels();
 
   const [sttError, setSttError] = useState<string | null>(null);
   const [showRetry, setShowRetry] = useState(false);
@@ -262,6 +264,7 @@ export default function App() {
           onModelChange={(model) => {
             chats.setChatModel(activeId, model);
           }}
+          models={models}
         />
 
         <HotkeyHints hotkey={settings.hotkey} />
