@@ -143,7 +143,7 @@ export default function App() {
   }, [state]);
 
   useWindowControls(settings.move_step, doSend, bumpOpacity);
-  usePttSuspend();
+  usePttSuspend(settings.hotkey);
 
   useEffect(() => {
     void captureAvailable().then((ok) => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hotkeyFromEvent } from "./hotkey-capture";
+import { conflictsWithTyping, hotkeyFromEvent } from "./hotkey-capture";
 
 const base = { metaKey: false, ctrlKey: false, altKey: false, shiftKey: false };
 
@@ -27,5 +27,21 @@ describe("hotkeyFromEvent", () => {
   });
   it("нераспознанный код → null", () => {
     expect(hotkeyFromEvent({ ...base, code: "Space" })).toBeNull();
+  });
+});
+
+describe("conflictsWithTyping", () => {
+  it("одиночная буква/цифра мешает печати (в т.ч. с Shift)", () => {
+    expect(conflictsWithTyping("V")).toBe(true);
+    expect(conflictsWithTyping("1")).toBe(true);
+    expect(conflictsWithTyping("Shift+V")).toBe(true);
+  });
+  it("F-клавиши и комбинации с Cmd/Ctrl/Alt печати не мешают", () => {
+    expect(conflictsWithTyping("F9")).toBe(false);
+    expect(conflictsWithTyping("F12")).toBe(false);
+    expect(conflictsWithTyping("Cmd+V")).toBe(false);
+    expect(conflictsWithTyping("Ctrl+1")).toBe(false);
+    expect(conflictsWithTyping("Alt+R")).toBe(false);
+    expect(conflictsWithTyping("Cmd+Shift+R")).toBe(false);
   });
 });
