@@ -7,6 +7,7 @@ pub mod preview_protocol;
 pub mod settings;
 pub mod state;
 pub mod stt;
+pub mod update;
 pub mod window_geom;
 
 use std::collections::HashMap;
@@ -38,6 +39,10 @@ pub struct App {
     pub recording_gen: AtomicU64,
     pub resize_gen: AtomicU64,
     pub preview_html: Mutex<String>,
+    /// Найденное check()'ом обновление — ждёт install_update (не ходим за
+    /// манифестом второй раз между «нашли» и «пользователь нажал Обновить»).
+    pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
+    pub update_installing: AtomicBool,
 }
 
 /// Идущая стриминговая транскрипция: запрос к Groq открыт на нажатии PTT,
@@ -98,6 +103,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .register_uri_scheme_protocol("preview", |ctx, _request| {
             let html = ctx
                 .app_handle()
@@ -172,6 +178,8 @@ pub fn run() {
                 recording_gen: AtomicU64::new(0),
                 resize_gen: AtomicU64::new(0),
                 preview_html: Mutex::new(String::new()),
+                pending_update: Mutex::new(None),
+                update_installing: AtomicBool::new(false),
             });
 
             if let Err(e) = hotkey::register_ptt(handle, &hotkey) {
@@ -181,6 +189,7 @@ pub fn run() {
                 eprintln!("не удалось зарегистрировать toggle-хоткей {toggle_hotkey:?}: {e}");
             }
             install_move_keys_monitor(handle.clone());
+            update::spawn_auto_check(handle.clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -201,6 +210,9 @@ pub fn run() {
             open_external,
             capture_available,
             set_preview_html,
+            check_for_update,
+            install_update,
+            get_app_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -818,4 +830,21 @@ fn capture_available(app: AppHandle) -> bool {
 #[tauri::command]
 fn set_preview_html(app: AppHandle, html: String) {
     *app.state::<App>().preview_html.lock().unwrap() = html;
+}
+
+/// Ручная проверка обновлений (кнопка в настройках). «Пропущенная» версия
+/// здесь игнорируется — пользователь спросил явно.
+#[tauri::command]
+async fn check_for_update(app: AppHandle) -> Result<Option<update::UpdateInfo>, String> {
+    update::check(&app).await
+}
+
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    update::install(app).await
+}
+
+#[tauri::command]
+fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").into()
 }

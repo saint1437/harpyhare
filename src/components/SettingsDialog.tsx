@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import type { UpdateInfo } from "@/ipc/types";
 import type { Settings } from "@/ipc/types";
 import type { PromptPreset } from "@/lib/presets";
 import { applyChatFontSize, applyOpacity } from "@/lib/window-controls";
@@ -21,16 +22,45 @@ import { applyChatFontSize, applyOpacity } from "@/lib/window-controls";
 export interface SettingsDialogProps {
   open: boolean;
   settings: Settings;
+  /** Версия текущей сборки ("" вне Tauri — строка скрывается). */
+  appVersion: string;
+  /** Ручная проверка обновлений; при найденной версии App сам откроет UpdateDialog. */
+  onCheckUpdates: () => Promise<UpdateInfo | null>;
   onClose: () => void;
   onSave: (next: Settings) => void;
 }
 
-export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDialogProps) {
+type CheckState = "idle" | "checking" | "latest" | "error";
+
+export function SettingsDialog({
+  open,
+  settings,
+  appVersion,
+  onCheckUpdates,
+  onClose,
+  onSave,
+}: SettingsDialogProps) {
   const [draft, setDraft] = useState<Settings>(settings);
+  const [checkState, setCheckState] = useState<CheckState>("idle");
 
   useEffect(() => {
-    if (open) setDraft(settings);
+    if (open) {
+      setDraft(settings);
+      setCheckState("idle");
+    }
   }, [open, settings]);
+
+  const checkUpdates = () => {
+    setCheckState("checking");
+    onCheckUpdates()
+      .then((found) => {
+        // найдено — App закрывает настройки и открывает диалог обновления
+        setCheckState(found ? "idle" : "latest");
+      })
+      .catch(() => {
+        setCheckState("error");
+      });
+  };
 
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     setDraft((d) => ({ ...d, [key]: value }));
@@ -223,6 +253,25 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
               }}
             />
           </Field>
+          {appVersion !== "" && (
+            <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-3">
+              <span className="font-mono text-[11.5px] text-muted-foreground">
+                itech {appVersion}
+                {checkState === "latest" && " — у вас последняя версия"}
+                {checkState === "error" && (
+                  <span className="text-destructive"> — не удалось проверить</span>
+                )}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={checkState === "checking"}
+                onClick={checkUpdates}
+              >
+                {checkState === "checking" ? "Проверяю…" : "Проверить обновления"}
+              </Button>
+            </div>
+          )}
         </div>
 
         <DialogFooter>

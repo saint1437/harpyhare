@@ -38,6 +38,7 @@ ringbuf = "0.4.8"
 # NSCursor + локальный NSEvent-монитор Cmd+стрелок (всё уже в дереве через tauri)
 objc2-app-kit = { version = "0.3.2", features = ["NSCursor", "NSEvent", "block2"] }
 block2 = "0.6"
+tauri-plugin-updater = "2.10.1"
 
 [dev-dependencies]
 tempfile = "3.27.0"

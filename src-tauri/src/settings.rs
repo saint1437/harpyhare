@@ -26,6 +26,9 @@ pub struct Settings {
     pub fast_mode: bool,
     /// Размер шрифта чата, px (модель теперь свойство чата, а не настроек).
     pub chat_font_size: f64,
+    /// Версия, «пропущенная» в диалоге обновления: автоуведомление о ней
+    /// не показывается ("" — ничего не пропущено). Ручную проверку не глушит.
+    pub skipped_version: String,
 }
 
 impl Default for Settings {
@@ -46,6 +49,7 @@ impl Default for Settings {
             toggle_hotkey: "Cmd+Shift+H".into(),
             fast_mode: false,
             chat_font_size: 13.5,
+            skipped_version: String::new(),
         }
     }
 }
@@ -159,6 +163,15 @@ mod tests {
         std::fs::write(&path, r#"{"model":"claude-haiku-4-5","auto_send":true}"#).unwrap();
         let s = Settings::load(&path).unwrap();
         assert!(s.auto_send);
+    }
+
+    #[test]
+    fn load_missing_skipped_version_defaults_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.json");
+        std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+        let s = Settings::load(&path).unwrap();
+        assert_eq!(s.skipped_version, ""); // старый settings.json без поля → ""
     }
 
     #[test]

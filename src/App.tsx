@@ -7,6 +7,7 @@ import { PermissionBanner } from "@/components/PermissionBanner";
 import { PreviewPanel } from "@/components/PreviewPanel";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { StatusBar } from "@/components/StatusBar";
+import { UpdateDialog } from "@/components/UpdateDialog";
 import { useChats } from "@/hooks/useChats";
 import { useClaudeStream } from "@/hooks/useClaudeStream";
 import { useModels } from "@/hooks/useModels";
@@ -14,6 +15,7 @@ import { usePttSuspend } from "@/hooks/usePttSuspend";
 import { useRecorder } from "@/hooks/useRecorder";
 import { useSettings } from "@/hooks/useSettings";
 import { useTranscription } from "@/hooks/useTranscription";
+import { useUpdater } from "@/hooks/useUpdater";
 import { useWindowControls } from "@/hooks/useWindowControls";
 import {
   captureAvailable,
@@ -49,6 +51,9 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [updateOpen, setUpdateOpen] = useState(false);
+
+  const updater = useUpdater();
 
   // Свежие значения для стабильных колбэков (PTT/транскрипция/подписки).
   const settingsRef = useRef(settings);
@@ -202,6 +207,17 @@ export default function App() {
           error={error}
           hotkey={settings.hotkey}
           toggleHotkey={settings.toggle_hotkey}
+          update={
+            updater.status !== "idle" && updater.info
+              ? {
+                  version: updater.info.version,
+                  busy: updater.status === "downloading" || updater.status === "restarting",
+                  onOpen: () => {
+                    setUpdateOpen(true);
+                  },
+                }
+              : null
+          }
           onOpenSettings={() => {
             setSettingsOpen(true);
           }}
@@ -287,6 +303,16 @@ export default function App() {
       <SettingsDialog
         open={settingsOpen}
         settings={settings}
+        appVersion={updater.currentVersion}
+        onCheckUpdates={async () => {
+          const found = await updater.checkNow();
+          if (found) {
+            // не стакаем модалки: настройки закрываются, открывается диалог обновления
+            setSettingsOpen(false);
+            setUpdateOpen(true);
+          }
+          return found;
+        }}
         onClose={() => {
           setSettingsOpen(false);
         }}
@@ -297,6 +323,29 @@ export default function App() {
           setSettingsOpen(false);
         }}
       />
+
+      {updater.info && (
+        <UpdateDialog
+          open={updateOpen}
+          info={updater.info}
+          status={updater.status}
+          progress={updater.progress}
+          error={updater.error}
+          currentVersion={updater.currentVersion}
+          onClose={() => {
+            setUpdateOpen(false);
+          }}
+          onInstall={updater.install}
+          onSkip={() => {
+            const skipped = updater.info?.version ?? "";
+            setUpdateOpen(false);
+            updater.dismiss();
+            void save({ ...settingsRef.current, skipped_version: skipped }).then((err) => {
+              if (err) setSttError(`Ошибка сохранения настроек: ${err}`);
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

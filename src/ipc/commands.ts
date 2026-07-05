@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { FALLBACK_MODELS, type ModelInfo } from "@/lib/models";
 import { isTauri } from "./env";
-import { DEFAULT_SETTINGS, type ChatMessageDto, type Settings } from "./types";
+import { DEFAULT_SETTINGS, type ChatMessageDto, type Settings, type UpdateInfo } from "./types";
 
 export async function sendToClaude(
   messages: ChatMessageDto[],
@@ -97,4 +97,21 @@ export async function saveChats(json: string): Promise<void> {
 export async function setPreviewHtml(html: string): Promise<void> {
   if (!isTauri()) return;
   await invoke("set_preview_html", { html });
+}
+
+/** Ручная проверка обновлений (пропуск версии игнорируется). null — новой версии нет. */
+export async function checkForUpdate(): Promise<UpdateInfo | null> {
+  if (!isTauri()) return null;
+  return invoke<UpdateInfo | null>("check_for_update");
+}
+
+/** Скачивает и ставит найденное обновление; по успеху приложение перезапустится само. */
+export async function installUpdate(): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("install_update");
+}
+
+export async function getAppVersion(): Promise<string> {
+  if (!isTauri()) return "";
+  return invoke<string>("get_app_version");
 }

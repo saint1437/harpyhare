@@ -1,4 +1,4 @@
-import { Settings as SettingsIcon } from "lucide-react";
+import { ArrowDownCircle, Settings as SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { RecorderState } from "@/ipc/types";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,8 @@ export interface StatusBarProps {
   /** Глобальный хоткей показа окна — подсказка на кнопке «Скрыть». */
   toggleHotkey: string;
   tabs: ReactNode;
+  /** Доступное обновление: ненавязчивый бейдж слева от настроек (null — нет). */
+  update: { version: string; busy: boolean; onOpen: () => void } | null;
   onOpenSettings: () => void;
   onClose: () => void;
   onHide: () => void;
@@ -21,6 +23,7 @@ export function StatusBar({
   hotkey,
   toggleHotkey,
   tabs,
+  update,
   onOpenSettings,
   onClose,
   onHide,
@@ -69,14 +72,32 @@ export function StatusBar({
           <span className={cn("size-2.5 shrink-0 rounded-full", dotClass)} aria-hidden />
           {tabs}
         </div>
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          aria-label="Настройки"
-          className="grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground transition-[color,background,transform] hover:rotate-45 hover:bg-white/5 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-        >
-          <SettingsIcon className="size-4" />
-        </button>
+        <div className="flex shrink-0 items-center gap-0.5">
+          {update && (
+            <button
+              type="button"
+              onClick={update.onOpen}
+              aria-label={`Доступна версия ${update.version}`}
+              title={
+                update.busy
+                  ? `Обновление до ${update.version}…`
+                  : `Доступна версия ${update.version}`
+              }
+              className="flex h-7 items-center gap-1.5 rounded-full px-2.5 font-mono text-[11.5px] text-primary transition-colors hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              <ArrowDownCircle className={cn("size-4", update.busy && "animate-pulse")} />
+              {update.version}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            aria-label="Настройки"
+            className="grid size-7 place-items-center rounded-full text-muted-foreground transition-[color,background,transform] hover:rotate-45 hover:bg-white/5 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+          >
+            <SettingsIcon className="size-4" />
+          </button>
+        </div>
       </div>
       <span
         className={cn(

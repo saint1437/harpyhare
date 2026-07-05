@@ -34,6 +34,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -41,5 +42,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVBQjlENEVCMkFDRjA0MDcKUldRSEJNOHE2OVM1Nm9JTEtFc0pPekQxYkJlZnZ4aENEcHN2UXJWU1hnQVhTZ2hNVkpyd0xIZVEK",
+      "endpoints": [
+        "https://github.com/screenfriskofficial/itech-releases/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

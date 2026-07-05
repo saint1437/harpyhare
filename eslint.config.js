@@ -78,8 +78,10 @@ export default tseslint.config(
     rules: { "import-x/order": "off" },
   },
 
-  // Конфиг-файлы и JS — без type-aware правил:
-  { files: ["**/*.js"], ...tseslint.configs.disableTypeChecked },
+  // Конфиг-файлы и JS/MJS (в т.ч. scripts/) — без type-aware правил:
+  { files: ["**/*.js", "**/*.mjs"], ...tseslint.configs.disableTypeChecked },
+  // Node-скрипты (release и т.п.):
+  { files: ["scripts/**/*.mjs"], languageOptions: { globals: { ...globals.node } } },
 
   prettier,
 );

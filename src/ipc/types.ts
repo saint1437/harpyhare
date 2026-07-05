@@ -18,6 +18,8 @@ export interface Settings {
   fast_mode: boolean;
   /** Размер шрифта чата, px (модель — свойство чата, см. lib/models). */
   chat_font_size: number;
+  /** «Пропущенная» версия обновления: автобейдж о ней не показывается ("" — нет). */
+  skipped_version: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -32,6 +34,7 @@ export const DEFAULT_SETTINGS: Settings = {
   toggle_hotkey: "Cmd+Shift+H",
   fast_mode: false,
   chat_font_size: 13.5,
+  skipped_version: "",
 };
 
 export type RecorderState = "idle" | "recording" | "transcribing";
@@ -43,6 +46,19 @@ export interface ChatMessageDto {
   images: ImagePayload[];
 }
 
+/** Найденное обновление (Rust update::UpdateInfo). */
+export interface UpdateInfo {
+  version: string;
+  notes: string;
+  date: string | null;
+}
+
+/** Прогресс загрузки обновления; total неизвестен без Content-Length. */
+export interface UpdateProgress {
+  downloaded: number;
+  total: number | null;
+}
+
 /** Карта имя-события → тип payload (для типобезопасного listen). */
 export interface EventMap {
   "state-changed": RecorderState;
@@ -51,4 +67,7 @@ export interface EventMap {
   "llm-delta": { chatId: string; delta: string };
   "llm-done": { chatId: string };
   "llm-error": { chatId: string; message: string };
+  "update-available": UpdateInfo;
+  "update-progress": UpdateProgress;
+  "update-done": { version: string };
 }
