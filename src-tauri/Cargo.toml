@@ -1,6 +1,6 @@
 [package]
 name = "itech"
-version = "0.1.0"
+version = "0.1.1"
 description = "Системный звук → STT → Claude (macOS push-to-talk ассистент)"
 authors = ["mark"]
 edition = "2021"
