@@ -1,4 +1,5 @@
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { FALLBACK_MODELS, type ModelInfo } from "@/lib/models";
 import { isTauri } from "./env";
 import { DEFAULT_SETTINGS, type ChatMessageDto, type Settings, type UpdateInfo } from "./types";
@@ -6,6 +7,11 @@ import { DEFAULT_SETTINGS, type ChatMessageDto, type Settings, type UpdateInfo }
 async function invokeOrNoopInBrowser(command: string, args?: InvokeArgs): Promise<void> {
   if (!isTauri()) return;
   await invoke(command, args);
+}
+
+export async function startWindowDrag(): Promise<void> {
+  if (!isTauri()) return;
+  await getCurrentWindow().startDragging();
 }
 
 async function invokeOrFallbackInBrowser<T>(

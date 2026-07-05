@@ -1,3 +1,4 @@
+const NON_DRAGGABLE_SELECTOR = "button, a, input, textarea, select, [role='tab'], [data-no-drag]";
 const OPACITY_CSS_VAR = "--app-opacity";
 const OPACITY_MIN = 0.2;
 const OPACITY_MAX = 1;
@@ -27,6 +28,10 @@ export function moveDelta(code: string, step: number): { dx: number; dy: number 
     default:
       return null;
   }
+}
+
+export function isDraggableChromeTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && target.closest(NON_DRAGGABLE_SELECTOR) === null;
 }
 
 export function applyOpacity(root: HTMLElement, value: number): void {

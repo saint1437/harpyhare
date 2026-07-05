@@ -1,5 +1,36 @@
 import { describe, expect, it } from "vitest";
-import { applyChatFontSize, applyOpacity, moveDelta, stepOpacity } from "./window-controls";
+import {
+  applyChatFontSize,
+  applyOpacity,
+  isDraggableChromeTarget,
+  moveDelta,
+  stepOpacity,
+} from "./window-controls";
+
+describe("isDraggableChromeTarget", () => {
+  it("нейтральная поверхность (div/span) → тащим", () => {
+    expect(isDraggableChromeTarget(document.createElement("div"))).toBe(true);
+    expect(isDraggableChromeTarget(document.createElement("span"))).toBe(true);
+  });
+  it("сам интерактивный элемент → не тащим", () => {
+    expect(isDraggableChromeTarget(document.createElement("button"))).toBe(false);
+    expect(isDraggableChromeTarget(document.createElement("input"))).toBe(false);
+  });
+  it("потомок кнопки (значок внутри) → не тащим", () => {
+    const button = document.createElement("button");
+    const icon = document.createElement("span");
+    button.appendChild(icon);
+    expect(isDraggableChromeTarget(icon)).toBe(false);
+  });
+  it("элемент с [role=tab] → не тащим (табы кликабельны)", () => {
+    const tab = document.createElement("div");
+    tab.setAttribute("role", "tab");
+    expect(isDraggableChromeTarget(tab)).toBe(false);
+  });
+  it("null или не-HTMLElement → не тащим", () => {
+    expect(isDraggableChromeTarget(null)).toBe(false);
+  });
+});
 
 describe("moveDelta", () => {
   it("стрелки → сдвиг на шаг по нужной оси", () => {

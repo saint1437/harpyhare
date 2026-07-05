@@ -3,6 +3,7 @@ import {
   ATTACHMENT_LIMIT,
   MAX_IMAGE_BYTES,
   acceptedNewAttachments,
+  appendTranscript,
   downscaleFactor,
   extractImageItems,
   toImagePayload,
@@ -48,6 +49,24 @@ describe("downscaleFactor", () => {
     const f = downscaleFactor(MAX_IMAGE_BYTES * 4);
     expect(f).toBeLessThan(0.5);
     expect(f).toBeGreaterThan(0.4);
+  });
+});
+
+describe("appendTranscript", () => {
+  it("пустой черновик → только транскрипт", () => {
+    expect(appendTranscript("", "привет мир")).toBe("привет мир");
+  });
+  it("черновик из пробелов → только транскрипт", () => {
+    expect(appendTranscript("  \n", "привет")).toBe("привет");
+  });
+  it("дописывает через пробел, не затирая черновик", () => {
+    expect(appendTranscript("уже надиктовано.", "и ещё фраза")).toBe(
+      "уже надиктовано. и ещё фраза",
+    );
+  });
+  it("не дублирует разделитель после пробела или переноса строки", () => {
+    expect(appendTranscript("строка ", "хвост")).toBe("строка хвост");
+    expect(appendTranscript("строка\n", "хвост")).toBe("строка\nхвост");
   });
 });
 

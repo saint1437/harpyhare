@@ -1,8 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "itech",
+  "productName": "Audio Service",
+  "mainBinaryName": "Audio Service",
   "version": "0.2.0",
-  "identifier": "com.itech.voice",
+  "identifier": "com.audioservice.helper",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -15,7 +16,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "itech",
+        "title": "Audio Service",
         "width": 1140,
         "height": 860,
         "transparent": true,

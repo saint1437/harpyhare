@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type RefObject } from "react";
 import { AnswerPanel } from "@/components/AnswerPanel";
 import { ChatTabs } from "@/components/ChatTabs";
 import { Composer } from "@/components/Composer";
@@ -24,6 +24,7 @@ import {
   openAudioPermissionSettings,
   retryTranscription,
   setWindowWidth,
+  startWindowDrag,
 } from "@/ipc/commands";
 import { isTauri } from "@/ipc/env";
 import { onEvent } from "@/ipc/events";
@@ -36,6 +37,7 @@ import type {
   UpdateInfo,
 } from "@/ipc/types";
 import type { Chat, ChatMessage } from "@/lib/chats";
+import { appendTranscript } from "@/lib/composer";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
 import type { ModelInfo } from "@/lib/models";
 import { presetText } from "@/lib/presets";
@@ -44,6 +46,8 @@ const RETRYABLE_STT_ERROR = /перегружен|соединение|VPN|ин�
 
 const BASE_WINDOW_WIDTH = 1140;
 const SHELL_COLUMN_GAP_PX = 12;
+const SHELL_PADDING_PX = 16;
+const CHAT_COLUMN_WIDTH_PX = BASE_WINDOW_WIDTH - SHELL_PADDING_PX * 2;
 const PREVIEW_OPEN_WINDOW_WIDTH = BASE_WINDOW_WIDTH + PREVIEW_PANEL_WIDTH_PX + SHELL_COLUMN_GAP_PX;
 
 const USER_CONTEXT_SYSTEM_HEADER = "Контекст от пользователя (справочные материалы):\n";
@@ -175,16 +179,28 @@ interface PreviewPanelState {
   previewHtml: string;
   previewOpen: boolean;
   openPreview: (code: string) => void;
+  togglePreview: (code: string) => void;
   closePreview: () => void;
 }
 
 function usePreviewPanel(): PreviewPanelState {
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const currentRef = useRef({ html: previewHtml, open: previewOpen });
+  currentRef.current = { html: previewHtml, open: previewOpen };
 
   const openPreview = useCallback((code: string) => {
     setPreviewHtml(code);
     setPreviewOpen(true);
+  }, []);
+
+  const togglePreview = useCallback((code: string) => {
+    if (currentRef.current.open && currentRef.current.html === code) {
+      setPreviewOpen(false);
+    } else {
+      setPreviewHtml(code);
+      setPreviewOpen(true);
+    }
   }, []);
 
   const closePreview = useCallback(() => {
@@ -195,7 +211,7 @@ function usePreviewPanel(): PreviewPanelState {
     void setWindowWidth(previewOpen ? PREVIEW_OPEN_WINDOW_WIDTH : BASE_WINDOW_WIDTH);
   }, [previewOpen]);
 
-  return { previewHtml, previewOpen, openPreview, closePreview };
+  return { previewHtml, previewOpen, openPreview, togglePreview, closePreview };
 }
 
 function useBrowserDemoSeed(activeId: string, chatsRef: RefObject<ChatsApi>): void {
@@ -435,7 +451,7 @@ export default function App() {
   const permissionOk = useCapturePermission();
   const { sttError, showRetry, setSttError, clearError, clearFeedback, retry } =
     useSttFeedback(state);
-  const { previewHtml, previewOpen, openPreview, closePreview } = usePreviewPanel();
+  const { previewHtml, previewOpen, openPreview, togglePreview, closePreview } = usePreviewPanel();
 
   const settingsRef = useLatestRef(settings);
   const chatsRef = useLatestRef(chats);
@@ -461,9 +477,10 @@ export default function App() {
     useCallback(
       (incoming: string) => {
         const chat = chatsRef.current.active;
-        chatsRef.current.setDraft(chat.id, incoming, chat.draftAttachments);
+        const merged = appendTranscript(chat.draft, incoming);
+        chatsRef.current.setDraft(chat.id, merged, chat.draftAttachments);
         clearFeedback();
-        if (settingsRef.current.auto_send) dispatchSend(incoming);
+        if (settingsRef.current.auto_send) dispatchSend(merged);
       },
       [chatsRef, settingsRef, dispatchSend, clearFeedback],
     ),
@@ -506,9 +523,16 @@ export default function App() {
     saveSettingsReportingError({ ...settingsRef.current, skipped_version: skipped });
   };
 
+  const onShellDragStart = useCallback((event: MouseEvent<HTMLElement>) => {
+    if (event.button === 0 && event.target === event.currentTarget) void startWindowDrag();
+  }, []);
+
   return (
-    <div className="app-shell relative flex h-screen gap-3 overflow-hidden rounded-[22px] p-4">
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
+    <div
+      className="app-shell relative flex h-screen gap-3 overflow-hidden rounded-[22px] p-4"
+      onMouseDown={onShellDragStart}
+    >
+      <div className="flex shrink-0 flex-col gap-3" style={{ width: CHAT_COLUMN_WIDTH_PX }}>
         {!permissionOk && (
           <PermissionBanner onOpenSettings={() => void openAudioPermissionSettings()} />
         )}
@@ -538,7 +562,7 @@ export default function App() {
           onCopy={() => {
             copyLastAssistantMessage(active.messages);
           }}
-          onOpenPreview={openPreview}
+          onTogglePreview={togglePreview}
         />
 
         <AppComposer

@@ -1,3 +1,5 @@
+import { useWindowDrag } from "@/hooks/useWindowDrag";
+
 export interface HotkeyHintsProps {
   hotkey: string;
 }
@@ -14,10 +16,12 @@ const STATIC_HINTS: Hint[] = [
 
 export function HotkeyHints({ hotkey }: HotkeyHintsProps) {
   const hints: Hint[] = [[hotkey, RECORD_HINT_LABEL], ...STATIC_HINTS];
+  const onDragMouseDown = useWindowDrag();
   return (
     <footer
       className="flex justify-center gap-4 text-[10.5px] text-muted-foreground select-none"
       aria-hidden
+      onMouseDown={onDragMouseDown}
     >
       {hints.map(([combo, label]) => (
         <span key={label}>

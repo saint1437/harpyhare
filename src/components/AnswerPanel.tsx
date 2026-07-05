@@ -16,7 +16,7 @@ export interface AnswerPanelProps {
   streaming: boolean;
   streamStartedAt?: number;
   onCopy: () => void;
-  onOpenPreview: (code: string) => void;
+  onTogglePreview: (code: string) => void;
 }
 
 const NEAR_BOTTOM_PX = 40;
@@ -68,7 +68,7 @@ function hasHtmlLanguageToken(className: string) {
   return className.split(/\s+/).some((token) => token.toLowerCase() === HTML_LANGUAGE_CLASS);
 }
 
-function makePre(onOpenPreview: (code: string) => void) {
+function makePre(onTogglePreview: (code: string) => void) {
   return function PreBlock({ children }: { children?: ReactNode }) {
     const code = isValidElement<{ className?: string; children?: ReactNode }>(children)
       ? children
@@ -78,8 +78,8 @@ function makePre(onOpenPreview: (code: string) => void) {
       return (
         <HtmlBlockChip
           code={text}
-          onOpen={() => {
-            onOpenPreview(text);
+          onToggle={() => {
+            onTogglePreview(text);
           }}
         />
       );
@@ -239,7 +239,7 @@ export function AnswerPanel({
   streaming,
   streamStartedAt,
   onCopy,
-  onOpenPreview,
+  onTogglePreview,
 }: AnswerPanelProps) {
   const { scrollRef, showJump, onScroll, scrollIfNearBottom, resetToBottom } = useStickToBottom();
 
@@ -252,8 +252,8 @@ export function AnswerPanel({
   }, [chatId, resetToBottom]);
 
   const components = useMemo<Components>(
-    () => ({ ...markdownComponents, pre: makePre(onOpenPreview) }),
-    [onOpenPreview],
+    () => ({ ...markdownComponents, pre: makePre(onTogglePreview) }),
+    [onTogglePreview],
   );
 
   const empty = messages.length === 0 && !partial;

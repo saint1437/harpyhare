@@ -6,7 +6,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const APP_NAME = "itech";
+const PRODUCT_NAME = "Audio Service";
+const ASSET_SLUG = "AudioService";
 const RELEASES_REPO = "screenfriskofficial/itech-releases";
 const RELEASES_REPO_URL = `https://github.com/${RELEASES_REPO}`;
 const ARCH = "aarch64";
@@ -38,7 +39,8 @@ const capture = (cmd, args) => execFileSync(cmd, args, { cwd: ROOT, encoding: "u
 const writeJson = (path, data) =>
   writeFileSync(path, JSON.stringify(data, null, JSON_INDENT) + "\n");
 
-const versionedAssetBase = (version) => `${APP_NAME}_${version}_${ARCH}`;
+const tauriBundleBase = (version) => `${PRODUCT_NAME}_${version}_${ARCH}`;
+const uploadedAssetBase = (version) => `${ASSET_SLUG}_${version}_${ARCH}`;
 
 const parseCliArgs = (argv) => {
   const version = argv[0];
@@ -120,9 +122,9 @@ const buildSignedBundle = () => {
 };
 
 const collectBuildArtifacts = (version) => {
-  const tarSrc = join(BUNDLE_DIR, `macos/${APP_NAME}.app.tar.gz`);
+  const tarSrc = join(BUNDLE_DIR, `macos/${PRODUCT_NAME}.app.tar.gz`);
   const sigSrc = `${tarSrc}.sig`;
-  const dmgSrc = join(BUNDLE_DIR, `dmg/${versionedAssetBase(version)}.dmg`);
+  const dmgSrc = join(BUNDLE_DIR, `dmg/${tauriBundleBase(version)}.dmg`);
   for (const f of [tarSrc, sigSrc, dmgSrc]) {
     if (!existsSync(f)) die(`сборка не дала артефакт ${f}`);
   }
@@ -131,7 +133,7 @@ const collectBuildArtifacts = (version) => {
 
 const prepareReleaseAssets = ({ version, notes, tarSrc, sigSrc }) => {
   mkdirSync(RELEASE_ASSETS_DIR, { recursive: true });
-  const tarName = `${versionedAssetBase(version)}.app.tar.gz`;
+  const tarName = `${uploadedAssetBase(version)}.app.tar.gz`;
   copyFileSync(tarSrc, join(RELEASE_ASSETS_DIR, tarName));
   const latest = {
     version,
@@ -156,7 +158,7 @@ const publishGithubRelease = ({ version, notes, tarName, dmgSrc }) => {
     "--repo",
     RELEASES_REPO,
     "--title",
-    `${APP_NAME} ${version}`,
+    `${PRODUCT_NAME} ${version}`,
     "--notes",
     notes,
     join(RELEASE_ASSETS_DIR, tarName),
@@ -183,7 +185,7 @@ const { pkg, conf } = readVersionedConfigs();
 const current = assertVersionsInSync(pkg, conf);
 assertReadyToRelease(version, current);
 
-console.log(`\n${APP_NAME} ${current} → ${version}\n`);
+console.log(`\n${PRODUCT_NAME} ${current} → ${version}\n`);
 bumpVersions(pkg, conf, current, version);
 buildSignedBundle();
 

@@ -22,6 +22,7 @@ use tokio_util::sync::CancellationToken;
 
 const SETTINGS_FILE_NAME: &str = "settings.json";
 const CHATS_FILE_NAME: &str = "chats.json";
+const LEGACY_APP_DATA_DIR_NAME: &str = "com.itech.voice";
 const ENV_FILE_NAME: &str = ".env";
 const ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
 const GROQ_API_KEY_ENV: &str = "GROQ_API_KEY";
@@ -171,6 +172,7 @@ pub fn run() {
 
 fn setup_app(handle: &AppHandle) {
     load_dotenv_files();
+    migrate_legacy_app_data(handle);
     let settings = load_settings_with_env_key_fallback(handle);
     let capture = init_system_audio_capture();
     let stt = build_stt_client(&settings);
@@ -182,7 +184,52 @@ fn setup_app(handle: &AppHandle) {
     handle.manage(build_app_state(settings, capture, stt, llm));
     register_startup_hotkeys(handle, &ptt_hotkey, &toggle_hotkey);
     install_move_keys_monitor(handle.clone());
+    disable_cursor_autohide_on_typing();
     update::spawn_auto_check(handle.clone());
+}
+
+fn disable_cursor_autohide_on_typing() {
+    unsafe extern "C-unwind" fn keep_cursor_visible() {}
+
+    let Some(cursor_class) = objc2::runtime::AnyClass::get(c"NSCursor") else {
+        return;
+    };
+    let Some(method) = cursor_class
+        .metaclass()
+        .instance_method(objc2::sel!(setHiddenUntilMouseMoves:))
+    else {
+        return;
+    };
+    unsafe {
+        let _ = objc2::ffi::method_setImplementation(
+            std::ptr::from_ref(method).cast(),
+            keep_cursor_visible,
+        );
+    }
+}
+
+fn migrate_legacy_app_data(app: &AppHandle) {
+    let Ok(new_dir) = app.path().app_data_dir() else {
+        return;
+    };
+    if new_dir.join(SETTINGS_FILE_NAME).exists() {
+        return;
+    }
+    let Some(legacy_dir) = new_dir.parent().map(|p| p.join(LEGACY_APP_DATA_DIR_NAME)) else {
+        return;
+    };
+    if legacy_dir == new_dir || !legacy_dir.exists() {
+        return;
+    }
+    if std::fs::create_dir_all(&new_dir).is_err() {
+        return;
+    }
+    for name in [SETTINGS_FILE_NAME, CHATS_FILE_NAME] {
+        let src = legacy_dir.join(name);
+        if src.exists() {
+            let _ = std::fs::copy(&src, new_dir.join(name));
+        }
+    }
 }
 
 fn load_dotenv_files() {
@@ -814,15 +861,8 @@ fn move_window_by(app: AppHandle, dx: i32, dy: i32) {
     if let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         if let Ok(pos) = w.outer_position() {
             let _ = w.set_position(tauri::PhysicalPosition::new(pos.x + dx, pos.y + dy));
-            cancel_cursor_hide_until_mouse_moves(&app);
         }
     }
-}
-
-fn cancel_cursor_hide_until_mouse_moves(app: &AppHandle) {
-    let _ = app.run_on_main_thread(|| {
-        objc2_app_kit::NSCursor::setHiddenUntilMouseMoves(false);
-    });
 }
 
 struct ResizeTween {
@@ -846,7 +886,7 @@ fn set_window_width(app: AppHandle, width: f64) {
         .map(|s| s.height as f64 / scale)
         .unwrap_or(FALLBACK_WINDOW_HEIGHT_LOGICAL_PX);
     let from_pos = w.outer_position().unwrap_or(tauri::PhysicalPosition::new(0, 0));
-    let target_x = clamped_target_x(&w, from_pos, width, scale);
+    let target_x = centered_target_x(&w, width, scale);
 
     if (from_width - width).abs() < RESIZE_WIDTH_EPSILON_LOGICAL_PX && from_pos.x == target_x {
         return;
@@ -868,20 +908,16 @@ fn set_window_width(app: AppHandle, width: f64) {
     std::thread::spawn(move || run_resize_tween(app, w, tween, my_gen));
 }
 
-fn clamped_target_x(
-    w: &tauri::WebviewWindow,
-    from_pos: tauri::PhysicalPosition<i32>,
-    width: f64,
-    scale: f64,
-) -> i32 {
+fn centered_target_x(w: &tauri::WebviewWindow, width: f64, scale: f64) -> i32 {
     let target_phys_w = (width * scale).round() as u32;
     let (mon_x, mon_w) = w
         .current_monitor()
         .ok()
         .flatten()
         .map(|m| (m.position().x, m.size().width))
-        .unwrap_or((from_pos.x, target_phys_w));
-    window_geom::clamp_window_x(from_pos.x, target_phys_w, mon_x, mon_w)
+        .unwrap_or((0, target_phys_w));
+    let centered = mon_x + (mon_w as i32 - target_phys_w as i32) / 2;
+    window_geom::clamp_window_x(centered, target_phys_w, mon_x, mon_w)
 }
 
 fn ease_out_cubic(t: f64) -> f64 {

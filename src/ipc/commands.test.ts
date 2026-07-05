@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { captureAvailable, getSettings, moveWindowBy, sendToClaude } from "./commands";
+import {
+  captureAvailable,
+  getSettings,
+  moveWindowBy,
+  sendToClaude,
+  startWindowDrag,
+} from "./commands";
 import { DEFAULT_SETTINGS } from "./types";
 
 describe("commands в браузерном режиме", () => {
@@ -21,5 +27,6 @@ describe("commands в браузерном режиме", () => {
       ),
     ).resolves.toBeUndefined();
     await expect(moveWindowBy(10, 0)).resolves.toBeUndefined();
+    await expect(startWindowDrag()).resolves.toBeUndefined();
   });
 });

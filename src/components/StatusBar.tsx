@@ -1,5 +1,6 @@
-import { ArrowDownCircle, Settings as SettingsIcon } from "lucide-react";
+import { ArrowDownCircle, Minus, Settings as SettingsIcon, X } from "lucide-react";
 import type { ReactNode } from "react";
+import { useWindowDrag } from "@/hooks/useWindowDrag";
 import type { RecorderState } from "@/ipc/types";
 import { cn } from "@/lib/utils";
 
@@ -14,9 +15,6 @@ export interface StatusBarProps {
   onClose: () => void;
   onHide: () => void;
 }
-
-const TRAFFIC_LIGHT_CLOSE_COLOR = "bg-[#ff5f57]";
-const TRAFFIC_LIGHT_HIDE_COLOR = "bg-[#febc2e]";
 
 function statusTextFor(state: RecorderState, hotkey: string): string {
   const texts: Record<RecorderState, string> = {
@@ -45,10 +43,11 @@ export function StatusBar({
   onHide,
 }: StatusBarProps) {
   const showError = error !== null && state === "idle";
+  const onDragMouseDown = useWindowDrag();
 
   return (
-    <header className="flex flex-col gap-1.5" data-tauri-drag-region>
-      <div className="flex min-h-7 items-center justify-between gap-2" data-tauri-drag-region>
+    <header className="flex flex-col gap-1.5" onMouseDown={onDragMouseDown}>
+      <div className="flex min-h-7 items-center justify-between gap-2">
         <div className="no-scrollbar flex min-w-0 items-center gap-2 overflow-x-auto">
           <WindowButtons toggleHotkey={toggleHotkey} onClose={onClose} onHide={onHide} />
           <span
@@ -67,7 +66,6 @@ export function StatusBar({
           "truncate font-mono text-[11.5px]",
           showError ? "whitespace-normal text-destructive" : "text-muted-foreground",
         )}
-        data-tauri-drag-region
       >
         {showError ? error : statusTextFor(state, hotkey)}
       </span>
@@ -85,38 +83,38 @@ function WindowButtons({
   onHide: () => void;
 }) {
   return (
-    <div className="group flex shrink-0 items-center gap-1.5 pr-1">
-      <TrafficLightButton
-        colorClass={TRAFFIC_LIGHT_CLOSE_COLOR}
+    <div className="flex shrink-0 items-center gap-0.5 pr-1">
+      <WindowButton
         label="Закрыть приложение"
         title="Закрыть приложение"
         onClick={onClose}
+        hoverClass="hover:bg-destructive/15 hover:text-destructive"
       >
-        ×
-      </TrafficLightButton>
-      <TrafficLightButton
-        colorClass={TRAFFIC_LIGHT_HIDE_COLOR}
+        <X className="size-3.5" />
+      </WindowButton>
+      <WindowButton
         label="Скрыть окно"
         title={`Скрыть окно — вернуть: ${toggleHotkey}`}
         onClick={onHide}
+        hoverClass="hover:bg-white/5 hover:text-foreground"
       >
-        −
-      </TrafficLightButton>
+        <Minus className="size-3.5" />
+      </WindowButton>
     </div>
   );
 }
 
-function TrafficLightButton({
-  colorClass,
+function WindowButton({
   label,
   title,
   onClick,
+  hoverClass,
   children,
 }: {
-  colorClass: string;
   label: string;
   title: string;
   onClick: () => void;
+  hoverClass: string;
   children: ReactNode;
 }) {
   return (
@@ -126,8 +124,8 @@ function TrafficLightButton({
       aria-label={label}
       title={title}
       className={cn(
-        "grid size-3 place-items-center rounded-full text-[8px] leading-none font-bold text-black/0 transition-colors group-hover:text-black/50 hover:brightness-90",
-        colorClass,
+        "grid size-6 place-items-center rounded-full text-muted-foreground transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+        hoverClass,
       )}
     >
       {children}

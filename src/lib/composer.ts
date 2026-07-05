@@ -10,6 +10,8 @@ export const SUPPORTED_IMAGE_TYPES = new Set([
 
 const DOWNSCALE_SAFETY_MARGIN = 0.95;
 const DATA_URL_BASE64_SEPARATOR = ",";
+const TRANSCRIPT_SEPARATOR = " ";
+const ENDS_WITH_WHITESPACE = /\s$/;
 
 export interface ImagePayload {
   media_type: string;
@@ -41,6 +43,12 @@ export const NO_DOWNSCALE = 1;
 export function downscaleFactor(bytes: number): number {
   if (bytes <= MAX_IMAGE_BYTES) return NO_DOWNSCALE;
   return Math.sqrt(MAX_IMAGE_BYTES / bytes) * DOWNSCALE_SAFETY_MARGIN;
+}
+
+export function appendTranscript(draft: string, transcript: string): string {
+  if (draft.trim() === "") return transcript;
+  if (ENDS_WITH_WHITESPACE.test(draft)) return draft + transcript;
+  return draft + TRANSCRIPT_SEPARATOR + transcript;
 }
 
 export function toImagePayload(dataUrl: string, resultMediaType: string): ImagePayload {
