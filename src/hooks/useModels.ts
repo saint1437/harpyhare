@@ -2,19 +2,22 @@ import { useEffect, useState } from "react";
 import { listModels } from "@/ipc/commands";
 import { FALLBACK_MODELS, type ModelInfo } from "@/lib/models";
 
-/** Модели аккаунта из Models API; до ответа (и при ошибке) — фолбэк-список. */
+async function listModelsOrEmpty(): Promise<ModelInfo[]> {
+  try {
+    return await listModels();
+  } catch {
+    return [];
+  }
+}
+
 export function useModels(): ModelInfo[] {
   const [models, setModels] = useState<ModelInfo[]>(FALLBACK_MODELS);
 
   useEffect(() => {
     let live = true;
-    listModels()
-      .then((fetched) => {
-        if (live && fetched.length > 0) setModels(fetched);
-      })
-      .catch(() => {
-        /* оффлайн/нет ключа — остаёмся на фолбэке */
-      });
+    void listModelsOrEmpty().then((fetched) => {
+      if (live && fetched.length > 0) setModels(fetched);
+    });
     return () => {
       live = false;
     };

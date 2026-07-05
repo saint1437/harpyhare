@@ -4,10 +4,8 @@ import { onEvent } from "@/ipc/events";
 import type { ChatMessageDto } from "@/ipc/types";
 
 export interface ClaudeStreams {
-  /** Текущий «живой» буфер ответа по чатам (для рендера in-flight реплики). */
   partial: Record<string, string>;
   streaming: Record<string, boolean>;
-  /** Время начала стрима по чатам (Date.now() в send) — для счётчика «Думает… Nс». */
   startedAt: Record<string, number>;
   error: Record<string, string | null>;
   send: (
@@ -21,12 +19,6 @@ export interface ClaudeStreams {
   stop: (chatId: string) => void;
 }
 
-/**
- * @param onComplete вызывается на llm-done с финальным текстом — потребитель
- * дописывает ответ как assistant-сообщение в историю чата. Также вызывается
- * на stop/llm-error с непустым частичным текстом: уже полученный ответ не
- * выбрасывается (пользователь часто жмёт «Стоп», уже увидев нужное).
- */
 export function useClaudeStream(
   onComplete: (chatId: string, finalText: string) => void,
 ): ClaudeStreams {
@@ -35,8 +27,6 @@ export function useClaudeStream(
   const [startedAt, setStartedAt] = useState<Record<string, number>>({});
   const [error, setError] = useState<Record<string, string | null>>({});
 
-  // Буферы дельт по чатам и набор активных стримов — в ref'ах, чтобы события
-  // (подписанные один раз) видели свежие значения без переподписки.
   const buffers = useRef<Map<string, string>>(new Map());
   const active = useRef<Set<string>>(new Set());
   const raf = useRef(0);
@@ -69,6 +59,16 @@ export function useClaudeStream(
     });
   }, []);
 
+  const commitBufferAndFinish = useCallback(
+    (chatId: string, commitEvenIfEmpty: boolean) => {
+      const finalText = buffers.current.get(chatId) ?? "";
+      if (commitEvenIfEmpty || finalText !== "") onCompleteRef.current(chatId, finalText);
+      dropPartial(chatId);
+      setStreaming((s) => ({ ...s, [chatId]: false }));
+    },
+    [dropPartial],
+  );
+
   useEffect(() => {
     const offDelta = onEvent("llm-delta", ({ chatId, delta }) => {
       if (!active.current.has(chatId)) return;
@@ -78,20 +78,12 @@ export function useClaudeStream(
     const offDone = onEvent("llm-done", ({ chatId }) => {
       if (!active.current.has(chatId)) return;
       active.current.delete(chatId);
-      const text = buffers.current.get(chatId) ?? "";
-      onCompleteRef.current(chatId, text);
-      dropPartial(chatId);
-      setStreaming((s) => ({ ...s, [chatId]: false }));
+      commitBufferAndFinish(chatId, true);
     });
     const offError = onEvent("llm-error", ({ chatId, message }) => {
       if (!active.current.has(chatId)) return;
       active.current.delete(chatId);
-      // Стрим упал на полпути — сохраняем уже полученный текст в историю,
-      // а не выбрасываем (ошибка всё равно показывается рядом).
-      const text = buffers.current.get(chatId) ?? "";
-      if (text !== "") onCompleteRef.current(chatId, text);
-      dropPartial(chatId);
-      setStreaming((s) => ({ ...s, [chatId]: false }));
+      commitBufferAndFinish(chatId, false);
       setError((e) => ({ ...e, [chatId]: message }));
     });
     return () => {
@@ -101,7 +93,26 @@ export function useClaudeStream(
       cancelAnimationFrame(raf.current);
       pending.current = false;
     };
-  }, [scheduleFlush, dropPartial]);
+  }, [scheduleFlush, commitBufferAndFinish]);
+
+  const beginStream = useCallback((chatId: string) => {
+    buffers.current.set(chatId, "");
+    active.current.add(chatId);
+    setPartial((p) => ({ ...p, [chatId]: "" }));
+    setStreaming((s) => ({ ...s, [chatId]: true }));
+    setStartedAt((s) => ({ ...s, [chatId]: Date.now() }));
+    setError((e) => ({ ...e, [chatId]: null }));
+  }, []);
+
+  const failStream = useCallback(
+    (chatId: string, message: string) => {
+      active.current.delete(chatId);
+      dropPartial(chatId);
+      setStreaming((s) => ({ ...s, [chatId]: false }));
+      setError((err) => ({ ...err, [chatId]: message }));
+    },
+    [dropPartial],
+  );
 
   const send = useCallback(
     async (
@@ -112,37 +123,23 @@ export function useClaudeStream(
       model: string,
       webSearch: boolean,
     ) => {
-      buffers.current.set(chatId, "");
-      active.current.add(chatId);
-      setPartial((p) => ({ ...p, [chatId]: "" }));
-      setStreaming((s) => ({ ...s, [chatId]: true }));
-      setStartedAt((s) => ({ ...s, [chatId]: Date.now() }));
-      setError((e) => ({ ...e, [chatId]: null }));
+      beginStream(chatId);
       try {
         await sendToClaude(messages, chatId, system, thinking, model, webSearch);
       } catch (e) {
-        active.current.delete(chatId);
-        dropPartial(chatId);
-        setStreaming((s) => ({ ...s, [chatId]: false }));
-        setError((err) => ({ ...err, [chatId]: String(e) }));
+        failStream(chatId, String(e));
       }
     },
-    [dropPartial],
+    [beginStream, failStream],
   );
 
   const stop = useCallback(
     (chatId: string) => {
       active.current.delete(chatId);
       void cancelStream(chatId);
-      // Частичный ответ дописываем в историю, а не выбрасываем. Дубля не будет:
-      // llm-done отменённого стрима подавится (чат уже снят с active), а буфер
-      // очищается ниже в dropPartial.
-      const text = buffers.current.get(chatId) ?? "";
-      if (text !== "") onCompleteRef.current(chatId, text);
-      dropPartial(chatId);
-      setStreaming((s) => ({ ...s, [chatId]: false }));
+      commitBufferAndFinish(chatId, false);
     },
-    [dropPartial],
+    [commitBufferAndFinish],
   );
 
   return { partial, streaming, startedAt, error, send, stop };

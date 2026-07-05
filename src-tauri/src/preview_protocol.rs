@@ -1,12 +1,8 @@
-//! Ответ кастомной схемы preview:// — текущий HTML превью как text/html.
+const HTML_UTF8_CONTENT_TYPE: &str = "text/html; charset=utf-8";
 
-/// HTTP-ответ для запроса к preview://: тело — переданный HTML, тип — text/html.
 pub fn preview_response(html: &str) -> tauri::http::Response<Vec<u8>> {
     tauri::http::Response::builder()
-        .header(
-            tauri::http::header::CONTENT_TYPE,
-            "text/html; charset=utf-8",
-        )
+        .header(tauri::http::header::CONTENT_TYPE, HTML_UTF8_CONTENT_TYPE)
         .body(html.as_bytes().to_vec())
         .expect("валидный http::Response")
 }

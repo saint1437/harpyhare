@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+} from "react";
 import { loadChats, saveChats } from "@/ipc/commands";
 import {
   CHAT_LIMIT,
@@ -13,15 +21,20 @@ import {
   ATTACHMENT_LIMIT,
   downscaleFactor,
   extractImageItems,
+  NO_DOWNSCALE,
   toImagePayload,
   type Attachment,
   type ImagePayload,
 } from "@/lib/composer";
+import { DEFAULT_MODEL } from "@/lib/models";
 
 const SAVE_DEBOUNCE_MS = 500;
+const DOWNSCALE_JPEG_QUALITY = 0.85;
+const DOWNSCALE_MEDIA_TYPE = "image/jpeg";
+const MIN_CANVAS_SIDE_PX = 1;
+const FILE_READ_ERROR = "Ошибка чтения файла";
+const NO_CANVAS_CONTEXT_ERROR = "2D-контекст канваса недоступен";
 
-// Стабильная заглушка на короткое окно до завершения первичной загрузки с диска,
-// чтобы вызывающие никогда не получали undefined вместо активного чата.
 const EMPTY_CHAT: Chat = {
   id: "",
   title: "",
@@ -31,7 +44,7 @@ const EMPTY_CHAT: Chat = {
   titlePinned: false,
   presetId: "",
   thinkingEnabled: true,
-  model: "claude-opus-4-8",
+  model: DEFAULT_MODEL,
   webSearch: false,
   context: "",
 };
@@ -43,28 +56,80 @@ function readAsDataUrl(file: File): Promise<string> {
       resolve(fr.result as string);
     };
     fr.onerror = () => {
-      reject(new Error(fr.error?.message ?? "Ошибка чтения файла"));
+      reject(new Error(fr.error?.message ?? FILE_READ_ERROR));
     };
     fr.readAsDataURL(file);
   });
 }
 
+function scaledSidePx(sidePx: number, factor: number): number {
+  return Math.max(MIN_CANVAS_SIDE_PX, Math.round(sidePx * factor));
+}
+
+async function downscaleToJpegDataUrl(file: File, factor: number): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const canvas = document.createElement("canvas");
+  canvas.width = scaledSidePx(bitmap.width, factor);
+  canvas.height = scaledSidePx(bitmap.height, factor);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error(NO_CANVAS_CONTEXT_ERROR);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  return canvas.toDataURL(DOWNSCALE_MEDIA_TYPE, DOWNSCALE_JPEG_QUALITY);
+}
+
 async function fileToAttachment(file: File): Promise<Attachment> {
   const factor = downscaleFactor(file.size);
-  if (factor === 1) {
+  if (factor === NO_DOWNSCALE) {
     const dataUrl = await readAsDataUrl(file);
     return { payload: toImagePayload(dataUrl, file.type), preview: dataUrl };
   }
-  const bitmap = await createImageBitmap(file);
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(bitmap.width * factor));
-  canvas.height = Math.max(1, Math.round(bitmap.height * factor));
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("2D-контекст канваса недоступен");
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-  return { payload: toImagePayload(dataUrl, "image/jpeg"), preview: dataUrl };
+  const dataUrl = await downscaleToJpegDataUrl(file, factor);
+  return { payload: toImagePayload(dataUrl, DOWNSCALE_MEDIA_TYPE), preview: dataUrl };
+}
+
+async function fileToAttachmentOrNull(file: File): Promise<Attachment | null> {
+  try {
+    return await fileToAttachment(file);
+  } catch {
+    return null;
+  }
+}
+
+function useInitialChatsLoad(
+  setChats: Dispatch<SetStateAction<Chat[]>>,
+  setActiveId: Dispatch<SetStateAction<string>>,
+  loaded: RefObject<boolean>,
+): void {
+  useEffect(() => {
+    let live = true;
+    void loadChats().then((json) => {
+      if (!live) return;
+      const initial = deserializeChats(json) ?? [createChat(1)];
+      const first = initial[0];
+      if (!first) return;
+      setChats(initial);
+      setActiveId(first.id);
+      loaded.current = true;
+    });
+    return () => {
+      live = false;
+    };
+  }, [setChats, setActiveId, loaded]);
+}
+
+function useDebouncedChatsSave(chats: Chat[], loaded: RefObject<boolean>): void {
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => {
+    if (!loaded.current) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      void saveChats(serializeChats(chats));
+    }, SAVE_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(saveTimer.current);
+    };
+  }, [chats, loaded]);
 }
 
 export interface ChatsApi {
@@ -88,44 +153,14 @@ export interface ChatsApi {
 }
 
 export function useChats(): ChatsApi {
-  // Start with empty array so waitFor(length===1) only passes after load resolves.
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeId, setActiveId] = useState<string>("");
   const loaded = useRef(false);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // Загрузка с диска один раз на старте.
-  useEffect(() => {
-    let live = true;
-    void loadChats().then((json) => {
-      if (!live) return;
-      const restored = deserializeChats(json);
-      const initial = restored ?? [createChat(1)];
-      const first = initial[0];
-      if (!first) return; // deserializeChats не возвращает пустой массив — защита для типов
-      setChats(initial);
-      setActiveId(first.id);
-      loaded.current = true;
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
+  useInitialChatsLoad(setChats, setActiveId, loaded);
+  useDebouncedChatsSave(chats, loaded);
 
-  // Если activeId ещё не выставлен (первый рендер до загрузки) — указываем на первый.
   const effectiveActiveId = activeId || (chats[0]?.id ?? "");
-
-  // Дебаунс-сохранение при изменениях (только после первичной загрузки).
-  useEffect(() => {
-    if (!loaded.current) return;
-    clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      void saveChats(serializeChats(chats));
-    }, SAVE_DEBOUNCE_MS);
-    return () => {
-      clearTimeout(saveTimer.current);
-    };
-  }, [chats]);
 
   const patch = useCallback((id: string, fn: (c: Chat) => Chat) => {
     setChats((prev) => prev.map((c) => (c.id === id ? fn(c) : c)));
@@ -142,7 +177,7 @@ export function useChats(): ChatsApi {
 
   const removeChat = useCallback((id: string) => {
     setChats((prev) => {
-      if (prev.length <= 1) return prev; // последний не удаляем
+      if (prev.length <= 1) return prev;
       const idx = prev.findIndex((c) => c.id === id);
       const next = prev.filter((c) => c.id !== id);
       setActiveId((cur) => {
@@ -156,9 +191,9 @@ export function useChats(): ChatsApi {
 
   const renameChat = useCallback(
     (id: string, title: string) => {
-      const t = title.trim();
-      if (t === "") return; // пустое имя — не применяем (оставляем текущее)
-      patch(id, (c) => ({ ...c, title: t, titlePinned: true }));
+      const trimmed = title.trim();
+      if (trimmed === "") return;
+      patch(id, (c) => ({ ...c, title: trimmed, titlePinned: true }));
     },
     [patch],
   );
@@ -209,30 +244,37 @@ export function useChats(): ChatsApi {
     [patch],
   );
 
+  const draftAttachmentCount = useCallback((id: string): number => {
+    let count = 0;
+    setChats((prev) => {
+      count = prev.find((c) => c.id === id)?.draftAttachments.length ?? 0;
+      return prev;
+    });
+    return count;
+  }, []);
+
+  const appendDraftAttachment = useCallback(
+    (id: string, att: Attachment) => {
+      patch(id, (c) =>
+        c.draftAttachments.length >= ATTACHMENT_LIMIT
+          ? c
+          : { ...c, draftAttachments: [...c.draftAttachments, att] },
+      );
+    },
+    [patch],
+  );
+
   const addDraftAttachments = useCallback(
     async (id: string, items: DataTransferItemList) => {
       const files = extractImageItems(items);
       if (files.length === 0) return;
-      let current = 0;
-      setChats((prev) => {
-        current = prev.find((c) => c.id === id)?.draftAttachments.length ?? 0;
-        return prev;
-      });
-      const slots = acceptedNewAttachments(current, files.length);
+      const slots = acceptedNewAttachments(draftAttachmentCount(id), files.length);
       for (const file of files.slice(0, slots)) {
-        try {
-          const att = await fileToAttachment(file);
-          patch(id, (c) =>
-            c.draftAttachments.length >= ATTACHMENT_LIMIT
-              ? c
-              : { ...c, draftAttachments: [...c.draftAttachments, att] },
-          );
-        } catch {
-          /* битый кадр пропускаем */
-        }
+        const att = await fileToAttachmentOrNull(file);
+        if (att) appendDraftAttachment(id, att);
       }
     },
-    [patch],
+    [draftAttachmentCount, appendDraftAttachment],
   );
 
   const removeDraftAttachment = useCallback(

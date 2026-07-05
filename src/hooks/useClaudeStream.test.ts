@@ -32,9 +32,7 @@ beforeEach(() => {
     cb(0);
     return 0;
   });
-  vi.stubGlobal("cancelAnimationFrame", () => {
-    /* no-op */
-  });
+  vi.stubGlobal("cancelAnimationFrame", () => undefined);
 });
 afterEach(() => {
   handlers.clear();
@@ -155,7 +153,6 @@ describe("useClaudeStream (per-chat)", () => {
     });
     expect(onComplete).toHaveBeenCalledWith("A", "почти готовый ответ");
     expect(result.current.partial["A"]).toBeUndefined();
-    // llm-done отменённого стрима не даёт второго append (чат снят с active)
     emit("llm-done", { chatId: "A" });
     expect(onComplete).toHaveBeenCalledTimes(1);
   });

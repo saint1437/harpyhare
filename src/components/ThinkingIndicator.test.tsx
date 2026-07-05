@@ -21,7 +21,6 @@ describe("ThinkingIndicator", () => {
   });
 
   it("считает от startedAt, а не от маунта (устойчив к переключению вкладок)", () => {
-    // стрим начался 5с назад → счётчик сразу 5с, не 0
     const { getByText } = render(<ThinkingIndicator startedAt={Date.now() - 5000} />);
     expect(getByText("5с")).toBeTruthy();
   });

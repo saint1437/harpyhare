@@ -5,9 +5,14 @@ export interface HtmlBlockChipProps {
   onOpen: () => void;
 }
 
-/** Компактный чип вместо простыни ```html-кода: открывает окно превью. */
+const TRAILING_NEWLINE = /\n$/;
+
+function countLines(code: string) {
+  return code.replace(TRAILING_NEWLINE, "").split("\n").length;
+}
+
 export function HtmlBlockChip({ code, onOpen }: HtmlBlockChipProps) {
-  const lines = code.replace(/\n$/, "").split("\n").length;
+  const lines = countLines(code);
   return (
     <button
       type="button"

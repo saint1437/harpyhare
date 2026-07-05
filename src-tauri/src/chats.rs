@@ -1,29 +1,12 @@
+use crate::settings::write_atomic_owner_only;
 use std::path::Path;
 
-/// Возвращает сохранённую JSON-строку чатов (схему владеет фронт).
-/// Отсутствие файла или ошибка чтения → пустая строка (фронт стартует с одним чатом).
 pub fn load(path: &Path) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
 }
 
-/// Атомарно записывает непрозрачную JSON-строку с правами 0600 (по образцу settings.rs).
 pub fn save(path: &Path, json: &str) -> std::io::Result<()> {
-    use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let tmp = path.with_extension("tmp");
-    {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp)?;
-        f.write_all(json.as_bytes())?;
-    }
-    std::fs::rename(&tmp, path)
+    write_atomic_owner_only(path, json)
 }
 
 #[cfg(test)]
@@ -40,7 +23,7 @@ mod tests {
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600);
         assert_eq!(load(&path), payload);
-        assert!(!path.with_extension("tmp").exists()); // tmp убран rename'ом
+        assert!(!path.with_extension("tmp").exists());
     }
 
     #[test]

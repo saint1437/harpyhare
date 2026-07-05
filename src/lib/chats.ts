@@ -4,6 +4,9 @@ import { TRANSCRIPTION_PRESET_ID } from "@/lib/presets";
 
 export const CHAT_LIMIT = 6;
 const TITLE_MAX = 22;
+const TITLE_ELLIPSIS = "…";
+const UNTITLED_CHAT_TITLE = "Чат";
+const LEGACY_NO_PRESET_ID = "";
 
 export type Role = "user" | "assistant";
 
@@ -19,51 +22,50 @@ export interface Chat {
   messages: ChatMessage[];
   draft: string;
   draftAttachments: Attachment[];
-  /** Заголовок задан вручную (renameChat) — авто-заголовок из первого сообщения его не перезатирает. */
   titlePinned: boolean;
-  /** id выбранного пресета препромпта ("" = без препромпта). */
   presetId: string;
-  /** Слать ли thinking (adaptive) в Anthropic: true — умнее, false — быстрее первый токен. */
   thinkingEnabled: boolean;
-  /** Модель Anthropic этого чата (селект в Composer). */
   model: string;
-  /** Server-side веб-поиск Anthropic в ответах этого чата (тумблер в Composer). */
   webSearch: boolean;
-  /** Постоянный контекст чата (вакансия/резюме/конспект…) — уходит в system каждого
-   *  запроса. Текст, в отличие от картинок, переживает сериализацию на диск. */
   context: string;
 }
+
+const NEW_CHAT_DEFAULTS = {
+  draft: "",
+  titlePinned: false,
+  presetId: TRANSCRIPTION_PRESET_ID,
+  thinkingEnabled: true,
+  model: DEFAULT_MODEL,
+  webSearch: false,
+  context: "",
+} satisfies Partial<Chat>;
 
 function uid(): string {
   return crypto.randomUUID();
 }
 
+function indexedChatTitle(index: number): string {
+  return `${UNTITLED_CHAT_TITLE} ${index}`;
+}
+
 export function createChat(index: number): Chat {
   return {
     id: uid(),
-    title: `Чат ${index}`,
+    title: indexedChatTitle(index),
     messages: [],
-    draft: "",
     draftAttachments: [],
-    titlePinned: false,
-    presetId: TRANSCRIPTION_PRESET_ID,
-    thinkingEnabled: true,
-    model: DEFAULT_MODEL,
-    webSearch: false,
-    context: "",
+    ...NEW_CHAT_DEFAULTS,
   };
 }
 
-/** Заголовок из первого вопроса (обрезка по TITLE_MAX) либо «Чат N». */
 export function chatTitle(firstUserText: string, index: number): string {
-  const t = firstUserText.trim();
-  if (t === "") return `Чат ${index}`;
-  return t.length > TITLE_MAX ? `${t.slice(0, TITLE_MAX)}…` : t;
+  const trimmed = firstUserText.trim();
+  if (trimmed === "") return indexedChatTitle(index);
+  return trimmed.length > TITLE_MAX ? `${trimmed.slice(0, TITLE_MAX)}${TITLE_ELLIPSIS}` : trimmed;
 }
 
-/** Сериализация для диска: картинки стрипаются (и из истории, и из черновика). */
 export function serializeChats(chats: Chat[]): string {
-  const stripped = chats.map((c) => ({
+  const withoutImages = chats.map((c) => ({
     id: c.id,
     title: c.title,
     titlePinned: c.titlePinned,
@@ -76,10 +78,37 @@ export function serializeChats(chats: Chat[]): string {
     draft: c.draft,
     draftAttachments: [],
   }));
-  return JSON.stringify(stripped);
+  return JSON.stringify(withoutImages);
 }
 
-/** Разбор с диска. null → невалидно/пусто, вызывающий создаёт стартовый чат. */
+function restoreMessage(m: ChatMessage): ChatMessage {
+  return {
+    role: m.role === "assistant" ? "assistant" : "user",
+    text: typeof m.text === "string" ? m.text : "",
+    images: [],
+  };
+}
+
+function restoreChat(c: unknown): Chat {
+  const o = c as Partial<Chat>;
+  return {
+    id: typeof o.id === "string" ? o.id : uid(),
+    title: typeof o.title === "string" ? o.title : UNTITLED_CHAT_TITLE,
+    titlePinned: typeof o.titlePinned === "boolean" ? o.titlePinned : NEW_CHAT_DEFAULTS.titlePinned,
+    presetId: typeof o.presetId === "string" ? o.presetId : LEGACY_NO_PRESET_ID,
+    thinkingEnabled:
+      typeof o.thinkingEnabled === "boolean"
+        ? o.thinkingEnabled
+        : NEW_CHAT_DEFAULTS.thinkingEnabled,
+    model: typeof o.model === "string" && o.model !== "" ? o.model : NEW_CHAT_DEFAULTS.model,
+    webSearch: typeof o.webSearch === "boolean" ? o.webSearch : NEW_CHAT_DEFAULTS.webSearch,
+    context: typeof o.context === "string" ? o.context : NEW_CHAT_DEFAULTS.context,
+    messages: Array.isArray(o.messages) ? o.messages.map(restoreMessage) : [],
+    draft: typeof o.draft === "string" ? o.draft : NEW_CHAT_DEFAULTS.draft,
+    draftAttachments: [],
+  };
+}
+
 export function deserializeChats(json: string): Chat[] | null {
   if (json.trim() === "") return null;
   let raw: unknown;
@@ -89,28 +118,5 @@ export function deserializeChats(json: string): Chat[] | null {
     return null;
   }
   if (!Array.isArray(raw) || raw.length === 0) return null;
-  return raw.map((c) => {
-    const o = c as Partial<Chat>;
-    return {
-      id: typeof o.id === "string" ? o.id : uid(),
-      title: typeof o.title === "string" ? o.title : "Чат",
-      titlePinned: typeof o.titlePinned === "boolean" ? o.titlePinned : false,
-      presetId: typeof o.presetId === "string" ? o.presetId : "",
-      // legacy-чаты без поля ведут себя как раньше (thinking включён)
-      thinkingEnabled: typeof o.thinkingEnabled === "boolean" ? o.thinkingEnabled : true,
-      model: typeof o.model === "string" && o.model !== "" ? o.model : DEFAULT_MODEL,
-      // legacy-чаты без полей: поиск выключен, контекста нет
-      webSearch: typeof o.webSearch === "boolean" ? o.webSearch : false,
-      context: typeof o.context === "string" ? o.context : "",
-      messages: Array.isArray(o.messages)
-        ? o.messages.map((m) => ({
-            role: m.role === "assistant" ? "assistant" : "user",
-            text: typeof m.text === "string" ? m.text : "",
-            images: [],
-          }))
-        : [],
-      draft: typeof o.draft === "string" ? o.draft : "",
-      draftAttachments: [],
-    };
-  });
+  return raw.map((c) => restoreChat(c));
 }

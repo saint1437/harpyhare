@@ -1,21 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { AnswerPanel } from "@/components/AnswerPanel";
 import { ChatTabs } from "@/components/ChatTabs";
 import { Composer } from "@/components/Composer";
 import { HotkeyHints } from "@/components/HotkeyHints";
 import { PermissionBanner } from "@/components/PermissionBanner";
-import { PreviewPanel } from "@/components/PreviewPanel";
+import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
 import { SettingsDialog } from "@/components/SettingsDialog";
-import { StatusBar } from "@/components/StatusBar";
+import { StatusBar, type StatusBarProps } from "@/components/StatusBar";
 import { UpdateDialog } from "@/components/UpdateDialog";
-import { useChats } from "@/hooks/useChats";
-import { useClaudeStream } from "@/hooks/useClaudeStream";
+import { useChats, type ChatsApi } from "@/hooks/useChats";
+import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
 import { useModels } from "@/hooks/useModels";
 import { usePttSuspend } from "@/hooks/usePttSuspend";
 import { useRecorder } from "@/hooks/useRecorder";
 import { useSettings } from "@/hooks/useSettings";
 import { useTranscription } from "@/hooks/useTranscription";
-import { useUpdater } from "@/hooks/useUpdater";
+import { useUpdater, type UpdaterApi } from "@/hooks/useUpdater";
 import { useWindowControls } from "@/hooks/useWindowControls";
 import {
   captureAvailable,
@@ -27,123 +27,122 @@ import {
 } from "@/ipc/commands";
 import { isTauri } from "@/ipc/env";
 import { onEvent } from "@/ipc/events";
-import type { ChatMessageDto } from "@/ipc/types";
+import type {
+  ChatMessageDto,
+  ImagePayload,
+  PromptPreset,
+  RecorderState,
+  Settings,
+  UpdateInfo,
+} from "@/ipc/types";
+import type { Chat, ChatMessage } from "@/lib/chats";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
+import type { ModelInfo } from "@/lib/models";
 import { presetText } from "@/lib/presets";
 
-const RETRYABLE = /перегружен|соединение|VPN|интернет|оборван/i;
+const RETRYABLE_STT_ERROR = /перегружен|соединение|VPN|интернет|оборван/i;
 
-// Ширина окна: базовая (превью закрыто) и расширенная (превью справа). Прирост =
-// ширина панели (570) + зазор между колонками (gap-3 = 12px), чтобы левая колонка
-// оставалась пиксельно неподвижной. Числа правятся позже.
-const BASE_WIDTH = 1140;
-const OPEN_WIDTH = 1722;
+const BASE_WINDOW_WIDTH = 1140;
+const SHELL_COLUMN_GAP_PX = 12;
+const PREVIEW_OPEN_WINDOW_WIDTH = BASE_WINDOW_WIDTH + PREVIEW_PANEL_WIDTH_PX + SHELL_COLUMN_GAP_PX;
 
-export default function App() {
-  const { settings, save, bumpOpacity } = useSettings();
-  const state = useRecorder();
-  const chats = useChats();
-  const models = useModels();
+const USER_CONTEXT_SYSTEM_HEADER = "Контекст от пользователя (справочные материалы):\n";
+const SYSTEM_BLOCKS_SEPARATOR = "\n\n";
 
+const DEMO_SEED_USER_MESSAGE = "Покажи пример хвостовой рекурсии на JS.";
+const DEMO_SEED_ASSISTANT_MESSAGE =
+  "Хвостовая рекурсия — рекурсивный вызов **последним действием**:\n\n" +
+  "```js\n" +
+  "// обычная: после вызова ещё умножение\n" +
+  "function fact(n) {\n" +
+  "  if (n <= 1) return 1;\n" +
+  "  return n * fact(n - 1);\n" +
+  "}\n\n" +
+  "// хвостовая: аккумулятор несёт результат\n" +
+  "function factTail(n, acc = 1) {\n" +
+  "  if (n <= 1) return acc;\n" +
+  "  return factTail(n - 1, n * acc);\n" +
+  "}\n" +
+  "```\n\n" +
+  "Движок может заменить кадр стека, а не наращивать его.";
+const DEMO_SEED_DRAFT = "Объясни, чем хвостовая рекурсия отличается от обычной.";
+
+const settingsSaveErrorText = (err: string) => `Ошибка сохранения настроек: ${err}`;
+
+function historyWithNewUserMessage(
+  chat: Chat,
+  text: string,
+  images: ImagePayload[],
+): ChatMessageDto[] {
+  return [
+    ...chat.messages.map((m) => ({ role: m.role, text: m.text, images: m.images })),
+    { role: "user", text, images },
+  ];
+}
+
+function chatSystemPrompt(presets: PromptPreset[], chat: Chat): string {
+  const context = chat.context.trim();
+  return [
+    presetText(presets, chat.presetId),
+    context === "" ? "" : `${USER_CONTEXT_SYSTEM_HEADER}${context}`,
+  ]
+    .filter((s) => s !== "")
+    .join(SYSTEM_BLOCKS_SEPARATOR);
+}
+
+function lastHtmlBlock(markdown: string): string | undefined {
+  const blocks = extractHtmlBlocks(markdown);
+  return blocks[blocks.length - 1];
+}
+
+function copyLastAssistantMessage(messages: ChatMessage[]): void {
+  const last = [...messages].reverse().find((m) => m.role === "assistant");
+  if (last) void navigator.clipboard.writeText(last.text);
+}
+
+function updateBadge(updater: UpdaterApi, onOpen: () => void): StatusBarProps["update"] {
+  if (updater.status === "idle" || !updater.info) return null;
+  return {
+    version: updater.info.version,
+    busy: updater.status === "downloading" || updater.status === "restarting",
+    onOpen,
+  };
+}
+
+function useLatestRef<T>(value: T): RefObject<T> {
+  const ref = useRef(value);
+  ref.current = value;
+  return ref;
+}
+
+function useCapturePermission(): boolean {
+  const [permissionOk, setPermissionOk] = useState(true);
+  useEffect(() => {
+    void captureAvailable().then((ok) => {
+      setPermissionOk(ok);
+    });
+  }, []);
+  return permissionOk;
+}
+
+interface SttFeedback {
+  sttError: string | null;
+  showRetry: boolean;
+  setSttError: (msg: string | null) => void;
+  clearError: () => void;
+  clearFeedback: () => void;
+  retry: () => void;
+}
+
+function useSttFeedback(state: RecorderState): SttFeedback {
   const [sttError, setSttError] = useState<string | null>(null);
   const [showRetry, setShowRetry] = useState(false);
-  const [permissionOk, setPermissionOk] = useState(true);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [previewHtml, setPreviewHtml] = useState("");
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [updateOpen, setUpdateOpen] = useState(false);
-
-  const updater = useUpdater();
-
-  // Свежие значения для стабильных колбэков (PTT/транскрипция/подписки).
-  const settingsRef = useRef(settings);
-  settingsRef.current = settings;
-  const chatsRef = useRef(chats);
-  chatsRef.current = chats;
-
-  // Открыть встроенную панель превью с данным HTML.
-  const openPreview = useCallback((code: string) => {
-    setPreviewHtml(code);
-    setPreviewOpen(true);
-  }, []);
-
-  // llm-done: дописать ответ в историю; если включено автопревью, чат активен
-  // и в ответе есть ```html — открыть панель с последним блоком.
-  const onAssistantDone = useCallback(
-    (chatId: string, text: string) => {
-      if (text === "") return; // ответ без текста не пишем в историю (API отвергает пустой content)
-      chatsRef.current.appendAssistantMessage(chatId, text);
-      if (!settingsRef.current.auto_preview_html) return;
-      if (chatId !== chatsRef.current.activeId) return;
-      const blocks = extractHtmlBlocks(text);
-      const last = blocks[blocks.length - 1];
-      if (last !== undefined) openPreview(last);
-    },
-    [openPreview],
-  );
-
-  const stream = useClaudeStream(onAssistantDone);
-  const streamRef = useRef(stream);
-  streamRef.current = stream;
-
-  const active = chats.active;
-  const activeId = chats.activeId;
-  const activeStreaming = !!stream.streaming[activeId];
-
-  const error = sttError ?? stream.error[activeId] ?? null;
-
-  // Единая точка отправки активного чата (ручной ⌘⏎/«Отправить» и авто-send).
-  const dispatchSend = useCallback((rawText: string) => {
-    const c = chatsRef.current.active;
-    if (streamRef.current.streaming[c.id]) return; // не шлём поверх своего активного стрима
-    const trimmed = rawText.trim();
-    const images = c.draftAttachments.map((a) => a.payload);
-    if (trimmed === "" && images.length === 0) return;
-    setSttError(null);
-    chatsRef.current.appendUserMessage(c.id, trimmed, images);
-    const history: ChatMessageDto[] = [
-      ...c.messages.map((m) => ({ role: m.role, text: m.text, images: m.images })),
-      { role: "user", text: trimmed, images },
-    ];
-    // system = препромпт чата + его постоянный контекст; оба едут по кэшируемому
-    // system-блоку (брейкпоинт prompt-кэша ставит Rust).
-    const context = c.context.trim();
-    const system = [
-      presetText(settingsRef.current.prompt_presets, c.presetId),
-      context === "" ? "" : `Контекст от пользователя (справочные материалы):\n${context}`,
-    ]
-      .filter((s) => s !== "")
-      .join("\n\n");
-    void streamRef.current.send(c.id, history, system, c.thinkingEnabled, c.model, c.webSearch);
-  }, []);
-
-  const doSend = useCallback(() => {
-    dispatchSend(chatsRef.current.active.draft);
-  }, [dispatchSend]);
-
-  // Ширина окна следует за состоянием панели превью (расширяется вправо).
-  useEffect(() => {
-    void setWindowWidth(previewOpen ? OPEN_WIDTH : BASE_WIDTH);
-  }, [previewOpen]);
-
-  useTranscription(
-    useCallback(
-      (incoming: string) => {
-        const c = chatsRef.current.active;
-        chatsRef.current.setDraft(c.id, incoming, c.draftAttachments);
-        setSttError(null);
-        setShowRetry(false);
-        if (settingsRef.current.auto_send) dispatchSend(incoming);
-      },
-      [dispatchSend],
-    ),
-  );
 
   useEffect(
     () =>
       onEvent("stt-error", (msg) => {
         setSttError(msg);
-        setShowRetry(RETRYABLE.test(msg));
+        setShowRetry(RETRYABLE_STT_ERROR.test(msg));
       }),
     [],
   );
@@ -155,190 +154,255 @@ export default function App() {
     }
   }, [state]);
 
-  useWindowControls(settings.move_step, doSend, bumpOpacity);
-  usePttSuspend(settings.hotkey);
-
-  useEffect(() => {
-    void captureAvailable().then((ok) => {
-      setPermissionOk(ok);
-    });
+  const clearError = useCallback(() => {
+    setSttError(null);
   }, []);
 
-  // Демо-затравка для браузерного превью. Ждём, пока активный чат подгрузится
-  // (activeId непустой), и сеем ровно один раз.
-  const seededDemo = useRef(false);
-  useEffect(() => {
-    if (isTauri() || seededDemo.current || activeId === "") return;
-    seededDemo.current = true;
-    // Ответ с кодом — чтобы в браузерном моке было видно подсветку/markdown-стили.
-    chatsRef.current.appendUserMessage(activeId, "Покажи пример хвостовой рекурсии на JS.", []);
-    chatsRef.current.appendAssistantMessage(
-      activeId,
-      "Хвостовая рекурсия — рекурсивный вызов **последним действием**:\n\n" +
-        "```js\n" +
-        "// обычная: после вызова ещё умножение\n" +
-        "function fact(n) {\n" +
-        "  if (n <= 1) return 1;\n" +
-        "  return n * fact(n - 1);\n" +
-        "}\n\n" +
-        "// хвостовая: аккумулятор несёт результат\n" +
-        "function factTail(n, acc = 1) {\n" +
-        "  if (n <= 1) return acc;\n" +
-        "  return factTail(n - 1, n * acc);\n" +
-        "}\n" +
-        "```\n\n" +
-        "Движок может заменить кадр стека, а не наращивать его.",
-    );
-    chatsRef.current.setDraft(
-      activeId,
-      "Объясни, чем хвостовая рекурсия отличается от обычной.",
-      [],
-    );
-  }, [activeId]);
+  const clearFeedback = useCallback(() => {
+    setSttError(null);
+    setShowRetry(false);
+  }, []);
 
-  const onRetry = () => {
+  const retry = useCallback(() => {
     setShowRetry(false);
     void retryTranscription();
-  };
+  }, []);
 
-  const partial = activeStreaming ? (stream.partial[activeId] ?? "") : null;
+  return { sttError, showRetry, setSttError, clearError, clearFeedback, retry };
+}
 
+interface PreviewPanelState {
+  previewHtml: string;
+  previewOpen: boolean;
+  openPreview: (code: string) => void;
+  closePreview: () => void;
+}
+
+function usePreviewPanel(): PreviewPanelState {
+  const [previewHtml, setPreviewHtml] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const openPreview = useCallback((code: string) => {
+    setPreviewHtml(code);
+    setPreviewOpen(true);
+  }, []);
+
+  const closePreview = useCallback(() => {
+    setPreviewOpen(false);
+  }, []);
+
+  useEffect(() => {
+    void setWindowWidth(previewOpen ? PREVIEW_OPEN_WINDOW_WIDTH : BASE_WINDOW_WIDTH);
+  }, [previewOpen]);
+
+  return { previewHtml, previewOpen, openPreview, closePreview };
+}
+
+function useBrowserDemoSeed(activeId: string, chatsRef: RefObject<ChatsApi>): void {
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (isTauri() || seeded.current || activeId === "") return;
+    seeded.current = true;
+    chatsRef.current.appendUserMessage(activeId, DEMO_SEED_USER_MESSAGE, []);
+    chatsRef.current.appendAssistantMessage(activeId, DEMO_SEED_ASSISTANT_MESSAGE);
+    chatsRef.current.setDraft(activeId, DEMO_SEED_DRAFT, []);
+  }, [activeId, chatsRef]);
+}
+
+interface SendPipeline {
+  dispatchSend: (rawText: string) => void;
+  doSend: () => void;
+}
+
+function useSendPipeline(
+  chatsRef: RefObject<ChatsApi>,
+  streamRef: RefObject<ClaudeStreams>,
+  settingsRef: RefObject<Settings>,
+  clearSttError: () => void,
+): SendPipeline {
+  const dispatchSend = useCallback(
+    (rawText: string) => {
+      const chat = chatsRef.current.active;
+      if (streamRef.current.streaming[chat.id]) return;
+      const trimmed = rawText.trim();
+      const images = chat.draftAttachments.map((a) => a.payload);
+      if (trimmed === "" && images.length === 0) return;
+      clearSttError();
+      chatsRef.current.appendUserMessage(chat.id, trimmed, images);
+      const history = historyWithNewUserMessage(chat, trimmed, images);
+      const system = chatSystemPrompt(settingsRef.current.prompt_presets, chat);
+      void streamRef.current.send(
+        chat.id,
+        history,
+        system,
+        chat.thinkingEnabled,
+        chat.model,
+        chat.webSearch,
+      );
+    },
+    [chatsRef, streamRef, settingsRef, clearSttError],
+  );
+
+  const doSend = useCallback(() => {
+    dispatchSend(chatsRef.current.active.draft);
+  }, [dispatchSend, chatsRef]);
+
+  return { dispatchSend, doSend };
+}
+
+interface AppHeaderProps {
+  state: RecorderState;
+  error: string | null;
+  hotkey: string;
+  toggleHotkey: string;
+  updater: UpdaterApi;
+  chats: ChatsApi;
+  stream: ClaudeStreams;
+  onOpenSettings: () => void;
+  onOpenUpdate: () => void;
+}
+
+function AppHeader({
+  state,
+  error,
+  hotkey,
+  toggleHotkey,
+  updater,
+  chats,
+  stream,
+  onOpenSettings,
+  onOpenUpdate,
+}: AppHeaderProps) {
   return (
-    <div className="app-shell relative flex h-screen gap-3 overflow-hidden rounded-[22px] p-4">
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
-        {!permissionOk && (
-          <PermissionBanner onOpenSettings={() => void openAudioPermissionSettings()} />
-        )}
-
-        <StatusBar
-          state={state}
-          error={error}
-          hotkey={settings.hotkey}
-          toggleHotkey={settings.toggle_hotkey}
-          update={
-            updater.status !== "idle" && updater.info
-              ? {
-                  version: updater.info.version,
-                  busy: updater.status === "downloading" || updater.status === "restarting",
-                  onOpen: () => {
-                    setUpdateOpen(true);
-                  },
-                }
-              : null
-          }
-          onOpenSettings={() => {
-            setSettingsOpen(true);
+    <StatusBar
+      state={state}
+      error={error}
+      hotkey={hotkey}
+      toggleHotkey={toggleHotkey}
+      update={updateBadge(updater, onOpenUpdate)}
+      onOpenSettings={onOpenSettings}
+      onClose={() => void closeApp()}
+      onHide={() => void hideMainWindow()}
+      tabs={
+        <ChatTabs
+          chats={chats.chats}
+          activeId={chats.activeId}
+          streaming={stream.streaming}
+          onSelect={chats.selectChat}
+          onRemove={(id) => {
+            stream.stop(id);
+            chats.removeChat(id);
           }}
-          onClose={() => void closeApp()}
-          onHide={() => void hideMainWindow()}
-          tabs={
-            <ChatTabs
-              chats={chats.chats}
-              activeId={activeId}
-              streaming={stream.streaming}
-              onSelect={chats.selectChat}
-              onRemove={(id) => {
-                stream.stop(id); // отменяем фоновый стрим удаляемого чата
-                chats.removeChat(id);
-              }}
-              onRename={chats.renameChat}
-              onNew={chats.newChat}
-            />
-          }
+          onRename={chats.renameChat}
+          onNew={chats.newChat}
         />
+      }
+    />
+  );
+}
 
-        <AnswerPanel
-          messages={active.messages}
-          chatId={activeId}
-          partial={partial}
-          streaming={activeStreaming}
-          streamStartedAt={stream.startedAt[activeId]}
-          onCopy={() => {
-            const last = [...active.messages].reverse().find((m) => m.role === "assistant");
-            if (last) void navigator.clipboard.writeText(last.text);
-          }}
-          onOpenPreview={openPreview}
-        />
+interface AppComposerProps {
+  chats: ChatsApi;
+  models: ModelInfo[];
+  presets: PromptPreset[];
+  hotkey: string;
+  streaming: boolean;
+  showRetry: boolean;
+  onSend: () => void;
+  onStop: () => void;
+  onRetry: () => void;
+}
 
-        <Composer
-          value={active.draft}
-          onChange={(v) => {
-            chats.setDraft(activeId, v, active.draftAttachments);
-          }}
-          attachments={active.draftAttachments}
-          onRemoveAttachment={(i) => {
-            chats.removeDraftAttachment(activeId, i);
-          }}
-          onPaste={(items) => void chats.addDraftAttachments(activeId, items)}
-          onSend={doSend}
-          onStop={() => {
-            stream.stop(activeId);
-          }}
-          onClear={() => {
-            chats.setDraft(activeId, "", []);
-          }}
-          onRetry={onRetry}
-          hotkey={settings.hotkey}
-          streaming={activeStreaming}
-          showRetry={showRetry}
-          presets={settings.prompt_presets}
-          presetId={active.presetId}
-          onPresetChange={(id) => {
-            chats.setChatPreset(activeId, id);
-          }}
-          thinkingEnabled={active.thinkingEnabled}
-          onThinkingChange={(enabled) => {
-            chats.setChatThinking(activeId, enabled);
-          }}
-          model={active.model}
-          onModelChange={(model) => {
-            chats.setChatModel(activeId, model);
-          }}
-          webSearch={active.webSearch}
-          onWebSearchChange={(enabled) => {
-            chats.setChatWebSearch(activeId, enabled);
-          }}
-          context={active.context}
-          onContextChange={(context) => {
-            chats.setChatContext(activeId, context);
-          }}
-          models={models}
-        />
+function AppComposer({
+  chats,
+  models,
+  presets,
+  hotkey,
+  streaming,
+  showRetry,
+  onSend,
+  onStop,
+  onRetry,
+}: AppComposerProps) {
+  const { active, activeId } = chats;
+  return (
+    <Composer
+      value={active.draft}
+      onChange={(v) => {
+        chats.setDraft(activeId, v, active.draftAttachments);
+      }}
+      attachments={active.draftAttachments}
+      onRemoveAttachment={(i) => {
+        chats.removeDraftAttachment(activeId, i);
+      }}
+      onPaste={(items) => void chats.addDraftAttachments(activeId, items)}
+      onSend={onSend}
+      onStop={onStop}
+      onClear={() => {
+        chats.setDraft(activeId, "", []);
+      }}
+      onRetry={onRetry}
+      hotkey={hotkey}
+      streaming={streaming}
+      showRetry={showRetry}
+      presets={presets}
+      presetId={active.presetId}
+      onPresetChange={(id) => {
+        chats.setChatPreset(activeId, id);
+      }}
+      thinkingEnabled={active.thinkingEnabled}
+      onThinkingChange={(enabled) => {
+        chats.setChatThinking(activeId, enabled);
+      }}
+      model={active.model}
+      onModelChange={(model) => {
+        chats.setChatModel(activeId, model);
+      }}
+      webSearch={active.webSearch}
+      onWebSearchChange={(enabled) => {
+        chats.setChatWebSearch(activeId, enabled);
+      }}
+      context={active.context}
+      onContextChange={(context) => {
+        chats.setChatContext(activeId, context);
+      }}
+      models={models}
+    />
+  );
+}
 
-        <HotkeyHints hotkey={settings.hotkey} />
-      </div>
+interface AppDialogsProps {
+  settings: Settings;
+  updater: UpdaterApi;
+  settingsOpen: boolean;
+  updateOpen: boolean;
+  onCheckUpdates: () => Promise<UpdateInfo | null>;
+  onCloseSettings: () => void;
+  onSaveSettings: (next: Settings) => void;
+  onCloseUpdate: () => void;
+  onSkipUpdate: () => void;
+}
 
-      {previewOpen && (
-        <PreviewPanel
-          html={previewHtml}
-          onClose={() => {
-            setPreviewOpen(false);
-          }}
-        />
-      )}
-
+function AppDialogs({
+  settings,
+  updater,
+  settingsOpen,
+  updateOpen,
+  onCheckUpdates,
+  onCloseSettings,
+  onSaveSettings,
+  onCloseUpdate,
+  onSkipUpdate,
+}: AppDialogsProps) {
+  return (
+    <>
       <SettingsDialog
         open={settingsOpen}
         settings={settings}
         appVersion={updater.currentVersion}
-        onCheckUpdates={async () => {
-          const found = await updater.checkNow();
-          if (found) {
-            // не стакаем модалки: настройки закрываются, открывается диалог обновления
-            setSettingsOpen(false);
-            setUpdateOpen(true);
-          }
-          return found;
-        }}
-        onClose={() => {
-          setSettingsOpen(false);
-        }}
-        onSave={(next) => {
-          void save(next).then((err) => {
-            if (err) setSttError(`Ошибка сохранения настроек: ${err}`);
-          });
-          setSettingsOpen(false);
-        }}
+        onCheckUpdates={onCheckUpdates}
+        onClose={onCloseSettings}
+        onSave={onSaveSettings}
       />
 
       {updater.info && (
@@ -349,20 +413,168 @@ export default function App() {
           progress={updater.progress}
           error={updater.error}
           currentVersion={updater.currentVersion}
-          onClose={() => {
-            setUpdateOpen(false);
-          }}
+          onClose={onCloseUpdate}
           onInstall={updater.install}
-          onSkip={() => {
-            const skipped = updater.info?.version ?? "";
-            setUpdateOpen(false);
-            updater.dismiss();
-            void save({ ...settingsRef.current, skipped_version: skipped }).then((err) => {
-              if (err) setSttError(`Ошибка сохранения настроек: ${err}`);
-            });
-          }}
+          onSkip={onSkipUpdate}
         />
       )}
+    </>
+  );
+}
+
+export default function App() {
+  const { settings, save, bumpOpacity } = useSettings();
+  const state = useRecorder();
+  const chats = useChats();
+  const models = useModels();
+  const updater = useUpdater();
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [updateOpen, setUpdateOpen] = useState(false);
+
+  const permissionOk = useCapturePermission();
+  const { sttError, showRetry, setSttError, clearError, clearFeedback, retry } =
+    useSttFeedback(state);
+  const { previewHtml, previewOpen, openPreview, closePreview } = usePreviewPanel();
+
+  const settingsRef = useLatestRef(settings);
+  const chatsRef = useLatestRef(chats);
+
+  const onAssistantDone = useCallback(
+    (chatId: string, text: string) => {
+      if (text === "") return;
+      chatsRef.current.appendAssistantMessage(chatId, text);
+      if (!settingsRef.current.auto_preview_html) return;
+      if (chatId !== chatsRef.current.activeId) return;
+      const block = lastHtmlBlock(text);
+      if (block !== undefined) openPreview(block);
+    },
+    [chatsRef, settingsRef, openPreview],
+  );
+
+  const stream = useClaudeStream(onAssistantDone);
+  const streamRef = useLatestRef(stream);
+
+  const { dispatchSend, doSend } = useSendPipeline(chatsRef, streamRef, settingsRef, clearError);
+
+  useTranscription(
+    useCallback(
+      (incoming: string) => {
+        const chat = chatsRef.current.active;
+        chatsRef.current.setDraft(chat.id, incoming, chat.draftAttachments);
+        clearFeedback();
+        if (settingsRef.current.auto_send) dispatchSend(incoming);
+      },
+      [chatsRef, settingsRef, dispatchSend, clearFeedback],
+    ),
+  );
+
+  useWindowControls(settings.move_step, doSend, bumpOpacity);
+  usePttSuspend(settings.hotkey);
+  useBrowserDemoSeed(chats.activeId, chatsRef);
+
+  const active = chats.active;
+  const activeId = chats.activeId;
+  const activeStreaming = !!stream.streaming[activeId];
+  const error = sttError ?? stream.error[activeId] ?? null;
+  const partial = activeStreaming ? (stream.partial[activeId] ?? "") : null;
+
+  const saveSettingsReportingError = (next: Settings) => {
+    void save(next).then((err) => {
+      if (err) setSttError(settingsSaveErrorText(err));
+    });
+  };
+
+  const checkUpdatesFromSettings = async (): Promise<UpdateInfo | null> => {
+    const found = await updater.checkNow();
+    if (found) {
+      setSettingsOpen(false);
+      setUpdateOpen(true);
+    }
+    return found;
+  };
+
+  const saveSettingsAndCloseDialog = (next: Settings) => {
+    saveSettingsReportingError(next);
+    setSettingsOpen(false);
+  };
+
+  const skipUpdate = () => {
+    const skipped = updater.info?.version ?? "";
+    setUpdateOpen(false);
+    updater.dismiss();
+    saveSettingsReportingError({ ...settingsRef.current, skipped_version: skipped });
+  };
+
+  return (
+    <div className="app-shell relative flex h-screen gap-3 overflow-hidden rounded-[22px] p-4">
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        {!permissionOk && (
+          <PermissionBanner onOpenSettings={() => void openAudioPermissionSettings()} />
+        )}
+
+        <AppHeader
+          state={state}
+          error={error}
+          hotkey={settings.hotkey}
+          toggleHotkey={settings.toggle_hotkey}
+          updater={updater}
+          chats={chats}
+          stream={stream}
+          onOpenSettings={() => {
+            setSettingsOpen(true);
+          }}
+          onOpenUpdate={() => {
+            setUpdateOpen(true);
+          }}
+        />
+
+        <AnswerPanel
+          messages={active.messages}
+          chatId={activeId}
+          partial={partial}
+          streaming={activeStreaming}
+          streamStartedAt={stream.startedAt[activeId]}
+          onCopy={() => {
+            copyLastAssistantMessage(active.messages);
+          }}
+          onOpenPreview={openPreview}
+        />
+
+        <AppComposer
+          chats={chats}
+          models={models}
+          presets={settings.prompt_presets}
+          hotkey={settings.hotkey}
+          streaming={activeStreaming}
+          showRetry={showRetry}
+          onSend={doSend}
+          onStop={() => {
+            stream.stop(activeId);
+          }}
+          onRetry={retry}
+        />
+
+        <HotkeyHints hotkey={settings.hotkey} />
+      </div>
+
+      {previewOpen && <PreviewPanel html={previewHtml} onClose={closePreview} />}
+
+      <AppDialogs
+        settings={settings}
+        updater={updater}
+        settingsOpen={settingsOpen}
+        updateOpen={updateOpen}
+        onCheckUpdates={checkUpdatesFromSettings}
+        onCloseSettings={() => {
+          setSettingsOpen(false);
+        }}
+        onSaveSettings={saveSettingsAndCloseDialog}
+        onCloseUpdate={() => {
+          setUpdateOpen(false);
+        }}
+        onSkipUpdate={skipUpdate}
+      />
     </div>
   );
 }

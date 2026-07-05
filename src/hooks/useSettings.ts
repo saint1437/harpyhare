@@ -1,13 +1,54 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { getSettings, setSettings as ipcSet } from "@/ipc/commands";
 import { DEFAULT_SETTINGS, type Settings } from "@/ipc/types";
 import { applyChatFontSize, applyOpacity, stepOpacity } from "@/lib/window-controls";
+
+const OPACITY_STEP = 0.1;
+const OPACITY_PERSIST_DEBOUNCE_MS = 400;
 
 export interface SettingsApi {
   settings: Settings;
   loading: boolean;
   save: (next: Settings) => Promise<string | null>;
   bumpOpacity: (dir: 1 | -1) => void;
+}
+
+function applyVisualSettings(windowOpacity: number, chatFontSize: number): void {
+  applyOpacity(document.documentElement, windowOpacity);
+  applyChatFontSize(document.documentElement, chatFontSize);
+}
+
+function useBumpOpacity(setSettings: Dispatch<SetStateAction<Settings>>): (dir: 1 | -1) => void {
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(
+    () => () => {
+      clearTimeout(persistTimer.current);
+    },
+    [],
+  );
+
+  return useCallback(
+    (dir: 1 | -1) => {
+      setSettings((prev) => {
+        const next = stepOpacity(prev.window_opacity, dir, OPACITY_STEP);
+        applyOpacity(document.documentElement, next);
+        const updated = { ...prev, window_opacity: next };
+        clearTimeout(persistTimer.current);
+        persistTimer.current = setTimeout(() => {
+          void ipcSet(updated);
+        }, OPACITY_PERSIST_DEBOUNCE_MS);
+        return updated;
+      });
+    },
+    [setSettings],
+  );
 }
 
 export function useSettings(): SettingsApi {
@@ -20,8 +61,7 @@ export function useSettings(): SettingsApi {
       .then((s) => {
         if (!live) return;
         setSettings(s);
-        applyOpacity(document.documentElement, s.window_opacity);
-        applyChatFontSize(document.documentElement, s.chat_font_size);
+        applyVisualSettings(s.window_opacity, s.chat_font_size);
       })
       .finally(() => {
         if (live) setLoading(false);
@@ -37,38 +77,17 @@ export function useSettings(): SettingsApi {
         await ipcSet(next);
         const fresh = await getSettings();
         setSettings(fresh);
-        applyOpacity(document.documentElement, fresh.window_opacity);
-        applyChatFontSize(document.documentElement, fresh.chat_font_size);
+        applyVisualSettings(fresh.window_opacity, fresh.chat_font_size);
         return null;
       } catch (e) {
-        applyOpacity(document.documentElement, settings.window_opacity);
-        applyChatFontSize(document.documentElement, settings.chat_font_size);
+        applyVisualSettings(settings.window_opacity, settings.chat_font_size);
         return String(e);
       }
     },
     [settings.window_opacity, settings.chat_font_size],
   );
 
-  const opacityTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(
-    () => () => {
-      clearTimeout(opacityTimer.current);
-    },
-    [],
-  );
-
-  const bumpOpacity = useCallback((dir: 1 | -1) => {
-    setSettings((prev) => {
-      const next = stepOpacity(prev.window_opacity, dir, 0.1);
-      applyOpacity(document.documentElement, next);
-      const updated = { ...prev, window_opacity: next };
-      clearTimeout(opacityTimer.current);
-      opacityTimer.current = setTimeout(() => {
-        void ipcSet(updated);
-      }, 400);
-      return updated;
-    });
-  }, []);
+  const bumpOpacity = useBumpOpacity(setSettings);
 
   return { settings, loading, save, bumpOpacity };
 }

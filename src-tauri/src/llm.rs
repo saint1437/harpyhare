@@ -4,6 +4,47 @@ use serde_json::{json, Value};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
+const ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com";
+const MESSAGES_PATH: &str = "/v1/messages";
+const MODELS_PATH: &str = "/v1/models";
+const MODELS_PAGE_LIMIT: u32 = 100;
+
+const API_KEY_HEADER: &str = "x-api-key";
+const VERSION_HEADER: &str = "anthropic-version";
+const ANTHROPIC_VERSION: &str = "2023-06-01";
+const BETA_HEADER: &str = "anthropic-beta";
+const FAST_MODE_BETA: &str = "fast-mode-2026-02-01";
+
+const MAX_TOKENS: u32 = 64000;
+const SPEED_FIELD: &str = "speed";
+const FAST_MODE_SPEED: &str = "fast";
+const FAST_MODE_MODEL: &str = "claude-opus-4-8";
+
+const THINKING_ADAPTIVE: &str = "adaptive";
+const THINKING_DISABLED: &str = "disabled";
+
+const WEB_SEARCH_TOOL_TYPE: &str = "web_search_20260209";
+const WEB_SEARCH_TOOL_NAME: &str = "web_search";
+const WEB_SEARCH_MAX_USES: u32 = 5;
+const WEB_SEARCH_DIRECT_CALLERS: [&str; 1] = ["direct"];
+
+const CACHE_TYPE_EPHEMERAL: &str = "ephemeral";
+
+const HAIKU_PREFIX: &str = "claude-haiku";
+const ALWAYS_THINKING_PREFIXES: [&str; 2] = ["claude-fable", "claude-mythos"];
+
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(60);
+const HTTP2_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(30);
+const WARM_UP_TIMEOUT: Duration = Duration::from_secs(5);
+const LIST_MODELS_TIMEOUT: Duration = Duration::from_secs(15);
+
+const SSE_EVENT_SEPARATOR: &str = "\n\n";
+const SSE_DATA_PREFIX: &str = "data: ";
+
+const TRUNCATED_STREAM_ERROR: &str = "ответ оборван до завершения";
+const UNKNOWN_API_ERROR: &str = "неизвестная ошибка API";
+
 #[derive(Debug, thiserror::Error)]
 pub enum LlmError {
     #[error("Неверный ключ Anthropic — проверь в настройках")]
@@ -25,35 +66,26 @@ pub struct AnthropicClient {
     client: reqwest::Client,
 }
 
-/// Модель из `GET /v1/models` + выжимка capabilities, влияющая на сборку запроса.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelInfo {
     pub id: String,
     pub display_name: String,
-    /// Принимает `thinking: {type:"adaptive"}` (capabilities.thinking.types.adaptive).
     pub adaptive: bool,
-    /// Thinking нельзя выключить (Fable/Mythos «думают всегда»). Capabilities этого
-    /// не выражают — единственное оставшееся модельное исключение по имени.
     pub always_thinks: bool,
-    /// Поддерживает code execution (capabilities.code_execution). Влияет на форму
-    /// server-side веб-поиска: без него web_search_20260209 требует
-    /// allowed_callers=["direct"] (см. web_search_value).
     pub code_exec: bool,
 }
 
-/// Эвристика на случай недоступных capabilities (оффлайн/старый API).
 fn fallback_adaptive(id: &str) -> bool {
-    !id.starts_with("claude-haiku")
+    !id.starts_with(HAIKU_PREFIX)
 }
 
-/// Эвристика code execution без capabilities: из текущих моделей его нет у haiku.
 fn fallback_code_exec(id: &str) -> bool {
-    !id.starts_with("claude-haiku")
+    !id.starts_with(HAIKU_PREFIX)
 }
 
 fn always_thinks(id: &str) -> bool {
-    id.starts_with("claude-fable") || id.starts_with("claude-mythos")
+    ALWAYS_THINKING_PREFIXES.iter().any(|p| id.starts_with(p))
 }
 
 fn model_info_from_json(v: &Value) -> Option<ModelInfo> {
@@ -74,7 +106,6 @@ fn model_info_from_json(v: &Value) -> Option<ModelInfo> {
     })
 }
 
-/// Стартовый список до первого успешного `GET /v1/models` (и оффлайн-фолбэк).
 pub fn fallback_models() -> Vec<ModelInfo> {
     [
         ("claude-opus-4-8", "Claude Opus 4.8", true),
@@ -86,69 +117,103 @@ pub fn fallback_models() -> Vec<ModelInfo> {
         id: id.into(),
         display_name: name.into(),
         adaptive: caps,
-        code_exec: caps, // у текущих моделей совпадает: haiku без обоих
+        code_exec: caps,
         always_thinks: false,
     })
     .collect()
 }
 
-/// Значение поля `thinking` для запроса. Семантика по моделям:
-/// вкл → adaptive там, где он поддержан; выкл → явный disabled там, где thinking
-/// выключаем (на Sonnet 5 «пропустить поле» означает adaptive, поэтому omit мало);
-/// Fable думает всегда — поле опускаем в обоих случаях.
 pub fn thinking_value(info: Option<&ModelInfo>, model_id: &str, requested: bool) -> Option<Value> {
     let adaptive = info.map_or_else(|| fallback_adaptive(model_id), |m| m.adaptive);
     let always = info.map_or_else(|| always_thinks(model_id), |m| m.always_thinks);
     if always {
-        return None; // всегда думает; и adaptive, и disabled слать бессмысленно/опасно
+        return None;
     }
     if requested {
-        adaptive.then(|| json!({"type": "adaptive"}))
+        adaptive.then(|| json!({"type": THINKING_ADAPTIVE}))
     } else if adaptive {
-        Some(json!({"type": "disabled"}))
+        Some(json!({"type": THINKING_DISABLED}))
     } else {
-        None // без adaptive thinking по умолчанию и так выключен
+        None
     }
 }
 
-/// Элемент tools для server-side веб-поиска (None = не отправлять). Версия одна —
-/// web_search_20260209 (Anthropic ищет сам, внутри того же стрима); её
-/// programmatic-режим (динамическая фильтрация результатов) требует code
-/// execution, поэтому моделям без него (haiku, по capabilities) ограничиваем
-/// вызов allowed_callers=["direct"] — иначе API отвергает запрос целиком.
-/// Проверено живыми пробами /v1/messages по всем моделям аккаунта.
 pub fn web_search_value(info: Option<&ModelInfo>, model_id: &str, requested: bool) -> Option<Value> {
     if !requested {
         return None;
     }
     let code_exec = info.map_or_else(|| fallback_code_exec(model_id), |m| m.code_exec);
-    let mut tool = json!({"type": "web_search_20260209", "name": "web_search", "max_uses": 5});
+    let mut tool = json!({
+        "type": WEB_SEARCH_TOOL_TYPE,
+        "name": WEB_SEARCH_TOOL_NAME,
+        "max_uses": WEB_SEARCH_MAX_USES
+    });
     if !code_exec {
-        tool["allowed_callers"] = json!(["direct"]);
+        tool["allowed_callers"] = json!(WEB_SEARCH_DIRECT_CALLERS);
     }
     Some(tool)
 }
 
-/// Клиент с «вечно тёплым» пулом: h2-пинги в простое + пул без экспирации,
-/// чтобы каждый запрос попадал в уже установленное TLS-соединение
-/// (холодный handshake к api.anthropic.com — это ~200–500мс TTFB).
 fn build_http_client(read_timeout: Duration) -> reqwest::Client {
     reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(10))
+        .connect_timeout(CONNECT_TIMEOUT)
         .read_timeout(read_timeout)
         .pool_idle_timeout(None)
-        .http2_keep_alive_interval(Duration::from_secs(30))
+        .http2_keep_alive_interval(HTTP2_KEEP_ALIVE_INTERVAL)
         .http2_keep_alive_while_idle(true)
         .build()
         .expect("reqwest client")
+}
+
+async fn require_ok_status(resp: reqwest::Response) -> Result<reqwest::Response, LlmError> {
+    match resp.status().as_u16() {
+        200 => Ok(resp),
+        401 | 403 => Err(LlmError::BadApiKey),
+        code @ (429 | 500..=599) => Err(LlmError::Retryable(code)),
+        code => Err(LlmError::Api(api_error_message(resp, code).await)),
+    }
+}
+
+async fn api_error_message(resp: reqwest::Response, code: u16) -> String {
+    let body = resp.text().await.unwrap_or_default();
+    serde_json::from_str::<Value>(&body)
+        .ok()
+        .and_then(|v| v["error"]["message"].as_str().map(str::to_string))
+        .unwrap_or_else(|| format!("HTTP {code}"))
+}
+
+async fn pump_sse_stream(
+    resp: reqwest::Response,
+    cancel: &CancellationToken,
+    on_delta: &mut impl FnMut(&str),
+) -> Result<(), LlmError> {
+    let mut parser = SseParser::new();
+    let mut stream = resp.bytes_stream();
+    loop {
+        let chunk = tokio::select! {
+            c = stream.next() => c,
+            _ = cancel.cancelled() => return Err(LlmError::Cancelled),
+        };
+        let Some(chunk) = chunk else {
+            return Err(LlmError::Network(TRUNCATED_STREAM_ERROR.into()));
+        };
+        let bytes = chunk.map_err(|e| LlmError::Network(e.to_string()))?;
+        for out in parser.feed_bytes(&bytes) {
+            match out {
+                SseOut::TextDelta(t) => on_delta(&t),
+                SseOut::Done => return Ok(()),
+                SseOut::ApiError(m) => return Err(LlmError::Api(m)),
+            }
+        }
+    }
 }
 
 impl AnthropicClient {
     pub fn new(api_key: String) -> Self {
         Self {
             api_key,
-            base_url: "https://api.anthropic.com".into(),
-            client: build_http_client(Duration::from_secs(60)),
+            base_url: ANTHROPIC_BASE_URL.into(),
+            client: build_http_client(DEFAULT_READ_TIMEOUT),
         }
     }
     pub fn with_base_url(mut self, url: String) -> Self {
@@ -160,25 +225,25 @@ impl AnthropicClient {
         self
     }
 
-    /// Прогрев соединения: дешёвый GET ради DNS+TCP+TLS, ответ не важен.
     pub async fn warm_up(&self) {
         let _ = self
             .client
-            .get(format!("{}/v1/models", self.base_url))
-            .timeout(Duration::from_secs(5))
+            .get(format!("{}{MODELS_PATH}", self.base_url))
+            .timeout(WARM_UP_TIMEOUT)
             .send()
             .await;
     }
 
-    /// Модели, доступные аккаунту (`GET /v1/models`, бесплатный запрос).
-    /// API отдаёт список от новых к старым — порядок сохраняем.
     pub async fn list_models(&self) -> Result<Vec<ModelInfo>, LlmError> {
         let resp = self
             .client
-            .get(format!("{}/v1/models?limit=100", self.base_url))
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
-            .timeout(Duration::from_secs(15))
+            .get(format!(
+                "{}{MODELS_PATH}?limit={MODELS_PAGE_LIMIT}",
+                self.base_url
+            ))
+            .header(API_KEY_HEADER, &self.api_key)
+            .header(VERSION_HEADER, ANTHROPIC_VERSION)
+            .timeout(LIST_MODELS_TIMEOUT)
             .send()
             .await
             .map_err(|e| LlmError::Network(e.to_string()))?;
@@ -195,119 +260,98 @@ impl AnthropicClient {
             .unwrap_or_default())
     }
 
-    /// Стримит ответ; каждая текстовая дельта уходит в on_delta. Отмена — через token.
+    fn messages_request(&self, body: &Value) -> reqwest::RequestBuilder {
+        let mut req = self
+            .client
+            .post(format!("{}{MESSAGES_PATH}", self.base_url))
+            .header(API_KEY_HEADER, &self.api_key)
+            .header(VERSION_HEADER, ANTHROPIC_VERSION);
+        if body.get(SPEED_FIELD).is_some() {
+            req = req.header(BETA_HEADER, FAST_MODE_BETA);
+        }
+        req
+    }
+
     pub async fn stream_message(
         &self,
         body: serde_json::Value,
         cancel: CancellationToken,
         mut on_delta: impl FnMut(&str),
     ) -> Result<(), LlmError> {
-        let mut req = self
-            .client
-            .post(format!("{}/v1/messages", self.base_url))
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01");
-        // fast mode — research preview: beta-заголовок обязателен вместе с body.speed
-        if body.get("speed").is_some() {
-            req = req.header("anthropic-beta", "fast-mode-2026-02-01");
-        }
-        let send = req.json(&body).send();
+        let send = self.messages_request(&body).json(&body).send();
         let resp = tokio::select! {
             r = send => r.map_err(|e| LlmError::Network(e.to_string()))?,
             _ = cancel.cancelled() => return Err(LlmError::Cancelled),
         };
-        match resp.status().as_u16() {
-            200 => {}
-            401 | 403 => return Err(LlmError::BadApiKey),
-            code @ (429 | 500..=599) => return Err(LlmError::Retryable(code)),
-            code => {
-                // В теле ошибки API лежит человекочитаемая причина (низкий баланс,
-                // невалидное поле и т.п.) — показываем её, а не голый код.
-                let body = resp.text().await.unwrap_or_default();
-                let msg = serde_json::from_str::<Value>(&body)
-                    .ok()
-                    .and_then(|v| v["error"]["message"].as_str().map(str::to_string))
-                    .unwrap_or_else(|| format!("HTTP {code}"));
-                return Err(LlmError::Api(msg));
-            }
-        }
-        let mut parser = SseParser::new();
-        let mut stream = resp.bytes_stream();
-        loop {
-            let chunk = tokio::select! {
-                c = stream.next() => c,
-                _ = cancel.cancelled() => return Err(LlmError::Cancelled),
-            };
-            let Some(chunk) = chunk else {
-                return Err(LlmError::Network("ответ оборван до завершения".into()));
-            };
-            let bytes = chunk.map_err(|e| LlmError::Network(e.to_string()))?;
-            for out in parser.feed_bytes(&bytes) {
-                match out {
-                    SseOut::TextDelta(t) => on_delta(&t),
-                    SseOut::Done => return Ok(()),
-                    SseOut::ApiError(m) => return Err(LlmError::Api(m)),
-                }
-            }
-        }
+        let resp = require_ok_status(resp).await?;
+        pump_sse_stream(resp, &cancel, &mut on_delta).await
     }
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ImageAttachment {
     pub media_type: String,
-    pub data: String, // base64
+    pub data: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ChatMessage {
-    pub role: String, // "user" | "assistant"
+    pub role: String,
     pub text: String,
     #[serde(default)]
     pub images: Vec<ImageAttachment>,
 }
 
-/// `cache_breakpoint` — поставить cache_control на последний блок (используется
-/// только для последнего сообщения истории: брейкпоинт prompt-кэша, см. build_request_body).
-/// С брейкпоинтом контент всегда уходит массивом блоков (на строку маркер не повесить).
+fn ephemeral_cache_control() -> Value {
+    json!({"type": CACHE_TYPE_EPHEMERAL})
+}
+
+fn image_block(img: &ImageAttachment) -> Value {
+    json!({
+        "type": "image",
+        "source": {"type": "base64", "media_type": img.media_type, "data": img.data}
+    })
+}
+
 pub fn build_content(text: &str, images: &[ImageAttachment], cache_breakpoint: bool) -> Value {
     if images.is_empty() && !cache_breakpoint {
         return json!(text);
     }
-    let mut blocks: Vec<Value> = images
-        .iter()
-        .map(|img| {
-            json!({
-                "type": "image",
-                "source": {"type": "base64", "media_type": img.media_type, "data": img.data}
-            })
-        })
-        .collect();
+    let mut blocks: Vec<Value> = images.iter().map(image_block).collect();
     if !text.is_empty() {
         blocks.push(json!({"type": "text", "text": text}));
     }
     if blocks.is_empty() {
-        return json!(text); // пустое сообщение — фронт таких не шлёт, но не ломаемся
+        return json!(text);
     }
     if cache_breakpoint {
         if let Some(last) = blocks.last_mut() {
-            last["cache_control"] = json!({"type": "ephemeral"});
+            last["cache_control"] = ephemeral_cache_control();
         }
     }
     Value::Array(blocks)
 }
 
-/// `thinking` — готовое значение поля (см. [`thinking_value`]; None = не отправлять).
-/// `fast=true` + opus-4-8 → speed:"fast" (beta-заголовок добавляет stream_message).
-/// `web_search` — готовый элемент tools (см. [`web_search_value`]; None = не отправлять).
-/// Клиентского tool-loop нет — server-side поиск идёт внутри того же стрима;
-/// SseParser server_tool_use-события игнорирует, текстовые дельты финального
-/// ответа идут обычным путём.
-///
-/// Prompt caching: чат stateless и каждый запрос повторяет всю историю, поэтому ставим два
-/// брейкпоинта — на system-блоке и на последнем блоке последнего сообщения. Follow-up в том же
-/// чате читает весь префикс из кэша (~0.1x цены, заметно ниже TTFB на историях с картинками).
-/// Короткие промпты ниже минимума кэшируемого префикса просто молча не кэшируются.
+fn history_messages_json(messages: &[ChatMessage]) -> Vec<Value> {
+    let kept: Vec<&ChatMessage> = messages
+        .iter()
+        .filter(|m| !m.text.is_empty() || !m.images.is_empty())
+        .collect();
+    let last = kept.len().saturating_sub(1);
+    kept.iter()
+        .enumerate()
+        .map(|(i, m)| json!({"role": m.role, "content": build_content(&m.text, &m.images, i == last)}))
+        .collect()
+}
+
+fn system_json(system: &str) -> Value {
+    if system.is_empty() {
+        json!("")
+    } else {
+        json!([{"type": "text", "text": system, "cache_control": ephemeral_cache_control()}])
+    }
+}
+
 pub fn build_request_body(
     model: &str,
     system: &str,
@@ -316,36 +360,18 @@ pub fn build_request_body(
     fast: bool,
     web_search: Option<Value>,
 ) -> Value {
-    // Пустые сообщения (ответ без текста и т.п.) отбрасываем: API отвергает
-    // пустой content, и один такой элемент навсегда ломал бы отправку чата.
-    let kept: Vec<&ChatMessage> = messages
-        .iter()
-        .filter(|m| !m.text.is_empty() || !m.images.is_empty())
-        .collect();
-    let last = kept.len().saturating_sub(1);
-    let msgs: Vec<Value> = kept
-        .iter()
-        .enumerate()
-        .map(|(i, m)| json!({"role": m.role, "content": build_content(&m.text, &m.images, i == last)}))
-        .collect();
-    let system_value = if system.is_empty() {
-        json!("")
-    } else {
-        json!([{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}])
-    };
     let mut body = json!({
         "model": model,
-        "max_tokens": 64000,
+        "max_tokens": MAX_TOKENS,
         "stream": true,
-        "system": system_value,
-        "messages": msgs
+        "system": system_json(system),
+        "messages": history_messages_json(messages)
     });
     if let Some(t) = thinking {
         body["thinking"] = t;
     }
-    // fast mode — research preview только на opus-4-8; capabilities его не выражают
-    if fast && model == "claude-opus-4-8" {
-        body["speed"] = json!("fast");
+    if fast && model == FAST_MODE_MODEL {
+        body[SPEED_FIELD] = json!(FAST_MODE_SPEED);
     }
     if let Some(tool) = web_search {
         body["tools"] = json!([tool]);
@@ -360,12 +386,9 @@ pub enum SseOut {
     ApiError(String),
 }
 
-/// Инкрементальный парсер SSE-потока Anthropic: копит байты, режет по "\n\n",
-/// отдаёт только нужное UI (text_delta / конец / ошибка). thinking-дельты игнорируются.
 #[derive(Default)]
 pub struct SseParser {
     buf: String,
-    /// Неполный UTF-8 хвост от предыдущего чанка (буферизуется до следующего вызова feed_bytes).
     tail: Vec<u8>,
 }
 
@@ -378,18 +401,17 @@ impl SseParser {
         self.buf.push_str(chunk);
         let mut out = Vec::new();
         let mut start = 0;
-        while let Some(rel) = self.buf[start..].find("\n\n") {
+        while let Some(rel) = self.buf[start..].find(SSE_EVENT_SEPARATOR) {
             let pos = start + rel;
             if let Some(parsed) = Self::parse_block(&self.buf[start..pos]) {
                 out.push(parsed);
             }
-            start = pos + 2;
+            start = pos + SSE_EVENT_SEPARATOR.len();
         }
         self.buf.drain(..start);
         out
     }
 
-    /// Принимает сырые байты HTTP-чанка; неполный UTF-8 хвост буферизуется до следующего чанка.
     pub fn feed_bytes(&mut self, chunk: &[u8]) -> Vec<SseOut> {
         let data = if self.tail.is_empty() {
             chunk.to_vec()
@@ -410,17 +432,17 @@ impl SseParser {
     }
 
     fn parse_block(block: &str) -> Option<SseOut> {
-        let data_line = block.lines().find(|l| l.starts_with("data: "))?;
-        let v: serde_json::Value = serde_json::from_str(&data_line[6..]).ok()?;
+        let data_line = block.lines().find(|l| l.starts_with(SSE_DATA_PREFIX))?;
+        let v: serde_json::Value = serde_json::from_str(&data_line[SSE_DATA_PREFIX.len()..]).ok()?;
         match v["type"].as_str()? {
             "content_block_delta" if v["delta"]["type"] == "text_delta" => {
                 Some(SseOut::TextDelta(v["delta"]["text"].as_str()?.to_string()))
             }
             "message_stop" => Some(SseOut::Done),
             "error" => Some(SseOut::ApiError(
-                v["error"]["message"].as_str().unwrap_or("неизвестная ошибка API").to_string(),
+                v["error"]["message"].as_str().unwrap_or(UNKNOWN_API_ERROR).to_string(),
             )),
-            _ => None, // message_start, thinking_delta, content_block_stop, message_delta и пр.
+            _ => None,
         }
     }
 }
@@ -430,30 +452,24 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// Хелпер тестов: «thinking включён на adaptive-модели».
     fn adaptive() -> Option<Value> {
         Some(json!({"type": "adaptive"}))
     }
 
     #[test]
     fn thinking_value_semantics() {
-        // включён: adaptive там, где поддержан
         assert_eq!(
             thinking_value(None, "claude-opus-4-8", true),
             Some(json!({"type": "adaptive"}))
         );
-        // выключен: явный disabled (на Sonnet 5 omit означал бы adaptive)
         assert_eq!(
             thinking_value(None, "claude-opus-4-8", false),
             Some(json!({"type": "disabled"}))
         );
-        // haiku (эвристика): adaptive не поддержан — поле не шлём в обоих случаях
         assert_eq!(thinking_value(None, "claude-haiku-4-5", true), None);
         assert_eq!(thinking_value(None, "claude-haiku-4-5", false), None);
-        // fable думает всегда — поле опускаем в обоих случаях
         assert_eq!(thinking_value(None, "claude-fable-5", true), None);
         assert_eq!(thinking_value(None, "claude-fable-5", false), None);
-        // capabilities из API приоритетнее эвристик по имени
         let info = ModelInfo {
             id: "claude-newmodel-9".into(),
             display_name: "New".into(),
@@ -481,7 +497,6 @@ mod tests {
         assert!(!m.adaptive);
         assert!(!m.always_thinks);
         assert!(!m.code_exec);
-        // без capabilities — эвристика по имени
         let m = model_info_from_json(&json!({"id": "claude-sonnet-5"})).unwrap();
         assert!(m.adaptive);
         assert!(m.code_exec);
@@ -536,13 +551,11 @@ mod tests {
 
     #[test]
     fn cache_breakpoint_lands_on_last_block() {
-        // текст без картинок: массив из одного text-блока с cache_control
         let content = build_content("вопрос", &[], true);
         assert_eq!(
             content,
             json!([{"type": "text", "text": "вопрос", "cache_control": {"type": "ephemeral"}}])
         );
-        // картинки + текст: маркер на последнем (текстовом) блоке
         let imgs = vec![ImageAttachment { media_type: "image/png".into(), data: "AAAA".into() }];
         let content = build_content("что тут?", &imgs, true);
         let arr = content.as_array().unwrap();
@@ -562,11 +575,9 @@ mod tests {
         assert_eq!(body["max_tokens"], 64000);
         assert_eq!(body["stream"], true);
         assert_eq!(body["thinking"]["type"], "adaptive");
-        // system — блок с брейкпоинтом prompt-кэша
         assert_eq!(body["system"][0]["text"], "sys");
         assert_eq!(body["system"][0]["cache_control"]["type"], "ephemeral");
         assert_eq!(body["messages"][0]["role"], "user");
-        // единственное сообщение = последнее → блок с cache_control
         assert_eq!(body["messages"][0]["content"][0]["text"], "вопрос");
         assert!(body.get("speed").is_none());
     }
@@ -580,10 +591,8 @@ mod tests {
         ];
         let body = build_request_body("claude-opus-4-8", "sys", &msgs, adaptive(), false, None);
         assert_eq!(body["messages"].as_array().unwrap().len(), 3);
-        // не-последние сообщения остаются плоскими строками (стабильный префикс для кэша)
         assert_eq!(body["messages"][1]["role"], "assistant");
         assert_eq!(body["messages"][1]["content"], "2");
-        // последнее несёт брейкпоинт
         assert_eq!(body["messages"][2]["content"][0]["text"], "а 2+2?");
         assert_eq!(
             body["messages"][2]["content"][0]["cache_control"]["type"],
@@ -593,7 +602,6 @@ mod tests {
 
     #[test]
     fn thinking_none_omits_field_entirely() {
-        // гейтинг живёт в thinking_value; body просто отражает решение
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let body = build_request_body(
             "claude-haiku-4-5",
@@ -625,7 +633,6 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let body = build_request_body("claude-opus-4-8", "", &msgs, adaptive(), true, None);
         assert_eq!(body["speed"], "fast");
-        // на других моделях speed не отправляем — там он не поддержан
         let body = build_request_body("claude-sonnet-4-6", "", &msgs, adaptive(), true, None);
         assert!(body.get("speed").is_none());
         let body = build_request_body("claude-haiku-4-5", "", &msgs, adaptive(), true, None);
@@ -634,15 +641,11 @@ mod tests {
 
     #[test]
     fn web_search_value_semantics() {
-        // выключен → None (поле tools не отправляется)
         assert_eq!(web_search_value(None, "claude-opus-4-8", false), None);
-        // модель с code execution → без ограничения allowed_callers (динамическая
-        // фильтрация результатов доступна)
         assert_eq!(
             web_search_value(None, "claude-opus-4-8", true),
             Some(json!({"type": "web_search_20260209", "name": "web_search", "max_uses": 5}))
         );
-        // haiku (эвристика): без code execution API требует allowed_callers=["direct"]
         assert_eq!(
             web_search_value(None, "claude-haiku-4-5", true),
             Some(json!({
@@ -650,7 +653,6 @@ mod tests {
                 "allowed_callers": ["direct"]
             }))
         );
-        // capabilities из API приоритетнее эвристик по имени
         let info = ModelInfo {
             id: "claude-newmodel-9".into(),
             display_name: "New".into(),
@@ -670,7 +672,6 @@ mod tests {
         assert_eq!(body["tools"][0]["type"], "web_search_20260209");
         assert_eq!(body["tools"][0]["name"], "web_search");
         assert_eq!(body["tools"][0]["max_uses"], 5);
-        // выключен → поля tools нет вовсе
         let body = build_request_body("claude-opus-4-8", "", &msgs, adaptive(), false, None);
         assert!(body.get("tools").is_none());
     }
@@ -686,7 +687,6 @@ mod tests {
         let arr = body["messages"].as_array().unwrap();
         assert_eq!(arr.len(), 2, "пустой assistant выброшен");
         assert_eq!(arr[0]["content"], "1+1?");
-        // брейкпоинт кэша — на последнем из оставшихся
         assert_eq!(arr[1]["content"][0]["cache_control"]["type"], "ephemeral");
     }
 
@@ -717,7 +717,7 @@ mod tests {
     #[test]
     fn sse_parser_handles_chunk_split_mid_event() {
         let mut p = SseParser::new();
-        let (a, b) = SSE_FIXTURE.split_at(95); // разрез посреди строки события (event-line)
+        let (a, b) = SSE_FIXTURE.split_at(95);
         let mut out = p.feed(a);
         out.extend(p.feed(b));
         let text: String = out
@@ -737,7 +737,6 @@ mod tests {
         assert!(matches!(&out[0], SseOut::ApiError(m) if m.contains("Overloaded")));
     }
 
-    // Item 1: пустой text-блок при наличии картинок не должен добавляться
     #[test]
     fn empty_text_with_images_has_no_text_block() {
         let imgs = vec![ImageAttachment { media_type: "image/png".into(), data: "AAAA".into() }];
@@ -747,13 +746,11 @@ mod tests {
         assert_eq!(arr[0]["type"], "image");
     }
 
-    // Item 2: feed_bytes буферизует неполный UTF-8 хвост
     #[test]
     fn feed_bytes_handles_utf8_split_across_chunks() {
         let raw = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Привет\"}}\n\n";
         let bytes = raw.as_bytes();
-        // режем посреди многобайтового символа внутри "Привет"
-        let cut = raw.find("Привет").unwrap() + 3; // 3 байта = середина второго кириллического символа
+        let cut = raw.find("Привет").unwrap() + 3;
         assert!(std::str::from_utf8(&bytes[..cut]).is_err(), "разрез должен попадать в середину символа");
         let mut p = SseParser::new();
         let mut out = p.feed_bytes(&bytes[..cut]);
@@ -761,11 +758,10 @@ mod tests {
         assert_eq!(out, vec![SseOut::TextDelta("Привет".to_string())]);
     }
 
-    // Item 4: разрез посреди data-JSON
     #[test]
     fn sse_parser_handles_chunk_split_mid_data_json() {
         let raw = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n";
-        let mid = raw.find("text_delta").unwrap() + 5; // внутри data-JSON
+        let mid = raw.find("text_delta").unwrap() + 5;
         let mut p = SseParser::new();
         let mut out = p.feed(&raw[..mid]);
         out.extend(p.feed(&raw[mid..]));
@@ -821,7 +817,6 @@ mod tests {
             .await;
         let client = AnthropicClient::new("k".into()).with_base_url(server.uri());
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
-        // без заголовка мок не сматчится (404) и стрим вернёт ошибку
         client
             .stream_message(
                 build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), true, None),
@@ -888,7 +883,7 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, LlmError::Network(_)));
-        assert_eq!(*collected.lock().unwrap(), "При"); // частичные дельты успели уйти
+        assert_eq!(*collected.lock().unwrap(), "При");
     }
 
     #[tokio::test]
@@ -957,7 +952,7 @@ mod tests {
             .await;
         let client = AnthropicClient::new("k".into()).with_base_url(server.uri());
         let cancel = tokio_util::sync::CancellationToken::new();
-        cancel.cancel(); // отменяем сразу
+        cancel.cancel();
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(

@@ -46,7 +46,7 @@ describe("downscaleFactor", () => {
   });
   it("большое — масштаб по площади с запасом 0.95", () => {
     const f = downscaleFactor(MAX_IMAGE_BYTES * 4);
-    expect(f).toBeLessThan(0.5); // sqrt(1/4)*0.95 = 0.475
+    expect(f).toBeLessThan(0.5);
     expect(f).toBeGreaterThan(0.4);
   });
 });

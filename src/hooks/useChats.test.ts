@@ -45,7 +45,7 @@ describe("useChats", () => {
     expect(result.current.activeId).toBe(result.current.chats[CHAT_LIMIT - 1]?.id);
     act(() => {
       result.current.newChat();
-    }); // сверх лимита — игнор
+    });
     expect(result.current.chats.length).toBe(CHAT_LIMIT);
   });
 
@@ -93,7 +93,6 @@ describe("useChats", () => {
       result.current.renameChat(id, "Собес Acme");
     });
     expect(result.current.active.title).toBe("Собес Acme");
-    // первое сообщение после ручного имени НЕ перезатирает заголовок
     act(() => {
       result.current.appendUserMessage(id, "расскажи о себе", []);
     });
@@ -195,7 +194,7 @@ describe("useChats", () => {
     expect(result.current.activeId).toBe(first);
     act(() => {
       result.current.removeChat(first);
-    }); // последний — нельзя
+    });
     expect(result.current.chats.length).toBe(1);
   });
 
@@ -208,7 +207,7 @@ describe("useChats", () => {
     act(() => {
       result.current.newChat();
     });
-    expect(saveChats).not.toHaveBeenCalled(); // ещё не прошёл дебаунс
+    expect(saveChats).not.toHaveBeenCalled();
     act(() => {
       vi.advanceTimersByTime(600);
     });

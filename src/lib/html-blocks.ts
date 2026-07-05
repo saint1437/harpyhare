@@ -1,14 +1,10 @@
-/**
- * Закрытые fenced-блоки ```html из markdown-текста (язык регистронезависимо).
- * Незакрытый fence (стрим ещё идёт) и пустые блоки не извлекаются —
- * автооткрытие превью работает только по финальному непустому HTML.
- */
+const CLOSED_HTML_FENCE_RE = /^```html[ \t]*\r?\n([\s\S]*?)^```[ \t]*$/gim;
+const TRAILING_NEWLINE_RE = /\r?\n$/;
+
 export function extractHtmlBlocks(markdown: string): string[] {
-  const re = /^```html[ \t]*\r?\n([\s\S]*?)^```[ \t]*$/gim;
   const blocks: string[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(markdown)) !== null) {
-    const code = (m[1] ?? "").replace(/\r?\n$/, "");
+  for (const match of markdown.matchAll(CLOSED_HTML_FENCE_RE)) {
+    const code = (match[1] ?? "").replace(TRAILING_NEWLINE_RE, "");
     if (code.trim() !== "") blocks.push(code);
   }
   return blocks;

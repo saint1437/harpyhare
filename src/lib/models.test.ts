@@ -26,14 +26,13 @@ describe("models", () => {
   });
 
   it("thinkingLocked: без adaptive или «думает всегда»", () => {
-    expect(thinkingLocked(FALLBACK_MODELS, "claude-haiku-4-5")).toBe(true); // adaptive=false
+    expect(thinkingLocked(FALLBACK_MODELS, "claude-haiku-4-5")).toBe(true);
     expect(thinkingLocked(FALLBACK_MODELS, "claude-opus-4-8")).toBe(false);
     const withFable = [
       ...FALLBACK_MODELS,
       { id: "claude-fable-5", displayName: "Claude Fable 5", adaptive: true, alwaysThinks: true },
     ];
     expect(thinkingLocked(withFable, "claude-fable-5")).toBe(true);
-    // неизвестная модель — не блокируем (решает Rust-гейтинг)
     expect(thinkingLocked(FALLBACK_MODELS, "claude-unknown")).toBe(false);
   });
 });

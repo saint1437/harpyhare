@@ -14,17 +14,11 @@ export interface Settings {
   move_step: number;
   auto_preview_html: boolean;
   toggle_hotkey: string;
-  /** Anthropic fast mode (research preview): до ~2.5x токенов/сек на opus-4-8, дороже. */
   fast_mode: boolean;
-  /** Размер шрифта чата, px (модель — свойство чата, см. lib/models). */
   chat_font_size: number;
-  /** «Пропущенная» версия обновления: автобейдж о ней не показывается ("" — нет). */
   skipped_version: string;
-  /** Язык распознавания Whisper (ISO 639-1, напр. "ru"); "" — автоопределение. */
   stt_language: string;
-  /** Переводить речь на английский (эндпоинт translations вместо transcriptions). */
   stt_translate: boolean;
-  /** Показывать окно при демонстрации экрана (снимает contentProtected). */
   screen_share_visible: boolean;
 }
 
@@ -48,27 +42,23 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export type RecorderState = "idle" | "recording" | "transcribing";
 
-/** DTO сообщения для отправки в Anthropic (соответствует Rust llm::ChatMessage). */
 export interface ChatMessageDto {
   role: "user" | "assistant";
   text: string;
   images: ImagePayload[];
 }
 
-/** Найденное обновление (Rust update::UpdateInfo). */
 export interface UpdateInfo {
   version: string;
   notes: string;
   date: string | null;
 }
 
-/** Прогресс загрузки обновления; total неизвестен без Content-Length. */
 export interface UpdateProgress {
   downloaded: number;
   total: number | null;
 }
 
-/** Карта имя-события → тип payload (для типобезопасного listen). */
 export interface EventMap {
   "state-changed": RecorderState;
   "transcript-ready": string;

@@ -1,20 +1,35 @@
+use rubato::audioadapter_buffers::direct::InterleavedSlice;
 use rubato::{
     Async, FixedAsync, Indexing, Resampler, SincInterpolationParameters, SincInterpolationType,
     WindowFunction,
 };
-use rubato::audioadapter_buffers::direct::InterleavedSlice;
 
-/// Порог RMS, ниже которого запись считается тишиной (стартовое значение по спеке, уточняется вручную).
 pub const SILENCE_RMS_THRESHOLD: f32 = 1e-3;
 
-/// Интерливленный многоканальный буфер -> моно (среднее каналов).
+pub const TARGET_SAMPLE_RATE: u32 = 16000;
+
+const SPEECH_SINC_LEN: usize = 32;
+const SPEECH_SINC_CUTOFF: f32 = 0.91;
+const SPEECH_OVERSAMPLING_FACTOR: usize = 128;
+const MAX_RESAMPLE_RATIO_RELATIVE: f64 = 2.0;
+const RESAMPLE_CHUNK: usize = 1024;
+const RESAMPLE_OUT_CAPACITY_HEADROOM: usize = 16;
+const FINISH_ZERO_FILL_MAX_ROUNDS: usize = 1000;
+
+const WAV_HEADER_LEN: usize = 44;
+const WAV_UNKNOWN_SIZE: u32 = 0xFFFF_FFFF;
+const WAV_FMT_CHUNK_SIZE: u32 = 16;
+const WAV_FORMAT_PCM: u16 = 1;
+const MONO_CHANNELS: u16 = 1;
+const BITS_PER_SAMPLE: u16 = 16;
+const BYTES_PER_SAMPLE: usize = BITS_PER_SAMPLE as usize / 8;
+
 pub fn downmix_to_mono(interleaved: &[f32], channels: usize) -> Vec<f32> {
     let mut out = Vec::with_capacity(interleaved.len() / channels.max(1));
     downmix_into(interleaved, channels, &mut out);
     out
 }
 
-/// То же, но дописывает в существующий буфер (без аллокаций на горячем пути консьюмера).
 pub fn downmix_into(interleaved: &[f32], channels: usize, out: &mut Vec<f32>) {
     if channels <= 1 {
         out.extend_from_slice(interleaved);
@@ -38,8 +53,6 @@ pub fn is_silence(samples: &[f32]) -> bool {
     rms(samples) < SILENCE_RMS_THRESHOLD
 }
 
-pub const TARGET_SAMPLE_RATE: u32 = 16000;
-
 #[derive(Debug, thiserror::Error)]
 pub enum AudioError {
     #[error("ресемплинг: {0}")]
@@ -48,25 +61,21 @@ pub enum AudioError {
     Wav(String),
 }
 
-/// Параметры «речевого» качества: Whisper всё равно считает log-mel по 16кГц,
-/// студийный sinc_len=128 тут не даёт ничего, кроме ~4x лишнего CPU.
-fn sinc_params() -> SincInterpolationParameters {
+fn speech_sinc_params() -> SincInterpolationParameters {
     SincInterpolationParameters {
-        sinc_len: 32,
-        f_cutoff: 0.91,
+        sinc_len: SPEECH_SINC_LEN,
+        f_cutoff: SPEECH_SINC_CUTOFF,
         interpolation: SincInterpolationType::Linear,
-        oversampling_factor: 128,
+        oversampling_factor: SPEECH_OVERSAMPLING_FACTOR,
         window: WindowFunction::Blackman2,
     }
 }
 
-const RESAMPLE_CHUNK: usize = 1024;
-
 fn make_resampler(src_rate: u32) -> Result<Async<f32>, AudioError> {
     Async::<f32>::new_sinc(
         TARGET_SAMPLE_RATE as f64 / src_rate as f64,
-        2.0,
-        &sinc_params(),
+        MAX_RESAMPLE_RATIO_RELATIVE,
+        &speech_sinc_params(),
         RESAMPLE_CHUNK,
         1,
         FixedAsync::Input,
@@ -74,26 +83,17 @@ fn make_resampler(src_rate: u32) -> Result<Async<f32>, AudioError> {
     .map_err(|e| AudioError::Resample(e.to_string()))
 }
 
-/// Батчевый ресемплинг — тот же код-путь, что и стриминговый [`StreamResampler`]
-/// (у rubato `process_all_into_buffer` есть артефакт трима задержки — дублирует
-/// первые `output_delay` фреймов; инкрементальный путь от него свободен).
 pub fn resample_to_16k(mono: &[f32], src_rate: u32) -> Result<Vec<f32>, AudioError> {
     let mut rs = StreamResampler::new(src_rate)?;
-    let mut out = Vec::with_capacity(
-        (mono.len() as f64 * f64::from(TARGET_SAMPLE_RATE) / f64::from(src_rate)) as usize + 16,
-    );
+    let expected_len =
+        (mono.len() as f64 * f64::from(TARGET_SAMPLE_RATE) / f64::from(src_rate)) as usize;
+    let mut out = Vec::with_capacity(expected_len + RESAMPLE_OUT_CAPACITY_HEADROOM);
     rs.feed(mono, &mut out)?;
     rs.finish(&mut out)?;
     Ok(out)
 }
 
-/// Инкрементальный ресемплер в 16кГц-моно для стриминга: аудио скармливается кусками
-/// по мере записи (`feed`), на остановке — `finish` (последний неполный чанк + докачка
-/// нулями до ожидаемой длины, как это делает батчевый `process_all_into_buffer`).
-/// Начальная задержка sinc-фильтра срезается, так что суммарный выход эквивалентен
-/// `resample_to_16k` по всему клипу.
 pub struct StreamResampler {
-    /// None — вход уже 16кГц, чистый passthrough.
     rs: Option<Async<f32>>,
     stage: Vec<f32>,
     out_buf: Vec<f32>,
@@ -124,8 +124,6 @@ impl StreamResampler {
         })
     }
 
-    /// Прогоняет один вызов process_into_buffer и дописывает результат в out
-    /// (срезая остаток начальной задержки и, при заданном лимите, излишек хвоста).
     fn run_chunk(
         &mut self,
         input: &[f32],
@@ -133,7 +131,10 @@ impl StreamResampler {
         out: &mut Vec<f32>,
         expected: Option<usize>,
     ) -> Result<usize, AudioError> {
-        let rs = self.rs.as_mut().expect("run_chunk только при активном ресемплере");
+        let rs = self
+            .rs
+            .as_mut()
+            .expect("run_chunk только при активном ресемплере");
         let frames = input.len();
         let input_adapter = InterleavedSlice::new(input, 1, frames)
             .map_err(|e| AudioError::Resample(e.to_string()))?;
@@ -163,13 +164,11 @@ impl StreamResampler {
         Ok(n_in)
     }
 
-    /// Скармливает очередную порцию моно-сэмплов; готовый 16кГц-выход дописывается в out.
     pub fn feed(&mut self, mono: &[f32], out: &mut Vec<f32>) -> Result<(), AudioError> {
         if self.rs.is_none() {
             out.extend_from_slice(mono);
             return Ok(());
         }
-        // stage временно забираем в локал, чтобы не конфликтовать с &mut self в run_chunk
         let mut stage = std::mem::take(&mut self.stage);
         stage.extend_from_slice(mono);
         let mut off = 0;
@@ -187,7 +186,6 @@ impl StreamResampler {
         Ok(())
     }
 
-    /// Завершение: последний неполный чанк + нули до ожидаемой длины клипа.
     pub fn finish(&mut self, out: &mut Vec<f32>) -> Result<(), AudioError> {
         if self.rs.is_none() {
             return Ok(());
@@ -196,66 +194,66 @@ impl StreamResampler {
         let expected = (self.in_total as f64 * self.ratio).ceil() as usize;
         let tail: Vec<f32> = std::mem::take(&mut self.stage);
         self.run_chunk(&tail, Some(tail.len()), out, Some(expected))?;
-        // докачиваем нулями (задержка фильтра), с предохранителем от вечного цикла
-        for _ in 0..1000 {
+        for _ in 0..FINISH_ZERO_FILL_MAX_ROUNDS {
             if self.out_total >= expected {
                 return Ok(());
             }
             self.run_chunk(&[], Some(0), out, Some(expected))?;
         }
-        Err(AudioError::Resample("finish не сошёлся к ожидаемой длине".into()))
+        Err(AudioError::Resample(
+            "finish не сошёлся к ожидаемой длине".into(),
+        ))
     }
 }
 
-/// WAV-заголовок (44 байта, PCM 16-бит 16кГц моно) с размерами 0xFFFFFFFF —
-/// «длина неизвестна, читать до EOF». Декодеры Whisper-бэкендов (ffmpeg/soundfile)
-/// это переваривают; нужен для стриминга тела запроса во время записи.
 pub fn wav_header_streaming() -> [u8; 44] {
-    const UNKNOWN: u32 = 0xFFFF_FFFF;
-    let rate = TARGET_SAMPLE_RATE;
-    let byte_rate = rate * 2; // моно, 16 бит
-    let mut h = [0u8; 44];
+    let byte_rate = TARGET_SAMPLE_RATE * u32::from(MONO_CHANNELS) * BYTES_PER_SAMPLE as u32;
+    let block_align = MONO_CHANNELS * BYTES_PER_SAMPLE as u16;
+    let mut h = [0u8; WAV_HEADER_LEN];
     h[0..4].copy_from_slice(b"RIFF");
-    h[4..8].copy_from_slice(&UNKNOWN.to_le_bytes());
+    h[4..8].copy_from_slice(&WAV_UNKNOWN_SIZE.to_le_bytes());
     h[8..12].copy_from_slice(b"WAVE");
     h[12..16].copy_from_slice(b"fmt ");
-    h[16..20].copy_from_slice(&16u32.to_le_bytes()); // размер fmt-чанка
-    h[20..22].copy_from_slice(&1u16.to_le_bytes()); // PCM
-    h[22..24].copy_from_slice(&1u16.to_le_bytes()); // моно
-    h[24..28].copy_from_slice(&rate.to_le_bytes());
+    h[16..20].copy_from_slice(&WAV_FMT_CHUNK_SIZE.to_le_bytes());
+    h[20..22].copy_from_slice(&WAV_FORMAT_PCM.to_le_bytes());
+    h[22..24].copy_from_slice(&MONO_CHANNELS.to_le_bytes());
+    h[24..28].copy_from_slice(&TARGET_SAMPLE_RATE.to_le_bytes());
     h[28..32].copy_from_slice(&byte_rate.to_le_bytes());
-    h[32..34].copy_from_slice(&2u16.to_le_bytes()); // block align
-    h[34..36].copy_from_slice(&16u16.to_le_bytes()); // бит на сэмпл
+    h[32..34].copy_from_slice(&block_align.to_le_bytes());
+    h[34..36].copy_from_slice(&BITS_PER_SAMPLE.to_le_bytes());
     h[36..40].copy_from_slice(b"data");
-    h[40..44].copy_from_slice(&UNKNOWN.to_le_bytes());
+    h[40..44].copy_from_slice(&WAV_UNKNOWN_SIZE.to_le_bytes());
     h
 }
 
-/// f32 [-1;1] → little-endian i16-байты (тело data-чанка WAV).
+fn f32_sample_to_i16(sample: f32) -> i16 {
+    (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16
+}
+
 pub fn f32_to_i16le_bytes(samples: &[f32]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(samples.len() * 2);
+    let mut out = Vec::with_capacity(samples.len() * BYTES_PER_SAMPLE);
     for s in samples {
-        out.extend_from_slice(&(((s.clamp(-1.0, 1.0)) * i16::MAX as f32) as i16).to_le_bytes());
+        out.extend_from_slice(&f32_sample_to_i16(*s).to_le_bytes());
     }
     out
 }
 
 pub fn encode_wav_16k_mono(samples: &[f32]) -> Result<Vec<u8>, AudioError> {
     let spec = hound::WavSpec {
-        channels: 1,
+        channels: MONO_CHANNELS,
         sample_rate: TARGET_SAMPLE_RATE,
-        bits_per_sample: 16,
+        bits_per_sample: BITS_PER_SAMPLE,
         sample_format: hound::SampleFormat::Int,
     };
-    let mut cursor = std::io::Cursor::new(Vec::with_capacity(44 + samples.len() * 2));
+    let mut cursor = std::io::Cursor::new(Vec::with_capacity(
+        WAV_HEADER_LEN + samples.len() * BYTES_PER_SAMPLE,
+    ));
     {
         let mut writer = hound::WavWriter::new(&mut cursor, spec)
             .map_err(|e| AudioError::Wav(e.to_string()))?;
-        // Пакетный writer вместо посэмплового write_sample: без повторных проверок
-        // заголовка на каждый сэмпл (минуты аудио кодируются в разы быстрее).
         let mut w16 = writer.get_i16_writer(samples.len() as u32);
         for s in samples {
-            w16.write_sample((s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16);
+            w16.write_sample(f32_sample_to_i16(*s));
         }
         w16.flush().map_err(|e| AudioError::Wav(e.to_string()))?;
         writer.finalize().map_err(|e| AudioError::Wav(e.to_string()))?;
@@ -269,7 +267,6 @@ mod tests {
 
     #[test]
     fn downmix_averages_channels() {
-        // interleaved стерео: L=1.0 R=0.0, L=0.5 R=0.5
         let stereo = vec![1.0f32, 0.0, 0.5, 0.5];
         assert_eq!(downmix_to_mono(&stereo, 2), vec![0.5, 0.5]);
     }
@@ -294,7 +291,7 @@ mod tests {
         let loud = vec![0.05f32; 16000];
         assert!(is_silence(&quiet));
         assert!(!is_silence(&loud));
-        assert!(is_silence(&[])); // пустой буфер — тоже тишина
+        assert!(is_silence(&[]));
     }
 
     #[test]
@@ -303,9 +300,7 @@ mod tests {
             .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 48000.0).sin())
             .collect();
         let out = resample_to_16k(&one_sec_48k, 48000).unwrap();
-        // длительность сохраняется с точностью до чанка ресемплера
         assert!((out.len() as i64 - 16000).abs() < 200, "len={}", out.len());
-        // сигнал не деградировал в ноль
         assert!(rms(&out) > 0.3);
     }
 
@@ -322,7 +317,6 @@ mod tests {
             .collect();
         let batch = resample_to_16k(&one_sec_48k, 48000).unwrap();
 
-        // кормим неровными кусками, как это делает консьюмер захвата
         let mut rs = StreamResampler::new(48000).unwrap();
         let mut streamed = Vec::new();
         for chunk in one_sec_48k.chunks(477) {
@@ -341,9 +335,6 @@ mod tests {
 
     #[test]
     fn stream_resampler_reproduces_sine() {
-        // Ресемплированный 440Гц-синус должен остаться чистым 440Гц-синусом на 16кГц.
-        // Фаза после полифазного фильтра сдвинута на дробный сэмпл, поэтому сравниваем
-        // фазонезависимо: проекция на sin/cos-базис + малый остаток.
         let one_sec_48k: Vec<f32> = (0..48000)
             .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 48000.0).sin())
             .collect();
@@ -399,7 +390,6 @@ mod tests {
 
     #[test]
     fn f32_to_i16le_bytes_matches_wav_encoder() {
-        // те же сэмплы через хелпер и через hound → одинаковые data-байты
         let samples = vec![0.0f32, 0.5, -0.5, 1.0, -1.0];
         let bytes = f32_to_i16le_bytes(&samples);
         let wav = encode_wav_16k_mono(&samples).unwrap();

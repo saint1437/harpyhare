@@ -3,7 +3,6 @@ import { checkForUpdate, getAppVersion, installUpdate } from "@/ipc/commands";
 import { onEvent } from "@/ipc/events";
 import type { UpdateInfo, UpdateProgress } from "@/ipc/types";
 
-/** idle — обновления нет; error — установка сорвалась (info остаётся для ретрая). */
 export type UpdaterStatus = "idle" | "available" | "downloading" | "restarting" | "error";
 
 export interface UpdaterApi {
@@ -11,27 +10,17 @@ export interface UpdaterApi {
   info: UpdateInfo | null;
   progress: UpdateProgress | null;
   error: string | null;
-  /** Версия текущей сборки ("" вне Tauri, пока не загрузилась). */
   currentVersion: string;
   install: () => void;
-  /** Ручная проверка (кнопка в настройках). null — новой версии нет. */
   checkNow: () => Promise<UpdateInfo | null>;
-  /** Сбросить найденное обновление (после «Пропустить версию»). */
   dismiss: () => void;
 }
 
-/**
- * Состояние автообновления: слушает update-события Rust (автопроверка на старте
- * и раз в 6 часов — на стороне бэкенда), запускает установку. Ошибки установки
- * приходят реджектом команды install_update, отдельного события нет.
- */
-export function useUpdater(): UpdaterApi {
-  const [status, setStatus] = useState<UpdaterStatus>("idle");
-  const [info, setInfo] = useState<UpdateInfo | null>(null);
-  const [progress, setProgress] = useState<UpdateProgress | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [currentVersion, setCurrentVersion] = useState("");
+const markAvailableUnlessInstalling = (status: UpdaterStatus): UpdaterStatus =>
+  status === "downloading" || status === "restarting" ? status : "available";
 
+function useCurrentAppVersion(): string {
+  const [currentVersion, setCurrentVersion] = useState("");
   useEffect(() => {
     let live = true;
     void getAppVersion().then((v) => {
@@ -41,13 +30,21 @@ export function useUpdater(): UpdaterApi {
       live = false;
     };
   }, []);
+  return currentVersion;
+}
+
+export function useUpdater(): UpdaterApi {
+  const [status, setStatus] = useState<UpdaterStatus>("idle");
+  const [info, setInfo] = useState<UpdateInfo | null>(null);
+  const [progress, setProgress] = useState<UpdateProgress | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const currentVersion = useCurrentAppVersion();
 
   useEffect(() => {
     const offs = [
       onEvent("update-available", (found) => {
         setInfo(found);
-        // не перебиваем идущую установку (событие может прийти от периодической проверки)
-        setStatus((s) => (s === "downloading" || s === "restarting" ? s : "available"));
+        setStatus(markAvailableUnlessInstalling);
       }),
       onEvent("update-progress", setProgress),
       onEvent("update-done", () => {
@@ -75,7 +72,7 @@ export function useUpdater(): UpdaterApi {
     const found = await checkForUpdate();
     if (found) {
       setInfo(found);
-      setStatus((s) => (s === "downloading" || s === "restarting" ? s : "available"));
+      setStatus(markAvailableUnlessInstalling);
     }
     return found;
   }, []);

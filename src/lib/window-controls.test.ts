@@ -44,7 +44,7 @@ describe("applyChatFontSize", () => {
     applyChatFontSize(el, 99);
     expect(el.style.getPropertyValue("--chat-font-size")).toBe("20px");
     applyChatFontSize(el, NaN);
-    expect(el.style.getPropertyValue("--chat-font-size")).toBe("20px"); // не изменилось
+    expect(el.style.getPropertyValue("--chat-font-size")).toBe("20px");
   });
 });
 

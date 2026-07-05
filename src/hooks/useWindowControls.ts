@@ -2,10 +2,18 @@ import { useEffect } from "react";
 import { moveWindowBy } from "@/ipc/commands";
 import { moveDelta } from "@/lib/window-controls";
 
-/**
- * Cmd/Ctrl+стрелки → move_window_by. Cmd+Enter → onSend.
- * Cmd+Shift+= / Cmd+Shift+- → onOpacityStep(±1) (прозрачность при фокусе HUD).
- */
+const KEYDOWN_EVENT = "keydown";
+const OPACITY_UP_CODE = "Equal";
+const OPACITY_DOWN_CODE = "Minus";
+const SEND_CODE = "Enter";
+
+function opacityStepFromEvent(e: KeyboardEvent): 1 | -1 | null {
+  if (!(e.metaKey && e.shiftKey)) return null;
+  if (e.code === OPACITY_UP_CODE) return 1;
+  if (e.code === OPACITY_DOWN_CODE) return -1;
+  return null;
+}
+
 export function useWindowControls(
   moveStep: number,
   onSend: () => void,
@@ -13,18 +21,14 @@ export function useWindowControls(
 ): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey && e.shiftKey && e.code === "Equal") {
+      const opacityDir = opacityStepFromEvent(e);
+      if (opacityDir !== null) {
         e.preventDefault();
-        onOpacityStep(1);
-        return;
-      }
-      if (e.metaKey && e.shiftKey && e.code === "Minus") {
-        e.preventDefault();
-        onOpacityStep(-1);
+        onOpacityStep(opacityDir);
         return;
       }
       if (!(e.metaKey || e.ctrlKey)) return;
-      if (e.code === "Enter") {
+      if (e.code === SEND_CODE) {
         e.preventDefault();
         onSend();
         return;
@@ -35,9 +39,9 @@ export function useWindowControls(
         void moveWindowBy(delta.dx, delta.dy);
       }
     };
-    document.addEventListener("keydown", onKey);
+    document.addEventListener(KEYDOWN_EVENT, onKey);
     return () => {
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener(KEYDOWN_EVENT, onKey);
     };
   }, [moveStep, onSend, onOpacityStep]);
 }

@@ -12,7 +12,6 @@ describe("splitStableTail", () => {
 
   it("не режет внутри незакрытого код-блока", () => {
     const text = "текст\n\n```js\nconst a = 1;\n\nconst b = 2;";
-    // последняя "\n\n" внутри fence → откатываемся к границе перед блоком
     expect(splitStableTail(text)).toEqual(["текст\n\n", "```js\nconst a = 1;\n\nconst b = 2;"]);
   });
 

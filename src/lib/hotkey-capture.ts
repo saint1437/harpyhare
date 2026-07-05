@@ -6,47 +6,49 @@ export interface HotkeyEvent {
   code: string;
 }
 
-/** Основная (не-модификаторная) клавиша из event.code → токен парсера, иначе null. */
-function mainKey(code: string): string | null {
-  if (/^Key[A-Z]$/.test(code)) return code.slice(3); // KeyR → R
-  if (/^F([1-9]|1[0-9]|2[0-4])$/.test(code)) return code; // F1..F24
-  if (/^Digit[0-9]$/.test(code)) return code.slice(5); // Digit1 → 1
+const HOTKEY_SEPARATOR = "+";
+const LETTER_CODE_RE = /^Key([A-Z])$/;
+const FUNCTION_KEY_CODE_RE = /^F(?:[1-9]|1[0-9]|2[0-4])$/;
+const DIGIT_CODE_RE = /^Digit([0-9])$/;
+const SINGLE_LETTER_OR_DIGIT_RE = /^[a-z0-9]$/i;
+const TYPING_SAFE_MODIFIERS = new Set([
+  "cmd",
+  "command",
+  "meta",
+  "super",
+  "ctrl",
+  "control",
+  "alt",
+  "option",
+]);
+
+function mainKeyToken(code: string): string | null {
+  const letter = LETTER_CODE_RE.exec(code)?.[1];
+  if (letter !== undefined) return letter;
+  if (FUNCTION_KEY_CODE_RE.test(code)) return code;
+  const digit = DIGIT_CODE_RE.exec(code)?.[1];
+  if (digit !== undefined) return digit;
   return null;
 }
 
-/**
- * Хоткей «мешает печати»: одиночная буква/цифра (в т.ч. с Shift) — нажатие такой
- * клавиши в текстовом поле означает ввод символа, PTT на неё надо глушить при
- * фокусе в полях. F-клавиши и комбинации с Cmd/Ctrl/Alt печати не мешают.
- */
 export function conflictsWithTyping(hotkey: string): boolean {
   const parts = hotkey
-    .split("+")
+    .split(HOTKEY_SEPARATOR)
     .map((p) => p.trim())
     .filter((p) => p !== "");
   const key = parts[parts.length - 1] ?? "";
   const mods = parts.slice(0, -1).map((m) => m.toLowerCase());
-  if (
-    mods.some((m) =>
-      ["cmd", "command", "meta", "super", "ctrl", "control", "alt", "option"].includes(m),
-    )
-  ) {
-    return false;
-  }
-  return /^[a-z0-9]$/i.test(key);
+  if (mods.some((m) => TYPING_SAFE_MODIFIERS.has(m))) return false;
+  return SINGLE_LETTER_OR_DIGIT_RE.test(key);
 }
 
-/**
- * Сериализует keydown в строку формата `parse_hotkey` ("Cmd+Shift+R", "F9", "V").
- * Возвращает null, если основной клавиши нет (нажаты только модификаторы) или код не распознан.
- */
 export function hotkeyFromEvent(e: HotkeyEvent): string | null {
-  const key = mainKey(e.code);
+  const key = mainKeyToken(e.code);
   if (key === null) return null;
   const mods: string[] = [];
   if (e.metaKey) mods.push("Cmd");
   if (e.ctrlKey) mods.push("Ctrl");
   if (e.altKey) mods.push("Alt");
   if (e.shiftKey) mods.push("Shift");
-  return [...mods, key].join("+");
+  return [...mods, key].join(HOTKEY_SEPARATOR);
 }

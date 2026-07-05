@@ -2,28 +2,31 @@ import { useEffect } from "react";
 import { setPttSuspended } from "@/ipc/commands";
 import { conflictsWithTyping } from "@/lib/hotkey-capture";
 
-/**
- * Буквенный хоткей (например «V») конфликтует с печатью в textarea/input — на время
- * фокуса в полях глушим PTT. Хоткеи, не мешающие печати (F9, Cmd+…), НЕ глушатся:
- * запись должна стартовать и при фокусе в поле промпта.
- */
+const FOCUS_IN_EVENT = "focusin";
+const FOCUS_OUT_EVENT = "focusout";
+const TEXT_FIELD_SELECTOR = "textarea, input";
+
+function isTextField(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    (target.matches(TEXT_FIELD_SELECTOR) || target.isContentEditable)
+  );
+}
+
 export function usePttSuspend(hotkey: string): void {
   useEffect(() => {
     if (!conflictsWithTyping(hotkey)) return;
-    const isField = (t: EventTarget | null): boolean =>
-      t instanceof HTMLElement && (t.matches("textarea, input") || t.isContentEditable);
-    const onIn = (e: FocusEvent) => {
-      if (isField(e.target)) void setPttSuspended(true);
+    const suspendOnFieldFocus = (e: FocusEvent) => {
+      if (isTextField(e.target)) void setPttSuspended(true);
     };
-    const onOut = (e: FocusEvent) => {
-      if (isField(e.target)) void setPttSuspended(false);
+    const resumeOnFieldBlur = (e: FocusEvent) => {
+      if (isTextField(e.target)) void setPttSuspended(false);
     };
-    document.addEventListener("focusin", onIn);
-    document.addEventListener("focusout", onOut);
+    document.addEventListener(FOCUS_IN_EVENT, suspendOnFieldFocus);
+    document.addEventListener(FOCUS_OUT_EVENT, resumeOnFieldBlur);
     return () => {
-      document.removeEventListener("focusin", onIn);
-      document.removeEventListener("focusout", onOut);
-      // хоткей сменился/размонтирование при фокусе в поле — не оставляем PTT заглушённым
+      document.removeEventListener(FOCUS_IN_EVENT, suspendOnFieldFocus);
+      document.removeEventListener(FOCUS_OUT_EVENT, resumeOnFieldBlur);
       void setPttSuspended(false);
     };
   }, [hotkey]);

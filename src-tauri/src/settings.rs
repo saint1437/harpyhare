@@ -3,11 +3,39 @@ use std::path::Path;
 
 pub const DEFAULT_SYSTEM_PROMPT: &str = "Ты получаешь расшифровку русской речи из аудио (могут быть ошибки распознавания). Ответь на вопрос или прокомментируй сказанное кратко и по делу, на русском.";
 
+const SEED_PRESET_ID: &str = "transcription";
+const SEED_PRESET_NAME: &str = "Расшифровка речи";
+
+const DEFAULT_HOTKEY: &str = "F9";
+const DEFAULT_TOGGLE_HOTKEY: &str = "Cmd+Shift+H";
+const DEFAULT_WINDOW_OPACITY: f64 = 0.9;
+const DEFAULT_MOVE_STEP: u32 = 20;
+const DEFAULT_CHAT_FONT_SIZE: f64 = 13.5;
+const DEFAULT_STT_LANGUAGE: &str = "ru";
+
+const WINDOW_OPACITY_MIN: f64 = 0.2;
+const WINDOW_OPACITY_MAX: f64 = 1.0;
+const MOVE_STEP_MIN: u32 = 1;
+const MOVE_STEP_MAX: u32 = 200;
+const CHAT_FONT_SIZE_MIN: f64 = 10.0;
+const CHAT_FONT_SIZE_MAX: f64 = 20.0;
+
+const OWNER_ONLY_FILE_MODE: u32 = 0o600;
+const TMP_FILE_EXTENSION: &str = "tmp";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptPreset {
     pub id: String,
     pub name: String,
     pub text: String,
+}
+
+fn seed_prompt_preset() -> PromptPreset {
+    PromptPreset {
+        id: SEED_PRESET_ID.into(),
+        name: SEED_PRESET_NAME.into(),
+        text: DEFAULT_SYSTEM_PROMPT.into(),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,20 +50,11 @@ pub struct Settings {
     pub move_step: u32,
     pub auto_preview_html: bool,
     pub toggle_hotkey: String,
-    /// Anthropic fast mode (research preview): до ~2.5x токенов/сек на opus-4-8, дороже.
     pub fast_mode: bool,
-    /// Размер шрифта чата, px (модель теперь свойство чата, а не настроек).
     pub chat_font_size: f64,
-    /// Версия, «пропущенная» в диалоге обновления: автоуведомление о ней
-    /// не показывается ("" — ничего не пропущено). Ручную проверку не глушит.
     pub skipped_version: String,
-    /// Язык распознавания Whisper (ISO 639-1, напр. "ru"); "" — автоопределение.
     pub stt_language: String,
-    /// Переводить речь на английский: эндпоинт /audio/translations вместо
-    /// /audio/transcriptions (см. stt.rs — там же смена модели).
     pub stt_translate: bool,
-    /// Показывать окно при демонстрации экрана. Окно создаётся с
-    /// contentProtected=true (tauri.conf.json); true снимает защиту.
     pub screen_share_visible: bool,
 }
 
@@ -44,21 +63,17 @@ impl Default for Settings {
         Self {
             anthropic_api_key: String::new(),
             groq_api_key: String::new(),
-            prompt_presets: vec![PromptPreset {
-                id: "transcription".into(),
-                name: "Расшифровка речи".into(),
-                text: DEFAULT_SYSTEM_PROMPT.into(),
-            }],
-            hotkey: "F9".into(),
+            prompt_presets: vec![seed_prompt_preset()],
+            hotkey: DEFAULT_HOTKEY.into(),
             auto_send: false,
-            window_opacity: 0.9,
-            move_step: 20,
+            window_opacity: DEFAULT_WINDOW_OPACITY,
+            move_step: DEFAULT_MOVE_STEP,
             auto_preview_html: true,
-            toggle_hotkey: "Cmd+Shift+H".into(),
+            toggle_hotkey: DEFAULT_TOGGLE_HOTKEY.into(),
             fast_mode: false,
-            chat_font_size: 13.5,
+            chat_font_size: DEFAULT_CHAT_FONT_SIZE,
             skipped_version: String::new(),
-            stt_language: "ru".into(),
+            stt_language: DEFAULT_STT_LANGUAGE.into(),
             stt_translate: false,
             screen_share_visible: false,
         }
@@ -67,35 +82,27 @@ impl Default for Settings {
 
 impl Settings {
     pub fn clamp(&mut self) {
-        self.window_opacity = self.window_opacity.clamp(0.2, 1.0);
-        self.move_step = self.move_step.clamp(1, 200);
+        self.window_opacity = self.window_opacity.clamp(WINDOW_OPACITY_MIN, WINDOW_OPACITY_MAX);
+        self.move_step = self.move_step.clamp(MOVE_STEP_MIN, MOVE_STEP_MAX);
         if !self.chat_font_size.is_finite() {
-            self.chat_font_size = 13.5;
+            self.chat_font_size = DEFAULT_CHAT_FONT_SIZE;
         }
-        self.chat_font_size = self.chat_font_size.clamp(10.0, 20.0);
+        self.chat_font_size = self.chat_font_size.clamp(CHAT_FONT_SIZE_MIN, CHAT_FONT_SIZE_MAX);
     }
 
     pub fn load(path: &Path) -> std::io::Result<Self> {
-        match std::fs::read_to_string(path) {
-            Ok(raw) => {
-                let mut s: Settings = serde_json::from_str(&raw)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-                s.clamp();
-                Ok(s)
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok({
-                let mut s = Settings::default();
-                s.clamp();
-                s
-            }),
-            Err(e) => Err(e),
-        }
+        let mut settings = match std::fs::read_to_string(path) {
+            Ok(raw) => serde_json::from_str::<Settings>(&raw)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Settings::default(),
+            Err(e) => return Err(e),
+        };
+        settings.clamp();
+        Ok(settings)
     }
 
-    /// Подставляет ключи из окружения (.env), если в сохранённых настройках они пустые.
-    /// Сохранённые через UI значения всегда приоритетнее; пустые/пробельные кандидаты игнорируются.
     pub fn apply_key_fallback(&mut self, anthropic: Option<String>, groq: Option<String>) {
-        fn fill(target: &mut String, candidate: Option<String>) {
+        fn fill_if_empty(target: &mut String, candidate: Option<String>) {
             if !target.is_empty() {
                 return;
             }
@@ -106,30 +113,34 @@ impl Settings {
                 }
             }
         }
-        fill(&mut self.anthropic_api_key, anthropic);
-        fill(&mut self.groq_api_key, groq);
+        fill_if_empty(&mut self.anthropic_api_key, anthropic);
+        fill_if_empty(&mut self.groq_api_key, groq);
     }
 
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        let tmp = path.with_extension("tmp");
-        {
-            let mut f = std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .mode(0o600)
-                .open(&tmp)?;
-            f.write_all(json.as_bytes())?;
-        }
-        std::fs::rename(&tmp, path)
+        write_atomic_owner_only(path, &json)
     }
+}
+
+pub(crate) fn write_atomic_owner_only(path: &Path, contents: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension(TMP_FILE_EXTENSION);
+    {
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(OWNER_ONLY_FILE_MODE)
+            .open(&tmp)?;
+        f.write_all(contents.as_bytes())?;
+    }
+    std::fs::rename(&tmp, path)
 }
 
 #[cfg(test)]
@@ -171,7 +182,6 @@ mod tests {
 
     #[test]
     fn load_old_model_field_is_ignored() {
-        // модель переехала в чат: старый settings.json с полем model просто игнорируется
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("s.json");
         std::fs::write(&path, r#"{"model":"claude-haiku-4-5","auto_send":true}"#).unwrap();
@@ -185,12 +195,11 @@ mod tests {
         let path = dir.path().join("s.json");
         std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
         let s = Settings::load(&path).unwrap();
-        assert_eq!(s.skipped_version, ""); // старый settings.json без поля → ""
+        assert_eq!(s.skipped_version, "");
     }
 
     #[test]
     fn load_missing_stt_and_screen_share_fields_default() {
-        // старый settings.json без новых полей → ru / без перевода / окно скрыто в захвате
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("s.json");
         std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
@@ -206,7 +215,7 @@ mod tests {
         let path = dir.path().join("s.json");
         std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
         let s = Settings::load(&path).unwrap();
-        assert!(!s.fast_mode); // старый settings.json без поля → false
+        assert!(!s.fast_mode);
     }
 
     #[test]
@@ -222,7 +231,7 @@ mod tests {
         let mut s = Settings::default();
         s.anthropic_api_key = "saved".into();
         s.apply_key_fallback(Some("env-ant".into()), Some("env-groq".into()));
-        assert_eq!(s.anthropic_api_key, "saved"); // UI-ключ приоритетнее
+        assert_eq!(s.anthropic_api_key, "saved");
         assert_eq!(s.groq_api_key, "env-groq");
     }
 
@@ -282,7 +291,7 @@ mod tests {
         let path = dir.path().join("s.json");
         std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
         let s = Settings::load(&path).unwrap();
-        assert!(s.auto_preview_html); // старый settings.json без поля → true
+        assert!(s.auto_preview_html);
     }
 
     #[test]
@@ -291,7 +300,7 @@ mod tests {
         let path = dir.path().join("s.json");
         std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
         let s = Settings::load(&path).unwrap();
-        assert_eq!(s.toggle_hotkey, "Cmd+Shift+H"); // старый json без поля → дефолт
+        assert_eq!(s.toggle_hotkey, "Cmd+Shift+H");
     }
 
     #[test]
@@ -318,7 +327,7 @@ mod tests {
         let path = dir.path().join("nested/deeper/settings.json");
         Settings::default().save(&path).unwrap();
         assert!(path.exists());
-        assert!(!path.with_extension("tmp").exists()); // tmp-файл убран rename'ом
+        assert!(!path.with_extension("tmp").exists());
     }
 
     fn test_preset() -> PromptPreset {

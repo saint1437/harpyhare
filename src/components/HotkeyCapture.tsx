@@ -7,29 +7,30 @@ export interface HotkeyCaptureProps {
   onChange: (hotkey: string) => void;
 }
 
-/** Кнопка-захват: клик → «Нажмите клавиши…» → следующий валидный keydown пишет комбо. Esc — отмена. */
+const CANCEL_CAPTURE_CODE = "Escape";
+const LISTEN_IN_CAPTURE_PHASE = true;
+
 export function HotkeyCapture({ value, onChange }: HotkeyCaptureProps) {
   const [capturing, setCapturing] = useState(false);
 
   useEffect(() => {
     if (!capturing) return;
-    const onKey = (e: KeyboardEvent) => {
+    const captureNextHotkey = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      if (e.code === "Escape") {
+      if (e.code === CANCEL_CAPTURE_CODE) {
         setCapturing(false);
         return;
       }
-      const hk = hotkeyFromEvent(e);
-      if (hk !== null) {
-        onChange(hk);
+      const hotkey = hotkeyFromEvent(e);
+      if (hotkey !== null) {
+        onChange(hotkey);
         setCapturing(false);
       }
     };
-    // capture-фаза, чтобы перехватить раньше window-controls/opacity
-    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("keydown", captureNextHotkey, LISTEN_IN_CAPTURE_PHASE);
     return () => {
-      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("keydown", captureNextHotkey, LISTEN_IN_CAPTURE_PHASE);
     };
   }, [capturing, onChange]);
 

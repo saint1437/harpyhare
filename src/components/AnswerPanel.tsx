@@ -11,75 +11,70 @@ import { splitStableTail } from "@/lib/stream-markdown";
 
 export interface AnswerPanelProps {
   messages: ChatMessage[];
-  /** id активного чата: на переключение прокрутка снова прилипает к низу. */
   chatId?: string;
-  /** Текущий in-flight ответ (если идёт стрим активного чата), иначе null. */
   partial: string | null;
   streaming: boolean;
-  /** Время начала стрима активного чата (Date.now()) — база счётчика «Думает… Nс». */
   streamStartedAt?: number;
   onCopy: () => void;
-  /** Открыть HTML-блок во встроенной панели превью (ошибки обрабатывает владелец). */
   onOpenPreview: (code: string) => void;
 }
 
-/** Подсветка кода (highlight.js через rehype): common-набор языков lowlight,
- *  автоопределение для непомеченных блоков ограничено subset'ом (скорость и
- *  стабильность на стриме). `html` — plainText: чип превью требует сырой текст,
- *  подсветка превратила бы children в массив span'ов и сломала бы его. */
+const NEAR_BOTTOM_PX = 40;
+const EXTERNAL_HTTP_URL = /^https?:\/\//;
+const HTML_LANGUAGE_CLASS = "language-html";
+const PLAIN_TEXT_LANGUAGES = ["html"];
+const AUTODETECT_LANGUAGE_SUBSET = [
+  "javascript",
+  "typescript",
+  "python",
+  "json",
+  "bash",
+  "css",
+  "xml",
+  "sql",
+  "yaml",
+  "rust",
+  "go",
+  "java",
+];
+const ASSISTANT_PROSE_CLASS =
+  "prose-answer text-[length:var(--chat-font-size)] leading-relaxed text-foreground/90";
+
 const REHYPE_PLUGINS: NonNullable<Parameters<typeof Markdown>[0]["rehypePlugins"]> = [
   [
     rehypeHighlight,
-    {
-      detect: true,
-      plainText: ["html"],
-      subset: [
-        "javascript",
-        "typescript",
-        "python",
-        "json",
-        "bash",
-        "css",
-        "xml",
-        "sql",
-        "yaml",
-        "rust",
-        "go",
-        "java",
-      ],
-    },
+    { detect: true, plainText: PLAIN_TEXT_LANGUAGES, subset: AUTODETECT_LANGUAGE_SUBSET },
   ],
 ];
 
-const markdownComponents = {
-  a: ({ href, children }: { href?: string; children?: ReactNode }) => (
+function ExternalLinkAnchor({ href, children }: { href?: string; children?: ReactNode }) {
+  return (
     <a
       href={href}
       onClick={(e) => {
         e.preventDefault();
-        if (href && /^https?:\/\//.test(href)) void openExternal(href);
+        if (href && EXTERNAL_HTTP_URL.test(href)) void openExternal(href);
       }}
       className="text-primary underline underline-offset-2 hover:brightness-125"
     >
       {children}
     </a>
-  ),
-};
+  );
+}
 
-/** ```html-блок → чип превью; остальные языки — обычный <pre>.
- *  Семантика «что считается html-блоком» должна оставаться согласованной
- *  с lib/html-blocks.ts (автооткрытие): line-start ```html без инфо-строки.
- *  Точное сравнение токена класса — чтобы language-html-template и т.п. не матчились. */
+const markdownComponents = { a: ExternalLinkAnchor };
+
+function hasHtmlLanguageToken(className: string) {
+  return className.split(/\s+/).some((token) => token.toLowerCase() === HTML_LANGUAGE_CLASS);
+}
+
 function makePre(onOpenPreview: (code: string) => void) {
   return function PreBlock({ children }: { children?: ReactNode }) {
     const code = isValidElement<{ className?: string; children?: ReactNode }>(children)
       ? children
       : null;
     const text = code?.props.children;
-    const isHtml = (code?.props.className ?? "")
-      .split(/\s+/)
-      .some((c) => c.toLowerCase() === "language-html");
-    if (code && isHtml && typeof text === "string") {
+    if (code && hasHtmlLanguageToken(code.props.className ?? "") && typeof text === "string") {
       return (
         <HtmlBlockChip
           code={text}
@@ -93,8 +88,6 @@ function makePre(onOpenPreview: (code: string) => void) {
   };
 }
 
-/** Один markdown-чанк. memo критичен: во время стрима панель ререндерится на каждый
- *  флаш дельт, и без него react-markdown перепарсивал бы ВСЮ историю каждый раз. */
 const MarkdownChunk = memo(function MarkdownChunk({
   text,
   components,
@@ -111,26 +104,133 @@ const MarkdownChunk = memo(function MarkdownChunk({
 
 function Assistant({ text, components }: { text: string; components: Components }) {
   return (
-    <div className="prose-answer text-[length:var(--chat-font-size)] leading-relaxed text-foreground/90">
+    <div className={ASSISTANT_PROSE_CLASS}>
       <MarkdownChunk text={text} components={components} />
     </div>
   );
 }
 
-/** Стримящийся ответ: завершённые блоки — стабильный префикс, который парсится один раз
- *  (memo у MarkdownChunk), каждый флаш перепарсивает только активный хвост. */
 function StreamingAssistant({ text, components }: { text: string; components: Components }) {
   const [stable, tail] = splitStableTail(text);
   return (
-    <div className="prose-answer text-[length:var(--chat-font-size)] leading-relaxed text-foreground/90">
+    <div className={ASSISTANT_PROSE_CLASS}>
       {stable !== "" && <MarkdownChunk text={stable} components={components} />}
       {tail !== "" && <MarkdownChunk text={tail} components={components} />}
     </div>
   );
 }
 
-/** Порог «читатель у низа»: меньше — автоскролл продолжает прилипать. */
-const NEAR_BOTTOM_PX = 40;
+function useStickToBottom() {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const nearBottomRef = useRef(true);
+  const [showJump, setShowJump] = useState(false);
+
+  const scrollToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, []);
+
+  const scrollIfNearBottom = useCallback(() => {
+    if (nearBottomRef.current) scrollToBottom();
+  }, [scrollToBottom]);
+
+  const resetToBottom = useCallback(() => {
+    nearBottomRef.current = true;
+    setShowJump(false);
+    scrollToBottom();
+  }, [scrollToBottom]);
+
+  const onScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    nearBottomRef.current = near;
+    setShowJump(!near);
+  }, []);
+
+  return { scrollRef, showJump, onScroll, scrollIfNearBottom, resetToBottom };
+}
+
+function PanelHeader({ canCopy, onCopy }: { canCopy: boolean; onCopy: () => void }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className="font-mono text-[11px] tracking-wider text-primary uppercase">Чат</span>
+      <span
+        className="h-px flex-1 bg-gradient-to-r from-primary/40 via-border to-transparent"
+        aria-hidden
+      />
+      {canCopy && (
+        <button
+          type="button"
+          onClick={onCopy}
+          className="font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Копировать
+        </button>
+      )}
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="grid h-full place-items-center">
+      <span className="text-[13px] text-muted-foreground">Чат появится здесь</span>
+    </div>
+  );
+}
+
+function UserBubble({ text }: { text: string }) {
+  return (
+    <div className="max-w-[85%] self-end rounded-lg bg-white/5 px-3 py-1.5 text-[length:var(--chat-font-size)] break-words whitespace-pre-wrap text-foreground/80">
+      {text}
+    </div>
+  );
+}
+
+function JumpToBottomButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full border border-border bg-card/90 px-3 py-1 font-mono text-[11px] text-muted-foreground shadow-md backdrop-blur transition-colors hover:text-foreground"
+    >
+      ↓ Вниз
+    </button>
+  );
+}
+
+function ChatMessages({
+  messages,
+  partial,
+  streaming,
+  streamStartedAt,
+  components,
+}: {
+  messages: ChatMessage[];
+  partial: string | null;
+  streaming: boolean;
+  streamStartedAt?: number;
+  components: Components;
+}) {
+  return (
+    <>
+      {messages.map((m, i) =>
+        m.role === "user" ? (
+          <UserBubble key={i} text={m.text} />
+        ) : (
+          <Assistant key={i} text={m.text} components={components} />
+        ),
+      )}
+      {partial !== null && partial !== "" && (
+        <StreamingAssistant text={partial} components={components} />
+      )}
+      {streaming && (partial === null || partial === "") && (
+        <ThinkingIndicator startedAt={streamStartedAt ?? Date.now()} />
+      )}
+    </>
+  );
+}
 
 export function AnswerPanel({
   messages,
@@ -141,43 +241,15 @@ export function AnswerPanel({
   onCopy,
   onOpenPreview,
 }: AnswerPanelProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  // ref, а не state: значение снимается обработчиком скролла ДО того, как
-  // стриминговый ререндер нарастит scrollHeight, и читается эффектом после.
-  const nearBottomRef = useRef(true);
-  const [showJump, setShowJump] = useState(false);
+  const { scrollRef, showJump, onScroll, scrollIfNearBottom, resetToBottom } = useStickToBottom();
 
-  const scrollToBottom = useCallback(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, []);
-
-  // Автоскролл только когда читатель уже у низа — иначе стрим дёргал бы
-  // прокрутку на каждый флаш дельт и мешал читать начало длинного ответа.
   useEffect(() => {
-    if (nearBottomRef.current) scrollToBottom();
-  }, [messages, partial, scrollToBottom]);
+    scrollIfNearBottom();
+  }, [messages, partial, scrollIfNearBottom]);
 
-  // Переключение чата: показываем свежий низ и сбрасываем «отлип» читателя.
   useEffect(() => {
-    nearBottomRef.current = true;
-    setShowJump(false);
-    scrollToBottom();
-  }, [chatId, scrollToBottom]);
-
-  const onScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const near = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
-    nearBottomRef.current = near;
-    setShowJump(!near);
-  }, []);
-
-  const jumpToBottom = useCallback(() => {
-    nearBottomRef.current = true;
-    setShowJump(false);
-    scrollToBottom();
-  }, [scrollToBottom]);
+    resetToBottom();
+  }, [chatId, resetToBottom]);
 
   const components = useMemo<Components>(
     () => ({ ...markdownComponents, pre: makePre(onOpenPreview) }),
@@ -185,27 +257,12 @@ export function AnswerPanel({
   );
 
   const empty = messages.length === 0 && !partial;
-  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-  const canCopy = !streaming && lastAssistant !== undefined;
+  const hasAssistantReply = messages.some((m) => m.role === "assistant");
+  const canCopy = !streaming && hasAssistantReply;
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-2">
-      <div className="flex items-center gap-2.5">
-        <span className="font-mono text-[11px] tracking-wider text-primary uppercase">Чат</span>
-        <span
-          className="h-px flex-1 bg-gradient-to-r from-primary/40 via-border to-transparent"
-          aria-hidden
-        />
-        {canCopy && (
-          <button
-            type="button"
-            onClick={onCopy}
-            className="font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Копировать
-          </button>
-        )}
-      </div>
+      <PanelHeader canCopy={canCopy} onCopy={onCopy} />
 
       <div className="relative flex min-h-0 flex-1">
         <div
@@ -214,41 +271,18 @@ export function AnswerPanel({
           className="flex min-h-0 w-full flex-col gap-3 overflow-y-auto pr-1.5"
         >
           {empty ? (
-            <div className="grid h-full place-items-center">
-              <span className="text-[13px] text-muted-foreground">Чат появится здесь</span>
-            </div>
+            <EmptyState />
           ) : (
-            <>
-              {messages.map((m, i) =>
-                m.role === "user" ? (
-                  <div
-                    key={i}
-                    className="max-w-[85%] self-end rounded-lg bg-white/5 px-3 py-1.5 text-[length:var(--chat-font-size)] break-words whitespace-pre-wrap text-foreground/80"
-                  >
-                    {m.text}
-                  </div>
-                ) : (
-                  <Assistant key={i} text={m.text} components={components} />
-                ),
-              )}
-              {partial !== null && partial !== "" && (
-                <StreamingAssistant text={partial} components={components} />
-              )}
-              {streaming && (partial === null || partial === "") && (
-                <ThinkingIndicator startedAt={streamStartedAt ?? Date.now()} />
-              )}
-            </>
+            <ChatMessages
+              messages={messages}
+              partial={partial}
+              streaming={streaming}
+              streamStartedAt={streamStartedAt}
+              components={components}
+            />
           )}
         </div>
-        {showJump && (
-          <button
-            type="button"
-            onClick={jumpToBottom}
-            className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full border border-border bg-card/90 px-3 py-1 font-mono text-[11px] text-muted-foreground shadow-md backdrop-blur transition-colors hover:text-foreground"
-          >
-            ↓ Вниз
-          </button>
-        )}
+        {showJump && <JumpToBottomButton onClick={resetToBottom} />}
       </div>
     </section>
   );

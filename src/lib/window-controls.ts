@@ -1,3 +1,19 @@
+const OPACITY_CSS_VAR = "--app-opacity";
+const OPACITY_MIN = 0.2;
+const OPACITY_MAX = 1;
+const CHAT_FONT_SIZE_CSS_VAR = "--chat-font-size";
+const CHAT_FONT_SIZE_MIN_PX = 10;
+const CHAT_FONT_SIZE_MAX_PX = 20;
+const HUNDREDTHS = 100;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function roundToHundredths(value: number): number {
+  return Math.round(value * HUNDREDTHS) / HUNDREDTHS;
+}
+
 export function moveDelta(code: string, step: number): { dx: number; dy: number } | null {
   switch (code) {
     case "ArrowLeft":
@@ -15,19 +31,16 @@ export function moveDelta(code: string, step: number): { dx: number; dy: number 
 
 export function applyOpacity(root: HTMLElement, value: number): void {
   if (!Number.isFinite(value)) return;
-  const clamped = Math.min(1, Math.max(0.2, value));
-  root.style.setProperty("--app-opacity", String(clamped));
+  const clamped = clamp(value, OPACITY_MIN, OPACITY_MAX);
+  root.style.setProperty(OPACITY_CSS_VAR, String(clamped));
 }
 
-/** Шаг прозрачности с клампом [0.2, 1] и округлением до 2 знаков (без float-дрейфа). */
 export function stepOpacity(current: number, dir: 1 | -1, step: number): number {
-  const next = Math.round((current + dir * step) * 100) / 100;
-  return Math.min(1, Math.max(0.2, next));
+  return clamp(roundToHundredths(current + dir * step), OPACITY_MIN, OPACITY_MAX);
 }
 
-/** Размер шрифта чата: пишет --chat-font-size (px) с клампом [10, 20]. */
 export function applyChatFontSize(root: HTMLElement, px: number): void {
   if (!Number.isFinite(px)) return;
-  const clamped = Math.min(20, Math.max(10, px));
-  root.style.setProperty("--chat-font-size", `${String(clamped)}px`);
+  const clamped = clamp(px, CHAT_FONT_SIZE_MIN_PX, CHAT_FONT_SIZE_MAX_PX);
+  root.style.setProperty(CHAT_FONT_SIZE_CSS_VAR, `${String(clamped)}px`);
 }

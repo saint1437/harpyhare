@@ -16,7 +16,7 @@ function focusTextarea() {
 }
 
 afterEach(() => {
-  cleanup(); // размонтируем ДО очистки моков, иначе cleanup-вызов протекает в следующий тест
+  cleanup();
   vi.clearAllMocks();
   document.body.innerHTML = "";
 });

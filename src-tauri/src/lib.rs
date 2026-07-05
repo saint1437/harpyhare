@@ -15,47 +15,74 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex,
 };
+use std::time::Duration;
 use futures_util::StreamExt;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
-/// Глобальное состояние приложения. Держим под `Mutex` всё, что меняется из разных
-/// потоков (хоткей-колбэки, async-команды, watchdog).
-///
-/// reqwest-клиенты (`stt`/`llm`) создаются один раз и переживают весь рантайм ради
-/// пула соединений и переиспользования TLS. В команды они не пересоздаются — клон
-/// шарит внутренний `Arc` пула; пересоздаём их только в `set_settings` при смене ключа.
+const SETTINGS_FILE_NAME: &str = "settings.json";
+const CHATS_FILE_NAME: &str = "chats.json";
+const ENV_FILE_NAME: &str = ".env";
+const ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
+const GROQ_API_KEY_ENV: &str = "GROQ_API_KEY";
+
+const MAIN_WINDOW_LABEL: &str = "main";
+const PREVIEW_URI_SCHEME: &str = "preview";
+
+const EVENT_STATE_CHANGED: &str = "state-changed";
+const EVENT_TRANSCRIPT_READY: &str = "transcript-ready";
+const EVENT_STT_ERROR: &str = "stt-error";
+const EVENT_LLM_DELTA: &str = "llm-delta";
+const EVENT_LLM_DONE: &str = "llm-done";
+const EVENT_LLM_ERROR: &str = "llm-error";
+
+const ERR_NO_CAPTURE_PERMISSION: &str = "Нет разрешения на запись системного звука";
+const ERR_NO_AUDIO_BUFFER: &str = "нет аудио-буфера";
+const ERR_SILENCE: &str = "Тишина — нечего распознавать";
+
+const STT_STREAM_CHANNEL_CAPACITY: usize = 256;
+const LLM_DELTA_FLUSH_INTERVAL: Duration = Duration::from_millis(25);
+const MAX_DURATION_WATCHDOG_INTERVAL: Duration = Duration::from_secs(1);
+
+const RESIZE_TWEEN_STEPS: u32 = 14;
+const RESIZE_TWEEN_FRAME_INTERVAL: Duration = Duration::from_millis(13);
+const RESIZE_WIDTH_EPSILON_LOGICAL_PX: f64 = 1.0;
+const FALLBACK_WINDOW_HEIGHT_LOGICAL_PX: f64 = 640.0;
+
+const KEY_CODE_ARROW_LEFT: u16 = 123;
+const KEY_CODE_ARROW_RIGHT: u16 = 124;
+const KEY_CODE_ARROW_DOWN: u16 = 125;
+const KEY_CODE_ARROW_UP: u16 = 126;
+
+const OPEN_COMMAND: &str = "open";
+const AUDIO_CAPTURE_PRIVACY_PANE_URL: &str =
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture";
+const HTTPS_URL_PREFIX: &str = "https://";
+const HTTP_URL_PREFIX: &str = "http://";
+
 pub struct App {
     pub settings: Mutex<settings::Settings>,
     pub recorder: Mutex<state::RecorderState>,
     pub capture: Mutex<Option<capture::SystemAudioCapture>>,
-    pub last_recording: Mutex<Option<Vec<f32>>>, // 16к моно — для «Повторить»
+    pub last_recording: Mutex<Option<Vec<f32>>>,
     pub llm_cancel: Mutex<HashMap<String, CancellationToken>>,
     pub stt: Mutex<stt::GroqStt>,
     pub llm: Mutex<llm::AnthropicClient>,
     pub stt_stream: Mutex<Option<SttStream>>,
-    /// Модели аккаунта из GET /v1/models (фолбэк-список до первого успешного фетча).
     pub models: Mutex<Vec<llm::ModelInfo>>,
     pub recording_gen: AtomicU64,
     pub resize_gen: AtomicU64,
     pub preview_html: Mutex<String>,
-    /// Найденное check()'ом обновление — ждёт install_update (не ходим за
-    /// манифестом второй раз между «нашли» и «пользователь нажал Обновить»).
     pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
     pub update_installing: AtomicBool,
 }
 
-/// Идущая стриминговая транскрипция: запрос к Groq открыт на нажатии PTT,
-/// тело наполняется 16кГц-чанками по мере записи.
 pub struct SttStream {
     handle: tauri::async_runtime::JoinHandle<Result<String, stt::SttError>>,
     cancel: CancellationToken,
-    /// Стрим неполон (переполнение канала загрузки) — результату верить нельзя,
-    /// после остановки уходим на классическую транскрипцию по полному буферу.
     broken: Arc<AtomicBool>,
 }
 
-/// Отменяет стриминговую транскрипцию (Esc, тишина, слишком короткая запись, ошибки).
 fn cancel_stt_stream(app: &AppHandle) {
     if let Some(s) = app.state::<App>().stt_stream.lock().unwrap().take() {
         s.cancel.cancel();
@@ -66,18 +93,16 @@ fn settings_path(app: &AppHandle) -> std::path::PathBuf {
     app.path()
         .app_data_dir()
         .expect("app_data_dir")
-        .join("settings.json")
+        .join(SETTINGS_FILE_NAME)
 }
 
 fn chats_path(app: &AppHandle) -> std::path::PathBuf {
     app.path()
         .app_data_dir()
         .expect("app_data_dir")
-        .join("chats.json")
+        .join(CHATS_FILE_NAME)
 }
 
-/// Полезные нагрузки LLM-событий несут chat_id, чтобы фронт роутил дельты по чатам.
-/// camelCase — потому что фронт читает их как { chatId, ... }.
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LlmDelta {
@@ -104,7 +129,7 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .register_uri_scheme_protocol("preview", |ctx, _request| {
+        .register_uri_scheme_protocol(PREVIEW_URI_SCHEME, |ctx, _request| {
             let html = ctx
                 .app_handle()
                 .state::<App>()
@@ -115,91 +140,7 @@ pub fn run() {
             preview_protocol::preview_response(&html)
         })
         .setup(|app| {
-            let handle = app.handle();
-            // .env в корне проекта. dotenvy::dotenv() ищет вверх от cwd (работает в dev),
-            // но у .app, запущенного из Finder, cwd = "/" — поэтому добавочно пробуем
-            // путь проекта, зашитый при компиляции (персональная сборка на этой же машине).
-            let _ = dotenvy::dotenv();
-            if let Some(project_env) = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .map(|root| root.join(".env"))
-            {
-                let _ = dotenvy::from_path(project_env);
-            }
-            let mut settings = settings::Settings::load(&settings_path(handle))
-                .unwrap_or_else(|_| settings::Settings::default());
-            // Ключи из .env подхватываются, только если в settings.json они пустые.
-            settings.apply_key_fallback(
-                std::env::var("ANTHROPIC_API_KEY").ok(),
-                std::env::var("GROQ_API_KEY").ok(),
-            );
-
-            // Process tap создаётся один раз. При отказе TCC/ошибке — None в state,
-            // UI покажет баннер (команда capture_available) и предложит открыть настройки.
-            let capture = match capture::SystemAudioCapture::new() {
-                Ok(c) => Some(c),
-                Err(e) => {
-                    eprintln!("захват системного звука недоступен: {e}");
-                    None
-                }
-            };
-
-            let stt = stt::GroqStt::new(settings.groq_api_key.clone())
-                .with_language(settings.stt_language.clone())
-                .with_translate(settings.stt_translate);
-            let llm = llm::AnthropicClient::new(settings.anthropic_api_key.clone());
-
-            // Видимость при демонстрации экрана: окно создаётся с contentProtected=true
-            // (tauri.conf.json); настройка может снять защиту и показать окно в захвате.
-            if settings.screen_share_visible {
-                if let Some(w) = handle.get_webview_window("main") {
-                    let _ = w.set_content_protected(false);
-                }
-            }
-            let hotkey = settings.hotkey.clone();
-            let toggle_hotkey = settings.toggle_hotkey.clone();
-
-            // Прогрев TLS-соединений к Groq/Anthropic на старте + первичный фетч
-            // списка моделей аккаунта (заодно тот же прогрев).
-            {
-                let stt = stt.clone();
-                let llm = llm.clone();
-                let handle = handle.clone();
-                tauri::async_runtime::spawn(async move {
-                    let (_, models) = tokio::join!(stt.warm_up(), llm.list_models());
-                    if let Ok(models) = models {
-                        if !models.is_empty() {
-                            *handle.state::<App>().models.lock().unwrap() = models;
-                        }
-                    }
-                });
-            }
-
-            app.manage(App {
-                settings: Mutex::new(settings),
-                recorder: Mutex::new(state::RecorderState::Idle),
-                capture: Mutex::new(capture),
-                last_recording: Mutex::new(None),
-                llm_cancel: Mutex::new(HashMap::new()),
-                stt: Mutex::new(stt),
-                llm: Mutex::new(llm),
-                stt_stream: Mutex::new(None),
-                models: Mutex::new(llm::fallback_models()),
-                recording_gen: AtomicU64::new(0),
-                resize_gen: AtomicU64::new(0),
-                preview_html: Mutex::new(String::new()),
-                pending_update: Mutex::new(None),
-                update_installing: AtomicBool::new(false),
-            });
-
-            if let Err(e) = hotkey::register_ptt(handle, &hotkey) {
-                eprintln!("не удалось зарегистрировать PTT-хоткей {hotkey:?}: {e}");
-            }
-            if let Err(e) = hotkey::register_toggle(handle, &toggle_hotkey) {
-                eprintln!("не удалось зарегистрировать toggle-хоткей {toggle_hotkey:?}: {e}");
-            }
-            install_move_keys_monitor(handle.clone());
-            update::spawn_auto_check(handle.clone());
+            setup_app(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -228,17 +169,114 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-/// Перемещение окна Cmd/Ctrl+стрелками через локальный NSEvent-монитор,
-/// ПЕРЕХВАТЫВАЮЩИЙ keyDown до WKWebView (возврат null = событие поглощено).
-///
-/// Зачем так: если событие доходит до WebKit при фокусе в текстовом поле,
-/// web-процесс просит UI-процесс спрятать указатель мыши «до движения мыши»
-/// (стандартное «прячем курсор при печати»), а окно уезжает из-под курсора —
-/// указатель «пропадает». Пост-фактум unhide гонится с этим IPC и проигрывает.
-/// Монитор же не даёт WebKit увидеть keydown вообще: курсор не прячется,
-/// каретка не прыгает, а JS-обработчик Cmd+стрелок остаётся мокам браузера.
-///
-/// Вызывать на главном потоке (setup). Монитор живёт всё время работы приложения.
+fn setup_app(handle: &AppHandle) {
+    load_dotenv_files();
+    let settings = load_settings_with_env_key_fallback(handle);
+    let capture = init_system_audio_capture();
+    let stt = build_stt_client(&settings);
+    let llm = llm::AnthropicClient::new(settings.anthropic_api_key.clone());
+    apply_screen_share_visibility_at_startup(handle, &settings);
+    let ptt_hotkey = settings.hotkey.clone();
+    let toggle_hotkey = settings.toggle_hotkey.clone();
+    spawn_startup_warm_up_and_model_fetch(handle.clone(), stt.clone(), llm.clone());
+    handle.manage(build_app_state(settings, capture, stt, llm));
+    register_startup_hotkeys(handle, &ptt_hotkey, &toggle_hotkey);
+    install_move_keys_monitor(handle.clone());
+    update::spawn_auto_check(handle.clone());
+}
+
+fn load_dotenv_files() {
+    let _ = dotenvy::dotenv();
+    if let Some(project_env) = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|root| root.join(ENV_FILE_NAME))
+    {
+        let _ = dotenvy::from_path(project_env);
+    }
+}
+
+fn load_settings_with_env_key_fallback(app: &AppHandle) -> settings::Settings {
+    let mut settings = settings::Settings::load(&settings_path(app))
+        .unwrap_or_else(|_| settings::Settings::default());
+    settings.apply_key_fallback(
+        std::env::var(ANTHROPIC_API_KEY_ENV).ok(),
+        std::env::var(GROQ_API_KEY_ENV).ok(),
+    );
+    settings
+}
+
+fn init_system_audio_capture() -> Option<capture::SystemAudioCapture> {
+    match capture::SystemAudioCapture::new() {
+        Ok(c) => Some(c),
+        Err(e) => {
+            eprintln!("захват системного звука недоступен: {e}");
+            None
+        }
+    }
+}
+
+fn build_stt_client(s: &settings::Settings) -> stt::GroqStt {
+    stt::GroqStt::new(s.groq_api_key.clone())
+        .with_language(s.stt_language.clone())
+        .with_translate(s.stt_translate)
+}
+
+fn apply_screen_share_visibility_at_startup(app: &AppHandle, settings: &settings::Settings) {
+    if settings.screen_share_visible {
+        if let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+            let _ = w.set_content_protected(false);
+        }
+    }
+}
+
+fn spawn_startup_warm_up_and_model_fetch(
+    handle: AppHandle,
+    stt: stt::GroqStt,
+    llm: llm::AnthropicClient,
+) {
+    tauri::async_runtime::spawn(async move {
+        let (_, models) = tokio::join!(stt.warm_up(), llm.list_models());
+        if let Ok(models) = models {
+            if !models.is_empty() {
+                *handle.state::<App>().models.lock().unwrap() = models;
+            }
+        }
+    });
+}
+
+fn build_app_state(
+    settings: settings::Settings,
+    capture: Option<capture::SystemAudioCapture>,
+    stt: stt::GroqStt,
+    llm: llm::AnthropicClient,
+) -> App {
+    App {
+        settings: Mutex::new(settings),
+        recorder: Mutex::new(state::RecorderState::Idle),
+        capture: Mutex::new(capture),
+        last_recording: Mutex::new(None),
+        llm_cancel: Mutex::new(HashMap::new()),
+        stt: Mutex::new(stt),
+        llm: Mutex::new(llm),
+        stt_stream: Mutex::new(None),
+        models: Mutex::new(llm::fallback_models()),
+        recording_gen: AtomicU64::new(0),
+        resize_gen: AtomicU64::new(0),
+        preview_html: Mutex::new(String::new()),
+        pending_update: Mutex::new(None),
+        update_installing: AtomicBool::new(false),
+    }
+}
+
+fn register_startup_hotkeys(app: &AppHandle, ptt_hotkey: &str, toggle_hotkey: &str) {
+    if let Err(e) = hotkey::register_ptt(app, ptt_hotkey) {
+        eprintln!("не удалось зарегистрировать PTT-хоткей {ptt_hotkey:?}: {e}");
+    }
+    if let Err(e) = hotkey::register_toggle(app, toggle_hotkey) {
+        eprintln!("не удалось зарегистрировать toggle-хоткей {toggle_hotkey:?}: {e}");
+    }
+}
+
 fn install_move_keys_monitor(app: AppHandle) {
     use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags};
 
@@ -252,16 +290,15 @@ fn install_move_keys_monitor(app: AppHandle) {
             {
                 return pass;
             }
-            // 123..126 — Left, Right, Down, Up
             let (dx, dy) = match event.keyCode() {
-                123 => (-1i32, 0i32),
-                124 => (1, 0),
-                125 => (0, 1),
-                126 => (0, -1),
+                KEY_CODE_ARROW_LEFT => (-1i32, 0i32),
+                KEY_CODE_ARROW_RIGHT => (1, 0),
+                KEY_CODE_ARROW_DOWN => (0, 1),
+                KEY_CODE_ARROW_UP => (0, -1),
                 _ => return pass,
             };
             let step = app.state::<App>().settings.lock().unwrap().move_step as i32;
-            if let Some(w) = app.get_webview_window("main") {
+            if let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) {
                 if let Ok(pos) = w.outer_position() {
                     let _ = w.set_position(tauri::PhysicalPosition::new(
                         pos.x + dx * step,
@@ -269,106 +306,107 @@ fn install_move_keys_monitor(app: AppHandle) {
                     ));
                 }
             }
-            std::ptr::null_mut() // поглощаем: WebKit событие не увидит
+            std::ptr::null_mut()
         },
     );
-    // SAFETY: блок возвращает либо исходный указатель события, либо null — как
-    // требует контракт монитора. Токен намеренно утекает: монитор нужен до выхода.
     let monitor = unsafe {
         NSEvent::addLocalMonitorForEventsMatchingMask_handler(NSEventMask::KeyDown, &block)
     };
     std::mem::forget(monitor);
 }
 
-// --- Эмиссия состояния --------------------------------------------------------
-
 fn emit_state(app: &AppHandle, s: state::RecorderState) {
-    let _ = app.emit("state-changed", s);
+    let _ = app.emit(EVENT_STATE_CHANGED, s);
 }
-
-// --- Обработчики хоткеев -------------------------------------------------------
 
 pub fn on_ptt_pressed(app: &AppHandle) {
     let st = app.state::<App>();
     if st.capture.lock().unwrap().is_none() {
-        let _ = app.emit("stt-error", "Нет разрешения на запись системного звука");
+        let _ = app.emit(EVENT_STT_ERROR, ERR_NO_CAPTURE_PERMISSION);
         return;
     }
     let action = st.recorder.lock().unwrap().on(state::Event::PttPressed);
-    if action == state::Action::StartCapture {
-        // Стриминговая транскрипция: запрос к Groq открывается прямо сейчас,
-        // тело (WAV-заголовок + PCM) наполняется по мере записи. К моменту
-        // отпускания PTT почти всё аудио уже на сервере — «отпустил → текст»
-        // сжимается до инференса. При любой ошибке — фолбэк на классику.
-        let stt_client = st.stt.lock().unwrap().clone();
-        let cancel = CancellationToken::new();
-        let broken = Arc::new(AtomicBool::new(false));
-        let (tx, rx) = tokio::sync::mpsc::channel::<Result<Vec<u8>, std::io::Error>>(256);
-        let header = audio::wav_header_streaming().to_vec();
-        let body_stream = futures_util::stream::iter([Ok::<Vec<u8>, std::io::Error>(header)])
-            .chain(futures_util::stream::unfold(rx, |mut rx| async move {
-                rx.recv().await.map(|item| (item, rx))
-            }));
-        let handle = {
-            let cancel = cancel.clone();
-            tauri::async_runtime::spawn(async move {
-                stt_client
-                    .transcribe_stream(reqwest::Body::wrap_stream(body_stream), cancel)
-                    .await
-            })
-        };
-        if let Some(old) = st.stt_stream.lock().unwrap().replace(SttStream {
-            handle,
-            cancel,
-            broken: Arc::clone(&broken),
-        }) {
-            old.cancel.cancel(); // защитно: висящих стримов быть не должно
+    if action != state::Action::StartCapture {
+        return;
+    }
+    let sink = start_streaming_transcription(app);
+    if let Some(c) = st.capture.lock().unwrap().as_mut() {
+        if let Err(e) = c.start(Some(sink)) {
+            cancel_stt_stream(app);
+            let _ = app.emit(EVENT_STT_ERROR, e.to_string());
+            st.recorder.lock().unwrap().on(state::Event::Cancel);
+            return;
         }
+    }
+    let gen = st.recording_gen.fetch_add(1, Ordering::SeqCst) + 1;
+    hotkey::register_esc(app);
+    emit_state(app, state::RecorderState::Recording);
+    spawn_max_duration_watchdog(app.clone(), gen);
+    warm_up_llm_for_upcoming_request(app);
+}
 
-        // Sink для консьюмера захвата: 16кГц-чанки → PCM-байты → канал тела запроса.
-        // try_send: консьюмер нельзя блокировать; переполнение канала = загрузка
-        // безнадёжно отстала → помечаем стрим неполным (фолбэк после стопа).
-        let sink: capture::ChunkSink = Box::new(move |samples: &[f32]| {
-            if broken.load(Ordering::Relaxed) {
-                return;
-            }
-            if tx.try_send(Ok(audio::f32_to_i16le_bytes(samples))).is_err() {
-                broken.store(true, Ordering::Relaxed);
-            }
-        });
+type SttBodyChunk = Result<Vec<u8>, std::io::Error>;
 
-        if let Some(c) = st.capture.lock().unwrap().as_mut() {
-            if let Err(e) = c.start(Some(sink)) {
-                cancel_stt_stream(app);
-                let _ = app.emit("stt-error", e.to_string());
-                st.recorder.lock().unwrap().on(state::Event::Cancel);
-                return;
-            }
+fn start_streaming_transcription(app: &AppHandle) -> capture::ChunkSink {
+    let st = app.state::<App>();
+    let stt_client = st.stt.lock().unwrap().clone();
+    let cancel = CancellationToken::new();
+    let broken = Arc::new(AtomicBool::new(false));
+    let (tx, rx) = tokio::sync::mpsc::channel::<SttBodyChunk>(STT_STREAM_CHANNEL_CAPACITY);
+    let header: SttBodyChunk = Ok(audio::wav_header_streaming().to_vec());
+    let body_stream = futures_util::stream::iter([header]).chain(
+        futures_util::stream::unfold(rx, |mut rx| async move {
+            rx.recv().await.map(|item| (item, rx))
+        }),
+    );
+    let handle = {
+        let cancel = cancel.clone();
+        tauri::async_runtime::spawn(async move {
+            stt_client
+                .transcribe_stream(reqwest::Body::wrap_stream(body_stream), cancel)
+                .await
+        })
+    };
+    if let Some(old) = st.stt_stream.lock().unwrap().replace(SttStream {
+        handle,
+        cancel,
+        broken: Arc::clone(&broken),
+    }) {
+        old.cancel.cancel();
+    }
+    Box::new(move |samples: &[f32]| {
+        if broken.load(Ordering::Relaxed) {
+            return;
         }
-        let gen = st.recording_gen.fetch_add(1, Ordering::SeqCst) + 1;
-        hotkey::register_esc(app);
-        emit_state(app, state::RecorderState::Recording);
-        spawn_max_duration_watchdog(app.clone(), gen);
+        if tx.try_send(Ok(audio::f32_to_i16le_bytes(samples))).is_err() {
+            broken.store(true, Ordering::Relaxed);
+        }
+    })
+}
 
-        // Пока пользователь говорит — греем Anthropic: после расшифровки, вероятно,
-        // будет запрос за ответом. Groq греть не нужно — стриминговый запрос уже ушёл.
-        let llm_client = st.llm.lock().unwrap().clone();
-        tauri::async_runtime::spawn(async move { llm_client.warm_up().await });
+fn warm_up_llm_for_upcoming_request(app: &AppHandle) {
+    let llm_client = app.state::<App>().llm.lock().unwrap().clone();
+    tauri::async_runtime::spawn(async move { llm_client.warm_up().await });
+}
+
+fn current_recording_secs(st: &App) -> f32 {
+    st.capture
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|c| c.recording_secs())
+        .unwrap_or(0.0)
+}
+
+fn stop_capture_discarding(st: &App) {
+    if let Some(c) = st.capture.lock().unwrap().as_mut() {
+        let _ = c.stop();
     }
 }
 
 pub fn on_ptt_released(app: &AppHandle) {
     let st = app.state::<App>();
-    // recording_secs читается отдельным локом от recorder.on(): рассинхрон в пару мс
-    // безвреден, а единственность c.stop() гарантирует FSM — кто первым перевёл
-    // Recording→Transcribing, тот и останавливает capture (второй получит Action::None).
-    let secs = st
-        .capture
-        .lock()
-        .unwrap()
-        .as_ref()
-        .map(|c| c.recording_secs())
-        .unwrap_or(0.0);
+    let secs = current_recording_secs(&st);
     let action = st
         .recorder
         .lock()
@@ -382,20 +420,15 @@ pub fn on_cancel(app: &AppHandle) {
     let st = app.state::<App>();
     let action = st.recorder.lock().unwrap().on(state::Event::Cancel);
     if action == state::Action::Discard {
-        cancel_stt_stream(app); // сначала обрываем загрузку, потом стоп записи
-        if let Some(c) = st.capture.lock().unwrap().as_mut() {
-            let _ = c.stop();
-        }
+        cancel_stt_stream(app);
+        stop_capture_discarding(&st);
         hotkey::unregister_esc(app);
         emit_state(app, state::RecorderState::Idle);
     }
 }
 
-/// Тоггл видимости главного окна по глобальному хоткею. Деферится из обработчика
-/// шортката (инвариант hotkey.rs), поэтому выполняется уже после освобождения
-/// мьютекса реестра плагина.
 pub fn on_toggle_visibility(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window("main") {
+    if let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         if w.is_visible().unwrap_or(true) {
             let _ = w.hide();
         } else {
@@ -405,54 +438,57 @@ pub fn on_toggle_visibility(app: &AppHandle) {
     }
 }
 
-// --- Завершение записи / распознавание ----------------------------------------
-
 fn finish_recording(app: &AppHandle, action: state::Action) {
-    let st = app.state::<App>();
     match action {
         state::Action::Discard => {
             cancel_stt_stream(app);
-            if let Some(c) = st.capture.lock().unwrap().as_mut() {
-                let _ = c.stop();
-            }
+            stop_capture_discarding(&app.state::<App>());
             emit_state(app, state::RecorderState::Idle);
         }
-        state::Action::Transcribe => {
-            emit_state(app, state::RecorderState::Transcribing);
-            let t = std::time::Instant::now();
-            // stop() возвращает готовый 16кГц-моно: ресемплинг шёл во время записи,
-            // здесь только дрен хвоста (миллисекунды). EOF тела загрузки уже отправлен.
-            let stopped = st.capture.lock().unwrap().as_mut().map(|c| c.stop());
-            let Some(stopped) = stopped else {
-                cancel_stt_stream(app);
-                return finish_transcription(app, Err("нет аудио-буфера".into()));
-            };
-            let s16k = match stopped {
-                Ok(v) => v,
-                Err(e) => {
-                    cancel_stt_stream(app);
-                    return finish_transcription(app, Err(e.to_string()));
-                }
-            };
-            eprintln!(
-                "[perf] stop → 16k моно готов ({:.1}s audio) за {:?}",
-                s16k.len() as f32 / audio::TARGET_SAMPLE_RATE as f32,
-                t.elapsed()
-            );
-            if audio::is_silence(&s16k) {
-                cancel_stt_stream(app);
-                return finish_transcription(app, Err("Тишина — нечего распознавать".into()));
-            }
-            *st.last_recording.lock().unwrap() = Some(s16k.clone());
-            let app2 = app.clone();
-            tauri::async_runtime::spawn(async move { finish_transcribe(app2, s16k).await });
-        }
+        state::Action::Transcribe => transcribe_recording(app),
         _ => {}
     }
 }
 
-/// Дожидается стриминговой транскрипции; при любой её проблеме (кроме неверного
-/// ключа) — классическая транскрипция по накопленному буферу.
+fn transcribe_recording(app: &AppHandle) {
+    emit_state(app, state::RecorderState::Transcribing);
+    let s16k = match stop_capture_for_transcription(app) {
+        Ok(v) => v,
+        Err(msg) => {
+            cancel_stt_stream(app);
+            return finish_transcription(app, Err(msg));
+        }
+    };
+    if audio::is_silence(&s16k) {
+        cancel_stt_stream(app);
+        return finish_transcription(app, Err(ERR_SILENCE.into()));
+    }
+    *app.state::<App>().last_recording.lock().unwrap() = Some(s16k.clone());
+    let app2 = app.clone();
+    tauri::async_runtime::spawn(async move { finish_transcribe(app2, s16k).await });
+}
+
+fn stop_capture_for_transcription(app: &AppHandle) -> Result<Vec<f32>, String> {
+    let t = std::time::Instant::now();
+    let stopped = app
+        .state::<App>()
+        .capture
+        .lock()
+        .unwrap()
+        .as_mut()
+        .map(|c| c.stop());
+    let Some(stopped) = stopped else {
+        return Err(ERR_NO_AUDIO_BUFFER.into());
+    };
+    let s16k = stopped.map_err(|e| e.to_string())?;
+    eprintln!(
+        "[perf] stop → 16k моно готов ({:.1}s audio) за {:?}",
+        s16k.len() as f32 / audio::TARGET_SAMPLE_RATE as f32,
+        t.elapsed()
+    );
+    Ok(s16k)
+}
+
 async fn finish_transcribe(app: AppHandle, samples: Vec<f32>) {
     let t = std::time::Instant::now();
     let stream = app.state::<App>().stt_stream.lock().unwrap().take();
@@ -467,7 +503,6 @@ async fn finish_transcribe(app: AppHandle, samples: Vec<f32>) {
                     return deliver_transcript(&app, text);
                 }
                 Ok(Err(stt::SttError::BadApiKey)) => {
-                    // классика упадёт с тем же 401 — не делаем второй запрос
                     return finish_transcription(&app, Err(stt::SttError::BadApiKey.to_string()));
                 }
                 Ok(Err(e)) => {
@@ -485,14 +520,12 @@ async fn finish_transcribe(app: AppHandle, samples: Vec<f32>) {
 fn deliver_transcript(app: &AppHandle, text: String) {
     use tauri_plugin_clipboard_manager::ClipboardExt;
     let _ = app.clipboard().write_text(text.clone());
-    let _ = app.emit("transcript-ready", text);
+    let _ = app.emit(EVENT_TRANSCRIPT_READY, text);
     finish_transcription(app, Ok(()));
 }
 
 async fn transcribe_and_emit(app: AppHandle, samples: Vec<f32>) {
     use stt::SttEngine;
-    // Клонируем готовый клиент из state (шарит пул соединений), чтобы не держать
-    // MutexGuard через .await.
     let stt_client = app.state::<App>().stt.lock().unwrap().clone();
     let t = std::time::Instant::now();
     let res = stt_client.transcribe(&samples).await;
@@ -510,7 +543,7 @@ fn finish_transcription(app: &AppHandle, result: Result<(), String>) {
         .unwrap()
         .on(state::Event::TranscriptionFinished);
     if let Err(msg) = result {
-        let _ = app.emit("stt-error", msg);
+        let _ = app.emit(EVENT_STT_ERROR, msg);
     }
     emit_state(app, state::RecorderState::Idle);
 }
@@ -518,7 +551,7 @@ fn finish_transcription(app: &AppHandle, result: Result<(), String>) {
 fn spawn_max_duration_watchdog(app: AppHandle, my_gen: u64) {
     tauri::async_runtime::spawn(async move {
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            tokio::time::sleep(MAX_DURATION_WATCHDOG_INTERVAL).await;
             let st = app.state::<App>();
             if st.recording_gen.load(Ordering::SeqCst) != my_gen {
                 break;
@@ -526,14 +559,7 @@ fn spawn_max_duration_watchdog(app: AppHandle, my_gen: u64) {
             if *st.recorder.lock().unwrap() != state::RecorderState::Recording {
                 break;
             }
-            let secs = st
-                .capture
-                .lock()
-                .unwrap()
-                .as_ref()
-                .map(|c| c.recording_secs())
-                .unwrap_or(0.0);
-            if secs >= state::MAX_RECORDING_SECS {
+            if current_recording_secs(&st) >= state::MAX_RECORDING_SECS {
                 let action = st
                     .recorder
                     .lock()
@@ -547,7 +573,98 @@ fn spawn_max_duration_watchdog(app: AppHandle, my_gen: u64) {
     });
 }
 
-// --- Команды ------------------------------------------------------------------
+fn find_cached_model(app: &AppHandle, model_id: &str) -> Option<llm::ModelInfo> {
+    let st = app.state::<App>();
+    let models = st.models.lock().unwrap();
+    models.iter().find(|m| m.id == model_id).cloned()
+}
+
+fn register_llm_cancel(app: &AppHandle, chat_id: &str) -> CancellationToken {
+    let cancel = CancellationToken::new();
+    let st = app.state::<App>();
+    let mut map = st.llm_cancel.lock().unwrap();
+    if let Some(old) = map.insert(chat_id.to_string(), cancel.clone()) {
+        old.cancel();
+    }
+    cancel
+}
+
+fn unregister_llm_cancel(app: &AppHandle, chat_id: &str) {
+    app.state::<App>().llm_cancel.lock().unwrap().remove(chat_id);
+}
+
+struct LlmDeltaFlusher {
+    pending: Arc<Mutex<String>>,
+    stop: CancellationToken,
+    task: tauri::async_runtime::JoinHandle<()>,
+}
+
+impl LlmDeltaFlusher {
+    async fn stop_and_await_final_drain(self) {
+        self.stop.cancel();
+        let _ = self.task.await;
+    }
+}
+
+fn spawn_llm_delta_flusher(app: AppHandle, chat_id: String) -> LlmDeltaFlusher {
+    let pending = Arc::new(Mutex::new(String::new()));
+    let stop = CancellationToken::new();
+    let task = {
+        let pending = Arc::clone(&pending);
+        let stop = stop.clone();
+        tauri::async_runtime::spawn(async move {
+            run_llm_delta_flusher(app, chat_id, pending, stop).await;
+        })
+    };
+    LlmDeltaFlusher { pending, stop, task }
+}
+
+async fn run_llm_delta_flusher(
+    app: AppHandle,
+    chat_id: String,
+    pending: Arc<Mutex<String>>,
+    stop: CancellationToken,
+) {
+    let mut tick = tokio::time::interval(LLM_DELTA_FLUSH_INTERVAL);
+    loop {
+        tokio::select! {
+            _ = tick.tick() => {}
+            _ = stop.cancelled() => break,
+        }
+        flush_pending_delta(&app, &chat_id, &pending);
+    }
+    flush_pending_delta(&app, &chat_id, &pending);
+}
+
+fn flush_pending_delta(app: &AppHandle, chat_id: &str, pending: &Mutex<String>) {
+    let delta = std::mem::take(&mut *pending.lock().unwrap());
+    if !delta.is_empty() {
+        let _ = app.emit(
+            EVENT_LLM_DELTA,
+            LlmDelta {
+                chat_id: chat_id.to_string(),
+                delta,
+            },
+        );
+    }
+}
+
+fn emit_llm_result(app: &AppHandle, chat_id: String, res: Result<(), llm::LlmError>) {
+    match res {
+        Ok(()) | Err(llm::LlmError::Cancelled) => {
+            let _ = app.emit(EVENT_LLM_DONE, LlmDone { chat_id });
+        }
+        Err(e) => {
+            let _ = app.emit(
+                EVENT_LLM_ERROR,
+                LlmError {
+                    chat_id,
+                    message: e.to_string(),
+                },
+            );
+        }
+    }
+}
 
 #[tauri::command]
 async fn send_to_claude(
@@ -560,60 +677,18 @@ async fn send_to_claude(
     web_search: bool,
 ) {
     let fast = app.state::<App>().settings.lock().unwrap().fast_mode;
-    // thinking/web_search-гейтинг по capabilities модели (Models API), не по хардкоду имён
-    let model_info = {
-        let st = app.state::<App>();
-        let models = st.models.lock().unwrap();
-        models.iter().find(|m| m.id == model).cloned()
-    };
+    let model_info = find_cached_model(&app, &model);
     let thinking_field = llm::thinking_value(model_info.as_ref(), &model, thinking);
     let web_search_field = llm::web_search_value(model_info.as_ref(), &model, web_search);
     let client = app.state::<App>().llm.lock().unwrap().clone();
-    let cancel = CancellationToken::new();
-    {
-        let st = app.state::<App>();
-        let mut map = st.llm_cancel.lock().unwrap();
-        if let Some(old) = map.insert(chat_id.clone(), cancel.clone()) {
-            old.cancel(); // повторный send в тот же чат отменяет прежний
-        }
-    }
+    let cancel = register_llm_cancel(&app, &chat_id);
     let body =
         llm::build_request_body(&model, &system, &messages, thinking_field, fast, web_search_field);
 
-    // Коалесинг дельт: SSE отдаёт десятки событий/сек, а каждый emit — это
-    // JSON-сериализация + IPC + пробуждение webview. Копим в буфер и флашим
-    // ~40 раз/сек; финальный дрен обязан случиться ДО llm-done, иначе фронт
-    // (который на done снимает чат с active) потеряет хвост ответа.
-    let pending = Arc::new(Mutex::new(String::new()));
-    let flush_stop = CancellationToken::new();
-    let flusher = {
-        let pending = Arc::clone(&pending);
-        let app2 = app.clone();
-        let cid = chat_id.clone();
-        let stop = flush_stop.clone();
-        tauri::async_runtime::spawn(async move {
-            let drain = |p: &Mutex<String>| std::mem::take(&mut *p.lock().unwrap());
-            let mut tick = tokio::time::interval(std::time::Duration::from_millis(25));
-            loop {
-                tokio::select! {
-                    _ = tick.tick() => {}
-                    _ = stop.cancelled() => break,
-                }
-                let delta = drain(&pending);
-                if !delta.is_empty() {
-                    let _ = app2.emit("llm-delta", LlmDelta { chat_id: cid.clone(), delta });
-                }
-            }
-            let delta = drain(&pending);
-            if !delta.is_empty() {
-                let _ = app2.emit("llm-delta", LlmDelta { chat_id: cid.clone(), delta });
-            }
-        })
-    };
-
+    let flusher = spawn_llm_delta_flusher(app.clone(), chat_id.clone());
     let started = std::time::Instant::now();
     let mut got_first = false;
-    let pending_in = Arc::clone(&pending);
+    let pending_in = Arc::clone(&flusher.pending);
     let res = client
         .stream_message(body, cancel, move |delta| {
             if !got_first {
@@ -623,18 +698,10 @@ async fn send_to_claude(
             pending_in.lock().unwrap().push_str(delta);
         })
         .await;
-    flush_stop.cancel();
-    let _ = flusher.await; // дожидаемся финального дрена перед done/error
+    flusher.stop_and_await_final_drain().await;
     eprintln!("[perf] llm stream total {:?}", started.elapsed());
-    app.state::<App>().llm_cancel.lock().unwrap().remove(&chat_id);
-    match res {
-        Ok(()) | Err(llm::LlmError::Cancelled) => {
-            let _ = app.emit("llm-done", LlmDone { chat_id });
-        }
-        Err(e) => {
-            let _ = app.emit("llm-error", LlmError { chat_id, message: e.to_string() });
-        }
-    }
+    unregister_llm_cancel(&app, &chat_id);
+    emit_llm_result(&app, chat_id, res);
 }
 
 #[tauri::command]
@@ -644,8 +711,6 @@ fn cancel_stream(app: AppHandle, chat_id: String) {
     }
 }
 
-/// Модели аккаунта: живой фетч с обновлением кэша; при ошибке — кэш
-/// (фолбэк-список, если фетч ни разу не удавался).
 #[tauri::command]
 async fn list_models(app: AppHandle) -> Vec<llm::ModelInfo> {
     let client = app.state::<App>().llm.lock().unwrap().clone();
@@ -676,10 +741,8 @@ async fn retry_transcription(app: AppHandle) {
         let st = app.state::<App>();
         let mut rec = st.recorder.lock().unwrap();
         if *rec != state::RecorderState::Idle {
-            return; // живая запись/транскрипция важнее ретрая
+            return;
         }
-        // прямой перевод: машина не имеет события "retry", а её инварианты
-        // (PTT заблокирован в Transcribing) нам нужны и здесь
         *rec = state::RecorderState::Transcribing;
     }
     emit_state(&app, state::RecorderState::Transcribing);
@@ -696,30 +759,9 @@ fn set_settings(app: AppHandle, mut new_settings: settings::Settings) -> Result<
     new_settings.clamp();
     let st = app.state::<App>();
     let old = st.settings.lock().unwrap().clone();
-    if old.hotkey != new_settings.hotkey {
-        hotkey::register_ptt(&app, &new_settings.hotkey)?;
-        hotkey::unregister_ptt(&app, &old.hotkey);
-    }
-    if old.toggle_hotkey != new_settings.toggle_hotkey {
-        hotkey::register_toggle(&app, &new_settings.toggle_hotkey)?;
-        hotkey::unregister_toggle(&app, &old.toggle_hotkey);
-    }
-    if old.groq_api_key != new_settings.groq_api_key
-        || old.stt_language != new_settings.stt_language
-        || old.stt_translate != new_settings.stt_translate
-    {
-        *st.stt.lock().unwrap() = stt::GroqStt::new(new_settings.groq_api_key.clone())
-            .with_language(new_settings.stt_language.clone())
-            .with_translate(new_settings.stt_translate);
-    }
-    if old.anthropic_api_key != new_settings.anthropic_api_key {
-        *st.llm.lock().unwrap() = llm::AnthropicClient::new(new_settings.anthropic_api_key.clone());
-    }
-    if old.screen_share_visible != new_settings.screen_share_visible {
-        if let Some(w) = app.get_webview_window("main") {
-            let _ = w.set_content_protected(!new_settings.screen_share_visible);
-        }
-    }
+    reregister_changed_hotkeys(&app, &old, &new_settings)?;
+    rebuild_changed_api_clients(&st, &old, &new_settings);
+    apply_screen_share_visibility_change(&app, &old, &new_settings);
     new_settings
         .save(&settings_path(&app))
         .map_err(|e| e.to_string())?;
@@ -727,36 +769,111 @@ fn set_settings(app: AppHandle, mut new_settings: settings::Settings) -> Result<
     Ok(())
 }
 
-#[tauri::command]
-fn move_window_by(app: AppHandle, dx: i32, dy: i32) {
-    if let Some(w) = app.get_webview_window("main") {
-        if let Ok(pos) = w.outer_position() {
-            let _ = w.set_position(tauri::PhysicalPosition::new(pos.x + dx, pos.y + dy));
-            // WebKit прячет указатель мыши при нажатии клавиш над текстовым полем
-            // («до движения мыши»), а окно уезжает из-под курсора — указатель
-            // «пропадает», пока не шевельнёшь мышь. Отменяем скрытие после сдвига.
-            let _ = app.run_on_main_thread(|| {
-                objc2_app_kit::NSCursor::setHiddenUntilMouseMoves(false);
-            });
+fn reregister_changed_hotkeys(
+    app: &AppHandle,
+    old: &settings::Settings,
+    new: &settings::Settings,
+) -> Result<(), String> {
+    if old.hotkey != new.hotkey {
+        hotkey::register_ptt(app, &new.hotkey)?;
+        hotkey::unregister_ptt(app, &old.hotkey);
+    }
+    if old.toggle_hotkey != new.toggle_hotkey {
+        hotkey::register_toggle(app, &new.toggle_hotkey)?;
+        hotkey::unregister_toggle(app, &old.toggle_hotkey);
+    }
+    Ok(())
+}
+
+fn rebuild_changed_api_clients(st: &App, old: &settings::Settings, new: &settings::Settings) {
+    if old.groq_api_key != new.groq_api_key
+        || old.stt_language != new.stt_language
+        || old.stt_translate != new.stt_translate
+    {
+        *st.stt.lock().unwrap() = build_stt_client(new);
+    }
+    if old.anthropic_api_key != new.anthropic_api_key {
+        *st.llm.lock().unwrap() = llm::AnthropicClient::new(new.anthropic_api_key.clone());
+    }
+}
+
+fn apply_screen_share_visibility_change(
+    app: &AppHandle,
+    old: &settings::Settings,
+    new: &settings::Settings,
+) {
+    if old.screen_share_visible != new.screen_share_visible {
+        if let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+            let _ = w.set_content_protected(!new.screen_share_visible);
         }
     }
 }
 
-/// Плавно меняет ширину главного окна (логические px), сохраняя высоту. Растёт вправо
-/// (якорь — левый край); если правый край выходит за монитор — окно сдвигается влево
-/// (кламп через window_geom::clamp_window_x). Ease-out-твин на фоновом потоке
-/// с guard-генератором resize_gen.
+#[tauri::command]
+fn move_window_by(app: AppHandle, dx: i32, dy: i32) {
+    if let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        if let Ok(pos) = w.outer_position() {
+            let _ = w.set_position(tauri::PhysicalPosition::new(pos.x + dx, pos.y + dy));
+            cancel_cursor_hide_until_mouse_moves(&app);
+        }
+    }
+}
+
+fn cancel_cursor_hide_until_mouse_moves(app: &AppHandle) {
+    let _ = app.run_on_main_thread(|| {
+        objc2_app_kit::NSCursor::setHiddenUntilMouseMoves(false);
+    });
+}
+
+struct ResizeTween {
+    from_width: f64,
+    to_width: f64,
+    from_x: i32,
+    to_x: i32,
+    y: i32,
+    height: f64,
+}
+
 #[tauri::command]
 fn set_window_width(app: AppHandle, width: f64) {
-    let Some(w) = app.get_webview_window("main") else {
+    let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
         return;
     };
     let scale = w.scale_factor().unwrap_or(1.0);
-    let from_w = w.outer_size().map(|s| s.width as f64 / scale).unwrap_or(width);
-    let height = w.outer_size().map(|s| s.height as f64 / scale).unwrap_or(640.0);
+    let from_width = w.outer_size().map(|s| s.width as f64 / scale).unwrap_or(width);
+    let height = w
+        .outer_size()
+        .map(|s| s.height as f64 / scale)
+        .unwrap_or(FALLBACK_WINDOW_HEIGHT_LOGICAL_PX);
     let from_pos = w.outer_position().unwrap_or(tauri::PhysicalPosition::new(0, 0));
+    let target_x = clamped_target_x(&w, from_pos, width, scale);
 
-    // Целевой x с клампом по правому краю текущего монитора (физ. px).
+    if (from_width - width).abs() < RESIZE_WIDTH_EPSILON_LOGICAL_PX && from_pos.x == target_x {
+        return;
+    }
+
+    let my_gen = app
+        .state::<App>()
+        .resize_gen
+        .fetch_add(1, Ordering::SeqCst)
+        + 1;
+    let tween = ResizeTween {
+        from_width,
+        to_width: width,
+        from_x: from_pos.x,
+        to_x: target_x,
+        y: from_pos.y,
+        height,
+    };
+    std::thread::spawn(move || run_resize_tween(app, w, tween, my_gen));
+}
+
+fn clamped_target_x(
+    w: &tauri::WebviewWindow,
+    from_pos: tauri::PhysicalPosition<i32>,
+    width: f64,
+    scale: f64,
+) -> i32 {
     let target_phys_w = (width * scale).round() as u32;
     let (mon_x, mon_w) = w
         .current_monitor()
@@ -764,44 +881,42 @@ fn set_window_width(app: AppHandle, width: f64) {
         .flatten()
         .map(|m| (m.position().x, m.size().width))
         .unwrap_or((from_pos.x, target_phys_w));
-    let target_x = window_geom::clamp_window_x(from_pos.x, target_phys_w, mon_x, mon_w);
+    window_geom::clamp_window_x(from_pos.x, target_phys_w, mon_x, mon_w)
+}
 
-    if (from_w - width).abs() < 1.0 && from_pos.x == target_x {
-        return;
+fn ease_out_cubic(t: f64) -> f64 {
+    1.0 - (1.0 - t).powi(3)
+}
+
+fn run_resize_tween(app: AppHandle, w: tauri::WebviewWindow, tween: ResizeTween, my_gen: u64) {
+    for i in 1..=RESIZE_TWEEN_STEPS {
+        if app.state::<App>().resize_gen.load(Ordering::SeqCst) != my_gen {
+            return;
+        }
+        let eased = ease_out_cubic(f64::from(i) / f64::from(RESIZE_TWEEN_STEPS));
+        let cur_w = tween.from_width + (tween.to_width - tween.from_width) * eased;
+        let cur_x = (f64::from(tween.from_x) + f64::from(tween.to_x - tween.from_x) * eased)
+            .round() as i32;
+        apply_window_frame(&app, &w, cur_x, tween.y, cur_w, tween.height);
+        std::thread::sleep(RESIZE_TWEEN_FRAME_INTERVAL);
     }
-    let from_x = from_pos.x;
-    let y = from_pos.y;
+    if app.state::<App>().resize_gen.load(Ordering::SeqCst) == my_gen {
+        apply_window_frame(&app, &w, tween.to_x, tween.y, tween.to_width, tween.height);
+    }
+}
 
-    let my_gen = app
-        .state::<App>()
-        .resize_gen
-        .fetch_add(1, Ordering::SeqCst)
-        + 1;
-
-    std::thread::spawn(move || {
-        const STEPS: u32 = 14;
-        for i in 1..=STEPS {
-            if app.state::<App>().resize_gen.load(Ordering::SeqCst) != my_gen {
-                return;
-            }
-            let t = f64::from(i) / f64::from(STEPS);
-            let eased = 1.0 - (1.0 - t).powi(3); // ease-out cubic
-            let cur_w = from_w + (width - from_w) * eased;
-            let cur_x = (f64::from(from_x) + f64::from(target_x - from_x) * eased).round() as i32;
-            let win = w.clone();
-            let _ = app.run_on_main_thread(move || {
-                let _ = win.set_position(tauri::PhysicalPosition::new(cur_x, y));
-                let _ = win.set_size(tauri::LogicalSize::new(cur_w, height));
-            });
-            std::thread::sleep(std::time::Duration::from_millis(13));
-        }
-        if app.state::<App>().resize_gen.load(Ordering::SeqCst) == my_gen {
-            let win = w.clone();
-            let _ = app.run_on_main_thread(move || {
-                let _ = win.set_position(tauri::PhysicalPosition::new(target_x, y));
-                let _ = win.set_size(tauri::LogicalSize::new(width, height));
-            });
-        }
+fn apply_window_frame(
+    app: &AppHandle,
+    w: &tauri::WebviewWindow,
+    x: i32,
+    y: i32,
+    width: f64,
+    height: f64,
+) {
+    let win = w.clone();
+    let _ = app.run_on_main_thread(move || {
+        let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+        let _ = win.set_size(tauri::LogicalSize::new(width, height));
     });
 }
 
@@ -820,27 +935,28 @@ fn close_app(app: AppHandle) {
     app.exit(0);
 }
 
-/// Скрыть главное окно (жёлтая кнопка «светофора»); вернуть — глобальным
-/// toggle-хоткеем (см. on_toggle_visibility).
 #[tauri::command]
 fn hide_main_window(app: AppHandle) {
-    if let Some(w) = app.get_webview_window("main") {
+    if let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         let _ = w.hide();
     }
 }
 
 #[tauri::command]
 fn open_audio_permission_settings() {
-    let _ = std::process::Command::new("open")
-        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture")
+    let _ = std::process::Command::new(OPEN_COMMAND)
+        .arg(AUDIO_CAPTURE_PRIVACY_PANE_URL)
         .spawn();
+}
+
+fn is_web_url(url: &str) -> bool {
+    url.starts_with(HTTPS_URL_PREFIX) || url.starts_with(HTTP_URL_PREFIX)
 }
 
 #[tauri::command]
 fn open_external(url: String) {
-    // только web-ссылки: не даём открывать file://, smb:// и т.п.
-    if url.starts_with("https://") || url.starts_with("http://") {
-        let _ = std::process::Command::new("open").arg(url).spawn();
+    if is_web_url(&url) {
+        let _ = std::process::Command::new(OPEN_COMMAND).arg(url).spawn();
     }
 }
 
@@ -849,14 +965,11 @@ fn capture_available(app: AppHandle) -> bool {
     app.state::<App>().capture.lock().unwrap().is_some()
 }
 
-/// Сохраняет HTML, который отдаст кастомная схема preview:// при следующем запросе.
 #[tauri::command]
 fn set_preview_html(app: AppHandle, html: String) {
     *app.state::<App>().preview_html.lock().unwrap() = html;
 }
 
-/// Ручная проверка обновлений (кнопка в настройках). «Пропущенная» версия
-/// здесь игнорируется — пользователь спросил явно.
 #[tauri::command]
 async fn check_for_update(app: AppHandle) -> Result<Option<update::UpdateInfo>, String> {
     update::check(&app).await

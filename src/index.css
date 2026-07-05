@@ -3,15 +3,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Прозрачность окна Tauri управляется слайдером настроек (дефолт 90%, как в Settings). */
 :root {
   --app-opacity: 0.9;
-  /* Размер шрифта чата (слайдер настроек, applyChatFontSize). */
   --chat-font-size: 13.5px;
 
   --radius: 0.625rem;
 
-  /* Серый канвас (светлее прежнего графита, но тема остаётся тёмной) */
   --background: oklch(0.28 0.004 285);
   --foreground: oklch(0.95 0 0);
   --card: oklch(0.32 0.003 285);
@@ -21,7 +18,6 @@
   --muted: oklch(0.36 0.003 285);
   --muted-foreground: oklch(0.72 0.006 285);
 
-  /* Оксблад-акцент */
   --primary: oklch(0.45 0.16 18);
   --primary-foreground: oklch(0.97 0.01 30);
   --secondary: oklch(0.36 0.004 285);
@@ -35,7 +31,6 @@
   --input: oklch(1 0 0 / 14%);
   --ring: oklch(0.45 0.16 18 / 50%);
 
-  /* Доп. токены приложения */
   --primary-hover: oklch(0.5 0.18 20);
   --recording: oklch(0.62 0.2 18);
 }
@@ -74,11 +69,6 @@ body {
   background: transparent !important;
 }
 
-/*
- * Цвет текста на body: shadcn Dialog/Select/Tooltip рендерятся в портале на
- * document.body — ВНЕ .app-shell, где задан text-foreground. Без этого их текст
- * (поля настроек и т.п.) наследует чёрный по умолчанию и невидим на тёмном фоне.
- */
 body {
   color: var(--foreground);
   color-scheme: dark;
@@ -88,11 +78,6 @@ body {
   height: 100vh;
 }
 
-/*
- * Прозрачность всего окна: фон рисует только корневой .app-shell, множа графит-канвас
- * на --app-opacity через альфу. НЕ переопределяем .bg-background глобально — иначе
- * shadcn DialogContent (тоже bg-background) стал бы полупрозрачным.
- */
 .app-shell {
   background-color: color-mix(
     in oklch,
@@ -105,7 +90,6 @@ body {
   border-color: var(--border);
 }
 
-/* Markdown-ответ (react-markdown). prose-answer — локальный неймспейс. */
 .prose-answer > :first-child {
   margin-top: 0;
 }
@@ -147,13 +131,13 @@ body {
   background: color-mix(in oklch, var(--primary) 14%, transparent);
   color: oklch(0.8 0.09 18);
   font-family: var(--font-mono);
-  font-size: 0.89em; /* масштабируется вместе с --chat-font-size (12px при базовых 13.5px) */
+  font-size: 0.89em;
 }
 .prose-answer pre {
   margin: 0.65em 0 0.85em;
   padding: 12px 14px;
   border-radius: 9px;
-  background: oklch(0.22 0.003 285); /* темнее серого канваса, чтобы код читался блоком */
+  background: oklch(0.22 0.003 285);
   border: 1px solid var(--border);
   overflow-x: auto;
 }
@@ -163,11 +147,6 @@ body {
   color: oklch(0.85 0.01 285);
 }
 
-/*
- * Подсветка кода (highlight.js классы от rehype-highlight).
- * Палитра согласована с темой: оксблад-розовый для ключевых слов,
- * приглушённая зелень для строк, янтарь для чисел/типов, серый для комментариев.
- */
 .prose-answer .hljs-comment,
 .prose-answer .hljs-quote {
   color: oklch(0.6 0.01 285);

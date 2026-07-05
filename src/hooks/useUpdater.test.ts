@@ -50,9 +50,7 @@ describe("useUpdater", () => {
 
   it("install: downloading → прогресс → restarting по update-done", async () => {
     getAppVersion.mockResolvedValue("0.1.0");
-    let resolveInstall: () => void = () => {
-      /* переопределяется исполнителем промиса ниже */
-    };
+    let resolveInstall: () => void = () => undefined;
     installUpdate.mockReturnValue(
       new Promise((r) => {
         resolveInstall = r;
@@ -68,12 +66,11 @@ describe("useUpdater", () => {
     expect(result.current.progress).toEqual({ downloaded: 512, total: 1024 });
     emit("update-done", { version: "0.2.0" });
     expect(result.current.status).toBe("restarting");
-    // событие от периодической автопроверки не сбивает установку
     emit("update-available", INFO);
     expect(result.current.status).toBe("restarting");
     resolveInstall();
     await act(async () => {
-      await Promise.resolve(); // дать зарезолвленному install-промису отработать
+      await Promise.resolve();
     });
   });
 
@@ -89,7 +86,7 @@ describe("useUpdater", () => {
       expect(result.current.status).toBe("error");
     });
     expect(result.current.error).toContain("сеть недоступна");
-    expect(result.current.info).toEqual(INFO); // остаётся для «Повторить»
+    expect(result.current.info).toEqual(INFO);
   });
 
   it("checkNow: null — статус не меняется; найдено — available", async () => {

@@ -1,86 +1,118 @@
-// Диагностика 400 от Anthropic: гоняет все варианты тела запроса, которые умеет
-// собирать build_request_body, и печатает статус + тело ошибки.
-//   cargo run --example llm_smoke --manifest-path src-tauri/Cargo.toml
-fn main() {
-    let _ = dotenvy::from_path(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.env"));
-    let key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY в .env");
+const DOTENV_RELATIVE_PATH: &str = "../.env";
+const ANTHROPIC_KEY_ENV: &str = "ANTHROPIC_API_KEY";
+const ANTHROPIC_MESSAGES_URL: &str = "https://api.anthropic.com/v1/messages";
+const API_KEY_HEADER: &str = "x-api-key";
+const ANTHROPIC_VERSION_HEADER: &str = "anthropic-version";
+const ANTHROPIC_VERSION: &str = "2023-06-01";
+const ANTHROPIC_BETA_HEADER: &str = "anthropic-beta";
+const FAST_MODE_BETA: &str = "fast-mode-2026-02-01";
+const OPUS_MODEL: &str = "claude-opus-4-8";
+const BRIEF_SYSTEM: &str = "Кратко.";
+const ROLE_USER: &str = "user";
+const ROLE_ASSISTANT: &str = "assistant";
+const MAX_TOKENS_FIELD: &str = "max_tokens";
+const SPEED_FIELD: &str = "speed";
+const PROBE_MAX_TOKENS: u32 = 16;
+const ERROR_BODY_PREVIEW_CHARS: usize = 400;
+const HTTP_STATUS_OK: u16 = 200;
+const NO_WEB_SEARCH: Option<serde_json::Value> = None;
 
-    let msg = |role: &str, text: &str| itech_lib::llm::ChatMessage {
+fn chat_message(role: &str, text: &str) -> itech_lib::llm::ChatMessage {
+    itech_lib::llm::ChatMessage {
         role: role.into(),
         text: text.into(),
         images: vec![],
-    };
+    }
+}
 
-    let single = vec![msg("user", "Ответь одним словом: столица Франции?")];
-    let multi = vec![
-        msg("user", "1+1?"),
-        msg("assistant", "2"),
-        msg("user", "а 2+2?"),
-    ];
-    let with_empty_assistant = vec![
-        msg("user", "1+1?"),
-        msg("assistant", ""),
-        msg("user", "а 2+2?"),
-    ];
+fn arithmetic_dialog(assistant_text: &str) -> Vec<itech_lib::llm::ChatMessage> {
+    vec![
+        chat_message(ROLE_USER, "1+1?"),
+        chat_message(ROLE_ASSISTANT, assistant_text),
+        chat_message(ROLE_USER, "а 2+2?"),
+    ]
+}
 
-    let cases: Vec<(&str, serde_json::Value)> = vec![
+fn probe_body(
+    system: &str,
+    messages: &[itech_lib::llm::ChatMessage],
+    thinking: bool,
+    fast: bool,
+) -> serde_json::Value {
+    itech_lib::llm::build_request_body(
+        OPUS_MODEL,
+        system,
+        messages,
+        itech_lib::llm::thinking_value(None, OPUS_MODEL, thinking),
+        fast,
+        NO_WEB_SEARCH,
+    )
+}
+
+fn build_cases() -> Vec<(&'static str, serde_json::Value)> {
+    let single = vec![chat_message(
+        ROLE_USER,
+        "Ответь одним словом: столица Франции?",
+    )];
+    let multi = arithmetic_dialog("2");
+    let with_empty_assistant = arithmetic_dialog("");
+
+    vec![
         (
             "opus thinking=on fast=off (база)",
-            itech_lib::llm::build_request_body("claude-opus-4-8", "Кратко.", &single, true, false),
+            probe_body(BRIEF_SYSTEM, &single, true, false),
         ),
-        (
-            "opus thinking=off",
-            itech_lib::llm::build_request_body("claude-opus-4-8", "Кратко.", &single, false, false),
-        ),
-        (
-            "opus fast=on",
-            itech_lib::llm::build_request_body("claude-opus-4-8", "Кратко.", &single, true, true),
-        ),
-        (
-            "opus мультитёрн с кэшем",
-            itech_lib::llm::build_request_body("claude-opus-4-8", "Кратко.", &multi, true, false),
-        ),
+        ("opus thinking=off", probe_body(BRIEF_SYSTEM, &single, false, false)),
+        ("opus fast=on", probe_body(BRIEF_SYSTEM, &single, true, true)),
+        ("opus мультитёрн с кэшем", probe_body(BRIEF_SYSTEM, &multi, true, false)),
         (
             "opus пустой assistant в истории",
-            itech_lib::llm::build_request_body(
-                "claude-opus-4-8",
-                "Кратко.",
-                &with_empty_assistant,
-                true,
-                false,
-            ),
+            probe_body(BRIEF_SYSTEM, &with_empty_assistant, true, false),
         ),
         (
             "opus без препромпта (system=\"\")",
-            itech_lib::llm::build_request_body("claude-opus-4-8", "", &single, true, false),
+            probe_body("", &single, true, false),
         ),
-    ];
+    ]
+}
 
+async fn run_case(client: &reqwest::Client, key: &str, name: &str, mut body: serde_json::Value) {
+    body[MAX_TOKENS_FIELD] = serde_json::json!(PROBE_MAX_TOKENS);
+    let mut req = client
+        .post(ANTHROPIC_MESSAGES_URL)
+        .header(API_KEY_HEADER, key)
+        .header(ANTHROPIC_VERSION_HEADER, ANTHROPIC_VERSION);
+    if body.get(SPEED_FIELD).is_some() {
+        req = req.header(ANTHROPIC_BETA_HEADER, FAST_MODE_BETA);
+    }
+    match req.json(&body).send().await {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            if status == HTTP_STATUS_OK {
+                println!("[OK ] {name}");
+                drop(resp);
+            } else {
+                let text = resp.text().await.unwrap_or_default();
+                let preview: String = text.chars().take(ERROR_BODY_PREVIEW_CHARS).collect();
+                println!("[{status}] {name}: {preview}");
+            }
+        }
+        Err(e) => println!("[NET] {name}: {e}"),
+    }
+}
+
+fn main() {
+    let _ = dotenvy::from_path(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(DOTENV_RELATIVE_PATH),
+    );
+    let key = std::env::var(ANTHROPIC_KEY_ENV).expect("ANTHROPIC_API_KEY в .env");
+
+    let cases = build_cases();
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async move {
         let client = reqwest::Client::new();
-        for (name, mut body) in cases {
-            body["max_tokens"] = serde_json::json!(16); // дёшево: нам нужен только статус
-            let mut req = client
-                .post("https://api.anthropic.com/v1/messages")
-                .header("x-api-key", &key)
-                .header("anthropic-version", "2023-06-01");
-            if body.get("speed").is_some() {
-                req = req.header("anthropic-beta", "fast-mode-2026-02-01");
-            }
-            match req.json(&body).send().await {
-                Ok(resp) => {
-                    let status = resp.status().as_u16();
-                    if status == 200 {
-                        println!("[OK ] {name}");
-                        drop(resp); // обрываем стрим сразу
-                    } else {
-                        let text = resp.text().await.unwrap_or_default();
-                        println!("[{status}] {name}: {}", &text[..text.len().min(400)]);
-                    }
-                }
-                Err(e) => println!("[NET] {name}: {e}"),
-            }
+        for (name, body) in cases {
+            run_case(&client, &key, name, body).await;
         }
     });
 }
