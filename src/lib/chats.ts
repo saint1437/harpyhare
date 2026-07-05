@@ -27,6 +27,11 @@ export interface Chat {
   thinkingEnabled: boolean;
   /** Модель Anthropic этого чата (селект в Composer). */
   model: string;
+  /** Server-side веб-поиск Anthropic в ответах этого чата (тумблер в Composer). */
+  webSearch: boolean;
+  /** Постоянный контекст чата (вакансия/резюме/конспект…) — уходит в system каждого
+   *  запроса. Текст, в отличие от картинок, переживает сериализацию на диск. */
+  context: string;
 }
 
 function uid(): string {
@@ -44,6 +49,8 @@ export function createChat(index: number): Chat {
     presetId: TRANSCRIPTION_PRESET_ID,
     thinkingEnabled: true,
     model: DEFAULT_MODEL,
+    webSearch: false,
+    context: "",
   };
 }
 
@@ -63,6 +70,8 @@ export function serializeChats(chats: Chat[]): string {
     presetId: c.presetId,
     thinkingEnabled: c.thinkingEnabled,
     model: c.model,
+    webSearch: c.webSearch,
+    context: c.context,
     messages: c.messages.map((m) => ({ role: m.role, text: m.text, images: [] })),
     draft: c.draft,
     draftAttachments: [],
@@ -90,6 +99,9 @@ export function deserializeChats(json: string): Chat[] | null {
       // legacy-чаты без поля ведут себя как раньше (thinking включён)
       thinkingEnabled: typeof o.thinkingEnabled === "boolean" ? o.thinkingEnabled : true,
       model: typeof o.model === "string" && o.model !== "" ? o.model : DEFAULT_MODEL,
+      // legacy-чаты без полей: поиск выключен, контекста нет
+      webSearch: typeof o.webSearch === "boolean" ? o.webSearch : false,
+      context: typeof o.context === "string" ? o.context : "",
       messages: Array.isArray(o.messages)
         ? o.messages.map((m) => ({
             role: m.role === "assistant" ? "assistant" : "user",

@@ -9,9 +9,10 @@ export async function sendToClaude(
   system: string,
   thinking: boolean,
   model: string,
+  webSearch: boolean,
 ): Promise<void> {
   if (!isTauri()) return;
-  await invoke("send_to_claude", { messages, chatId, system, thinking, model });
+  await invoke("send_to_claude", { messages, chatId, system, thinking, model, webSearch });
 }
 
 /** Модели аккаунта (GET /v1/models на стороне Rust, с кэшем и фолбэком). */

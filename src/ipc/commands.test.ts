@@ -18,6 +18,7 @@ describe("commands в браузерном режиме", () => {
         "",
         true,
         "claude-opus-4-8",
+        false,
       ),
     ).resolves.toBeUndefined();
     await expect(moveWindowBy(10, 0)).resolves.toBeUndefined();

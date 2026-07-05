@@ -32,6 +32,8 @@ const EMPTY_CHAT: Chat = {
   presetId: "",
   thinkingEnabled: true,
   model: "claude-opus-4-8",
+  webSearch: false,
+  context: "",
 };
 
 function readAsDataUrl(file: File): Promise<string> {
@@ -75,6 +77,8 @@ export interface ChatsApi {
   setChatPreset: (id: string, presetId: string) => void;
   setChatThinking: (id: string, enabled: boolean) => void;
   setChatModel: (id: string, model: string) => void;
+  setChatWebSearch: (id: string, enabled: boolean) => void;
+  setChatContext: (id: string, context: string) => void;
   selectChat: (id: string) => void;
   setDraft: (id: string, draft: string, draftAttachments: Attachment[]) => void;
   addDraftAttachments: (id: string, items: DataTransferItemList) => Promise<void>;
@@ -180,6 +184,20 @@ export function useChats(): ChatsApi {
     [patch],
   );
 
+  const setChatWebSearch = useCallback(
+    (id: string, enabled: boolean) => {
+      patch(id, (c) => ({ ...c, webSearch: enabled }));
+    },
+    [patch],
+  );
+
+  const setChatContext = useCallback(
+    (id: string, context: string) => {
+      patch(id, (c) => ({ ...c, context }));
+    },
+    [patch],
+  );
+
   const selectChat = useCallback((id: string) => {
     setActiveId(id);
   }, []);
@@ -265,6 +283,8 @@ export function useChats(): ChatsApi {
     setChatPreset,
     setChatThinking,
     setChatModel,
+    setChatWebSearch,
+    setChatContext,
     selectChat,
     setDraft,
     addDraftAttachments,

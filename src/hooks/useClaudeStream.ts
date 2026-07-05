@@ -16,13 +16,16 @@ export interface ClaudeStreams {
     system: string,
     thinking: boolean,
     model: string,
+    webSearch: boolean,
   ) => Promise<void>;
   stop: (chatId: string) => void;
 }
 
 /**
  * @param onComplete вызывается на llm-done с финальным текстом — потребитель
- * дописывает ответ как assistant-сообщение в историю чата.
+ * дописывает ответ как assistant-сообщение в историю чата. Также вызывается
+ * на stop/llm-error с непустым частичным текстом: уже полученный ответ не
+ * выбрасывается (пользователь часто жмёт «Стоп», уже увидев нужное).
  */
 export function useClaudeStream(
   onComplete: (chatId: string, finalText: string) => void,
@@ -83,6 +86,10 @@ export function useClaudeStream(
     const offError = onEvent("llm-error", ({ chatId, message }) => {
       if (!active.current.has(chatId)) return;
       active.current.delete(chatId);
+      // Стрим упал на полпути — сохраняем уже полученный текст в историю,
+      // а не выбрасываем (ошибка всё равно показывается рядом).
+      const text = buffers.current.get(chatId) ?? "";
+      if (text !== "") onCompleteRef.current(chatId, text);
       dropPartial(chatId);
       setStreaming((s) => ({ ...s, [chatId]: false }));
       setError((e) => ({ ...e, [chatId]: message }));
@@ -103,6 +110,7 @@ export function useClaudeStream(
       system: string,
       thinking: boolean,
       model: string,
+      webSearch: boolean,
     ) => {
       buffers.current.set(chatId, "");
       active.current.add(chatId);
@@ -111,7 +119,7 @@ export function useClaudeStream(
       setStartedAt((s) => ({ ...s, [chatId]: Date.now() }));
       setError((e) => ({ ...e, [chatId]: null }));
       try {
-        await sendToClaude(messages, chatId, system, thinking, model);
+        await sendToClaude(messages, chatId, system, thinking, model, webSearch);
       } catch (e) {
         active.current.delete(chatId);
         dropPartial(chatId);
@@ -126,6 +134,11 @@ export function useClaudeStream(
     (chatId: string) => {
       active.current.delete(chatId);
       void cancelStream(chatId);
+      // Частичный ответ дописываем в историю, а не выбрасываем. Дубля не будет:
+      // llm-done отменённого стрима подавится (чат уже снят с active), а буфер
+      // очищается ниже в dropPartial.
+      const text = buffers.current.get(chatId) ?? "";
+      if (text !== "") onCompleteRef.current(chatId, text);
       dropPartial(chatId);
       setStreaming((s) => ({ ...s, [chatId]: false }));
     },

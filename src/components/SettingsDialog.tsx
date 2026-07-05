@@ -11,6 +11,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,6 +38,17 @@ export interface SettingsDialogProps {
 }
 
 type CheckState = "idle" | "checking" | "latest" | "error";
+
+/** Языки распознавания Whisper (ISO 639-1); "auto" — поле language не отправляется. */
+const STT_LANGUAGES = [
+  { value: "ru", label: "Русский" },
+  { value: "en", label: "English" },
+  { value: "uk", label: "Українська" },
+  { value: "de", label: "Deutsch" },
+  { value: "es", label: "Español" },
+  { value: "fr", label: "Français" },
+  { value: "auto", label: "Автоопределение" },
+];
 
 export function SettingsDialog({
   open,
@@ -135,6 +153,35 @@ export function SettingsDialog({
               }}
             />
           </Field>
+          <Field label="Язык распознавания">
+            <Select
+              value={draft.stt_language === "" ? "auto" : draft.stt_language}
+              disabled={draft.stt_translate}
+              onValueChange={(v) => {
+                set("stt_language", v === "auto" ? "" : v);
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper">
+                {STT_LANGUAGES.map((l) => (
+                  <SelectItem key={l.value} value={l.value}>
+                    {l.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <label className="flex items-center gap-2.5 text-[12.5px]">
+            <Switch
+              checked={draft.stt_translate}
+              onCheckedChange={(v) => {
+                set("stt_translate", v);
+              }}
+            />
+            Переводить речь на английский (язык исходника — любой)
+          </label>
           <Field label="Пресеты препромпта">
             <div className="grid gap-2">
               {draft.prompt_presets.map((p, i) => (
@@ -215,6 +262,15 @@ export function SettingsDialog({
               }}
             />
             Fast mode (Opus 4.8) — до 2.5x быстрее, дороже
+          </label>
+          <label className="flex items-center gap-2.5 text-[12.5px]">
+            <Switch
+              checked={draft.screen_share_visible}
+              onCheckedChange={(v) => {
+                set("screen_share_visible", v);
+              }}
+            />
+            Показывать окно при демонстрации экрана
           </label>
           <Field label={`Размер шрифта чата — ${draft.chat_font_size}px`}>
             <Slider

@@ -29,6 +29,14 @@ pub struct Settings {
     /// Версия, «пропущенная» в диалоге обновления: автоуведомление о ней
     /// не показывается ("" — ничего не пропущено). Ручную проверку не глушит.
     pub skipped_version: String,
+    /// Язык распознавания Whisper (ISO 639-1, напр. "ru"); "" — автоопределение.
+    pub stt_language: String,
+    /// Переводить речь на английский: эндпоинт /audio/translations вместо
+    /// /audio/transcriptions (см. stt.rs — там же смена модели).
+    pub stt_translate: bool,
+    /// Показывать окно при демонстрации экрана. Окно создаётся с
+    /// contentProtected=true (tauri.conf.json); true снимает защиту.
+    pub screen_share_visible: bool,
 }
 
 impl Default for Settings {
@@ -50,6 +58,9 @@ impl Default for Settings {
             fast_mode: false,
             chat_font_size: 13.5,
             skipped_version: String::new(),
+            stt_language: "ru".into(),
+            stt_translate: false,
+            screen_share_visible: false,
         }
     }
 }
@@ -139,6 +150,9 @@ mod tests {
         assert_eq!(s.toggle_hotkey, "Cmd+Shift+H");
         assert!(!s.fast_mode);
         assert_eq!(s.chat_font_size, 13.5);
+        assert_eq!(s.stt_language, "ru");
+        assert!(!s.stt_translate);
+        assert!(!s.screen_share_visible);
     }
 
     #[test]
@@ -172,6 +186,18 @@ mod tests {
         std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
         let s = Settings::load(&path).unwrap();
         assert_eq!(s.skipped_version, ""); // старый settings.json без поля → ""
+    }
+
+    #[test]
+    fn load_missing_stt_and_screen_share_fields_default() {
+        // старый settings.json без новых полей → ru / без перевода / окно скрыто в захвате
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.json");
+        std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+        let s = Settings::load(&path).unwrap();
+        assert_eq!(s.stt_language, "ru");
+        assert!(!s.stt_translate);
+        assert!(!s.screen_share_visible);
     }
 
     #[test]

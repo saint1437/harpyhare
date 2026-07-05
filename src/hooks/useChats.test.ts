@@ -152,6 +152,32 @@ describe("useChats", () => {
     expect(result.current.active.thinkingEnabled).toBe(false);
   });
 
+  it("новый чат — без веб-поиска; setChatWebSearch включает по чату", async () => {
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(1);
+    });
+    expect(result.current.active.webSearch).toBe(false);
+    const id = result.current.activeId;
+    act(() => {
+      result.current.setChatWebSearch(id, true);
+    });
+    expect(result.current.active.webSearch).toBe(true);
+  });
+
+  it("новый чат — без контекста; setChatContext задаёт его по чату", async () => {
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(1);
+    });
+    expect(result.current.active.context).toBe("");
+    const id = result.current.activeId;
+    act(() => {
+      result.current.setChatContext(id, "резюме кандидата");
+    });
+    expect(result.current.active.context).toBe("резюме кандидата");
+  });
+
   it("removeChat не даёт удалить последний и переключает активный", async () => {
     const { result } = renderHook(() => useChats());
     await waitFor(() => {

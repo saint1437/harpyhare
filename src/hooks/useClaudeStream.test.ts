@@ -54,6 +54,7 @@ describe("useClaudeStream (per-chat)", () => {
           "",
           true,
           "claude-opus-4-8",
+          false,
         ),
     );
     emit("llm-delta", { chatId: "A", delta: "при" });
@@ -72,6 +73,7 @@ describe("useClaudeStream (per-chat)", () => {
           "",
           true,
           "claude-opus-4-8",
+          false,
         ),
     );
     act(
@@ -82,6 +84,7 @@ describe("useClaudeStream (per-chat)", () => {
           "",
           true,
           "claude-opus-4-8",
+          false,
         ),
     );
     emit("llm-delta", { chatId: "A", delta: "AAA" });
@@ -101,6 +104,7 @@ describe("useClaudeStream (per-chat)", () => {
           "",
           true,
           "claude-opus-4-8",
+          false,
         ),
     );
     emit("llm-delta", { chatId: "A", delta: "итог" });
@@ -120,6 +124,7 @@ describe("useClaudeStream (per-chat)", () => {
           "",
           true,
           "claude-opus-4-8",
+          false,
         ),
     );
     act(() => {
@@ -128,6 +133,72 @@ describe("useClaudeStream (per-chat)", () => {
     expect(cancelStream).toHaveBeenCalledWith("A");
     emit("llm-delta", { chatId: "A", delta: "поздно" });
     expect(result.current.partial["A"]).toBeUndefined();
+  });
+
+  it("stop сохраняет частичный ответ через onComplete (не выбрасывает)", () => {
+    const onComplete = vi.fn();
+    const { result } = renderHook(() => useClaudeStream(onComplete));
+    act(
+      () =>
+        void result.current.send(
+          "A",
+          [{ role: "user", text: "q", images: [] }],
+          "",
+          true,
+          "claude-opus-4-8",
+          false,
+        ),
+    );
+    emit("llm-delta", { chatId: "A", delta: "почти готовый ответ" });
+    act(() => {
+      result.current.stop("A");
+    });
+    expect(onComplete).toHaveBeenCalledWith("A", "почти готовый ответ");
+    expect(result.current.partial["A"]).toBeUndefined();
+    // llm-done отменённого стрима не даёт второго append (чат снят с active)
+    emit("llm-done", { chatId: "A" });
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("stop без полученного текста не трогает onComplete", () => {
+    const onComplete = vi.fn();
+    const { result } = renderHook(() => useClaudeStream(onComplete));
+    act(
+      () =>
+        void result.current.send(
+          "A",
+          [{ role: "user", text: "q", images: [] }],
+          "",
+          true,
+          "claude-opus-4-8",
+          false,
+        ),
+    );
+    act(() => {
+      result.current.stop("A");
+    });
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("llm-error сохраняет частичный ответ и показывает ошибку", () => {
+    const onComplete = vi.fn();
+    const { result } = renderHook(() => useClaudeStream(onComplete));
+    act(
+      () =>
+        void result.current.send(
+          "A",
+          [{ role: "user", text: "q", images: [] }],
+          "",
+          true,
+          "claude-opus-4-8",
+          false,
+        ),
+    );
+    emit("llm-delta", { chatId: "A", delta: "начало ответа" });
+    emit("llm-error", { chatId: "A", message: "оборвалось" });
+    expect(onComplete).toHaveBeenCalledWith("A", "начало ответа");
+    expect(result.current.error["A"]).toBe("оборвалось");
+    expect(result.current.streaming["A"]).toBeFalsy();
   });
 
   it("llm-error кладёт ошибку в чат и снимает streaming", () => {
@@ -140,6 +211,7 @@ describe("useClaudeStream (per-chat)", () => {
           "",
           true,
           "claude-opus-4-8",
+          false,
         ),
     );
     emit("llm-error", { chatId: "A", message: "сломалось" });

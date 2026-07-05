@@ -23,6 +23,11 @@ pub struct GroqStt {
     base_url: String,
     timeout: std::time::Duration,
     client: reqwest::Client,
+    /// Язык распознавания (ISO 639-1); пустая строка — автоопределение Whisper.
+    language: String,
+    /// Перевод на английский: эндпоинт /audio/translations + whisper-large-v3
+    /// (turbo эндпоинт переводов не поддерживает).
+    translate: bool,
 }
 
 impl GroqStt {
@@ -41,6 +46,8 @@ impl GroqStt {
             base_url: "https://api.groq.com".into(),
             timeout: std::time::Duration::from_secs(60),
             client,
+            language: "ru".into(),
+            translate: false,
         }
     }
 
@@ -61,16 +68,39 @@ impl GroqStt {
         self.timeout = t;
         self
     }
+    pub fn with_language(mut self, language: String) -> Self {
+        self.language = language;
+        self
+    }
+    pub fn with_translate(mut self, translate: bool) -> Self {
+        self.translate = translate;
+        self
+    }
 }
 
 impl GroqStt {
-    fn form_with(part: reqwest::multipart::Part) -> reqwest::multipart::Form {
-        reqwest::multipart::Form::new()
+    fn form_with(&self, part: reqwest::multipart::Part) -> reqwest::multipart::Form {
+        // Перевод умеет только whisper-large-v3 (turbo — нет).
+        let model = if self.translate { "whisper-large-v3" } else { "whisper-large-v3-turbo" };
+        let mut form = reqwest::multipart::Form::new()
             .part("file", part.file_name("audio.wav"))
-            .text("model", "whisper-large-v3-turbo")
-            .text("language", "ru")
+            .text("model", model)
             .text("temperature", "0")
-            .text("response_format", "json")
+            .text("response_format", "json");
+        // language: у /translations цель всегда английский — поле не отправляем;
+        // пустая строка = автоопределение Whisper (поле опускаем).
+        if !self.translate && !self.language.is_empty() {
+            form = form.text("language", self.language.clone());
+        }
+        form
+    }
+
+    fn endpoint(&self) -> &'static str {
+        if self.translate {
+            "/openai/v1/audio/translations"
+        } else {
+            "/openai/v1/audio/transcriptions"
+        }
     }
 
     async fn parse_response(resp: reqwest::Response) -> Result<String, SttError> {
@@ -111,9 +141,9 @@ impl GroqStt {
             .map_err(|e| SttError::Other(e.to_string()))?;
         let send = self
             .client
-            .post(format!("{}/openai/v1/audio/transcriptions", self.base_url))
+            .post(format!("{}{}", self.base_url, self.endpoint()))
             .bearer_auth(&self.api_key)
-            .multipart(Self::form_with(part))
+            .multipart(self.form_with(part))
             .timeout(std::time::Duration::from_secs(11 * 60))
             .send();
         let resp = tokio::select! {
@@ -133,9 +163,9 @@ impl SttEngine for GroqStt {
             .map_err(|e| SttError::Other(e.to_string()))?;
         let resp = self
             .client
-            .post(format!("{}/openai/v1/audio/transcriptions", self.base_url))
+            .post(format!("{}{}", self.base_url, self.endpoint()))
             .bearer_auth(&self.api_key)
-            .multipart(Self::form_with(part))
+            .multipart(self.form_with(part))
             .timeout(self.timeout)
             .send()
             .await
@@ -154,6 +184,22 @@ mod tests {
         vec![0.1f32; 16000] // 1 сек не-тишины
     }
 
+    /// Матчеры по подстроке в сыром теле (multipart-поля лежат в теле как текст).
+    /// Свои, а не body_string_contains: тело с WAV — не валидный UTF-8, штатный
+    /// матчер на таком не срабатывает; from_utf8_lossy текстовые поля сохраняет.
+    struct BodyHas(&'static str);
+    impl wiremock::Match for BodyHas {
+        fn matches(&self, request: &wiremock::Request) -> bool {
+            String::from_utf8_lossy(&request.body).contains(self.0)
+        }
+    }
+    struct BodyLacks(&'static str);
+    impl wiremock::Match for BodyLacks {
+        fn matches(&self, request: &wiremock::Request) -> bool {
+            !String::from_utf8_lossy(&request.body).contains(self.0)
+        }
+    }
+
     #[tokio::test]
     async fn transcribe_returns_text_on_success() {
         let server = MockServer::start().await;
@@ -165,6 +211,53 @@ mod tests {
             .await;
         let stt = GroqStt::new("gsk_test".into()).with_base_url(server.uri());
         assert_eq!(stt.transcribe(&samples()).await.unwrap(), "привет мир");
+    }
+
+    #[tokio::test]
+    async fn transcribe_sends_language_field_by_default() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/openai/v1/audio/transcriptions"))
+            .and(BodyHas("language"))
+            .and(BodyHas("whisper-large-v3-turbo"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "ок"})))
+            .mount(&server)
+            .await;
+        let stt = GroqStt::new("k".into()).with_base_url(server.uri());
+        // без совпадения по телу мок не сматчится (404 → ошибка)
+        assert_eq!(stt.transcribe(&samples()).await.unwrap(), "ок");
+    }
+
+    #[tokio::test]
+    async fn empty_language_means_autodetect_field_omitted() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/openai/v1/audio/transcriptions"))
+            .and(BodyLacks("language"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "auto"})))
+            .mount(&server)
+            .await;
+        let stt = GroqStt::new("k".into())
+            .with_base_url(server.uri())
+            .with_language(String::new());
+        assert_eq!(stt.transcribe(&samples()).await.unwrap(), "auto");
+    }
+
+    #[tokio::test]
+    async fn translate_uses_translations_endpoint_and_large_v3() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/openai/v1/audio/translations"))
+            .and(BodyHas("whisper-large-v3"))
+            .and(BodyLacks("turbo")) // перевод умеет только whisper-large-v3
+            .and(BodyLacks("language")) // цель перевода всегда английский
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "hello"})))
+            .mount(&server)
+            .await;
+        let stt = GroqStt::new("k".into())
+            .with_base_url(server.uri())
+            .with_translate(true);
+        assert_eq!(stt.transcribe(&samples()).await.unwrap(), "hello");
     }
 
     #[tokio::test]

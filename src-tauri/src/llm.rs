@@ -36,10 +36,19 @@ pub struct ModelInfo {
     /// Thinking нельзя выключить (Fable/Mythos «думают всегда»). Capabilities этого
     /// не выражают — единственное оставшееся модельное исключение по имени.
     pub always_thinks: bool,
+    /// Поддерживает code execution (capabilities.code_execution). Влияет на форму
+    /// server-side веб-поиска: без него web_search_20260209 требует
+    /// allowed_callers=["direct"] (см. web_search_value).
+    pub code_exec: bool,
 }
 
 /// Эвристика на случай недоступных capabilities (оффлайн/старый API).
 fn fallback_adaptive(id: &str) -> bool {
+    !id.starts_with("claude-haiku")
+}
+
+/// Эвристика code execution без capabilities: из текущих моделей его нет у haiku.
+fn fallback_code_exec(id: &str) -> bool {
     !id.starts_with("claude-haiku")
 }
 
@@ -53,9 +62,13 @@ fn model_info_from_json(v: &Value) -> Option<ModelInfo> {
     let adaptive = v["capabilities"]["thinking"]["types"]["adaptive"]["supported"]
         .as_bool()
         .unwrap_or_else(|| fallback_adaptive(&id));
+    let code_exec = v["capabilities"]["code_execution"]["supported"]
+        .as_bool()
+        .unwrap_or_else(|| fallback_code_exec(&id));
     Some(ModelInfo {
         always_thinks: always_thinks(&id),
         adaptive,
+        code_exec,
         id,
         display_name,
     })
@@ -69,10 +82,11 @@ pub fn fallback_models() -> Vec<ModelInfo> {
         ("claude-haiku-4-5", "Claude Haiku 4.5", false),
     ]
     .into_iter()
-    .map(|(id, name, adaptive)| ModelInfo {
+    .map(|(id, name, caps)| ModelInfo {
         id: id.into(),
         display_name: name.into(),
-        adaptive,
+        adaptive: caps,
+        code_exec: caps, // у текущих моделей совпадает: haiku без обоих
         always_thinks: false,
     })
     .collect()
@@ -95,6 +109,24 @@ pub fn thinking_value(info: Option<&ModelInfo>, model_id: &str, requested: bool)
     } else {
         None // без adaptive thinking по умолчанию и так выключен
     }
+}
+
+/// Элемент tools для server-side веб-поиска (None = не отправлять). Версия одна —
+/// web_search_20260209 (Anthropic ищет сам, внутри того же стрима); её
+/// programmatic-режим (динамическая фильтрация результатов) требует code
+/// execution, поэтому моделям без него (haiku, по capabilities) ограничиваем
+/// вызов allowed_callers=["direct"] — иначе API отвергает запрос целиком.
+/// Проверено живыми пробами /v1/messages по всем моделям аккаунта.
+pub fn web_search_value(info: Option<&ModelInfo>, model_id: &str, requested: bool) -> Option<Value> {
+    if !requested {
+        return None;
+    }
+    let code_exec = info.map_or_else(|| fallback_code_exec(model_id), |m| m.code_exec);
+    let mut tool = json!({"type": "web_search_20260209", "name": "web_search", "max_uses": 5});
+    if !code_exec {
+        tool["allowed_callers"] = json!(["direct"]);
+    }
+    Some(tool)
 }
 
 /// Клиент с «вечно тёплым» пулом: h2-пинги в простое + пул без экспирации,
@@ -267,6 +299,10 @@ pub fn build_content(text: &str, images: &[ImageAttachment], cache_breakpoint: b
 
 /// `thinking` — готовое значение поля (см. [`thinking_value`]; None = не отправлять).
 /// `fast=true` + opus-4-8 → speed:"fast" (beta-заголовок добавляет stream_message).
+/// `web_search` — готовый элемент tools (см. [`web_search_value`]; None = не отправлять).
+/// Клиентского tool-loop нет — server-side поиск идёт внутри того же стрима;
+/// SseParser server_tool_use-события игнорирует, текстовые дельты финального
+/// ответа идут обычным путём.
 ///
 /// Prompt caching: чат stateless и каждый запрос повторяет всю историю, поэтому ставим два
 /// брейкпоинта — на system-блоке и на последнем блоке последнего сообщения. Follow-up в том же
@@ -278,6 +314,7 @@ pub fn build_request_body(
     messages: &[ChatMessage],
     thinking: Option<Value>,
     fast: bool,
+    web_search: Option<Value>,
 ) -> Value {
     // Пустые сообщения (ответ без текста и т.п.) отбрасываем: API отвергает
     // пустой content, и один такой элемент навсегда ломал бы отправку чата.
@@ -309,6 +346,9 @@ pub fn build_request_body(
     // fast mode — research preview только на opus-4-8; capabilities его не выражают
     if fast && model == "claude-opus-4-8" {
         body["speed"] = json!("fast");
+    }
+    if let Some(tool) = web_search {
+        body["tools"] = json!([tool]);
     }
     body
 }
@@ -419,6 +459,7 @@ mod tests {
             display_name: "New".into(),
             adaptive: false,
             always_thinks: false,
+            code_exec: true,
         };
         assert_eq!(thinking_value(Some(&info), "claude-newmodel-9", true), None);
     }
@@ -428,17 +469,22 @@ mod tests {
         let v = json!({
             "id": "claude-haiku-4-5-20251001",
             "display_name": "Claude Haiku 4.5",
-            "capabilities": {"thinking": {"supported": true, "types": {
-                "enabled": {"supported": true}, "adaptive": {"supported": false}
-            }}}
+            "capabilities": {
+                "thinking": {"supported": true, "types": {
+                    "enabled": {"supported": true}, "adaptive": {"supported": false}
+                }},
+                "code_execution": {"supported": false}
+            }
         });
         let m = model_info_from_json(&v).unwrap();
         assert_eq!(m.display_name, "Claude Haiku 4.5");
         assert!(!m.adaptive);
         assert!(!m.always_thinks);
+        assert!(!m.code_exec);
         // без capabilities — эвристика по имени
         let m = model_info_from_json(&json!({"id": "claude-sonnet-5"})).unwrap();
         assert!(m.adaptive);
+        assert!(m.code_exec);
         assert_eq!(m.display_name, "claude-sonnet-5");
     }
 
@@ -511,7 +557,7 @@ mod tests {
             text: "вопрос".into(),
             images: vec![],
         }];
-        let body = build_request_body("claude-opus-4-8", "sys", &msgs, adaptive(), false);
+        let body = build_request_body("claude-opus-4-8", "sys", &msgs, adaptive(), false, None);
         assert_eq!(body["model"], "claude-opus-4-8");
         assert_eq!(body["max_tokens"], 64000);
         assert_eq!(body["stream"], true);
@@ -532,7 +578,7 @@ mod tests {
             ChatMessage { role: "assistant".into(), text: "2".into(), images: vec![] },
             ChatMessage { role: "user".into(), text: "а 2+2?".into(), images: vec![] },
         ];
-        let body = build_request_body("claude-opus-4-8", "sys", &msgs, adaptive(), false);
+        let body = build_request_body("claude-opus-4-8", "sys", &msgs, adaptive(), false, None);
         assert_eq!(body["messages"].as_array().unwrap().len(), 3);
         // не-последние сообщения остаются плоскими строками (стабильный префикс для кэша)
         assert_eq!(body["messages"][1]["role"], "assistant");
@@ -555,6 +601,7 @@ mod tests {
             &msgs,
             thinking_value(None, "claude-haiku-4-5", true),
             false,
+            None,
         );
         assert!(body.get("thinking").is_none());
     }
@@ -568,6 +615,7 @@ mod tests {
             &msgs,
             thinking_value(None, "claude-opus-4-8", false),
             false,
+            None,
         );
         assert_eq!(body["thinking"]["type"], "disabled");
     }
@@ -575,13 +623,56 @@ mod tests {
     #[test]
     fn fast_mode_only_for_opus_4_8() {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
-        let body = build_request_body("claude-opus-4-8", "", &msgs, adaptive(), true);
+        let body = build_request_body("claude-opus-4-8", "", &msgs, adaptive(), true, None);
         assert_eq!(body["speed"], "fast");
         // на других моделях speed не отправляем — там он не поддержан
-        let body = build_request_body("claude-sonnet-4-6", "", &msgs, adaptive(), true);
+        let body = build_request_body("claude-sonnet-4-6", "", &msgs, adaptive(), true, None);
         assert!(body.get("speed").is_none());
-        let body = build_request_body("claude-haiku-4-5", "", &msgs, adaptive(), true);
+        let body = build_request_body("claude-haiku-4-5", "", &msgs, adaptive(), true, None);
         assert!(body.get("speed").is_none());
+    }
+
+    #[test]
+    fn web_search_value_semantics() {
+        // выключен → None (поле tools не отправляется)
+        assert_eq!(web_search_value(None, "claude-opus-4-8", false), None);
+        // модель с code execution → без ограничения allowed_callers (динамическая
+        // фильтрация результатов доступна)
+        assert_eq!(
+            web_search_value(None, "claude-opus-4-8", true),
+            Some(json!({"type": "web_search_20260209", "name": "web_search", "max_uses": 5}))
+        );
+        // haiku (эвристика): без code execution API требует allowed_callers=["direct"]
+        assert_eq!(
+            web_search_value(None, "claude-haiku-4-5", true),
+            Some(json!({
+                "type": "web_search_20260209", "name": "web_search", "max_uses": 5,
+                "allowed_callers": ["direct"]
+            }))
+        );
+        // capabilities из API приоритетнее эвристик по имени
+        let info = ModelInfo {
+            id: "claude-newmodel-9".into(),
+            display_name: "New".into(),
+            adaptive: true,
+            always_thinks: false,
+            code_exec: false,
+        };
+        let tool = web_search_value(Some(&info), "claude-newmodel-9", true).unwrap();
+        assert_eq!(tool["allowed_callers"], json!(["direct"]));
+    }
+
+    #[test]
+    fn web_search_tool_lands_in_body_tools() {
+        let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
+        let tool = web_search_value(None, "claude-opus-4-8", true);
+        let body = build_request_body("claude-opus-4-8", "", &msgs, adaptive(), false, tool);
+        assert_eq!(body["tools"][0]["type"], "web_search_20260209");
+        assert_eq!(body["tools"][0]["name"], "web_search");
+        assert_eq!(body["tools"][0]["max_uses"], 5);
+        // выключен → поля tools нет вовсе
+        let body = build_request_body("claude-opus-4-8", "", &msgs, adaptive(), false, None);
+        assert!(body.get("tools").is_none());
     }
 
     #[test]
@@ -591,7 +682,7 @@ mod tests {
             ChatMessage { role: "assistant".into(), text: "".into(), images: vec![] },
             ChatMessage { role: "user".into(), text: "а 2+2?".into(), images: vec![] },
         ];
-        let body = build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false);
+        let body = build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false, None);
         let arr = body["messages"].as_array().unwrap();
         assert_eq!(arr.len(), 2, "пустой assistant выброшен");
         assert_eq!(arr[0]["content"], "1+1?");
@@ -602,7 +693,7 @@ mod tests {
     #[test]
     fn empty_system_stays_plain_string() {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
-        let body = build_request_body("claude-opus-4-8", "", &msgs, adaptive(), false);
+        let body = build_request_body("claude-opus-4-8", "", &msgs, adaptive(), false, None);
         assert_eq!(body["system"], "");
     }
 
@@ -705,7 +796,7 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false),
+                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false, None),
                 cancel,
                 move |delta| c2.lock().unwrap().push_str(delta),
             )
@@ -733,7 +824,7 @@ mod tests {
         // без заголовка мок не сматчится (404) и стрим вернёт ошибку
         client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), true),
+                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), true, None),
                 tokio_util::sync::CancellationToken::new(),
                 |_| {},
             )
@@ -761,7 +852,7 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false),
+                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false, None),
                 tokio_util::sync::CancellationToken::new(),
                 |_| {},
             )
@@ -790,7 +881,7 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false),
+                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false, None),
                 tokio_util::sync::CancellationToken::new(),
                 move |d| c2.lock().unwrap().push_str(d),
             )
@@ -816,7 +907,7 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false),
+                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false, None),
                 tokio_util::sync::CancellationToken::new(),
                 |_| {},
             )
@@ -841,7 +932,7 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false),
+                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false, None),
                 tokio_util::sync::CancellationToken::new(),
                 |_| {},
             )
@@ -870,7 +961,7 @@ mod tests {
         let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
         let err = client
             .stream_message(
-                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false),
+                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false, None),
                 cancel,
                 |_| {},
             )

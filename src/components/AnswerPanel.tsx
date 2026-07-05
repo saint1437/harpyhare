@@ -1,4 +1,4 @@
-import { isValidElement, memo, useEffect, useMemo, useRef } from "react";
+import { isValidElement, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -11,6 +11,8 @@ import { splitStableTail } from "@/lib/stream-markdown";
 
 export interface AnswerPanelProps {
   messages: ChatMessage[];
+  /** id активного чата: на переключение прокрутка снова прилипает к низу. */
+  chatId?: string;
   /** Текущий in-flight ответ (если идёт стрим активного чата), иначе null. */
   partial: string | null;
   streaming: boolean;
@@ -127,8 +129,12 @@ function StreamingAssistant({ text, components }: { text: string; components: Co
   );
 }
 
+/** Порог «читатель у низа»: меньше — автоскролл продолжает прилипать. */
+const NEAR_BOTTOM_PX = 40;
+
 export function AnswerPanel({
   messages,
+  chatId,
   partial,
   streaming,
   streamStartedAt,
@@ -136,12 +142,42 @@ export function AnswerPanel({
   onOpenPreview,
 }: AnswerPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  // ref, а не state: значение снимается обработчиком скролла ДО того, как
+  // стриминговый ререндер нарастит scrollHeight, и читается эффектом после.
+  const nearBottomRef = useRef(true);
+  const [showJump, setShowJump] = useState(false);
 
+  const scrollToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, []);
+
+  // Автоскролл только когда читатель уже у низа — иначе стрим дёргал бы
+  // прокрутку на каждый флаш дельт и мешал читать начало длинного ответа.
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, partial]);
+    if (nearBottomRef.current) scrollToBottom();
+  }, [messages, partial, scrollToBottom]);
+
+  // Переключение чата: показываем свежий низ и сбрасываем «отлип» читателя.
+  useEffect(() => {
+    nearBottomRef.current = true;
+    setShowJump(false);
+    scrollToBottom();
+  }, [chatId, scrollToBottom]);
+
+  const onScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    nearBottomRef.current = near;
+    setShowJump(!near);
+  }, []);
+
+  const jumpToBottom = useCallback(() => {
+    nearBottomRef.current = true;
+    setShowJump(false);
+    scrollToBottom();
+  }, [scrollToBottom]);
 
   const components = useMemo<Components>(
     () => ({ ...markdownComponents, pre: makePre(onOpenPreview) }),
@@ -171,32 +207,47 @@ export function AnswerPanel({
         )}
       </div>
 
-      <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1.5">
-        {empty ? (
-          <div className="grid h-full place-items-center">
-            <span className="text-[13px] text-muted-foreground">Чат появится здесь</span>
-          </div>
-        ) : (
-          <>
-            {messages.map((m, i) =>
-              m.role === "user" ? (
-                <div
-                  key={i}
-                  className="max-w-[85%] self-end rounded-lg bg-white/5 px-3 py-1.5 text-[length:var(--chat-font-size)] break-words whitespace-pre-wrap text-foreground/80"
-                >
-                  {m.text}
-                </div>
-              ) : (
-                <Assistant key={i} text={m.text} components={components} />
-              ),
-            )}
-            {partial !== null && partial !== "" && (
-              <StreamingAssistant text={partial} components={components} />
-            )}
-            {streaming && (partial === null || partial === "") && (
-              <ThinkingIndicator startedAt={streamStartedAt ?? Date.now()} />
-            )}
-          </>
+      <div className="relative flex min-h-0 flex-1">
+        <div
+          ref={scrollRef}
+          onScroll={onScroll}
+          className="flex min-h-0 w-full flex-col gap-3 overflow-y-auto pr-1.5"
+        >
+          {empty ? (
+            <div className="grid h-full place-items-center">
+              <span className="text-[13px] text-muted-foreground">Чат появится здесь</span>
+            </div>
+          ) : (
+            <>
+              {messages.map((m, i) =>
+                m.role === "user" ? (
+                  <div
+                    key={i}
+                    className="max-w-[85%] self-end rounded-lg bg-white/5 px-3 py-1.5 text-[length:var(--chat-font-size)] break-words whitespace-pre-wrap text-foreground/80"
+                  >
+                    {m.text}
+                  </div>
+                ) : (
+                  <Assistant key={i} text={m.text} components={components} />
+                ),
+              )}
+              {partial !== null && partial !== "" && (
+                <StreamingAssistant text={partial} components={components} />
+              )}
+              {streaming && (partial === null || partial === "") && (
+                <ThinkingIndicator startedAt={streamStartedAt ?? Date.now()} />
+              )}
+            </>
+          )}
+        </div>
+        {showJump && (
+          <button
+            type="button"
+            onClick={jumpToBottom}
+            className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full border border-border bg-card/90 px-3 py-1 font-mono text-[11px] text-muted-foreground shadow-md backdrop-blur transition-colors hover:text-foreground"
+          >
+            ↓ Вниз
+          </button>
         )}
       </div>
     </section>

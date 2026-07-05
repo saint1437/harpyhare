@@ -14,6 +14,8 @@ function chatWith(messages: Chat["messages"], extra: Partial<Chat> = {}): Chat {
     presetId: "transcription",
     thinkingEnabled: true,
     model: "claude-opus-4-8",
+    webSearch: false,
+    context: "",
     ...extra,
   };
 }
@@ -117,5 +119,19 @@ describe("serialize/deserialize", () => {
     expect(deserializeChats(serializeChats(chats))?.[0]?.model).toBe("claude-haiku-4-5");
     const old = deserializeChats('[{"id":"a","title":"Чат 1","messages":[],"draft":""}]');
     expect(old?.[0]?.model).toBe("claude-opus-4-8");
+  });
+
+  it("сохраняет webSearch при round-trip; старый json без него → false", () => {
+    const chats = [chatWith([], { webSearch: true })];
+    expect(deserializeChats(serializeChats(chats))?.[0]?.webSearch).toBe(true);
+    const old = deserializeChats('[{"id":"a","title":"Чат 1","messages":[],"draft":""}]');
+    expect(old?.[0]?.webSearch).toBe(false);
+  });
+
+  it("сохраняет context при round-trip (текст переживает диск); старый json → ''", () => {
+    const chats = [chatWith([], { context: "вакансия: senior rust" })];
+    expect(deserializeChats(serializeChats(chats))?.[0]?.context).toBe("вакансия: senior rust");
+    const old = deserializeChats('[{"id":"a","title":"Чат 1","messages":[],"draft":""}]');
+    expect(old?.[0]?.context).toBe("");
   });
 });

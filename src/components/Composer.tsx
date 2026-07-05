@@ -1,4 +1,12 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -34,6 +42,12 @@ export interface ComposerProps {
   /** Модель Anthropic этого чата. */
   model: string;
   onModelChange: (model: string) => void;
+  /** Server-side веб-поиск Anthropic в ответах этого чата. */
+  webSearch: boolean;
+  onWebSearchChange: (enabled: boolean) => void;
+  /** Постоянный контекст чата (уходит в system каждого запроса). */
+  context: string;
+  onContextChange: (context: string) => void;
   /** Модели аккаунта (useModels). */
   models: ModelInfo[];
 }
@@ -42,6 +56,13 @@ export function Composer(props: ComposerProps) {
   const models = selectableModels(props.models, props.model);
   // модель без выключаемого thinking (haiku/fable) — селект thinking заблокирован
   const lockedThinking = thinkingLocked(models, props.model);
+  // Диалог контекста: локальный черновик, применяется по «Сохранить».
+  const [contextOpen, setContextOpen] = useState(false);
+  const [contextDraft, setContextDraft] = useState("");
+  const openContext = () => {
+    setContextDraft(props.context);
+    setContextOpen(true);
+  };
   return (
     <section className="flex flex-col gap-2.5">
       <div className="rounded-xl bg-card/60 ring-1 ring-border transition-[box-shadow] ring-inset focus-within:ring-primary/50">
@@ -87,12 +108,29 @@ export function Composer(props: ComposerProps) {
         <Button variant="ghost" size="sm" className="w-[120px]" onClick={props.onClear}>
           Очистить
         </Button>
+        <Button variant="ghost" size="sm" className="min-w-[96px]" onClick={openContext}>
+          {props.context.trim() !== "" ? "Контекст •" : "Контекст"}
+        </Button>
         <div className="flex-1" />
         {props.showRetry && (
           <Button variant="ghost" size="sm" className="w-[120px]" onClick={props.onRetry}>
             Повторить
           </Button>
         )}
+        <Select
+          value={props.webSearch ? "on" : "off"}
+          onValueChange={(v) => {
+            props.onWebSearchChange(v === "on");
+          }}
+        >
+          <SelectTrigger className="h-8 w-[120px] text-[12px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent position="popper">
+            <SelectItem value="on">Веб-поиск</SelectItem>
+            <SelectItem value="off">Без поиска</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={props.model} onValueChange={props.onModelChange}>
           <SelectTrigger className="h-8 w-[120px] text-[12px]">
             <SelectValue />
@@ -151,6 +189,50 @@ export function Composer(props: ComposerProps) {
           Отправить
         </Button>
       </div>
+
+      <Dialog
+        open={contextOpen}
+        onOpenChange={(open) => {
+          if (!open) setContextOpen(false);
+        }}
+      >
+        <DialogContent className="max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Контекст чата</DialogTitle>
+          </DialogHeader>
+          <p className="text-[12px] text-muted-foreground">
+            Постоянный справочный текст этого чата (вакансия, резюме, конспект…) — уходит в
+            системный промпт каждого запроса и сохраняется на диск.
+          </p>
+          <Textarea
+            rows={10}
+            value={contextDraft}
+            onChange={(e) => {
+              setContextDraft(e.target.value);
+            }}
+            placeholder="Вставь сюда справочные материалы"
+            className="field-sizing-fixed max-h-64 overflow-y-auto"
+          />
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setContextOpen(false);
+              }}
+            >
+              Отмена
+            </Button>
+            <Button
+              onClick={() => {
+                props.onContextChange(contextDraft);
+                setContextOpen(false);
+              }}
+            >
+              Сохранить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

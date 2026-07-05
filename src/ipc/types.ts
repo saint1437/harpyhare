@@ -20,6 +20,12 @@ export interface Settings {
   chat_font_size: number;
   /** «Пропущенная» версия обновления: автобейдж о ней не показывается ("" — нет). */
   skipped_version: string;
+  /** Язык распознавания Whisper (ISO 639-1, напр. "ru"); "" — автоопределение. */
+  stt_language: string;
+  /** Переводить речь на английский (эндпоинт translations вместо transcriptions). */
+  stt_translate: boolean;
+  /** Показывать окно при демонстрации экрана (снимает contentProtected). */
+  screen_share_visible: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -35,6 +41,9 @@ export const DEFAULT_SETTINGS: Settings = {
   fast_mode: false,
   chat_font_size: 13.5,
   skipped_version: "",
+  stt_language: "ru",
+  stt_translate: false,
+  screen_share_visible: false,
 };
 
 export type RecorderState = "idle" | "recording" | "transcribing";

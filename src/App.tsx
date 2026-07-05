@@ -105,8 +105,16 @@ export default function App() {
       ...c.messages.map((m) => ({ role: m.role, text: m.text, images: m.images })),
       { role: "user", text: trimmed, images },
     ];
-    const system = presetText(settingsRef.current.prompt_presets, c.presetId);
-    void streamRef.current.send(c.id, history, system, c.thinkingEnabled, c.model);
+    // system = препромпт чата + его постоянный контекст; оба едут по кэшируемому
+    // system-блоку (брейкпоинт prompt-кэша ставит Rust).
+    const context = c.context.trim();
+    const system = [
+      presetText(settingsRef.current.prompt_presets, c.presetId),
+      context === "" ? "" : `Контекст от пользователя (справочные материалы):\n${context}`,
+    ]
+      .filter((s) => s !== "")
+      .join("\n\n");
+    void streamRef.current.send(c.id, history, system, c.thinkingEnabled, c.model, c.webSearch);
   }, []);
 
   const doSend = useCallback(() => {
@@ -241,6 +249,7 @@ export default function App() {
 
         <AnswerPanel
           messages={active.messages}
+          chatId={activeId}
           partial={partial}
           streaming={activeStreaming}
           streamStartedAt={stream.startedAt[activeId]}
@@ -284,6 +293,14 @@ export default function App() {
           model={active.model}
           onModelChange={(model) => {
             chats.setChatModel(activeId, model);
+          }}
+          webSearch={active.webSearch}
+          onWebSearchChange={(enabled) => {
+            chats.setChatWebSearch(activeId, enabled);
+          }}
+          context={active.context}
+          onContextChange={(context) => {
+            chats.setChatContext(activeId, context);
           }}
           models={models}
         />

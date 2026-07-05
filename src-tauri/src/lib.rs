@@ -144,8 +144,18 @@ pub fn run() {
                 }
             };
 
-            let stt = stt::GroqStt::new(settings.groq_api_key.clone());
+            let stt = stt::GroqStt::new(settings.groq_api_key.clone())
+                .with_language(settings.stt_language.clone())
+                .with_translate(settings.stt_translate);
             let llm = llm::AnthropicClient::new(settings.anthropic_api_key.clone());
+
+            // Видимость при демонстрации экрана: окно создаётся с contentProtected=true
+            // (tauri.conf.json); настройка может снять защиту и показать окно в захвате.
+            if settings.screen_share_visible {
+                if let Some(w) = handle.get_webview_window("main") {
+                    let _ = w.set_content_protected(false);
+                }
+            }
             let hotkey = settings.hotkey.clone();
             let toggle_hotkey = settings.toggle_hotkey.clone();
 
@@ -547,15 +557,17 @@ async fn send_to_claude(
     system: String,
     thinking: bool,
     model: String,
+    web_search: bool,
 ) {
     let fast = app.state::<App>().settings.lock().unwrap().fast_mode;
-    // thinking-гейтинг по capabilities модели (Models API), не по хардкоду имён
+    // thinking/web_search-гейтинг по capabilities модели (Models API), не по хардкоду имён
     let model_info = {
         let st = app.state::<App>();
         let models = st.models.lock().unwrap();
         models.iter().find(|m| m.id == model).cloned()
     };
     let thinking_field = llm::thinking_value(model_info.as_ref(), &model, thinking);
+    let web_search_field = llm::web_search_value(model_info.as_ref(), &model, web_search);
     let client = app.state::<App>().llm.lock().unwrap().clone();
     let cancel = CancellationToken::new();
     {
@@ -565,7 +577,8 @@ async fn send_to_claude(
             old.cancel(); // повторный send в тот же чат отменяет прежний
         }
     }
-    let body = llm::build_request_body(&model, &system, &messages, thinking_field, fast);
+    let body =
+        llm::build_request_body(&model, &system, &messages, thinking_field, fast, web_search_field);
 
     // Коалесинг дельт: SSE отдаёт десятки событий/сек, а каждый emit — это
     // JSON-сериализация + IPC + пробуждение webview. Копим в буфер и флашим
@@ -691,11 +704,21 @@ fn set_settings(app: AppHandle, mut new_settings: settings::Settings) -> Result<
         hotkey::register_toggle(&app, &new_settings.toggle_hotkey)?;
         hotkey::unregister_toggle(&app, &old.toggle_hotkey);
     }
-    if old.groq_api_key != new_settings.groq_api_key {
-        *st.stt.lock().unwrap() = stt::GroqStt::new(new_settings.groq_api_key.clone());
+    if old.groq_api_key != new_settings.groq_api_key
+        || old.stt_language != new_settings.stt_language
+        || old.stt_translate != new_settings.stt_translate
+    {
+        *st.stt.lock().unwrap() = stt::GroqStt::new(new_settings.groq_api_key.clone())
+            .with_language(new_settings.stt_language.clone())
+            .with_translate(new_settings.stt_translate);
     }
     if old.anthropic_api_key != new_settings.anthropic_api_key {
         *st.llm.lock().unwrap() = llm::AnthropicClient::new(new_settings.anthropic_api_key.clone());
+    }
+    if old.screen_share_visible != new_settings.screen_share_visible {
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.set_content_protected(!new_settings.screen_share_visible);
+        }
     }
     new_settings
         .save(&settings_path(&app))
