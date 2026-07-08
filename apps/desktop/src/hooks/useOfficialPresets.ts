@@ -11,9 +11,7 @@ export function useOfficialPresets(): PromptPreset[] {
     void getOfficialPresets().then((p) => {
       if (live) setPresets(p);
     });
-    const off = onEvent("official-presets-updated", (p) => {
-      setPresets(p);
-    });
+    const off = onEvent("official-presets-updated", setPresets);
     return () => {
       live = false;
       off();

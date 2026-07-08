@@ -1,7 +1,14 @@
 import type { LatestReleaseState } from "@/hooks/useLatestRelease";
+import { cn } from "@/lib/cn";
 import { RELEASES_PAGE } from "@/lib/release";
 import { DownloadButton } from "./DownloadButton";
 import { Logo } from "./Logo";
+
+const NAV = [
+  { href: "#how", label: "Как работает", show: "sm:inline" },
+  { href: "#features", label: "Возможности", show: "sm:inline" },
+  { href: RELEASES_PAGE, label: "Релизы", show: "md:inline", external: true },
+];
 
 export function Header({ state }: { state: LatestReleaseState }) {
   return (
@@ -9,26 +16,19 @@ export function Header({ state }: { state: LatestReleaseState }) {
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
         <Logo />
         <nav className="flex items-center gap-6">
-          <a
-            href="#how"
-            className="hidden text-sm text-fg-muted transition-colors hover:text-fg sm:inline"
-          >
-            Как работает
-          </a>
-          <a
-            href="#features"
-            className="hidden text-sm text-fg-muted transition-colors hover:text-fg sm:inline"
-          >
-            Возможности
-          </a>
-          <a
-            href={RELEASES_PAGE}
-            target="_blank"
-            rel="noreferrer"
-            className="hidden text-sm text-fg-muted transition-colors hover:text-fg md:inline"
-          >
-            Релизы
-          </a>
+          {NAV.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              {...(link.external && { target: "_blank", rel: "noreferrer" })}
+              className={cn(
+                "hidden text-sm text-fg-muted transition-colors hover:text-fg",
+                link.show,
+              )}
+            >
+              {link.label}
+            </a>
+          ))}
           <DownloadButton state={state} size="sm" />
         </nav>
       </div>

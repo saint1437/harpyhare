@@ -42,7 +42,6 @@ import { onEvent } from "@/ipc/events";
 import type {
   ChatMessageDto,
   ImagePayload,
-  PromptPreset,
   RecorderState,
   Settings,
   UpdateInfo,
@@ -52,7 +51,7 @@ import type { Chat, ChatMessage } from "@/lib/chats";
 import { appendTranscript } from "@/lib/composer";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
 import type { ModelInfo } from "@/lib/models";
-import { mergePresets, presetText } from "@/lib/presets";
+import { mergePresets, presetText, type PromptPreset } from "@/lib/presets";
 import { toReadingText } from "@/lib/teleprompter";
 
 const RETRYABLE_STT_ERROR = /перегружен|соединение|VPN|интернет|оборван/i;
@@ -287,8 +286,9 @@ function useSendPipeline(
   streamRef: RefObject<ClaudeStreams>,
   presetsRef: RefObject<PromptPreset[]>,
   clearSttError: () => void,
-  sendBlockedRef: RefObject<boolean>,
+  sendBlocked: boolean,
 ): SendPipeline {
+  const sendBlockedRef = useLatestRef(sendBlocked);
   const dispatchSend = useCallback(
     (rawText: string) => {
       if (sendBlockedRef.current) return;
@@ -537,14 +537,13 @@ export default function App() {
 
   const stream = useClaudeStream(onAssistantDone);
   const streamRef = useLatestRef(stream);
-  const sendBlockedRef = useLatestRef(keysGate.keysMissing);
 
   const { dispatchSend, doSend } = useSendPipeline(
     chatsRef,
     streamRef,
     presetsRef,
     clearError,
-    sendBlockedRef,
+    keysGate.keysMissing,
   );
 
   useTranscription(

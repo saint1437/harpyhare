@@ -15,7 +15,7 @@ const LOG_TAG: &str = "[presets]";
 
 const BUNDLED_PRESETS_JSON: &str = include_str!("../../../../config/presets.json");
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct PresetPool {
     pub version: u32,
     pub presets: Vec<PromptPreset>,
@@ -31,18 +31,12 @@ impl PresetPool {
     }
 
     fn bundled() -> Self {
-        Self::parse(BUNDLED_PRESETS_JSON).unwrap_or(PresetPool {
-            version: 0,
-            presets: Vec::new(),
-        })
+        Self::parse(BUNDLED_PRESETS_JSON).unwrap_or_default()
     }
 }
 
 fn cache_path(app: &AppHandle) -> PathBuf {
-    app.path()
-        .app_data_dir()
-        .expect("app_data_dir")
-        .join(CACHE_FILE_NAME)
+    crate::app_data_file(app, CACHE_FILE_NAME)
 }
 
 pub fn load_initial(app: &AppHandle) -> Vec<PromptPreset> {
@@ -66,21 +60,19 @@ pub fn spawn_refresh(app: AppHandle) {
 }
 
 async fn fetch() -> Result<PresetPool, String> {
-    let client = reqwest::Client::builder()
-        .timeout(FETCH_TIMEOUT)
-        .build()
-        .map_err(|e| e.to_string())?;
-    let raw = client
+    let raw = fetch_raw().await.map_err(|e| e.to_string())?;
+    PresetPool::parse(&raw).ok_or_else(|| "битый JSON пула пресетов".to_string())
+}
+
+async fn fetch_raw() -> reqwest::Result<String> {
+    let client = reqwest::Client::builder().timeout(FETCH_TIMEOUT).build()?;
+    client
         .get(PRESETS_URL)
         .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .error_for_status()
-        .map_err(|e| e.to_string())?
+        .await?
+        .error_for_status()?
         .text()
         .await
-        .map_err(|e| e.to_string())?;
-    PresetPool::parse(&raw).ok_or_else(|| "битый JSON пула пресетов".to_string())
 }
 
 fn apply(app: &AppHandle, pool: PresetPool) {

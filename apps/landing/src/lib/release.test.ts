@@ -33,8 +33,6 @@ describe("pickDmgAsset", () => {
 describe("toReleaseInfo", () => {
   const base: GitHubRelease = {
     tag_name: "v0.4.0",
-    name: "harpyhare 0.4.0",
-    published_at: "2026-07-05T10:00:00Z",
     html_url: "https://github.com/o/r/releases/tag/v0.4.0",
     assets: [{ name: "AudioSystem_0.4.0_aarch64.dmg", browser_download_url: "https://dl/app.dmg" }],
   };
@@ -43,7 +41,6 @@ describe("toReleaseInfo", () => {
     const info = toReleaseInfo(base);
     expect(info.version).toBe("0.4.0");
     expect(info.downloadUrl).toBe("https://dl/app.dmg");
-    expect(info.releaseUrl).toBe(base.html_url);
   });
 
   it("falls back to the release page when there is no dmg", () => {

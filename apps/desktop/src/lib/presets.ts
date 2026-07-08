@@ -1,3 +1,5 @@
+import pool from "../../../../config/presets.json";
+
 export const DEFAULT_PRESET_ID = "golang";
 
 export interface PromptPreset {
@@ -6,9 +8,7 @@ export interface PromptPreset {
   text: string;
 }
 
-export const OFFICIAL_PRESETS_FALLBACK: PromptPreset[] = [
-  { id: DEFAULT_PRESET_ID, name: "Golang", text: "" },
-];
+export const OFFICIAL_PRESETS_FALLBACK: PromptPreset[] = pool.presets;
 
 export function presetText(presets: PromptPreset[], presetId: string): string {
   return presets.find((p) => p.id === presetId)?.text ?? "";

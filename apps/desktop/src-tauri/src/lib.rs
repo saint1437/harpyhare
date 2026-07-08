@@ -92,18 +92,16 @@ fn cancel_stt_stream(app: &AppHandle) {
     }
 }
 
+pub(crate) fn app_data_file(app: &AppHandle, file_name: &str) -> std::path::PathBuf {
+    app.path().app_data_dir().expect("app_data_dir").join(file_name)
+}
+
 fn settings_path(app: &AppHandle) -> std::path::PathBuf {
-    app.path()
-        .app_data_dir()
-        .expect("app_data_dir")
-        .join(SETTINGS_FILE_NAME)
+    app_data_file(app, SETTINGS_FILE_NAME)
 }
 
 fn chats_path(app: &AppHandle) -> std::path::PathBuf {
-    app.path()
-        .app_data_dir()
-        .expect("app_data_dir")
-        .join(CHATS_FILE_NAME)
+    app_data_file(app, CHATS_FILE_NAME)
 }
 
 #[derive(Clone, serde::Serialize)]

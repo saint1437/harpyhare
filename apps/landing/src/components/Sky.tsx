@@ -2,40 +2,39 @@ import { cn } from "@/lib/cn";
 
 type CloudVariant = "wide" | "puffy" | "small";
 
-const CLOUDS: Record<CloudVariant, { viewBox: string; box: [number, number] }> = {
-  wide: { viewBox: "0 0 100 42", box: [100, 42] },
-  puffy: { viewBox: "0 0 80 44", box: [80, 44] },
-  small: { viewBox: "0 0 64 36", box: [64, 36] },
-};
-
-function CloudShape({ variant }: { variant: CloudVariant }) {
-  if (variant === "wide") {
-    return (
-      <g fill="var(--surface)">
-        <rect x="14" y="26" width="66" height="15" rx="7.5" />
-        <circle cx="30" cy="24" r="13" />
-        <circle cx="52" cy="18" r="16" />
-        <circle cx="72" cy="25" r="11" />
-      </g>
-    );
-  }
-  if (variant === "puffy") {
-    return (
-      <g fill="var(--surface)">
-        <rect x="10" y="28" width="58" height="14" rx="7" />
-        <circle cx="28" cy="24" r="14" />
-        <circle cx="50" cy="20" r="15" />
-      </g>
-    );
-  }
-  return (
-    <g fill="var(--surface)">
-      <rect x="8" y="22" width="46" height="12" rx="6" />
-      <circle cx="22" cy="20" r="11" />
-      <circle cx="40" cy="17" r="12" />
-    </g>
-  );
+interface CloudSpec {
+  box: [number, number];
+  rect: { x: number; y: number; width: number; height: number; rx: number };
+  circles: [number, number, number][];
 }
+
+const CLOUDS: Record<CloudVariant, CloudSpec> = {
+  wide: {
+    box: [100, 42],
+    rect: { x: 14, y: 26, width: 66, height: 15, rx: 7.5 },
+    circles: [
+      [30, 24, 13],
+      [52, 18, 16],
+      [72, 25, 11],
+    ],
+  },
+  puffy: {
+    box: [80, 44],
+    rect: { x: 10, y: 28, width: 58, height: 14, rx: 7 },
+    circles: [
+      [28, 24, 14],
+      [50, 20, 15],
+    ],
+  },
+  small: {
+    box: [64, 36],
+    rect: { x: 8, y: 22, width: 46, height: 12, rx: 6 },
+    circles: [
+      [22, 20, 11],
+      [40, 17, 12],
+    ],
+  },
+};
 
 interface CloudProps {
   variant?: CloudVariant;
@@ -45,15 +44,24 @@ interface CloudProps {
 }
 
 export function Cloud({ variant = "wide", width, drift = 46, className }: CloudProps) {
-  const [w, h] = CLOUDS[variant].box;
+  const {
+    box: [w, h],
+    rect,
+    circles,
+  } = CLOUDS[variant];
   return (
     <svg
-      viewBox={CLOUDS[variant].viewBox}
+      viewBox={`0 0 ${w} ${h}`}
       aria-hidden
       style={{ width, height: (width * h) / w, animationDuration: `${drift}s` }}
       className={cn("cloud pointer-events-none absolute select-none", className)}
     >
-      <CloudShape variant={variant} />
+      <g fill="var(--surface)">
+        <rect {...rect} />
+        {circles.map(([cx, cy, r], index) => (
+          <circle key={index} cx={cx} cy={cy} r={r} />
+        ))}
+      </g>
     </svg>
   );
 }

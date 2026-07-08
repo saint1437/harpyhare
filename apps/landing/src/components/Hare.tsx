@@ -18,10 +18,7 @@ const FRAMES: Record<HareVariant, HareFrame[]> = {
   front: ["front", "frontEar"],
 };
 
-const FRAME_HEIGHT_RATIO: Record<HareFrame, number> = {
-  sit: 1,
-  front: 1,
-  frontEar: 1,
+const FRAME_HEIGHT_RATIO: Partial<Record<HareFrame, number>> = {
   gather: 0.81,
   leap: 0.73,
 };
@@ -58,7 +55,7 @@ export function Hare({
   const [frame, setFrame] = useState<HareFrame>(restFrame);
   const [x, setX] = useState(0);
   const [facing, setFacing] = useState<1 | -1>(1);
-  const [hop, setHop] = useState<{ ms: number; hops: number } | null>(null);
+  const [hop, setHop] = useState<number | null>(null);
   const xRef = useRef(0);
   const busy = useRef(false);
   const alive = useRef(true);
@@ -126,11 +123,10 @@ export function Hare({
       const dist = target - xRef.current;
       if (Math.abs(dist) < HOP_LEN * 0.7) return;
       const count = Math.max(1, Math.round(Math.abs(dist) / HOP_LEN));
-      const ms = count * HOP_MS;
       const isAlive = () => alive.current;
       if (!isAlive()) return;
       setFacing(dist < 0 ? 1 : -1);
-      setHop({ ms, hops: count });
+      setHop(count);
       setX(target);
       xRef.current = target;
       for (let i = 0; i < count; i += 1) {
@@ -208,7 +204,7 @@ export function Hare({
   );
 
   const frameHeight = (poseFrame: HareFrame) => {
-    return Math.round(height * FRAME_HEIGHT_RATIO[poseFrame]);
+    return Math.round(height * (FRAME_HEIGHT_RATIO[poseFrame] ?? 1));
   };
 
   return (
@@ -223,7 +219,7 @@ export function Hare({
         style={
           {
             transform: `translateX(${x}px)`,
-            transition: hop ? `transform ${hop.ms}ms linear` : undefined,
+            transition: hop ? `transform ${hop * HOP_MS}ms linear` : undefined,
             "--hop-lift": `${-Math.max(10, Math.round(height * 0.28))}px`,
           } as React.CSSProperties
         }
@@ -231,7 +227,7 @@ export function Hare({
         <span
           className="absolute inset-0 block"
           style={{
-            animation: hop ? `hare-bounce ${HOP_MS}ms ease-in-out ${hop.hops}` : undefined,
+            animation: hop ? `hare-bounce ${HOP_MS}ms ease-in-out ${hop}` : undefined,
           }}
         >
           <span className="absolute inset-0 block" style={{ transform: `scaleX(${facing})` }}>

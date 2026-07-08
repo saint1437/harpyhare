@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 :root {
-  --radius: 0.85rem;
   --day: 1;
   --dayness: calc(var(--day) * 100%);
+  --night: calc(1 - var(--day));
 
   --night-bg: oklch(0 0 0);
   --day-bg: oklch(0.972 0.005 85);
@@ -21,15 +21,6 @@
   --day-border: oklch(0 0 0 / 10%);
   --night-border-strong: oklch(1 0 0 / 15%);
   --day-border-strong: oklch(0 0 0 / 18%);
-
-  --bg: var(--day-bg);
-  --bg-elevated: var(--day-bg-elevated);
-  --surface: var(--day-surface);
-  --fg: var(--day-fg);
-  --fg-muted: var(--day-fg-muted);
-  --fg-subtle: var(--day-fg-subtle);
-  --border: var(--day-border);
-  --border-strong: var(--day-border-strong);
 
   --bg: color-mix(in oklab, var(--night-bg), var(--day-bg) var(--dayness));
   --bg-elevated: color-mix(
@@ -88,7 +79,6 @@
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-primary-fg: var(--primary-fg);
-  --radius-lg: var(--radius);
   --font-sans: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Inter", sans-serif;
 }
 
@@ -116,7 +106,7 @@ section[id] {
 
 .hero-tint {
   background: radial-gradient(64% 46% at 50% 0%, oklch(0.42 0.15 22 / 0.14) 0%, transparent 72%);
-  opacity: calc(1 - var(--day));
+  opacity: var(--night);
 }
 
 .moon {
@@ -140,7 +130,7 @@ section[id] {
   margin-left: -130vmax;
   transform: rotate(var(--beam-angle, 0deg));
   transform-origin: 50% 0;
-  opacity: calc(1 - var(--day));
+  opacity: var(--night);
   background: conic-gradient(
     from 143deg at 50% 0,
     transparent 0deg,
@@ -173,7 +163,7 @@ section[id] {
   height: 150vmax;
   margin: -75vmax 0 0 -75vmax;
   border-radius: 50%;
-  opacity: calc(1 - var(--day));
+  opacity: var(--night);
   background: radial-gradient(
     circle,
     oklch(0.9 0.02 255 / 0.08) 0%,
@@ -189,7 +179,7 @@ section[id] {
   inset: 0;
   width: 100%;
   height: 100%;
-  opacity: calc(0.92 * (1 - var(--day)));
+  opacity: calc(0.92 * var(--night));
   filter: drop-shadow(0 0 9px oklch(0.9 0.02 255 / 0.4));
   animation: moon-float 14s ease-in-out infinite both;
 }
@@ -252,7 +242,7 @@ section[id] {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  opacity: calc(1 - var(--day));
+  opacity: var(--night);
 }
 
 .star {
@@ -337,6 +327,8 @@ section[id] {
 }
 
 .hare-scene {
+  --hare-cycle: 16s;
+  --hare-delay: 1s;
   position: absolute;
   inset: auto 0 0 0;
   height: 150px;
@@ -362,7 +354,7 @@ section[id] {
   width: 150px;
   z-index: 3;
   transform-origin: 50% 100%;
-  animation: bush-shake 16s ease-in-out 1s infinite both;
+  animation: bush-shake var(--hare-cycle) ease-in-out var(--hare-delay) infinite both;
 }
 
 .hare-runner {
@@ -371,20 +363,20 @@ section[id] {
   width: 120px;
   height: 96px;
   z-index: 2;
-  animation: hare-x 16s linear 1s infinite both;
+  animation: hare-x var(--hare-cycle) linear var(--hare-delay) infinite both;
 }
 
 .hare-hop {
   position: absolute;
   inset: 0;
-  animation: hare-y 16s linear 1s infinite both;
+  animation: hare-y var(--hare-cycle) linear var(--hare-delay) infinite both;
 }
 
 .hare-squash {
   position: absolute;
   inset: 0;
   transform-origin: 50% 100%;
-  animation: hare-squash 16s linear 1s infinite both;
+  animation: hare-squash var(--hare-cycle) linear var(--hare-delay) infinite both;
 }
 
 .hare-pose {
@@ -395,18 +387,18 @@ section[id] {
 
 .hare-pose-gather {
   height: 68px;
-  animation: hare-pose-gather 16s linear 1s infinite both;
+  animation: hare-pose-gather var(--hare-cycle) linear var(--hare-delay) infinite both;
 }
 
 .hare-pose-leap {
   height: 61px;
-  animation: hare-pose-leap 16s linear 1s infinite both;
+  animation: hare-pose-leap var(--hare-cycle) linear var(--hare-delay) infinite both;
 }
 
 .hare-pose-dive {
   height: 72px;
   left: 8px;
-  animation: hare-pose-dive 16s linear 1s infinite both;
+  animation: hare-pose-dive var(--hare-cycle) linear var(--hare-delay) infinite both;
 }
 
 .hare-peek {
@@ -416,17 +408,17 @@ section[id] {
   width: 59px;
   height: 84px;
   z-index: 2;
-  animation: hare-peek-rise 16s linear 1s infinite both;
+  animation: hare-peek-rise var(--hare-cycle) linear var(--hare-delay) infinite both;
 }
 
 .hare-peek-front {
   height: 84px;
-  animation: hare-peek-front 16s linear 1s infinite both;
+  animation: hare-peek-front var(--hare-cycle) linear var(--hare-delay) infinite both;
 }
 
 .hare-peek-ear {
   height: 84px;
-  animation: hare-peek-ear 16s linear 1s infinite both;
+  animation: hare-peek-ear var(--hare-cycle) linear var(--hare-delay) infinite both;
 }
 
 .hare-static {
@@ -769,28 +761,20 @@ section[id] {
     animation: none;
     transform: scaleY(0.7);
   }
-  .caret {
-    animation: none;
-  }
-  .fade-rise {
-    animation: none;
-  }
+  .caret,
+  .fade-rise,
   .moon-disc,
   .moon-mist,
   .sun-disc,
   .sun-rays,
   .cloud,
-  .star {
-    animation: none;
-  }
-  .hare-runner {
-    display: none;
-  }
-  .hare-peek {
-    display: none;
-  }
+  .star,
   .hare-bush-front {
     animation: none;
+  }
+  .hare-runner,
+  .hare-peek {
+    display: none;
   }
   .hare-static {
     display: block;

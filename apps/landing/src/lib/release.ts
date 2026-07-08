@@ -11,8 +11,6 @@ export interface GitHubAsset {
 
 export interface GitHubRelease {
   tag_name: string;
-  name: string | null;
-  published_at: string;
   html_url: string;
   assets: GitHubAsset[];
 }
@@ -20,8 +18,6 @@ export interface GitHubRelease {
 export interface ReleaseInfo {
   version: string;
   downloadUrl: string;
-  releaseUrl: string;
-  publishedAt: string;
 }
 
 export function stripVersionPrefix(tag: string): string {
@@ -37,8 +33,6 @@ export function toReleaseInfo(release: GitHubRelease): ReleaseInfo {
   return {
     version: stripVersionPrefix(release.tag_name),
     downloadUrl: dmg?.browser_download_url ?? release.html_url,
-    releaseUrl: release.html_url,
-    publishedAt: release.published_at,
   };
 }
 
@@ -61,12 +55,8 @@ export function parseRelease(data: unknown): GitHubRelease | null {
   if (typeof tag !== "string" || typeof htmlUrl !== "string") return null;
 
   const assets = data["assets"];
-  const name = data["name"];
-  const publishedAt = data["published_at"];
   return {
     tag_name: tag,
-    name: typeof name === "string" ? name : null,
-    published_at: typeof publishedAt === "string" ? publishedAt : "",
     html_url: htmlUrl,
     assets: Array.isArray(assets) ? assets.filter(isAsset) : [],
   };

@@ -2,7 +2,6 @@ import type { ImagePayload } from "@/lib/composer";
 import type { PromptPreset } from "@/lib/presets";
 
 export type { ImagePayload };
-export type { PromptPreset };
 
 export interface Settings {
   anthropic_api_key: string;

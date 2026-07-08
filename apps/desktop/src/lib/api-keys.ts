@@ -26,11 +26,7 @@ export interface ApiKeySettings {
 }
 
 export function missingApiKeys(settings: ApiKeySettings): ApiKeyInfo[] {
-  const values: Record<ApiKeyInfo["id"], string> = {
-    anthropic: settings.anthropic_api_key,
-    groq: settings.groq_api_key,
-  };
-  return API_KEYS.filter((k) => values[k.id].trim() === "");
+  return API_KEYS.filter((k) => settings[`${k.id}_api_key`].trim() === "");
 }
 
 export function missingKeysNotice(missing: ApiKeyInfo[]): string {
