@@ -6,7 +6,7 @@ export const CHAT_LIMIT = 6;
 const TITLE_MAX = 22;
 const TITLE_ELLIPSIS = "…";
 const UNTITLED_CHAT_TITLE = "Чат";
-const LEGACY_NO_PRESET_ID = "";
+const NO_PRESET_ID = "";
 
 export type Role = "user" | "assistant";
 
@@ -95,7 +95,7 @@ function restoreChat(c: unknown): Chat {
     id: typeof o.id === "string" ? o.id : uid(),
     title: typeof o.title === "string" ? o.title : UNTITLED_CHAT_TITLE,
     titlePinned: typeof o.titlePinned === "boolean" ? o.titlePinned : NEW_CHAT_DEFAULTS.titlePinned,
-    presetId: typeof o.presetId === "string" ? o.presetId : LEGACY_NO_PRESET_ID,
+    presetId: typeof o.presetId === "string" ? o.presetId : NO_PRESET_ID,
     thinkingEnabled:
       typeof o.thinkingEnabled === "boolean"
         ? o.thinkingEnabled

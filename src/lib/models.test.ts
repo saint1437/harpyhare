@@ -20,8 +20,8 @@ describe("models", () => {
 
   it("selectableModels подмешивает текущую модель, если её нет в списке", () => {
     expect(selectableModels(FALLBACK_MODELS, "claude-opus-4-8")).toBe(FALLBACK_MODELS);
-    const merged = selectableModels(FALLBACK_MODELS, "claude-legacy-1");
-    expect(merged[0]?.id).toBe("claude-legacy-1");
+    const merged = selectableModels(FALLBACK_MODELS, "claude-custom-1");
+    expect(merged[0]?.id).toBe("claude-custom-1");
     expect(merged.length).toBe(FALLBACK_MODELS.length + 1);
   });
 

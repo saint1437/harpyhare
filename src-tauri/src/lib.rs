@@ -22,7 +22,6 @@ use tokio_util::sync::CancellationToken;
 
 const SETTINGS_FILE_NAME: &str = "settings.json";
 const CHATS_FILE_NAME: &str = "chats.json";
-const LEGACY_APP_DATA_DIR_NAME: &str = "com.itech.voice";
 const ENV_FILE_NAME: &str = ".env";
 const ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
 const GROQ_API_KEY_ENV: &str = "GROQ_API_KEY";
@@ -173,7 +172,6 @@ pub fn run() {
 
 fn setup_app(handle: &AppHandle) {
     load_dotenv_files();
-    migrate_legacy_app_data(handle);
     let settings = load_settings_with_env_key_fallback(handle);
     let capture = init_system_audio_capture();
     let stt = build_stt_client(&settings);
@@ -207,30 +205,6 @@ fn disable_cursor_autohide_on_typing() {
             std::ptr::from_ref(method).cast(),
             keep_cursor_visible,
         );
-    }
-}
-
-fn migrate_legacy_app_data(app: &AppHandle) {
-    let Ok(new_dir) = app.path().app_data_dir() else {
-        return;
-    };
-    if new_dir.join(SETTINGS_FILE_NAME).exists() {
-        return;
-    }
-    let Some(legacy_dir) = new_dir.parent().map(|p| p.join(LEGACY_APP_DATA_DIR_NAME)) else {
-        return;
-    };
-    if legacy_dir == new_dir || !legacy_dir.exists() {
-        return;
-    }
-    if std::fs::create_dir_all(&new_dir).is_err() {
-        return;
-    }
-    for name in [SETTINGS_FILE_NAME, CHATS_FILE_NAME] {
-        let src = legacy_dir.join(name);
-        if src.exists() {
-            let _ = std::fs::copy(&src, new_dir.join(name));
-        }
     }
 }
 
