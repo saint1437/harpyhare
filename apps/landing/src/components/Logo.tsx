@@ -1,10 +1,11 @@
 import { cn } from "@/lib/cn";
-import { EqBars } from "./EqBars";
 
-export function Logo({ className }: { className?: string }) {
+export function Logo({ className, showMark = true }: { className?: string; showMark?: boolean }) {
   return (
     <span className={cn("inline-flex items-center gap-2 select-none", className)}>
-      <EqBars />
+      {showMark && (
+        <img src="./logo.png" alt="" aria-hidden draggable={false} className="h-[22px] w-auto" />
+      )}
       <span className="text-[15px] font-semibold tracking-tight text-fg">harpyhare</span>
     </span>
   );

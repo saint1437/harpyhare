@@ -23,13 +23,13 @@ export function DownloadButton({ state, size = "lg", className }: DownloadButton
     <a
       href={resolveHref(state)}
       className={cn(
-        "inline-flex items-center justify-center rounded-full bg-primary font-semibold text-primary-fg shadow-[0_10px_34px_-10px_var(--glow)] transition-colors hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        "inline-flex items-center justify-center rounded-full bg-primary font-semibold text-primary-fg transition-colors hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         SIZES[size],
         className,
       )}
     >
       <Download className={size === "lg" ? "size-5" : "size-4"} strokeWidth={2.25} />
-      {size === "lg" ? "Скачать приложение" : "Скачать"}
+      {size === "lg" ? "Скачать для macOS" : "Скачать"}
     </a>
   );
 }
