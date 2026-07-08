@@ -107,7 +107,7 @@ mod tests {
     fn bundled_presets_are_valid() {
         let pool = PresetPool::parse(BUNDLED_PRESETS_JSON).expect("вшитый presets.json валиден");
         assert!(!pool.presets.is_empty());
-        assert!(pool.presets.iter().any(|p| p.id == "transcription"));
+        assert!(pool.presets.iter().any(|p| p.id == "golang"));
     }
 
     #[test]

@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_PRESET_ID } from "@/lib/presets";
 
 const loadChats = vi.fn<() => Promise<string>>();
 const saveChats = vi.fn<(json: string) => Promise<void>>();
@@ -112,12 +113,12 @@ describe("useChats", () => {
     expect(result.current.active.title).toBe(before);
   });
 
-  it("новый чат ссылается на сид-пресет; setChatPreset меняет ссылку", async () => {
+  it("новый чат ссылается на дефолтный пресет; setChatPreset меняет ссылку", async () => {
     const { result } = renderHook(() => useChats());
     await waitFor(() => {
       expect(result.current.chats.length).toBe(1);
     });
-    expect(result.current.active.presetId).toBe("transcription");
+    expect(result.current.active.presetId).toBe(DEFAULT_PRESET_ID);
     const id = result.current.activeId;
     act(() => {
       result.current.setChatPreset(id, "mypreset");

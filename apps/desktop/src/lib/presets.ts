@@ -1,4 +1,4 @@
-export const TRANSCRIPTION_PRESET_ID = "transcription";
+export const DEFAULT_PRESET_ID = "golang";
 
 export interface PromptPreset {
   id: string;
@@ -7,7 +7,7 @@ export interface PromptPreset {
 }
 
 export const OFFICIAL_PRESETS_FALLBACK: PromptPreset[] = [
-  { id: TRANSCRIPTION_PRESET_ID, name: "Расшифровка речи", text: "" },
+  { id: DEFAULT_PRESET_ID, name: "Golang", text: "" },
 ];
 
 export function presetText(presets: PromptPreset[], presetId: string): string {

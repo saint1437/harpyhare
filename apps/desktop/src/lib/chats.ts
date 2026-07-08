@@ -1,6 +1,6 @@
 import type { Attachment, ImagePayload } from "@/lib/composer";
 import { DEFAULT_MODEL } from "@/lib/models";
-import { TRANSCRIPTION_PRESET_ID } from "@/lib/presets";
+import { DEFAULT_PRESET_ID } from "@/lib/presets";
 
 export const CHAT_LIMIT = 6;
 const TITLE_MAX = 22;
@@ -33,7 +33,7 @@ export interface Chat {
 const NEW_CHAT_DEFAULTS = {
   draft: "",
   titlePinned: false,
-  presetId: TRANSCRIPTION_PRESET_ID,
+  presetId: DEFAULT_PRESET_ID,
   thinkingEnabled: true,
   model: DEFAULT_MODEL,
   webSearch: false,
