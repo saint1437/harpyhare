@@ -1,5 +1,5 @@
 import type { ImagePayload } from "@/lib/composer";
-import { type PromptPreset, TRANSCRIPTION_PRESET_ID } from "@/lib/presets";
+import type { PromptPreset } from "@/lib/presets";
 
 export type { ImagePayload };
 export type { PromptPreset };
@@ -29,7 +29,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   anthropic_api_key: "",
   groq_api_key: "",
-  prompt_presets: [{ id: TRANSCRIPTION_PRESET_ID, name: "Расшифровка речи", text: "" }],
+  prompt_presets: [],
   hotkey: "F9",
   auto_send: false,
   window_opacity: 0.9,
@@ -78,4 +78,5 @@ export interface EventMap {
   "update-progress": UpdateProgress;
   "update-done": { version: string };
   "toggle-teleprompter": null;
+  "official-presets-updated": PromptPreset[];
 }

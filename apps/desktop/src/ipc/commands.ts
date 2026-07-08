@@ -1,6 +1,7 @@
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { FALLBACK_MODELS, type ModelInfo } from "@/lib/models";
+import { OFFICIAL_PRESETS_FALLBACK, type PromptPreset } from "@/lib/presets";
 import { isTauri } from "./env";
 import { DEFAULT_SETTINGS, type ChatMessageDto, type Settings, type UpdateInfo } from "./types";
 
@@ -59,6 +60,10 @@ export async function getSettings(): Promise<Settings> {
 
 export async function setSettings(newSettings: Settings): Promise<void> {
   await invokeOrNoopInBrowser("set_settings", { newSettings });
+}
+
+export async function getOfficialPresets(): Promise<PromptPreset[]> {
+  return invokeOrFallbackInBrowser("get_official_presets", OFFICIAL_PRESETS_FALLBACK);
 }
 
 export async function moveWindowBy(dx: number, dy: number): Promise<void> {

@@ -1,11 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-pub const DEFAULT_SYSTEM_PROMPT: &str = "Ты получаешь расшифровку русской речи из аудио (могут быть ошибки распознавания). Ответь на вопрос или прокомментируй сказанное кратко и по делу, на русском.";
-
-const SEED_PRESET_ID: &str = "transcription";
-const SEED_PRESET_NAME: &str = "Расшифровка речи";
-
 const DEFAULT_HOTKEY: &str = "F9";
 const DEFAULT_TOGGLE_HOTKEY: &str = "Cmd+Shift+H";
 const DEFAULT_TELEPROMPTER_HOTKEY: &str = "F10";
@@ -30,19 +25,11 @@ const TELEPROMPTER_FONT_SIZE_MAX: f64 = 48.0;
 const OWNER_ONLY_FILE_MODE: u32 = 0o600;
 const TMP_FILE_EXTENSION: &str = "tmp";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PromptPreset {
     pub id: String,
     pub name: String,
     pub text: String,
-}
-
-fn seed_prompt_preset() -> PromptPreset {
-    PromptPreset {
-        id: SEED_PRESET_ID.into(),
-        name: SEED_PRESET_NAME.into(),
-        text: DEFAULT_SYSTEM_PROMPT.into(),
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,7 +61,7 @@ impl Default for Settings {
         Self {
             anthropic_api_key: String::new(),
             groq_api_key: String::new(),
-            prompt_presets: vec![seed_prompt_preset()],
+            prompt_presets: Vec::new(),
             hotkey: DEFAULT_HOTKEY.into(),
             auto_send: false,
             window_opacity: DEFAULT_WINDOW_OPACITY,
@@ -181,9 +168,7 @@ mod tests {
         assert!(!s.auto_send);
         assert_eq!(s.window_opacity, 0.9);
         assert_eq!(s.move_step, 20);
-        assert_eq!(s.prompt_presets.len(), 1);
-        assert_eq!(s.prompt_presets[0].id, "transcription");
-        assert!(s.prompt_presets[0].text.contains("расшифровку"));
+        assert!(s.prompt_presets.is_empty());
         assert!(s.auto_preview_html);
         assert_eq!(s.toggle_hotkey, "Cmd+Shift+H");
         assert!(!s.fast_mode);
@@ -394,13 +379,12 @@ mod tests {
     }
 
     #[test]
-    fn load_missing_prompt_presets_defaults_to_seed() {
+    fn load_missing_prompt_presets_defaults_to_empty() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("s.json");
         std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
         let s = Settings::load(&path).unwrap();
-        assert_eq!(s.prompt_presets.len(), 1);
-        assert_eq!(s.prompt_presets[0].id, "transcription");
+        assert!(s.prompt_presets.is_empty());
     }
 
     #[test]
@@ -409,6 +393,6 @@ mod tests {
         let path = dir.path().join("s.json");
         std::fs::write(&path, r#"{"system_prompt":"старое","auto_send":false}"#).unwrap();
         let s = Settings::load(&path).unwrap();
-        assert_eq!(s.prompt_presets[0].id, "transcription");
+        assert!(s.prompt_presets.is_empty());
     }
 }

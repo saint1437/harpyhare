@@ -4,6 +4,7 @@ pub mod chats;
 pub mod hotkey;
 pub mod llm;
 pub mod preview_protocol;
+pub mod remote_presets;
 pub mod settings;
 pub mod state;
 pub mod stt;
@@ -63,6 +64,7 @@ const HTTP_URL_PREFIX: &str = "http://";
 
 pub struct App {
     pub settings: Mutex<settings::Settings>,
+    pub official_presets: Mutex<Vec<settings::PromptPreset>>,
     pub recorder: Mutex<state::RecorderState>,
     pub capture: Mutex<Option<capture::SystemAudioCapture>>,
     pub last_recording: Mutex<Option<Vec<f32>>>,
@@ -153,6 +155,7 @@ pub fn run() {
             retry_transcription,
             get_settings,
             set_settings,
+            get_official_presets,
             move_window_by,
             set_window_width,
             set_ptt_suspended,
@@ -173,6 +176,7 @@ pub fn run() {
 fn setup_app(handle: &AppHandle) {
     load_dotenv_files();
     let settings = load_settings_with_env_key_fallback(handle);
+    let official_presets = remote_presets::load_initial(handle);
     let capture = init_system_audio_capture();
     let stt = build_stt_client(&settings);
     let llm = llm::AnthropicClient::new(settings.anthropic_api_key.clone());
@@ -181,11 +185,12 @@ fn setup_app(handle: &AppHandle) {
     let toggle_hotkey = settings.toggle_hotkey.clone();
     let teleprompter_hotkey = settings.teleprompter_hotkey.clone();
     spawn_startup_warm_up_and_model_fetch(handle.clone(), stt.clone(), llm.clone());
-    handle.manage(build_app_state(settings, capture, stt, llm));
+    handle.manage(build_app_state(settings, official_presets, capture, stt, llm));
     register_startup_hotkeys(handle, &ptt_hotkey, &toggle_hotkey, &teleprompter_hotkey);
     install_move_keys_monitor(handle.clone());
     disable_cursor_autohide_on_typing();
     update::spawn_auto_check(handle.clone());
+    remote_presets::spawn_refresh(handle.clone());
 }
 
 fn disable_cursor_autohide_on_typing() {
@@ -269,12 +274,14 @@ fn spawn_startup_warm_up_and_model_fetch(
 
 fn build_app_state(
     settings: settings::Settings,
+    official_presets: Vec<settings::PromptPreset>,
     capture: Option<capture::SystemAudioCapture>,
     stt: stt::GroqStt,
     llm: llm::AnthropicClient,
 ) -> App {
     App {
         settings: Mutex::new(settings),
+        official_presets: Mutex::new(official_presets),
         recorder: Mutex::new(state::RecorderState::Idle),
         capture: Mutex::new(capture),
         last_recording: Mutex::new(None),
@@ -787,6 +794,11 @@ async fn retry_transcription(app: AppHandle) {
 #[tauri::command]
 fn get_settings(app: AppHandle) -> settings::Settings {
     app.state::<App>().settings.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn get_official_presets(app: AppHandle) -> Vec<settings::PromptPreset> {
+    app.state::<App>().official_presets.lock().unwrap().clone()
 }
 
 #[tauri::command]

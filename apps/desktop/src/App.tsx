@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type RefObject,
+} from "react";
 import { AnswerPanel } from "@/components/AnswerPanel";
 import { ChatTabs } from "@/components/ChatTabs";
 import { Composer } from "@/components/Composer";
@@ -12,6 +20,7 @@ import { UpdateDialog } from "@/components/UpdateDialog";
 import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
 import { useModels } from "@/hooks/useModels";
+import { useOfficialPresets } from "@/hooks/useOfficialPresets";
 import { usePttSuspend } from "@/hooks/usePttSuspend";
 import { useRecorder } from "@/hooks/useRecorder";
 import { useSettings } from "@/hooks/useSettings";
@@ -41,7 +50,7 @@ import type { Chat, ChatMessage } from "@/lib/chats";
 import { appendTranscript } from "@/lib/composer";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
 import type { ModelInfo } from "@/lib/models";
-import { presetText } from "@/lib/presets";
+import { mergePresets, presetText } from "@/lib/presets";
 import { toReadingText } from "@/lib/teleprompter";
 
 const RETRYABLE_STT_ERROR = /перегружен|соединение|VPN|интернет|оборван/i;
@@ -239,7 +248,7 @@ interface SendPipeline {
 function useSendPipeline(
   chatsRef: RefObject<ChatsApi>,
   streamRef: RefObject<ClaudeStreams>,
-  settingsRef: RefObject<Settings>,
+  presetsRef: RefObject<PromptPreset[]>,
   clearSttError: () => void,
 ): SendPipeline {
   const dispatchSend = useCallback(
@@ -252,7 +261,7 @@ function useSendPipeline(
       clearSttError();
       chatsRef.current.appendUserMessage(chat.id, trimmed, images);
       const history = historyWithNewUserMessage(chat, trimmed, images);
-      const system = chatSystemPrompt(settingsRef.current.prompt_presets, chat);
+      const system = chatSystemPrompt(presetsRef.current, chat);
       void streamRef.current.send(
         chat.id,
         history,
@@ -262,7 +271,7 @@ function useSendPipeline(
         chat.webSearch,
       );
     },
-    [chatsRef, streamRef, settingsRef, clearSttError],
+    [chatsRef, streamRef, presetsRef, clearSttError],
   );
 
   const doSend = useCallback(() => {
@@ -461,7 +470,14 @@ export default function App() {
     useSttFeedback(state);
   const { previewHtml, previewOpen, openPreview, togglePreview, closePreview } = usePreviewPanel();
 
+  const officialPresets = useOfficialPresets();
+  const presets = useMemo(
+    () => mergePresets(officialPresets, settings.prompt_presets),
+    [officialPresets, settings.prompt_presets],
+  );
+
   const settingsRef = useLatestRef(settings);
+  const presetsRef = useLatestRef(presets);
   const chatsRef = useLatestRef(chats);
 
   const onAssistantDone = useCallback(
@@ -479,7 +495,7 @@ export default function App() {
   const stream = useClaudeStream(onAssistantDone);
   const streamRef = useLatestRef(stream);
 
-  const { dispatchSend, doSend } = useSendPipeline(chatsRef, streamRef, settingsRef, clearError);
+  const { dispatchSend, doSend } = useSendPipeline(chatsRef, streamRef, presetsRef, clearError);
 
   useTranscription(
     useCallback(
@@ -590,7 +606,7 @@ export default function App() {
         <AppComposer
           chats={chats}
           models={models}
-          presets={settings.prompt_presets}
+          presets={presets}
           hotkey={settings.hotkey}
           streaming={activeStreaming}
           showRetry={showRetry}

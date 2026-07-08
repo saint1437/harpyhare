@@ -35,7 +35,10 @@ out.wav
 *.sw?
 
 # секреты
-.env
+.env*
+
+# vercel (линк проекта + pulled env)
+.vercel
 
 # мокапы visual companion (superpowers brainstorming)
 .superpowers/
