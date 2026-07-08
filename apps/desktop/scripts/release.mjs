@@ -14,6 +14,7 @@ const ARCH = "aarch64";
 const PLATFORM = `darwin-${ARCH}`;
 
 const PKG_PATH = join(ROOT, "package.json");
+const LOCKFILE_PATH = join(ROOT, "../../package-lock.json");
 const TAURI_CONF_PATH = join(ROOT, "src-tauri/tauri.conf.json");
 const CARGO_TOML_PATH = join(ROOT, "src-tauri/Cargo.toml");
 const BUNDLE_DIR = join(ROOT, "src-tauri/target/release/bundle");
@@ -171,7 +172,7 @@ const commitAndTag = (version) => {
   run("git", [
     "add",
     "package.json",
-    "package-lock.json",
+    LOCKFILE_PATH,
     TAURI_CONF_PATH,
     CARGO_TOML_PATH,
     "src-tauri/Cargo.lock",
