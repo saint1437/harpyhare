@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+:root {
+  --radius: 0.85rem;
+
+  --bg: oklch(0 0 0);
+  --bg-elevated: oklch(0.15 0 0);
+  --surface: oklch(0.17 0 0);
+  --surface-hover: oklch(0.22 0 0);
+
+  --fg: oklch(0.985 0 0);
+  --fg-muted: oklch(0.68 0 0);
+  --fg-subtle: oklch(0.5 0 0);
+
+  --border: oklch(1 0 0 / 9%);
+  --border-strong: oklch(1 0 0 / 16%);
+
+  --primary: oklch(0.5 0.18 20);
+  --primary-hover: oklch(0.57 0.2 20);
+  --primary-fg: oklch(0.98 0.01 30);
+  --glow: oklch(0.55 0.2 18);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-glow: var(--glow);
+  --radius-lg: var(--radius);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Inter", sans-serif;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.aurora {
+  background: radial-gradient(58% 50% at 50% 0%, var(--glow) 0%, transparent 72%);
+  opacity: 0.2;
+}
+
+@keyframes eq {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.eq-bar {
+  transform-origin: center;
+  animation: eq 1.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .eq-bar {
+    animation: none;
+    transform: scaleY(0.7);
+  }
+}
