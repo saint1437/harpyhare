@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Two halves: a **Rust backend** (`src-tauri/src/`) and a **React 19 frontend** (`src/`). The backend does all the privileged/native work; the frontend is pure UI over a typed IPC boundary.
 
+Живёт в `apps/desktop/` монорепозитория **harpyhare** (Nx + npm workspaces; лендинг — `apps/landing`). Все пути и команды ниже — относительно `apps/desktop/` (запускать из этой папки, либо через Nx из корня: `nx <target> desktop`). Обзор монорепо — в корневом `CLAUDE.md`.
+
 ## Commands
 
 ```bash

@@ -1,6 +1,11 @@
 {
-  "$schema": "https://unpkg.com/knip@5/schema.json",
-  "project": ["src/**/*.{ts,tsx}"],
-  "ignore": ["src/components/ui/**"],
-  "ignoreExportsUsedInFile": true
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreExportsUsedInFile": true,
+  "workspaces": {
+    "apps/desktop": {
+      "project": ["src/**/*.{ts,tsx}"],
+      "ignore": ["src/components/ui/**"],
+      "ignoreBinaries": ["gh"]
+    }
+  }
 }

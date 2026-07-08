@@ -1,84 +1,52 @@
 # harpyhare
 
-Push-to-talk приложение для macOS: зажми V → захват системного звука → распознавание речи через Whisper (Groq) → редактирование текста → отправка в Claude со скриншотами. Ответ приходит стримом прямо в плавающем HUD-окне. В системе процесс представляется нейтрально как «Audio System»; бренд harpyhare — только внутри интерфейса.
+Монорепозиторий (Nx + npm workspaces) с двумя приложениями.
 
-## Требования
+```
+apps/
+  desktop/    # harpyhare — macOS Tauri 2 приложение (продукт). См. apps/desktop/README.md
+  landing/    # лендинг со скачиванием (Vite + React + Tailwind). См. apps/landing/README.md
+```
 
-- macOS 14.2+ (Core Audio process tap для захвата системного звука)
-- Ключ API [Anthropic](https://console.anthropic.com/) (Claude)
-- Ключ API [Groq](https://console.groq.com/) (Whisper STT)
-- VPN для обоих сервисов при работе из РФ
+Каждое приложение самодостаточно (свои `package.json`, tsconfig, eslint, prettier, vite).
+Nx определяет проекты из npm-workspaces и выводит таргеты из их `package.json`-скриптов —
+никаких `project.json`.
 
-## Запуск и сборка
+## Старт
 
 ```bash
-npm install
-cp .env.example .env   # и впиши ключи API (см. ниже)
-npm run tauri dev      # dev-режим с hot-reload
-npm run tauri build    # production-сборка (.app + .dmg)
+npm install                       # установить все воркспейсы (один общий node_modules)
+
+# приложение (Rust + фронтенд, hot reload)
+cd apps/desktop && npm run tauri dev
+
+# лендинг
+npx nx dev landing                # или: cd apps/landing && npm run dev
 ```
 
-## Ключи API
-
-Два способа задать ключи (можно совмещать):
-
-1. **`.env` в корне проекта** — `ANTHROPIC_API_KEY` и `GROQ_API_KEY`. Файл в `.gitignore` и подхватывается при старте приложения.
-2. **Настройки в приложении** (⚙) — сохраняются в settings.json и **имеют приоритет** над `.env`: значение из `.env` используется, только пока соответствующее поле в настройках пустое.
-
-## Первый запуск
-
-При первом старте macOS покажет диалог «Разрешить Audio System записывать системный звук?» — нажми **Разрешить**. Если диалог не появился или было отказано — в приложении появится красный баннер; кнопка «Открыть настройки» переведёт в нужную панель системных настроек.
-
-## Горячие клавиши
-
-| Клавиша | Действие |
-|---------|----------|
-| V (зажать) | Начать запись системного звука |
-| Esc | Отменить запись |
-| Cmd+Enter | Отправить текст в Claude |
-| Cmd+V | Вставить скриншот из буфера обмена |
-| Cmd+←/→/↑/↓ | Двигать окно по экрану |
-
-> **ВАЖНО:** хоткей V перехватывает нажатие во **всех** приложениях, пока harpyhare запущен. В полях самого приложения печать работает нормально — PTT снимается при получении фокуса. Изменить клавишу можно в настройках (шестерёнка).
-
-## Настройки
-
-Открываются кнопкой ⚙ в правом верхнем углу. Хранятся в:
-
-```
-~/Library/Application Support/com.audioservice.helper/settings.json
-```
-
-Файл создаётся с правами 600 (читает только текущий пользователь).
-
-## Обновления
-
-Приложение само проверяет новые версии (на старте и раз в 6 часов) по `latest.json` из публичного репозитория [harpyhare-releases](https://github.com/screenfriskofficial/harpyhare-releases). При находке в шапке появляется бейдж с номером версии: клик → заметки релиза → «Обновить и перезапустить» (артефакт проверяется minisign-подписью). Ручная проверка — в настройках.
-
-## Релиз
-
-Одноразовая настройка: пара ключей подписи updater-артефактов уже сгенерирована в `~/.tauri/itech.key` (+ `.pub`). **Приватный ключ обязательно забэкапить**: без него существующие установки перестанут принимать обновления. Публичный ключ зашит в `tauri.conf.json` (`plugins.updater.pubkey`).
+## Оркестрация (из корня)
 
 ```bash
-npm run release -- 0.2.0 --notes "Что нового"
+npx nx build desktop              # nx <target> <project>: build | lint | typecheck | test
+npx nx run-many -t build          # для всех проектов
+npx nx run-many -t lint typecheck test
+npx nx affected -t lint typecheck --uncommitted   # только изменённые проекты
+
+npm run knip                      # мёртвый код/зависимости (workspace-aware, см. knip.json)
+npm run format                    # prettier по всему репо
 ```
 
-Скрипт бампит версию в трёх файлах, собирает подписанный бандл, публикует `AudioSystem_X.Y.Z_aarch64.app.tar.gz` + `latest.json` + `.dmg` в harpyhare-releases и делает локальный коммит с тегом `vX.Y.Z` (пуш — вручную). Ключ ищется в `~/.tauri/itech.key` (переопределить: `ITECH_SIGNING_KEY`).
+Пре-коммит (husky): `lint-staged` (prettier по застейдженным) → `nx affected -t typecheck
+lint` → `knip`.
 
-## Стек
+## Релиз приложения
 
-- **Frontend:** React 19 + Vite + TypeScript + Tailwind v4 + shadcn/ui + react-markdown. Слои: `src/ipc` (типизированная граница над Tauri — единственное место, знающее про invoke/listen), `src/lib` (чистая логика), `src/hooks` (по хуку на слайс контракта), `src/components` (на shadcn-примитивах).
-- **Backend:** Rust (Tauri 2) — захват системного звука (Core Audio process tap), Groq STT, стрим Anthropic.
-
-## Тесты
+Пайплайн не изменился — из `apps/desktop`:
 
 ```bash
-# Frontend (TypeScript): чистая логика + хуки
-npx vitest run
-
-# Rust (unit-тесты)
-cargo test --manifest-path src-tauri/Cargo.toml --lib
-
-# Clippy (lint)
-cargo clippy --manifest-path src-tauri/Cargo.toml --lib
+cd apps/desktop && npm run release -- 0.5.0 --notes "Что нового"
 ```
+
+Собирает подписанный бандл, публикует GitHub-релиз в `screenfriskofficial/harpyhare-releases`,
+бампит версию, коммитит и ставит тег. Лендинг подхватит новую версию автоматически (тянет её из
+последнего релиза в рантайме). Подробности — `apps/desktop/CLAUDE.md`.

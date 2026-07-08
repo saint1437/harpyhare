@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+# Nx cache
+.nx/cache
+.nx/workspace-data
+
+# Rust build artifacts (apps/desktop/src-tauri)
+**/src-tauri/target
+**/src-tauri/gen
+
 # Артефакт примера record5s (ручная приёмка захвата звука)
 out.wav
 
@@ -34,7 +42,7 @@ out.wav
 
 # tsc -b artifacts
 *.tsbuildinfo
-vite.config.js
-vite.config.d.ts
-vitest.config.js
-vitest.config.d.ts
+**/vite.config.js
+**/vite.config.d.ts
+**/vitest.config.js
+**/vitest.config.d.ts
