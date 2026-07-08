@@ -45,6 +45,7 @@ export interface ComposerProps {
   context: string;
   onContextChange: (context: string) => void;
   models: ModelInfo[];
+  disabled: boolean;
 }
 
 const CONTROL_WIDTH_CLASS = "w-[120px]";
@@ -147,11 +148,12 @@ interface ModelSelectProps {
   value: string;
   models: ModelInfo[];
   onChange: (model: string) => void;
+  disabled: boolean;
 }
 
 function ModelSelect(props: ModelSelectProps) {
   return (
-    <Select value={props.value} onValueChange={props.onChange}>
+    <Select value={props.value} disabled={props.disabled} onValueChange={props.onChange}>
       <SelectTrigger className={SELECT_TRIGGER_CLASS}>
         <SelectValue />
       </SelectTrigger>
@@ -170,14 +172,16 @@ interface PresetSelectProps {
   presets: { id: string; name: string }[];
   presetId: string;
   onChange: (id: string) => void;
+  disabled: boolean;
 }
 
-function PresetSelect({ presets, presetId, onChange }: PresetSelectProps) {
+function PresetSelect({ presets, presetId, onChange, disabled }: PresetSelectProps) {
   const selectedValue =
     presetId !== "" && presets.some((p) => p.id === presetId) ? presetId : NO_PRESET_VALUE;
   return (
     <Select
       value={selectedValue}
+      disabled={disabled}
       onValueChange={(v) => {
         onChange(v === NO_PRESET_VALUE ? "" : v);
       }}
@@ -214,6 +218,7 @@ type ComposerControlsProps = Pick<
   | "streaming"
   | "onStop"
   | "onSend"
+  | "disabled"
 > & {
   hasContext: boolean;
   onOpenContext: () => void;
@@ -224,28 +229,52 @@ type ComposerControlsProps = Pick<
 function ComposerControls(props: ComposerControlsProps) {
   return (
     <div className="flex items-center gap-2">
-      <Button variant="ghost" size="sm" className={CONTROL_WIDTH_CLASS} onClick={props.onClear}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className={CONTROL_WIDTH_CLASS}
+        disabled={props.disabled}
+        onClick={props.onClear}
+      >
         Очистить
       </Button>
-      <Button variant="ghost" size="sm" className="min-w-[96px]" onClick={props.onOpenContext}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="min-w-[96px]"
+        disabled={props.disabled}
+        onClick={props.onOpenContext}
+      >
         {props.hasContext ? "Контекст •" : "Контекст"}
       </Button>
       <div className="flex-1" />
       {props.showRetry && (
-        <Button variant="ghost" size="sm" className={CONTROL_WIDTH_CLASS} onClick={props.onRetry}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={CONTROL_WIDTH_CLASS}
+          disabled={props.disabled}
+          onClick={props.onRetry}
+        >
           Повторить
         </Button>
       )}
       <ToggleSelect
         value={props.webSearch}
+        disabled={props.disabled}
         onChange={props.onWebSearchChange}
         onLabel="Веб-поиск"
         offLabel="Без поиска"
       />
-      <ModelSelect models={props.modelOptions} value={props.model} onChange={props.onModelChange} />
+      <ModelSelect
+        models={props.modelOptions}
+        value={props.model}
+        disabled={props.disabled}
+        onChange={props.onModelChange}
+      />
       <ToggleSelect
         value={props.thinkingEnabled}
-        disabled={props.thinkingDisabled}
+        disabled={props.disabled || props.thinkingDisabled}
         onChange={props.onThinkingChange}
         onLabel="Thinking"
         offLabel="Без thinking"
@@ -253,6 +282,7 @@ function ComposerControls(props: ComposerControlsProps) {
       <PresetSelect
         presets={props.presets}
         presetId={props.presetId}
+        disabled={props.disabled}
         onChange={props.onPresetChange}
       />
       {props.streaming && (
@@ -269,7 +299,7 @@ function ComposerControls(props: ComposerControlsProps) {
         size="sm"
         className={CONTROL_WIDTH_CLASS}
         onClick={props.onSend}
-        disabled={props.streaming}
+        disabled={props.streaming || props.disabled}
       >
         Отправить
       </Button>
@@ -349,6 +379,7 @@ export function Composer(props: ComposerProps) {
         hotkey={props.hotkey}
       />
       <ComposerControls
+        disabled={props.disabled}
         onClear={props.onClear}
         hasContext={props.context.trim() !== ""}
         onOpenContext={openContextDialog}

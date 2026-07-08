@@ -11,12 +11,13 @@ import { AnswerPanel } from "@/components/AnswerPanel";
 import { ChatTabs } from "@/components/ChatTabs";
 import { Composer } from "@/components/Composer";
 import { HotkeyHints } from "@/components/HotkeyHints";
-import { PermissionBanner } from "@/components/PermissionBanner";
+import { MissingKeysDialog } from "@/components/MissingKeysDialog";
 import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { StatusBar, type StatusBarProps } from "@/components/StatusBar";
 import { Teleprompter } from "@/components/Teleprompter";
 import { UpdateDialog } from "@/components/UpdateDialog";
+import { WarningBanner } from "@/components/WarningBanner";
 import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
 import { useModels } from "@/hooks/useModels";
@@ -46,6 +47,7 @@ import type {
   Settings,
   UpdateInfo,
 } from "@/ipc/types";
+import { missingApiKeys, missingKeysNotice, type ApiKeyInfo } from "@/lib/api-keys";
 import type { Chat, ChatMessage } from "@/lib/chats";
 import { appendTranscript } from "@/lib/composer";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
@@ -142,6 +144,41 @@ function useCapturePermission(): boolean {
     });
   }, []);
   return permissionOk;
+}
+
+const BROWSER_DEMO_MISSING_KEYS_PARAM = "nokeys";
+
+function browserDemoMissingKeysRequested(): boolean {
+  return new URLSearchParams(window.location.search).has(BROWSER_DEMO_MISSING_KEYS_PARAM);
+}
+
+interface MissingKeysGate {
+  missingKeys: ApiKeyInfo[];
+  keysMissing: boolean;
+  dialogOpen: boolean;
+  openDialog: () => void;
+  closeDialog: () => void;
+}
+
+function useMissingKeysGate(settings: Settings, settingsLoading: boolean): MissingKeysGate {
+  const missingKeys = useMemo(() => missingApiKeys(settings), [settings]);
+  const keysMissing = isTauri()
+    ? !settingsLoading && missingKeys.length > 0
+    : browserDemoMissingKeysRequested();
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  useEffect(() => {
+    setDialogOpen(keysMissing);
+  }, [keysMissing]);
+
+  const openDialog = useCallback(() => {
+    setDialogOpen(true);
+  }, []);
+  const closeDialog = useCallback(() => {
+    setDialogOpen(false);
+  }, []);
+
+  return { missingKeys, keysMissing, dialogOpen, openDialog, closeDialog };
 }
 
 interface SttFeedback {
@@ -250,9 +287,11 @@ function useSendPipeline(
   streamRef: RefObject<ClaudeStreams>,
   presetsRef: RefObject<PromptPreset[]>,
   clearSttError: () => void,
+  sendBlockedRef: RefObject<boolean>,
 ): SendPipeline {
   const dispatchSend = useCallback(
     (rawText: string) => {
+      if (sendBlockedRef.current) return;
       const chat = chatsRef.current.active;
       if (streamRef.current.streaming[chat.id]) return;
       const trimmed = rawText.trim();
@@ -271,7 +310,7 @@ function useSendPipeline(
         chat.webSearch,
       );
     },
-    [chatsRef, streamRef, presetsRef, clearSttError],
+    [chatsRef, streamRef, presetsRef, clearSttError, sendBlockedRef],
   );
 
   const doSend = useCallback(() => {
@@ -339,6 +378,7 @@ interface AppComposerProps {
   hotkey: string;
   streaming: boolean;
   showRetry: boolean;
+  disabled: boolean;
   onSend: () => void;
   onStop: () => void;
   onRetry: () => void;
@@ -351,6 +391,7 @@ function AppComposer({
   hotkey,
   streaming,
   showRetry,
+  disabled,
   onSend,
   onStop,
   onRetry,
@@ -398,6 +439,7 @@ function AppComposer({
         chats.setChatContext(activeId, context);
       }}
       models={models}
+      disabled={disabled}
     />
   );
 }
@@ -454,7 +496,7 @@ function AppDialogs({
 }
 
 export default function App() {
-  const { settings, save, bumpOpacity } = useSettings();
+  const { settings, loading: settingsLoading, save, bumpOpacity } = useSettings();
   const state = useRecorder();
   const chats = useChats();
   const models = useModels();
@@ -466,6 +508,7 @@ export default function App() {
   const teleprompterResumeRef = useRef({ text: "", offset: 0 });
 
   const permissionOk = useCapturePermission();
+  const keysGate = useMissingKeysGate(settings, settingsLoading);
   const { sttError, showRetry, setSttError, clearError, clearFeedback, retry } =
     useSttFeedback(state);
   const { previewHtml, previewOpen, openPreview, togglePreview, closePreview } = usePreviewPanel();
@@ -494,8 +537,15 @@ export default function App() {
 
   const stream = useClaudeStream(onAssistantDone);
   const streamRef = useLatestRef(stream);
+  const sendBlockedRef = useLatestRef(keysGate.keysMissing);
 
-  const { dispatchSend, doSend } = useSendPipeline(chatsRef, streamRef, presetsRef, clearError);
+  const { dispatchSend, doSend } = useSendPipeline(
+    chatsRef,
+    streamRef,
+    presetsRef,
+    clearError,
+    sendBlockedRef,
+  );
 
   useTranscription(
     useCallback(
@@ -569,7 +619,18 @@ export default function App() {
     >
       <div className="flex shrink-0 flex-col gap-3" style={{ width: CHAT_COLUMN_WIDTH_PX }}>
         {!permissionOk && (
-          <PermissionBanner onOpenSettings={() => void openAudioPermissionSettings()} />
+          <WarningBanner
+            actionLabel="Открыть настройки"
+            onAction={() => void openAudioPermissionSettings()}
+          >
+            Нет разрешения на запись системного звука
+          </WarningBanner>
+        )}
+
+        {keysGate.keysMissing && (
+          <WarningBanner actionLabel="Как получить" onAction={keysGate.openDialog}>
+            {missingKeysNotice(keysGate.missingKeys)}
+          </WarningBanner>
         )}
 
         <AppHeader
@@ -610,6 +671,7 @@ export default function App() {
           hotkey={settings.hotkey}
           streaming={activeStreaming}
           showRetry={showRetry}
+          disabled={keysGate.keysMissing}
           onSend={doSend}
           onStop={() => {
             stream.stop(activeId);
@@ -645,6 +707,16 @@ export default function App() {
           }}
         />
       )}
+
+      <MissingKeysDialog
+        open={keysGate.dialogOpen}
+        missing={keysGate.missingKeys}
+        onOpenSettings={() => {
+          keysGate.closeDialog();
+          setSettingsOpen(true);
+        }}
+        onClose={keysGate.closeDialog}
+      />
 
       <AppDialogs
         settings={settings}

@@ -1,0 +1,40 @@
+export interface ApiKeyInfo {
+  id: "anthropic" | "groq";
+  name: string;
+  purpose: string;
+  consoleUrl: string;
+}
+
+const API_KEYS: ApiKeyInfo[] = [
+  {
+    id: "anthropic",
+    name: "Anthropic",
+    purpose: "ответы Claude",
+    consoleUrl: "https://console.anthropic.com/settings/keys",
+  },
+  {
+    id: "groq",
+    name: "Groq",
+    purpose: "распознавание речи",
+    consoleUrl: "https://console.groq.com/keys",
+  },
+];
+
+export interface ApiKeySettings {
+  anthropic_api_key: string;
+  groq_api_key: string;
+}
+
+export function missingApiKeys(settings: ApiKeySettings): ApiKeyInfo[] {
+  const values: Record<ApiKeyInfo["id"], string> = {
+    anthropic: settings.anthropic_api_key,
+    groq: settings.groq_api_key,
+  };
+  return API_KEYS.filter((k) => values[k.id].trim() === "");
+}
+
+export function missingKeysNotice(missing: ApiKeyInfo[]): string {
+  const noun = missing.length === 1 ? "API-ключа" : "API-ключей";
+  const names = missing.map((k) => k.name).join(" и ");
+  return `Нет ${noun} ${names} — отправка и распознавание отключены`;
+}
