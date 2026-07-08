@@ -48,7 +48,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVBQjlENEVCMkFDRjA0MDcKUldRSEJNOHE2OVM1Nm9JTEtFc0pPekQxYkJlZnZ4aENEcHN2UXJWU1hnQVhTZ2hNVkpyd0xIZVEK",
       "endpoints": [
-        "https://github.com/screenfriskofficial/itech-releases/releases/latest/download/latest.json"
+        "https://github.com/screenfriskofficial/harpyhare-releases/releases/latest/download/latest.json"
       ]
     }
   }

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PRODUCT_NAME = "Audio System";
 const ASSET_SLUG = "AudioSystem";
-const RELEASES_REPO = "screenfriskofficial/itech-releases";
+const RELEASES_REPO = "screenfriskofficial/harpyhare-releases";
 const RELEASES_REPO_URL = `https://github.com/${RELEASES_REPO}`;
 const ARCH = "aarch64";
 const PLATFORM = `darwin-${ARCH}`;

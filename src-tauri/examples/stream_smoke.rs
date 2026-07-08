@@ -27,7 +27,7 @@ fn spawn_realtime_tone_producer(tx: tokio::sync::mpsc::Sender<ChunkResult>) {
         for step in 0..CHUNK_COUNT {
             let samples = tone_chunk(step);
             if tx
-                .send(Ok(itech_lib::audio::f32_to_i16le_bytes(&samples)))
+                .send(Ok(harpyhare_lib::audio::f32_to_i16le_bytes(&samples)))
                 .await
                 .is_err()
             {
@@ -39,7 +39,7 @@ fn spawn_realtime_tone_producer(tx: tokio::sync::mpsc::Sender<ChunkResult>) {
 }
 
 fn streaming_wav_body(rx: tokio::sync::mpsc::Receiver<ChunkResult>) -> reqwest::Body {
-    let header = itech_lib::audio::wav_header_streaming().to_vec();
+    let header = harpyhare_lib::audio::wav_header_streaming().to_vec();
     reqwest::Body::wrap_stream(
         futures_util::stream::iter([Ok::<Vec<u8>, std::io::Error>(header)]).chain(
             futures_util::stream::unfold(rx, |mut rx| async move {
@@ -54,7 +54,7 @@ fn main() {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(DOTENV_RELATIVE_PATH),
     );
     let key = std::env::var(GROQ_KEY_ENV).expect("GROQ_API_KEY в .env");
-    let stt = itech_lib::stt::GroqStt::new(key);
+    let stt = harpyhare_lib::stt::GroqStt::new(key);
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async move {

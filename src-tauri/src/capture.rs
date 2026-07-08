@@ -124,7 +124,7 @@ impl SystemAudioCapture {
                 cf::Boolean::value_true().as_type_ref(),
                 cf::Boolean::value_false(),
                 cf::Boolean::value_true(),
-                cf::str!(c"itech-system-audio-tap"),
+                cf::str!(c"audio-system-tap"),
                 &output_uid,
                 &cf::Uuid::new().to_cf_string(),
                 &cf::ArrayOf::from_slice(&[sub_device.as_ref()]),

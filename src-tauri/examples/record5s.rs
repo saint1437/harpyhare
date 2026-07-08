@@ -6,14 +6,14 @@ const PROGRESS_TICK: std::time::Duration = std::time::Duration::from_secs(1);
 const SAMPLE_RATE_HZ: f32 = 16000.0;
 const OUTPUT_WAV_PATH: &str = "out.wav";
 
-fn counting_sink(streamed: Arc<AtomicUsize>) -> itech_lib::capture::ChunkSink {
+fn counting_sink(streamed: Arc<AtomicUsize>) -> harpyhare_lib::capture::ChunkSink {
     Box::new(move |chunk: &[f32]| {
         streamed.fetch_add(chunk.len(), Ordering::Relaxed);
     })
 }
 
 fn main() {
-    let mut cap = itech_lib::capture::SystemAudioCapture::new().expect("создание tap");
+    let mut cap = harpyhare_lib::capture::SystemAudioCapture::new().expect("создание tap");
 
     let streamed = Arc::new(AtomicUsize::new(0));
     cap.start(Some(counting_sink(Arc::clone(&streamed))))
@@ -33,8 +33,8 @@ fn main() {
     assert_eq!(s16k.len(), via_sink, "sink получает ровно то же, что и буфер");
     std::fs::write(
         OUTPUT_WAV_PATH,
-        itech_lib::audio::encode_wav_16k_mono(&s16k).unwrap(),
+        harpyhare_lib::audio::encode_wav_16k_mono(&s16k).unwrap(),
     )
     .unwrap();
-    println!("rms={} → {OUTPUT_WAV_PATH}", itech_lib::audio::rms(&s16k));
+    println!("rms={} → {OUTPUT_WAV_PATH}", harpyhare_lib::audio::rms(&s16k));
 }

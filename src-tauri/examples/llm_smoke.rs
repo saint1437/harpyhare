@@ -17,15 +17,15 @@ const ERROR_BODY_PREVIEW_CHARS: usize = 400;
 const HTTP_STATUS_OK: u16 = 200;
 const NO_WEB_SEARCH: Option<serde_json::Value> = None;
 
-fn chat_message(role: &str, text: &str) -> itech_lib::llm::ChatMessage {
-    itech_lib::llm::ChatMessage {
+fn chat_message(role: &str, text: &str) -> harpyhare_lib::llm::ChatMessage {
+    harpyhare_lib::llm::ChatMessage {
         role: role.into(),
         text: text.into(),
         images: vec![],
     }
 }
 
-fn arithmetic_dialog(assistant_text: &str) -> Vec<itech_lib::llm::ChatMessage> {
+fn arithmetic_dialog(assistant_text: &str) -> Vec<harpyhare_lib::llm::ChatMessage> {
     vec![
         chat_message(ROLE_USER, "1+1?"),
         chat_message(ROLE_ASSISTANT, assistant_text),
@@ -35,15 +35,15 @@ fn arithmetic_dialog(assistant_text: &str) -> Vec<itech_lib::llm::ChatMessage> {
 
 fn probe_body(
     system: &str,
-    messages: &[itech_lib::llm::ChatMessage],
+    messages: &[harpyhare_lib::llm::ChatMessage],
     thinking: bool,
     fast: bool,
 ) -> serde_json::Value {
-    itech_lib::llm::build_request_body(
+    harpyhare_lib::llm::build_request_body(
         OPUS_MODEL,
         system,
         messages,
-        itech_lib::llm::thinking_value(None, OPUS_MODEL, thinking),
+        harpyhare_lib::llm::thinking_value(None, OPUS_MODEL, thinking),
         fast,
         NO_WEB_SEARCH,
     )
