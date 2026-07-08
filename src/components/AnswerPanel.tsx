@@ -17,6 +17,7 @@ export interface AnswerPanelProps {
   streamStartedAt?: number;
   onCopy: () => void;
   onTogglePreview: (code: string) => void;
+  onOpenTeleprompter: () => void;
 }
 
 const NEAR_BOTTOM_PX = 40;
@@ -151,7 +152,17 @@ function useStickToBottom() {
   return { scrollRef, showJump, onScroll, scrollIfNearBottom, resetToBottom };
 }
 
-function PanelHeader({ canCopy, onCopy }: { canCopy: boolean; onCopy: () => void }) {
+function PanelHeader({
+  canCopy,
+  canTeleprompt,
+  onCopy,
+  onOpenTeleprompter,
+}: {
+  canCopy: boolean;
+  canTeleprompt: boolean;
+  onCopy: () => void;
+  onOpenTeleprompter: () => void;
+}) {
   return (
     <div className="flex items-center gap-2.5">
       <span className="font-mono text-[11px] tracking-wider text-primary uppercase">Чат</span>
@@ -159,6 +170,15 @@ function PanelHeader({ canCopy, onCopy }: { canCopy: boolean; onCopy: () => void
         className="h-px flex-1 bg-gradient-to-r from-primary/40 via-border to-transparent"
         aria-hidden
       />
+      {canTeleprompt && (
+        <button
+          type="button"
+          onClick={onOpenTeleprompter}
+          className="font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Суфлёр
+        </button>
+      )}
       {canCopy && (
         <button
           type="button"
@@ -240,6 +260,7 @@ export function AnswerPanel({
   streamStartedAt,
   onCopy,
   onTogglePreview,
+  onOpenTeleprompter,
 }: AnswerPanelProps) {
   const { scrollRef, showJump, onScroll, scrollIfNearBottom, resetToBottom } = useStickToBottom();
 
@@ -259,10 +280,16 @@ export function AnswerPanel({
   const empty = messages.length === 0 && !partial;
   const hasAssistantReply = messages.some((m) => m.role === "assistant");
   const canCopy = !streaming && hasAssistantReply;
+  const canTeleprompt = hasAssistantReply || (partial !== null && partial !== "");
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-2">
-      <PanelHeader canCopy={canCopy} onCopy={onCopy} />
+      <PanelHeader
+        canCopy={canCopy}
+        canTeleprompt={canTeleprompt}
+        onCopy={onCopy}
+        onOpenTeleprompter={onOpenTeleprompter}
+      />
 
       <div className="relative flex min-h-0 flex-1">
         <div

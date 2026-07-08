@@ -6,8 +6,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const PRODUCT_NAME = "Audio Service";
-const ASSET_SLUG = "AudioService";
+const PRODUCT_NAME = "Audio System";
+const ASSET_SLUG = "AudioSystem";
 const RELEASES_REPO = "screenfriskofficial/itech-releases";
 const RELEASES_REPO_URL = `https://github.com/${RELEASES_REPO}`;
 const ARCH = "aarch64";

@@ -20,6 +20,10 @@ export interface Settings {
   stt_language: string;
   stt_translate: boolean;
   screen_share_visible: boolean;
+  teleprompter_speed: number;
+  teleprompter_font_size: number;
+  teleprompter_hotkey: string;
+  teleprompter_resume: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -38,6 +42,10 @@ export const DEFAULT_SETTINGS: Settings = {
   stt_language: "ru",
   stt_translate: false,
   screen_share_visible: false,
+  teleprompter_speed: 40,
+  teleprompter_font_size: 28,
+  teleprompter_hotkey: "F10",
+  teleprompter_resume: true,
 };
 
 export type RecorderState = "idle" | "recording" | "transcribing";
@@ -69,4 +77,5 @@ export interface EventMap {
   "update-available": UpdateInfo;
   "update-progress": UpdateProgress;
   "update-done": { version: string };
+  "toggle-teleprompter": null;
 }

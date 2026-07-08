@@ -8,10 +8,13 @@ const SEED_PRESET_NAME: &str = "Расшифровка речи";
 
 const DEFAULT_HOTKEY: &str = "F9";
 const DEFAULT_TOGGLE_HOTKEY: &str = "Cmd+Shift+H";
+const DEFAULT_TELEPROMPTER_HOTKEY: &str = "F10";
 const DEFAULT_WINDOW_OPACITY: f64 = 0.9;
 const DEFAULT_MOVE_STEP: u32 = 20;
 const DEFAULT_CHAT_FONT_SIZE: f64 = 13.5;
 const DEFAULT_STT_LANGUAGE: &str = "ru";
+const DEFAULT_TELEPROMPTER_SPEED: f64 = 40.0;
+const DEFAULT_TELEPROMPTER_FONT_SIZE: f64 = 28.0;
 
 const WINDOW_OPACITY_MIN: f64 = 0.2;
 const WINDOW_OPACITY_MAX: f64 = 1.0;
@@ -19,6 +22,10 @@ const MOVE_STEP_MIN: u32 = 1;
 const MOVE_STEP_MAX: u32 = 200;
 const CHAT_FONT_SIZE_MIN: f64 = 10.0;
 const CHAT_FONT_SIZE_MAX: f64 = 20.0;
+const TELEPROMPTER_SPEED_MIN: f64 = 10.0;
+const TELEPROMPTER_SPEED_MAX: f64 = 150.0;
+const TELEPROMPTER_FONT_SIZE_MIN: f64 = 20.0;
+const TELEPROMPTER_FONT_SIZE_MAX: f64 = 48.0;
 
 const OWNER_ONLY_FILE_MODE: u32 = 0o600;
 const TMP_FILE_EXTENSION: &str = "tmp";
@@ -56,6 +63,10 @@ pub struct Settings {
     pub stt_language: String,
     pub stt_translate: bool,
     pub screen_share_visible: bool,
+    pub teleprompter_speed: f64,
+    pub teleprompter_font_size: f64,
+    pub teleprompter_hotkey: String,
+    pub teleprompter_resume: bool,
 }
 
 impl Default for Settings {
@@ -76,6 +87,10 @@ impl Default for Settings {
             stt_language: DEFAULT_STT_LANGUAGE.into(),
             stt_translate: false,
             screen_share_visible: false,
+            teleprompter_speed: DEFAULT_TELEPROMPTER_SPEED,
+            teleprompter_font_size: DEFAULT_TELEPROMPTER_FONT_SIZE,
+            teleprompter_hotkey: DEFAULT_TELEPROMPTER_HOTKEY.into(),
+            teleprompter_resume: true,
         }
     }
 }
@@ -88,6 +103,18 @@ impl Settings {
             self.chat_font_size = DEFAULT_CHAT_FONT_SIZE;
         }
         self.chat_font_size = self.chat_font_size.clamp(CHAT_FONT_SIZE_MIN, CHAT_FONT_SIZE_MAX);
+        if !self.teleprompter_speed.is_finite() {
+            self.teleprompter_speed = DEFAULT_TELEPROMPTER_SPEED;
+        }
+        self.teleprompter_speed = self
+            .teleprompter_speed
+            .clamp(TELEPROMPTER_SPEED_MIN, TELEPROMPTER_SPEED_MAX);
+        if !self.teleprompter_font_size.is_finite() {
+            self.teleprompter_font_size = DEFAULT_TELEPROMPTER_FONT_SIZE;
+        }
+        self.teleprompter_font_size = self
+            .teleprompter_font_size
+            .clamp(TELEPROMPTER_FONT_SIZE_MIN, TELEPROMPTER_FONT_SIZE_MAX);
     }
 
     pub fn load(path: &Path) -> std::io::Result<Self> {
@@ -164,6 +191,38 @@ mod tests {
         assert_eq!(s.stt_language, "ru");
         assert!(!s.stt_translate);
         assert!(!s.screen_share_visible);
+        assert_eq!(s.teleprompter_speed, 40.0);
+        assert_eq!(s.teleprompter_font_size, 28.0);
+        assert_eq!(s.teleprompter_hotkey, "F10");
+        assert!(s.teleprompter_resume);
+    }
+
+    #[test]
+    fn clamp_limits_teleprompter_speed_and_font() {
+        let mut s = Settings::default();
+        s.teleprompter_speed = 5.0;
+        s.teleprompter_font_size = 4.0;
+        s.clamp();
+        assert_eq!(s.teleprompter_speed, 10.0);
+        assert_eq!(s.teleprompter_font_size, 20.0);
+        s.teleprompter_speed = 999.0;
+        s.teleprompter_font_size = 999.0;
+        s.clamp();
+        assert_eq!(s.teleprompter_speed, 150.0);
+        assert_eq!(s.teleprompter_font_size, 48.0);
+        s.teleprompter_speed = f64::NAN;
+        s.clamp();
+        assert_eq!(s.teleprompter_speed, 40.0);
+    }
+
+    #[test]
+    fn load_missing_teleprompter_fields_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.json");
+        std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+        let s = Settings::load(&path).unwrap();
+        assert_eq!(s.teleprompter_speed, 40.0);
+        assert_eq!(s.teleprompter_font_size, 28.0);
     }
 
     #[test]

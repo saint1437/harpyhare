@@ -7,6 +7,7 @@ import { PermissionBanner } from "@/components/PermissionBanner";
 import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { StatusBar, type StatusBarProps } from "@/components/StatusBar";
+import { Teleprompter } from "@/components/Teleprompter";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
@@ -41,6 +42,7 @@ import { appendTranscript } from "@/lib/composer";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
 import type { ModelInfo } from "@/lib/models";
 import { presetText } from "@/lib/presets";
+import { toReadingText } from "@/lib/teleprompter";
 
 const RETRYABLE_STT_ERROR = /перегружен|соединение|VPN|интернет|оборван/i;
 
@@ -102,6 +104,10 @@ function lastHtmlBlock(markdown: string): string | undefined {
 function copyLastAssistantMessage(messages: ChatMessage[]): void {
   const last = [...messages].reverse().find((m) => m.role === "assistant");
   if (last) void navigator.clipboard.writeText(last.text);
+}
+
+function lastAssistantText(messages: ChatMessage[]): string {
+  return [...messages].reverse().find((m) => m.role === "assistant")?.text ?? "";
 }
 
 function updateBadge(updater: UpdaterApi, onOpen: () => void): StatusBarProps["update"] {
@@ -447,6 +453,8 @@ export default function App() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
+  const [teleprompterOpen, setTeleprompterOpen] = useState(false);
+  const teleprompterResumeRef = useRef({ text: "", offset: 0 });
 
   const permissionOk = useCapturePermission();
   const { sttError, showRetry, setSttError, clearError, clearFeedback, retry } =
@@ -490,11 +498,22 @@ export default function App() {
   usePttSuspend(settings.hotkey);
   useBrowserDemoSeed(chats.activeId, chatsRef);
 
+  useEffect(
+    () =>
+      onEvent("toggle-teleprompter", () => {
+        setTeleprompterOpen((open) => !open);
+      }),
+    [],
+  );
+
   const active = chats.active;
   const activeId = chats.activeId;
   const activeStreaming = !!stream.streaming[activeId];
   const error = sttError ?? stream.error[activeId] ?? null;
   const partial = activeStreaming ? (stream.partial[activeId] ?? "") : null;
+  const teleprompterText = toReadingText(
+    partial !== null && partial !== "" ? partial : lastAssistantText(active.messages),
+  );
 
   const saveSettingsReportingError = (next: Settings) => {
     void save(next).then((err) => {
@@ -563,6 +582,9 @@ export default function App() {
             copyLastAssistantMessage(active.messages);
           }}
           onTogglePreview={togglePreview}
+          onOpenTeleprompter={() => {
+            setTeleprompterOpen(true);
+          }}
         />
 
         <AppComposer
@@ -583,6 +605,30 @@ export default function App() {
       </div>
 
       {previewOpen && <PreviewPanel html={previewHtml} onClose={closePreview} />}
+
+      {teleprompterOpen && (
+        <Teleprompter
+          text={teleprompterText}
+          initialSpeed={settings.teleprompter_speed}
+          initialFontSize={settings.teleprompter_font_size}
+          initialOffset={
+            settings.teleprompter_resume && teleprompterResumeRef.current.text === teleprompterText
+              ? teleprompterResumeRef.current.offset
+              : 0
+          }
+          onPersist={(speed, fontSize, offset) => {
+            teleprompterResumeRef.current = { text: teleprompterText, offset };
+            saveSettingsReportingError({
+              ...settingsRef.current,
+              teleprompter_speed: speed,
+              teleprompter_font_size: fontSize,
+            });
+          }}
+          onClose={() => {
+            setTeleprompterOpen(false);
+          }}
+        />
+      )}
 
       <AppDialogs
         settings={settings}

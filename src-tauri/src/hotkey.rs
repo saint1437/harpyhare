@@ -50,6 +50,23 @@ pub fn unregister_toggle(app: &AppHandle, hotkey: &str) {
     }
 }
 
+pub fn register_teleprompter(app: &AppHandle, hotkey: &str) -> Result<(), String> {
+    let shortcut = parse_hotkey(hotkey).ok_or_else(|| unparseable_hotkey_error(hotkey))?;
+    app.global_shortcut()
+        .on_shortcut(shortcut, |app, _shortcut, event| {
+            if event.state == ShortcutState::Pressed {
+                defer(app, crate::on_toggle_teleprompter);
+            }
+        })
+        .map_err(|e| e.to_string())
+}
+
+pub fn unregister_teleprompter(app: &AppHandle, hotkey: &str) {
+    if let Some(shortcut) = parse_hotkey(hotkey) {
+        let _ = app.global_shortcut().unregister(shortcut);
+    }
+}
+
 pub fn register_esc(app: &AppHandle) {
     if let Some(shortcut) = parse_hotkey(ESC_HOTKEY) {
         let _ = app

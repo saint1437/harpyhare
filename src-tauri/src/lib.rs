@@ -36,6 +36,7 @@ const EVENT_STT_ERROR: &str = "stt-error";
 const EVENT_LLM_DELTA: &str = "llm-delta";
 const EVENT_LLM_DONE: &str = "llm-done";
 const EVENT_LLM_ERROR: &str = "llm-error";
+const EVENT_TOGGLE_TELEPROMPTER: &str = "toggle-teleprompter";
 
 const ERR_NO_CAPTURE_PERMISSION: &str = "Нет разрешения на запись системного звука";
 const ERR_NO_AUDIO_BUFFER: &str = "нет аудио-буфера";
@@ -180,9 +181,10 @@ fn setup_app(handle: &AppHandle) {
     apply_screen_share_visibility_at_startup(handle, &settings);
     let ptt_hotkey = settings.hotkey.clone();
     let toggle_hotkey = settings.toggle_hotkey.clone();
+    let teleprompter_hotkey = settings.teleprompter_hotkey.clone();
     spawn_startup_warm_up_and_model_fetch(handle.clone(), stt.clone(), llm.clone());
     handle.manage(build_app_state(settings, capture, stt, llm));
-    register_startup_hotkeys(handle, &ptt_hotkey, &toggle_hotkey);
+    register_startup_hotkeys(handle, &ptt_hotkey, &toggle_hotkey, &teleprompter_hotkey);
     install_move_keys_monitor(handle.clone());
     disable_cursor_autohide_on_typing();
     update::spawn_auto_check(handle.clone());
@@ -315,12 +317,20 @@ fn build_app_state(
     }
 }
 
-fn register_startup_hotkeys(app: &AppHandle, ptt_hotkey: &str, toggle_hotkey: &str) {
+fn register_startup_hotkeys(
+    app: &AppHandle,
+    ptt_hotkey: &str,
+    toggle_hotkey: &str,
+    teleprompter_hotkey: &str,
+) {
     if let Err(e) = hotkey::register_ptt(app, ptt_hotkey) {
         eprintln!("не удалось зарегистрировать PTT-хоткей {ptt_hotkey:?}: {e}");
     }
     if let Err(e) = hotkey::register_toggle(app, toggle_hotkey) {
         eprintln!("не удалось зарегистрировать toggle-хоткей {toggle_hotkey:?}: {e}");
+    }
+    if let Err(e) = hotkey::register_teleprompter(app, teleprompter_hotkey) {
+        eprintln!("не удалось зарегистрировать суфлёр-хоткей {teleprompter_hotkey:?}: {e}");
     }
 }
 
@@ -483,6 +493,10 @@ pub fn on_toggle_visibility(app: &AppHandle) {
             let _ = w.set_focus();
         }
     }
+}
+
+pub fn on_toggle_teleprompter(app: &AppHandle) {
+    let _ = app.emit(EVENT_TOGGLE_TELEPROMPTER, ());
 }
 
 fn finish_recording(app: &AppHandle, action: state::Action) {
@@ -828,6 +842,10 @@ fn reregister_changed_hotkeys(
     if old.toggle_hotkey != new.toggle_hotkey {
         hotkey::register_toggle(app, &new.toggle_hotkey)?;
         hotkey::unregister_toggle(app, &old.toggle_hotkey);
+    }
+    if old.teleprompter_hotkey != new.teleprompter_hotkey {
+        hotkey::register_teleprompter(app, &new.teleprompter_hotkey)?;
+        hotkey::unregister_teleprompter(app, &old.teleprompter_hotkey);
     }
     Ok(())
 }

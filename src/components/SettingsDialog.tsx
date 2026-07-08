@@ -23,7 +23,9 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { UpdateInfo } from "@/ipc/types";
 import type { Settings } from "@/ipc/types";
+import { BRAND_NAME } from "@/lib/brand";
 import type { PromptPreset } from "@/lib/presets";
+import { cn } from "@/lib/utils";
 import { applyChatFontSize, applyOpacity } from "@/lib/window-controls";
 
 export interface SettingsDialogProps {
@@ -36,6 +38,16 @@ export interface SettingsDialogProps {
 }
 
 type CheckState = "idle" | "checking" | "latest" | "error";
+
+type TabId = "main" | "hotkeys" | "behavior" | "appearance" | "presets";
+
+const SETTINGS_TABS: { id: TabId; label: string }[] = [
+  { id: "main", label: "Основное" },
+  { id: "hotkeys", label: "Горячие клавиши" },
+  { id: "behavior", label: "Поведение" },
+  { id: "appearance", label: "Вид" },
+  { id: "presets", label: "Пресеты" },
+];
 
 type SetSetting = <K extends keyof Settings>(key: K, value: Settings[K]) => void;
 
@@ -58,6 +70,7 @@ const STT_LANGUAGES = [
 
 const FALLBACK_PTT_HOTKEY = "V";
 const FALLBACK_TOGGLE_HOTKEY = "Cmd+Shift+H";
+const FALLBACK_TELEPROMPTER_HOTKEY = "F10";
 
 const CHAT_FONT_SIZE_MIN = 11;
 const CHAT_FONT_SIZE_MAX = 18;
@@ -92,11 +105,13 @@ export function SettingsDialog({
 }: SettingsDialogProps) {
   const [draft, setDraft] = useState<Settings>(settings);
   const [checkState, setCheckState] = useState<CheckState>("idle");
+  const [tab, setTab] = useState<TabId>("main");
 
   useEffect(() => {
     if (open) {
       setDraft(settings);
       setCheckState("idle");
+      setTab("main");
     }
   }, [open, settings]);
 
@@ -151,46 +166,140 @@ export function SettingsDialog({
       ...draft,
       hotkey: draft.hotkey.trim() || FALLBACK_PTT_HOTKEY,
       toggle_hotkey: draft.toggle_hotkey.trim() || FALLBACK_TOGGLE_HOTKEY,
+      teleprompter_hotkey: draft.teleprompter_hotkey.trim() || FALLBACK_TELEPROMPTER_HOTKEY,
       prompt_presets: draft.prompt_presets.filter(isPresetFilled),
     });
   };
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[88vh] max-w-[400px] overflow-y-auto">
+      <DialogContent className="flex h-[92vh] w-[95vw] max-w-[95vw] flex-col gap-4 rounded-[22px] sm:max-w-[95vw]">
         <DialogHeader>
           <DialogTitle>Настройки</DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-3.5 py-1">
-          <ApiKeysSection draft={draft} set={set} />
-          <SttSection draft={draft} set={set} />
-          <PresetsSection
-            presets={draft.prompt_presets}
-            onUpdate={updatePreset}
-            onAdd={addPreset}
-            onRemove={removePreset}
+        <TabBar active={tab} onSelect={setTab} />
+
+        <div className="min-h-0 flex-1 overflow-y-auto py-1 pr-1.5">
+          <TabContent
+            tab={tab}
+            draft={draft}
+            set={set}
+            onUpdatePreset={updatePreset}
+            onAddPreset={addPreset}
+            onRemovePreset={removePreset}
           />
-          <HotkeysSection draft={draft} set={set} />
-          <SwitchesSection draft={draft} set={set} />
-          <SlidersSection draft={draft} set={set} />
-          <VersionRow appVersion={appVersion} checkState={checkState} onCheck={checkUpdates} />
         </div>
 
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              handleOpenChange(false);
-            }}
-          >
-            Отмена
-          </Button>
-          <Button onClick={save}>Сохранить</Button>
+        <DialogFooter className="items-center border-t border-white/5 pt-3 sm:justify-between">
+          <VersionRow
+            name={BRAND_NAME}
+            appVersion={appVersion}
+            checkState={checkState}
+            onCheck={checkUpdates}
+          />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                handleOpenChange(false);
+              }}
+            >
+              Отмена
+            </Button>
+            <Button onClick={save}>Сохранить</Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
+}
+
+function TabBar({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => void }) {
+  return (
+    <div role="tablist" className="flex gap-1 border-b border-white/10">
+      {SETTINGS_TABS.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          role="tab"
+          aria-selected={active === t.id}
+          onClick={() => {
+            onSelect(t.id);
+          }}
+          className={cn(
+            "relative px-3 py-1.5 text-[12.5px] transition-colors",
+            active === t.id ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {t.label}
+          {active === t.id && (
+            <span
+              className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-primary"
+              aria-hidden
+            />
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TabContent({
+  tab,
+  draft,
+  set,
+  onUpdatePreset,
+  onAddPreset,
+  onRemovePreset,
+}: {
+  tab: TabId;
+  draft: Settings;
+  set: SetSetting;
+  onUpdatePreset: (index: number, patch: Partial<PromptPreset>) => void;
+  onAddPreset: () => void;
+  onRemovePreset: (index: number) => void;
+}) {
+  switch (tab) {
+    case "main":
+      return (
+        <div className="grid grid-cols-2 gap-x-10 gap-y-5">
+          <SectionGroup title="Ключи API">
+            <ApiKeysSection draft={draft} set={set} />
+          </SectionGroup>
+          <SectionGroup title="Распознавание речи">
+            <SttSection draft={draft} set={set} />
+          </SectionGroup>
+        </div>
+      );
+    case "hotkeys":
+      return (
+        <div className="grid grid-cols-3 gap-6">
+          <HotkeysSection draft={draft} set={set} />
+        </div>
+      );
+    case "behavior":
+      return (
+        <div className="grid grid-cols-2 gap-x-10 gap-y-3.5">
+          <SwitchesSection draft={draft} set={set} />
+        </div>
+      );
+    case "appearance":
+      return (
+        <div className="grid grid-cols-3 gap-8">
+          <SlidersSection draft={draft} set={set} />
+        </div>
+      );
+    case "presets":
+      return (
+        <PresetsSection
+          presets={draft.prompt_presets}
+          onUpdate={onUpdatePreset}
+          onAdd={onAddPreset}
+          onRemove={onRemovePreset}
+        />
+      );
+  }
 }
 
 function ApiKeysSection({ draft, set }: SectionProps) {
@@ -289,8 +398,8 @@ function PresetsSection({
   onRemove: (index: number) => void;
 }) {
   return (
-    <Field label="Пресеты препромпта">
-      <div className="grid gap-2">
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-3 gap-2">
         {presets.map((p, i) => (
           <PresetEditor
             key={p.id}
@@ -303,11 +412,11 @@ function PresetsSection({
             }}
           />
         ))}
-        <Button variant="ghost" size="sm" onClick={onAdd}>
-          + Добавить пресет
-        </Button>
       </div>
-    </Field>
+      <Button variant="ghost" size="sm" onClick={onAdd} className="self-start">
+        + Добавить пресет
+      </Button>
+    </div>
   );
 }
 
@@ -366,6 +475,14 @@ function HotkeysSection({ draft, set }: SectionProps) {
           }}
         />
       </Field>
+      <Field label="Суфлёр">
+        <HotkeyCapture
+          value={draft.teleprompter_hotkey}
+          onChange={(hk) => {
+            set("teleprompter_hotkey", hk);
+          }}
+        />
+      </Field>
     </>
   );
 }
@@ -404,6 +521,14 @@ function SwitchesSection({ draft, set }: SectionProps) {
         }}
       >
         Показывать окно при демонстрации экрана
+      </SwitchRow>
+      <SwitchRow
+        checked={draft.teleprompter_resume}
+        onCheckedChange={(v) => {
+          set("teleprompter_resume", v);
+        }}
+      >
+        Суфлёр продолжает с места остановки
       </SwitchRow>
     </>
   );
@@ -454,19 +579,21 @@ function SlidersSection({ draft, set }: SectionProps) {
 }
 
 function VersionRow({
+  name,
   appVersion,
   checkState,
   onCheck,
 }: {
+  name: string;
   appVersion: string;
   checkState: CheckState;
   onCheck: () => void;
 }) {
-  if (appVersion === "") return null;
+  if (appVersion === "") return <span />;
   return (
-    <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-3">
+    <div className="flex items-center gap-3">
       <span className="font-mono text-[11.5px] text-muted-foreground">
-        itech {appVersion}
+        {name} {appVersion}
         {checkState === "latest" && " — у вас последняя версия"}
         {checkState === "error" && (
           <span className="text-destructive"> — не удалось проверить</span>
@@ -493,6 +620,15 @@ function SwitchRow({
       <Switch checked={checked} onCheckedChange={onCheckedChange} />
       {children}
     </label>
+  );
+}
+
+function SectionGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="font-mono text-[10px] tracking-wider text-primary/80 uppercase">{title}</h3>
+      <div className="flex flex-col gap-2.5">{children}</div>
+    </section>
   );
 }
 
