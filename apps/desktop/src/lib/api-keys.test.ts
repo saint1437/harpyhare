@@ -44,13 +44,13 @@ describe("missingApiKeys", () => {
 describe("missingKeysNotice", () => {
   it("единственное число для одного ключа", () => {
     expect(missingKeysNotice(missingApiKeys(keys("sk-ant-x", "")))).toBe(
-      "Нет API-ключа Groq — отправка и распознавание отключены",
+      "Добавьте ключ Groq или введите код доступа",
     );
   });
 
   it("множественное число и перечисление для двух ключей", () => {
     expect(missingKeysNotice(missingApiKeys(keys("", "")))).toBe(
-      "Нет API-ключей Anthropic и Groq — отправка и распознавание отключены",
+      "Добавьте ключи Anthropic и Groq или введите код доступа",
     );
   });
 });

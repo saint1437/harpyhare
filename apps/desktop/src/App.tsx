@@ -629,21 +629,6 @@ export default function App() {
       onMouseDown={onShellDragStart}
     >
       <div className="flex shrink-0 flex-col gap-3" style={{ width: CHAT_COLUMN_WIDTH_PX }}>
-        {!permissionOk && (
-          <WarningBanner
-            actionLabel="Открыть настройки"
-            onAction={() => void openAudioPermissionSettings()}
-          >
-            Нет разрешения на запись системного звука
-          </WarningBanner>
-        )}
-
-        {keysGate.keysMissing && (
-          <WarningBanner actionLabel="Как получить" onAction={keysGate.openDialog}>
-            {missingKeysNotice(keysGate.missingKeys)}
-          </WarningBanner>
-        )}
-
         <AppHeader
           state={state}
           error={error}
@@ -659,6 +644,21 @@ export default function App() {
             setUpdateOpen(true);
           }}
         />
+
+        {!permissionOk && (
+          <WarningBanner
+            actionLabel="Открыть настройки"
+            onAction={() => void openAudioPermissionSettings()}
+          >
+            Нет разрешения на запись системного звука
+          </WarningBanner>
+        )}
+
+        {keysGate.keysMissing && (
+          <WarningBanner tone="info" actionLabel="Ввести" onAction={keysGate.openDialog}>
+            {missingKeysNotice(keysGate.missingKeys)}
+          </WarningBanner>
+        )}
 
         <AnswerPanel
           messages={active.messages}

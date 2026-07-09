@@ -32,7 +32,7 @@ export function missingApiKeys(settings: ApiKeySettings): ApiKeyInfo[] {
 }
 
 export function missingKeysNotice(missing: ApiKeyInfo[]): string {
-  const noun = missing.length === 1 ? "API-ключа" : "API-ключей";
+  const noun = missing.length === 1 ? "ключ" : "ключи";
   const names = missing.map((k) => k.name).join(" и ");
-  return `Нет ${noun} ${names} — отправка и распознавание отключены`;
+  return `Добавьте ${noun} ${names} или введите код доступа`;
 }
