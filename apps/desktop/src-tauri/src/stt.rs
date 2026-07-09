@@ -23,6 +23,8 @@ const STREAM_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_se
 pub enum SttError {
     #[error("Неверный ключ Groq — проверь в настройках")]
     BadApiKey,
+    #[error("{0}")]
+    BadAccessCode(String),
     #[error("Сервис распознавания перегружен, попробуй позже ({0})")]
     Retryable(u16),
     #[error("Нет соединения — проверь интернет/VPN: {0}")]
@@ -44,6 +46,7 @@ pub struct GroqStt {
     client: reqwest::Client,
     language: String,
     translate: bool,
+    proxy: bool,
 }
 
 fn warm_pooled_client() -> reqwest::Client {
@@ -65,6 +68,7 @@ impl GroqStt {
             client: warm_pooled_client(),
             language: DEFAULT_LANGUAGE.into(),
             translate: false,
+            proxy: false,
         }
     }
 
@@ -90,6 +94,10 @@ impl GroqStt {
     }
     pub fn with_translate(mut self, translate: bool) -> Self {
         self.translate = translate;
+        self
+    }
+    pub fn with_proxy(mut self, proxy: bool) -> Self {
+        self.proxy = proxy;
         self
     }
 }
@@ -127,12 +135,15 @@ impl GroqStt {
             .timeout(timeout)
     }
 
-    async fn parse_response(resp: reqwest::Response) -> Result<String, SttError> {
+    async fn parse_response(&self, resp: reqwest::Response) -> Result<String, SttError> {
         match resp.status().as_u16() {
             200 => Self::text_from_success(resp).await,
+            code @ (401 | 403) if self.proxy => {
+                Err(SttError::BadAccessCode(Self::message_from_body(code, resp).await))
+            }
             401 | 403 => Err(SttError::BadApiKey),
             code @ (429 | 500..=599) => Err(SttError::Retryable(code)),
-            code => Err(Self::error_from_body(code, resp).await),
+            code => Err(SttError::Other(Self::message_from_body(code, resp).await)),
         }
     }
 
@@ -145,13 +156,13 @@ impl GroqStt {
             .to_string())
     }
 
-    async fn error_from_body(code: u16, resp: reqwest::Response) -> SttError {
+    async fn message_from_body(code: u16, resp: reqwest::Response) -> String {
         let body = resp.text().await.unwrap_or_default();
-        let msg = serde_json::from_str::<serde_json::Value>(&body)
+        serde_json::from_str::<serde_json::Value>(&body)
             .ok()
             .and_then(|v| v["error"]["message"].as_str().map(str::to_string))
-            .unwrap_or_else(|| format!("Groq HTTP {code}"));
-        SttError::Other(msg)
+            .filter(|m| !m.trim().is_empty())
+            .unwrap_or_else(|| format!("Groq HTTP {code}"))
     }
 
     pub async fn transcribe_stream(
@@ -167,7 +178,7 @@ impl GroqStt {
             r = send => r.map_err(|e| SttError::Network(e.to_string()))?,
             _ = cancel.cancelled() => return Err(SttError::Other(CANCELLED_MESSAGE.into())),
         };
-        Self::parse_response(resp).await
+        self.parse_response(resp).await
     }
 }
 
@@ -183,7 +194,7 @@ impl SttEngine for GroqStt {
             .send()
             .await
             .map_err(|e| SttError::Network(e.to_string()))?;
-        Self::parse_response(resp).await
+        self.parse_response(resp).await
     }
 }
 
@@ -332,6 +343,24 @@ mod tests {
             .await;
         let stt = GroqStt::new("bad".into()).with_base_url(server.uri());
         assert!(matches!(stt.transcribe(&samples()).await, Err(SttError::BadApiKey)));
+    }
+
+    #[tokio::test]
+    async fn proxy_mode_401_maps_to_bad_access_code_with_body_message() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+                "error": {"message": "Код доступа недействителен — введите новый в настройках"}
+            })))
+            .mount(&server)
+            .await;
+        let stt = GroqStt::new("itk_bad".into())
+            .with_base_url(server.uri())
+            .with_proxy(true);
+        match stt.transcribe(&samples()).await {
+            Err(SttError::BadAccessCode(m)) => assert!(m.contains("Код доступа недействителен")),
+            other => panic!("ожидался BadAccessCode, получено: {other:?}"),
+        }
     }
 
     #[tokio::test]

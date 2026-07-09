@@ -1,3 +1,4 @@
+import { AccessCodeForm } from "@/components/AccessCodeForm";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,6 +13,7 @@ import type { ApiKeyInfo } from "@/lib/api-keys";
 export interface MissingKeysDialogProps {
   open: boolean;
   missing: ApiKeyInfo[];
+  onRedeem: (code: string) => Promise<string | null>;
   onOpenSettings: () => void;
   onClose: () => void;
 }
@@ -19,6 +21,7 @@ export interface MissingKeysDialogProps {
 export function MissingKeysDialog({
   open,
   missing,
+  onRedeem,
   onOpenSettings,
   onClose,
 }: MissingKeysDialogProps) {
@@ -31,11 +34,25 @@ export function MissingKeysDialog({
     >
       <DialogContent className="max-w-[440px]">
         <DialogHeader>
-          <DialogTitle>Не хватает API-ключей</DialogTitle>
+          <DialogTitle>Нужен доступ</DialogTitle>
         </DialogHeader>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[12.5px]">Есть код доступа?</span>
+          <p className="text-[11px] text-muted-foreground">
+            Введи код — и приложение сразу заработает бесплатно, свои ключи не нужны.
+          </p>
+          <AccessCodeForm onRedeem={onRedeem} autoFocus />
+        </div>
+        <div className="flex items-center gap-3 py-1">
+          <span className="h-px flex-1 bg-white/10" />
+          <span className="text-[10.5px] tracking-wide text-muted-foreground uppercase">
+            или свои ключи
+          </span>
+          <span className="h-px flex-1 bg-white/10" />
+        </div>
         <p className="text-[12.5px] text-muted-foreground">
-          Приложению нужны ключи API: без них отправка и распознавание речи не работают, поэтому
-          кнопки отключены. Получи недостающие ключи по ссылкам и вставь их в настройках.
+          Без кода приложению нужны ключи API: без них отправка и распознавание речи не работают.
+          Получи недостающие ключи по ссылкам и вставь их в настройках.
         </p>
         <div className="flex flex-col gap-2">
           {missing.map((k) => (

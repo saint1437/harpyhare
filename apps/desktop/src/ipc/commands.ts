@@ -1,9 +1,12 @@
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { normalizeAccessCode } from "@/lib/access-code";
 import { FALLBACK_MODELS, type ModelInfo } from "@/lib/models";
 import { OFFICIAL_PRESETS_FALLBACK, type PromptPreset } from "@/lib/presets";
 import { isTauri } from "./env";
 import { DEFAULT_SETTINGS, type ChatMessageDto, type Settings, type UpdateInfo } from "./types";
+
+const IDEMPOTENCY_STORAGE_PREFIX = "redeem-idem:";
 
 async function invokeOrNoopInBrowser(command: string, args?: InvokeArgs): Promise<void> {
   if (!isTauri()) return;
@@ -60,6 +63,29 @@ export async function getSettings(): Promise<Settings> {
 
 export async function setSettings(newSettings: Settings): Promise<void> {
   await invokeOrNoopInBrowser("set_settings", { newSettings });
+}
+
+async function idempotencyStorageKey(normalizedCode: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalizedCode));
+  const hex = Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return IDEMPOTENCY_STORAGE_PREFIX + hex.slice(0, 16);
+}
+
+export async function redeemAccessCode(code: string): Promise<string | null> {
+  if (!isTauri()) return null;
+  const normalized = normalizeAccessCode(code);
+  const storageKey = await idempotencyStorageKey(normalized);
+  const idempotencyKey = localStorage.getItem(storageKey) ?? crypto.randomUUID();
+  localStorage.setItem(storageKey, idempotencyKey);
+  try {
+    await invoke("redeem_access_code", { code: normalized, idempotencyKey });
+    localStorage.removeItem(storageKey);
+    return null;
+  } catch (e) {
+    return String(e);
+  }
 }
 
 export async function getOfficialPresets(): Promise<PromptPreset[]> {

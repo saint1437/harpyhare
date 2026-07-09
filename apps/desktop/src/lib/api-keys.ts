@@ -23,9 +23,11 @@ const API_KEYS: ApiKeyInfo[] = [
 export interface ApiKeySettings {
   anthropic_api_key: string;
   groq_api_key: string;
+  access_token: string;
 }
 
 export function missingApiKeys(settings: ApiKeySettings): ApiKeyInfo[] {
+  if (settings.access_token.trim() !== "") return [];
   return API_KEYS.filter((k) => settings[`${k.id}_api_key`].trim() === "");
 }
 

@@ -33,6 +33,7 @@ import {
   closeApp,
   hideMainWindow,
   openAudioPermissionSettings,
+  redeemAccessCode,
   retryTranscription,
   setWindowWidth,
   startWindowDrag,
@@ -450,6 +451,7 @@ interface AppDialogsProps {
   settingsOpen: boolean;
   updateOpen: boolean;
   onCheckUpdates: () => Promise<UpdateInfo | null>;
+  onRedeem: (code: string) => Promise<string | null>;
   onCloseSettings: () => void;
   onSaveSettings: (next: Settings) => void;
   onCloseUpdate: () => void;
@@ -462,6 +464,7 @@ function AppDialogs({
   settingsOpen,
   updateOpen,
   onCheckUpdates,
+  onRedeem,
   onCloseSettings,
   onSaveSettings,
   onCloseUpdate,
@@ -474,6 +477,7 @@ function AppDialogs({
         settings={settings}
         appVersion={updater.currentVersion}
         onCheckUpdates={onCheckUpdates}
+        onRedeem={onRedeem}
         onClose={onCloseSettings}
         onSave={onSaveSettings}
       />
@@ -496,7 +500,7 @@ function AppDialogs({
 }
 
 export default function App() {
-  const { settings, loading: settingsLoading, save, bumpOpacity } = useSettings();
+  const { settings, loading: settingsLoading, save, reload, bumpOpacity } = useSettings();
   const state = useRecorder();
   const chats = useChats();
   const models = useModels();
@@ -509,6 +513,14 @@ export default function App() {
 
   const permissionOk = useCapturePermission();
   const keysGate = useMissingKeysGate(settings, settingsLoading);
+  const handleRedeem = useCallback(
+    async (code: string): Promise<string | null> => {
+      const error = await redeemAccessCode(code);
+      if (error === null) await reload();
+      return error;
+    },
+    [reload],
+  );
   const { sttError, showRetry, setSttError, clearError, clearFeedback, retry } =
     useSttFeedback(state);
   const { previewHtml, previewOpen, openPreview, togglePreview, closePreview } = usePreviewPanel();
@@ -710,6 +722,7 @@ export default function App() {
       <MissingKeysDialog
         open={keysGate.dialogOpen}
         missing={keysGate.missingKeys}
+        onRedeem={handleRedeem}
         onOpenSettings={() => {
           keysGate.closeDialog();
           setSettingsOpen(true);
@@ -723,6 +736,7 @@ export default function App() {
         settingsOpen={settingsOpen}
         updateOpen={updateOpen}
         onCheckUpdates={checkUpdatesFromSettings}
+        onRedeem={handleRedeem}
         onCloseSettings={() => {
           setSettingsOpen(false);
         }}

@@ -1,3 +1,4 @@
+pub mod access;
 pub mod audio;
 pub mod capture;
 pub mod chats;
@@ -153,6 +154,7 @@ pub fn run() {
             retry_transcription,
             get_settings,
             set_settings,
+            redeem_access_code,
             get_official_presets,
             move_window_by,
             set_window_width,
@@ -177,7 +179,7 @@ fn setup_app(handle: &AppHandle) {
     let official_presets = remote_presets::load_initial(handle);
     let capture = init_system_audio_capture();
     let stt = build_stt_client(&settings);
-    let llm = llm::AnthropicClient::new(settings.anthropic_api_key.clone());
+    let llm = build_llm_client(&settings);
     apply_screen_share_visibility_at_startup(handle, &settings);
     let ptt_hotkey = settings.hotkey.clone();
     let toggle_hotkey = settings.toggle_hotkey.clone();
@@ -242,9 +244,23 @@ fn init_system_audio_capture() -> Option<capture::SystemAudioCapture> {
 }
 
 fn build_stt_client(s: &settings::Settings) -> stt::GroqStt {
-    stt::GroqStt::new(s.groq_api_key.clone())
-        .with_language(s.stt_language.clone())
+    let base = if s.access_token.is_empty() {
+        stt::GroqStt::new(s.groq_api_key.clone())
+    } else {
+        stt::GroqStt::new(s.access_token.clone())
+            .with_base_url(access::proxy_base_url())
+            .with_proxy(true)
+    };
+    base.with_language(s.stt_language.clone())
         .with_translate(s.stt_translate)
+}
+
+fn build_llm_client(s: &settings::Settings) -> llm::AnthropicClient {
+    if s.access_token.is_empty() {
+        llm::AnthropicClient::new(s.anthropic_api_key.clone())
+    } else {
+        llm::AnthropicClient::for_proxy(s.access_token.clone(), access::proxy_base_url())
+    }
 }
 
 fn apply_screen_share_visibility_at_startup(app: &AppHandle, settings: &settings::Settings) {
@@ -542,8 +558,8 @@ async fn finish_transcribe(app: AppHandle, samples: Vec<f32>) {
                     eprintln!("[perf] stop → transcript (stream) {:?}", t.elapsed());
                     return deliver_transcript(&app, text);
                 }
-                Ok(Err(stt::SttError::BadApiKey)) => {
-                    return finish_transcription(&app, Err(stt::SttError::BadApiKey.to_string()));
+                Ok(Err(e @ (stt::SttError::BadApiKey | stt::SttError::BadAccessCode(_)))) => {
+                    return finish_transcription(&app, Err(e.to_string()));
                 }
                 Ok(Err(e)) => {
                     eprintln!("[perf] stt stream не удался ({e}) — фолбэк на классику");
@@ -814,6 +830,28 @@ fn set_settings(app: AppHandle, mut new_settings: settings::Settings) -> Result<
     Ok(())
 }
 
+#[tauri::command]
+async fn redeem_access_code(
+    app: AppHandle,
+    code: String,
+    idempotency_key: String,
+) -> Result<(), String> {
+    let base_url = access::proxy_base_url();
+    let token = access::redeem(&base_url, &code, &idempotency_key).await?;
+    apply_access_token(&app, token)
+}
+
+fn apply_access_token(app: &AppHandle, token: String) -> Result<(), String> {
+    let st = app.state::<App>();
+    let old = st.settings.lock().unwrap().clone();
+    let mut new_settings = old.clone();
+    new_settings.access_token = token;
+    new_settings.save(&settings_path(app)).map_err(|e| e.to_string())?;
+    rebuild_changed_api_clients(&st, &old, &new_settings);
+    *st.settings.lock().unwrap() = new_settings;
+    Ok(())
+}
+
 fn reregister_changed_hotkeys(
     app: &AppHandle,
     old: &settings::Settings,
@@ -835,14 +873,16 @@ fn reregister_changed_hotkeys(
 }
 
 fn rebuild_changed_api_clients(st: &App, old: &settings::Settings, new: &settings::Settings) {
-    if old.groq_api_key != new.groq_api_key
+    let access_token_changed = old.access_token != new.access_token;
+    if access_token_changed
+        || old.groq_api_key != new.groq_api_key
         || old.stt_language != new.stt_language
         || old.stt_translate != new.stt_translate
     {
         *st.stt.lock().unwrap() = build_stt_client(new);
     }
-    if old.anthropic_api_key != new.anthropic_api_key {
-        *st.llm.lock().unwrap() = llm::AnthropicClient::new(new.anthropic_api_key.clone());
+    if access_token_changed || old.anthropic_api_key != new.anthropic_api_key {
+        *st.llm.lock().unwrap() = build_llm_client(new);
     }
 }
 

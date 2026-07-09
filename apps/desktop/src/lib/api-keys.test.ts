@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { missingApiKeys, missingKeysNotice } from "./api-keys";
 
-const keys = (anthropic: string, groq: string) => ({
+const keys = (anthropic: string, groq: string, accessToken = "") => ({
   anthropic_api_key: anthropic,
   groq_api_key: groq,
+  access_token: accessToken,
 });
 
 describe("missingApiKeys", () => {
@@ -23,6 +24,14 @@ describe("missingApiKeys", () => {
 
   it("ключ из одних пробелов считается отсутствующим", () => {
     expect(missingApiKeys(keys("   ", "gsk_y")).map((k) => k.id)).toEqual(["anthropic"]);
+  });
+
+  it("код доступа заменяет оба ключа — ничего не отсутствует", () => {
+    expect(missingApiKeys(keys("", "", "itk_token"))).toEqual([]);
+  });
+
+  it("код из одних пробелов не считается активным", () => {
+    expect(missingApiKeys(keys("", "", "   ")).map((k) => k.id)).toEqual(["anthropic", "groq"]);
   });
 
   it("у каждого ключа есть https-ссылка на консоль", () => {

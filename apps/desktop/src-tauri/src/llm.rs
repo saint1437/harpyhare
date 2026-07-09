@@ -60,8 +60,14 @@ pub enum LlmError {
 }
 
 #[derive(Clone)]
+enum Auth {
+    ApiKey(String),
+    ProxyBearer(String),
+}
+
+#[derive(Clone)]
 pub struct AnthropicClient {
-    api_key: String,
+    auth: Auth,
     base_url: String,
     client: reqwest::Client,
 }
@@ -165,9 +171,10 @@ fn build_http_client(read_timeout: Duration) -> reqwest::Client {
         .expect("reqwest client")
 }
 
-async fn require_ok_status(resp: reqwest::Response) -> Result<reqwest::Response, LlmError> {
+async fn require_ok_status(resp: reqwest::Response, proxy: bool) -> Result<reqwest::Response, LlmError> {
     match resp.status().as_u16() {
         200 => Ok(resp),
+        code @ (401 | 403) if proxy => Err(LlmError::Api(api_error_message(resp, code).await)),
         401 | 403 => Err(LlmError::BadApiKey),
         code @ (429 | 500..=599) => Err(LlmError::Retryable(code)),
         code => Err(LlmError::Api(api_error_message(resp, code).await)),
@@ -211,9 +218,25 @@ async fn pump_sse_stream(
 impl AnthropicClient {
     pub fn new(api_key: String) -> Self {
         Self {
-            api_key,
+            auth: Auth::ApiKey(api_key),
             base_url: ANTHROPIC_BASE_URL.into(),
             client: build_http_client(DEFAULT_READ_TIMEOUT),
+        }
+    }
+    pub fn for_proxy(access_token: String, base_url: String) -> Self {
+        Self {
+            auth: Auth::ProxyBearer(access_token),
+            base_url,
+            client: build_http_client(DEFAULT_READ_TIMEOUT),
+        }
+    }
+    fn is_proxy(&self) -> bool {
+        matches!(self.auth, Auth::ProxyBearer(_))
+    }
+    fn authorize(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match &self.auth {
+            Auth::ApiKey(key) => req.header(API_KEY_HEADER, key),
+            Auth::ProxyBearer(token) => req.bearer_auth(token),
         }
     }
     pub fn with_base_url(mut self, url: String) -> Self {
@@ -235,15 +258,16 @@ impl AnthropicClient {
     }
 
     pub async fn list_models(&self) -> Result<Vec<ModelInfo>, LlmError> {
-        let resp = self
+        let req = self
             .client
             .get(format!(
                 "{}{MODELS_PATH}?limit={MODELS_PAGE_LIMIT}",
                 self.base_url
             ))
-            .header(API_KEY_HEADER, &self.api_key)
             .header(VERSION_HEADER, ANTHROPIC_VERSION)
-            .timeout(LIST_MODELS_TIMEOUT)
+            .timeout(LIST_MODELS_TIMEOUT);
+        let resp = self
+            .authorize(req)
             .send()
             .await
             .map_err(|e| LlmError::Network(e.to_string()))?;
@@ -262,9 +286,7 @@ impl AnthropicClient {
 
     fn messages_request(&self, body: &Value) -> reqwest::RequestBuilder {
         let mut req = self
-            .client
-            .post(format!("{}{MESSAGES_PATH}", self.base_url))
-            .header(API_KEY_HEADER, &self.api_key)
+            .authorize(self.client.post(format!("{}{MESSAGES_PATH}", self.base_url)))
             .header(VERSION_HEADER, ANTHROPIC_VERSION);
         if body.get(SPEED_FIELD).is_some() {
             req = req.header(BETA_HEADER, FAST_MODE_BETA);
@@ -283,7 +305,7 @@ impl AnthropicClient {
             r = send => r.map_err(|e| LlmError::Network(e.to_string()))?,
             _ = cancel.cancelled() => return Err(LlmError::Cancelled),
         };
-        let resp = require_ok_status(resp).await?;
+        let resp = require_ok_status(resp, self.is_proxy()).await?;
         pump_sse_stream(resp, &cancel, &mut on_delta).await
     }
 }
@@ -934,6 +956,69 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, LlmError::BadApiKey));
+    }
+
+    #[tokio::test]
+    async fn proxy_mode_authorizes_with_bearer_not_api_key() {
+        use wiremock::matchers::{header, header_exists, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .and(header("authorization", "Bearer itk_token"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_raw(SSE_FIXTURE.as_bytes().to_vec(), "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(header_exists("x-api-key"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        let client = llm_proxy_client("itk_token".into(), server.uri());
+        let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
+        client
+            .stream_message(
+                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false, None),
+                tokio_util::sync::CancellationToken::new(),
+                |_| {},
+            )
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn proxy_mode_401_surfaces_body_message_not_bad_key() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+                "error": {"message": "Код доступа недействителен — введите новый в настройках"}
+            })))
+            .mount(&server)
+            .await;
+        let client = llm_proxy_client("itk_bad".into(), server.uri());
+        let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
+        let err = client
+            .stream_message(
+                build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false, None),
+                tokio_util::sync::CancellationToken::new(),
+                |_| {},
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&err, LlmError::Api(m) if m.contains("Код доступа недействителен")),
+            "got: {err:?}"
+        );
+    }
+
+    fn llm_proxy_client(token: String, base: String) -> AnthropicClient {
+        AnthropicClient::for_proxy(token, base)
     }
 
     #[tokio::test]

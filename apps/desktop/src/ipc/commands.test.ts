@@ -3,6 +3,7 @@ import {
   captureAvailable,
   getSettings,
   moveWindowBy,
+  redeemAccessCode,
   sendToClaude,
   startWindowDrag,
 } from "./commands";
@@ -28,5 +29,8 @@ describe("commands в браузерном режиме", () => {
     ).resolves.toBeUndefined();
     await expect(moveWindowBy(10, 0)).resolves.toBeUndefined();
     await expect(startWindowDrag()).resolves.toBeUndefined();
+  });
+  it("redeemAccessCode — no-op, резолвится в null (демо работает)", async () => {
+    await expect(redeemAccessCode("ANY-CODE")).resolves.toBeNull();
   });
 });

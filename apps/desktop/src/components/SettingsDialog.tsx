@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { AccessCodeForm } from "@/components/AccessCodeForm";
 import { HotkeyCapture } from "@/components/HotkeyCapture";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +34,7 @@ export interface SettingsDialogProps {
   settings: Settings;
   appVersion: string;
   onCheckUpdates: () => Promise<UpdateInfo | null>;
+  onRedeem: (code: string) => Promise<string | null>;
   onClose: () => void;
   onSave: (next: Settings) => void;
 }
@@ -100,6 +102,7 @@ export function SettingsDialog({
   settings,
   appVersion,
   onCheckUpdates,
+  onRedeem,
   onClose,
   onSave,
 }: SettingsDialogProps) {
@@ -107,13 +110,20 @@ export function SettingsDialog({
   const [checkState, setCheckState] = useState<CheckState>("idle");
   const [tab, setTab] = useState<TabId>("main");
 
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
   useEffect(() => {
     if (open) {
-      setDraft(settings);
+      setDraft(settingsRef.current);
       setCheckState("idle");
       setTab("main");
     }
-  }, [open, settings]);
+  }, [open]);
+
+  useEffect(() => {
+    setDraft((d) => ({ ...d, access_token: settings.access_token }));
+  }, [settings.access_token]);
 
   const checkUpdates = () => {
     setCheckState("checking");
@@ -185,6 +195,7 @@ export function SettingsDialog({
             tab={tab}
             draft={draft}
             set={set}
+            onRedeem={onRedeem}
             onUpdatePreset={updatePreset}
             onAddPreset={addPreset}
             onRemovePreset={removePreset}
@@ -249,6 +260,7 @@ function TabContent({
   tab,
   draft,
   set,
+  onRedeem,
   onUpdatePreset,
   onAddPreset,
   onRemovePreset,
@@ -256,6 +268,7 @@ function TabContent({
   tab: TabId;
   draft: Settings;
   set: SetSetting;
+  onRedeem: (code: string) => Promise<string | null>;
   onUpdatePreset: (index: number, patch: Partial<PromptPreset>) => void;
   onAddPreset: () => void;
   onRemovePreset: (index: number) => void;
@@ -264,8 +277,8 @@ function TabContent({
     case "main":
       return (
         <div className="grid grid-cols-2 gap-x-10 gap-y-5">
-          <SectionGroup title="Ключи API">
-            <ApiKeysSection draft={draft} set={set} />
+          <SectionGroup title="Доступ">
+            <ApiKeysSection draft={draft} set={set} onRedeem={onRedeem} />
           </SectionGroup>
           <SectionGroup title="Распознавание речи">
             <SttSection draft={draft} set={set} />
@@ -302,9 +315,32 @@ function TabContent({
   }
 }
 
-function ApiKeysSection({ draft, set }: SectionProps) {
+function ApiKeysSection({
+  draft,
+  set,
+  onRedeem,
+}: SectionProps & { onRedeem: (code: string) => Promise<string | null> }) {
+  if (draft.access_token.trim() !== "") {
+    return (
+      <ActiveAccessCode
+        onUnlink={() => {
+          set("access_token", "");
+        }}
+      />
+    );
+  }
   return (
-    <>
+    <div className="flex flex-col gap-4">
+      <Field label="Код доступа">
+        <AccessCodeForm onRedeem={onRedeem} />
+      </Field>
+      <div className="flex items-center gap-3">
+        <span className="h-px flex-1 bg-white/10" />
+        <span className="text-[10.5px] tracking-wide text-muted-foreground uppercase">
+          или свои ключи
+        </span>
+        <span className="h-px flex-1 bg-white/10" />
+      </div>
       <ApiKeyField
         label="Ключ Anthropic"
         placeholder="sk-ant-…"
@@ -321,7 +357,22 @@ function ApiKeysSection({ draft, set }: SectionProps) {
           set("groq_api_key", v);
         }}
       />
-    </>
+    </div>
+  );
+}
+
+function ActiveAccessCode({ onUnlink }: { onUnlink: () => void }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-md bg-white/5 px-3 py-2.5">
+      <span className="text-[12.5px]">Доступ по коду активен</span>
+      <span className="text-[11px] text-muted-foreground">
+        Запросы идут через бесплатный доступ, свои ключи не используются. Отвяжи код, чтобы
+        вернуться к собственным ключам — изменение вступит в силу после «Сохранить».
+      </span>
+      <Button variant="ghost" size="sm" className="self-start" onClick={onUnlink}>
+        Отвязать код
+      </Button>
+    </div>
   );
 }
 

@@ -37,6 +37,7 @@ pub struct PromptPreset {
 pub struct Settings {
     pub anthropic_api_key: String,
     pub groq_api_key: String,
+    pub access_token: String,
     pub prompt_presets: Vec<PromptPreset>,
     pub hotkey: String,
     pub auto_send: bool,
@@ -61,6 +62,7 @@ impl Default for Settings {
         Self {
             anthropic_api_key: String::new(),
             groq_api_key: String::new(),
+            access_token: String::new(),
             prompt_presets: Vec::new(),
             hotkey: DEFAULT_HOTKEY.into(),
             auto_send: false,
@@ -116,6 +118,9 @@ impl Settings {
     }
 
     pub fn apply_key_fallback(&mut self, anthropic: Option<String>, groq: Option<String>) {
+        if !self.access_token.is_empty() {
+            return;
+        }
         fn fill_if_empty(target: &mut String, candidate: Option<String>) {
             if !target.is_empty() {
                 return;
@@ -268,6 +273,24 @@ mod tests {
         s.apply_key_fallback(Some("env-ant".into()), Some("env-groq".into()));
         assert_eq!(s.anthropic_api_key, "env-ant");
         assert_eq!(s.groq_api_key, "env-groq");
+    }
+
+    #[test]
+    fn env_fallback_skipped_entirely_when_access_token_set() {
+        let mut s = Settings::default();
+        s.access_token = "itk_x".into();
+        s.apply_key_fallback(Some("env-ant".into()), Some("env-groq".into()));
+        assert_eq!(s.anthropic_api_key, "");
+        assert_eq!(s.groq_api_key, "");
+    }
+
+    #[test]
+    fn load_missing_access_token_defaults_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.json");
+        std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+        let s = Settings::load(&path).unwrap();
+        assert_eq!(s.access_token, "");
     }
 
     #[test]

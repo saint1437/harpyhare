@@ -17,6 +17,7 @@ export interface SettingsApi {
   settings: Settings;
   loading: boolean;
   save: (next: Settings) => Promise<string | null>;
+  reload: () => Promise<void>;
   bumpOpacity: (dir: 1 | -1) => void;
 }
 
@@ -87,7 +88,13 @@ export function useSettings(): SettingsApi {
     [settings.window_opacity, settings.chat_font_size],
   );
 
+  const reload = useCallback(async (): Promise<void> => {
+    const fresh = await getSettings();
+    setSettings(fresh);
+    applyVisualSettings(fresh.window_opacity, fresh.chat_font_size);
+  }, []);
+
   const bumpOpacity = useBumpOpacity(setSettings);
 
-  return { settings, loading, save, bumpOpacity };
+  return { settings, loading, save, reload, bumpOpacity };
 }

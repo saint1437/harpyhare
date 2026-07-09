@@ -6,6 +6,7 @@ export type { ImagePayload };
 export interface Settings {
   anthropic_api_key: string;
   groq_api_key: string;
+  access_token: string;
   prompt_presets: PromptPreset[];
   hotkey: string;
   auto_send: boolean;
@@ -28,6 +29,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   anthropic_api_key: "",
   groq_api_key: "",
+  access_token: "",
   prompt_presets: [],
   hotkey: "F9",
   auto_send: false,
