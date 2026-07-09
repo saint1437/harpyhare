@@ -111,11 +111,11 @@ section[id] {
 
 .moon {
   position: fixed;
-  top: 88px;
-  right: 6%;
+  top: 60px;
+  right: 4%;
   z-index: 10;
-  width: 112px;
-  height: 112px;
+  width: clamp(58px, 18vw, 136px);
+  height: clamp(58px, 18vw, 136px);
   pointer-events: none;
 }
 
@@ -207,8 +207,6 @@ section[id] {
   .moon {
     top: 100px;
     right: 5%;
-    width: 136px;
-    height: 136px;
   }
 }
 
