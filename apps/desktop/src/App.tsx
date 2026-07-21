@@ -8,13 +8,13 @@ import {
   type RefObject,
 } from "react";
 import { AnswerPanel } from "@/components/AnswerPanel";
+import { ChatTabs } from "@/components/ChatTabs";
 import { Composer } from "@/components/Composer";
 import { HotkeyHints } from "@/components/HotkeyHints";
 import { MissingKeysDialog } from "@/components/MissingKeysDialog";
 import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { StatusBar, type StatusBarProps } from "@/components/StatusBar";
-import { TabRail, TAB_RAIL_WIDTH_PX } from "@/components/TabRail";
 import { Teleprompter } from "@/components/Teleprompter";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { WarningBanner } from "@/components/WarningBanner";
@@ -332,6 +332,8 @@ interface AppHeaderProps {
   error: string | null;
   toggleHotkey: string;
   updater: UpdaterApi;
+  chats: ChatsApi;
+  stream: ClaudeStreams;
   onOpenSettings: () => void;
   onOpenUpdate: () => void;
 }
@@ -341,6 +343,8 @@ function AppHeader({
   error,
   toggleHotkey,
   updater,
+  chats,
+  stream,
   onOpenSettings,
   onOpenUpdate,
 }: AppHeaderProps) {
@@ -353,6 +357,19 @@ function AppHeader({
       onOpenSettings={onOpenSettings}
       onClose={() => void closeApp()}
       onHide={() => void hideMainWindow()}
+      tabs={
+        <ChatTabs
+          chats={chats.chats}
+          activeId={chats.activeId}
+          streaming={stream.streaming}
+          onSelect={chats.selectChat}
+          onRemove={(id) => {
+            stream.stop(id);
+            chats.removeChat(id);
+          }}
+          onNew={chats.newChat}
+        />
+      }
     />
   );
 }
@@ -517,8 +534,7 @@ export default function App() {
     useSttFeedback(state);
   const { previewHtml, previewOpen, openPreview, togglePreview, closePreview } = usePreviewPanel();
   useWindowFrameSync(settings.window_width, settings.window_height, previewOpen, !settingsLoading);
-  const chatColumnWidth =
-    settings.window_width - SHELL_PADDING_PX * 2 - TAB_RAIL_WIDTH_PX - SHELL_COLUMN_GAP_PX;
+  const chatColumnWidth = settings.window_width - SHELL_PADDING_PX * 2;
 
   const officialPresets = useOfficialPresets();
   const presets = useMemo(
@@ -623,24 +639,14 @@ export default function App() {
       className="app-shell relative flex h-screen gap-2.5 overflow-hidden rounded-[22px] p-3"
       onMouseDown={onShellDragStart}
     >
-      <TabRail
-        chats={chats.chats}
-        activeId={chats.activeId}
-        streaming={stream.streaming}
-        onSelect={chats.selectChat}
-        onRemove={(id) => {
-          stream.stop(id);
-          chats.removeChat(id);
-        }}
-        onNew={chats.newChat}
-      />
-
       <div className="flex shrink-0 flex-col gap-2.5" style={{ width: chatColumnWidth }}>
         <AppHeader
           state={state}
           error={error}
           toggleHotkey={settings.toggle_hotkey}
           updater={updater}
+          chats={chats}
+          stream={stream}
           onOpenSettings={() => {
             setSettingsOpen(true);
           }}

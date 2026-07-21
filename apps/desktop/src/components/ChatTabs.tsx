@@ -1,11 +1,8 @@
 import { Plus, X } from "lucide-react";
-import { useWindowDrag } from "@/hooks/useWindowDrag";
 import { CHAT_LIMIT, type Chat } from "@/lib/chats";
 import { cn } from "@/lib/utils";
 
-export const TAB_RAIL_WIDTH_PX = 28;
-
-export interface TabRailProps {
+export interface ChatTabsProps {
   chats: Chat[];
   activeId: string;
   streaming: Record<string, boolean>;
@@ -14,17 +11,14 @@ export interface TabRailProps {
   onNew: () => void;
 }
 
-export function TabRail({ chats, activeId, streaming, onSelect, onRemove, onNew }: TabRailProps) {
-  const onDragMouseDown = useWindowDrag();
+export function ChatTabs({ chats, activeId, streaming, onSelect, onRemove, onNew }: ChatTabsProps) {
   return (
     <nav
       aria-label="Чаты"
-      className="flex shrink-0 flex-col items-center gap-1"
-      style={{ width: TAB_RAIL_WIDTH_PX }}
-      onMouseDown={onDragMouseDown}
+      className="no-scrollbar flex min-w-0 shrink items-center gap-1 overflow-x-auto"
     >
       {chats.map((c, i) => (
-        <TabRailItem
+        <ChatTab
           key={c.id}
           number={i + 1}
           title={c.title}
@@ -44,7 +38,7 @@ export function TabRail({ chats, activeId, streaming, onSelect, onRemove, onNew 
   );
 }
 
-interface TabRailItemProps {
+interface ChatTabProps {
   number: number;
   title: string;
   isActive: boolean;
@@ -54,7 +48,7 @@ interface TabRailItemProps {
   onRemove: () => void;
 }
 
-function TabRailItem({
+function ChatTab({
   number,
   title,
   isActive,
@@ -62,7 +56,7 @@ function TabRailItem({
   closable,
   onSelect,
   onRemove,
-}: TabRailItemProps) {
+}: ChatTabProps) {
   const closeOnClick = isActive && closable;
   return (
     <button

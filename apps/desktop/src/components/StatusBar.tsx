@@ -9,6 +9,7 @@ export interface StatusBarProps {
   state: RecorderState;
   error: string | null;
   toggleHotkey: string;
+  tabs: ReactNode;
   update: { version: string; busy: boolean; onOpen: () => void } | null;
   onOpenSettings: () => void;
   onClose: () => void;
@@ -25,6 +26,7 @@ export function StatusBar({
   state,
   error,
   toggleHotkey,
+  tabs,
   update,
   onOpenSettings,
   onClose,
@@ -37,6 +39,7 @@ export function StatusBar({
     <header className="flex min-h-7 items-center gap-2" onMouseDown={onDragMouseDown}>
       <WindowButtons toggleHotkey={toggleHotkey} onClose={onClose} onHide={onHide} />
       <EqBars {...indicatorProps(state, showError)} />
+      {tabs}
       <span
         title={showError ? error : undefined}
         className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-destructive"
