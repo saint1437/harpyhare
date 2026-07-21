@@ -51,6 +51,7 @@ const STT_STREAM_CHANNEL_CAPACITY: usize = 256;
 const LLM_DELTA_FLUSH_INTERVAL: Duration = Duration::from_millis(25);
 const MAX_DURATION_WATCHDOG_INTERVAL: Duration = Duration::from_secs(1);
 
+const WINDOW_CORNER_RADIUS_LOGICAL_PX: f64 = 22.0;
 const RESIZE_TWEEN_STEPS: u32 = 14;
 const RESIZE_TWEEN_FRAME_INTERVAL: Duration = Duration::from_millis(13);
 const RESIZE_EPSILON_LOGICAL_PX: f64 = 1.0;
@@ -188,6 +189,7 @@ fn setup_app(handle: &AppHandle) {
     let llm = build_llm_client(&settings);
     apply_screen_share_visibility_at_startup(handle, &settings);
     apply_window_size_at_startup(handle, &settings);
+    clip_native_window_corners(handle);
     let ptt_hotkey = settings.hotkey.clone();
     let toggle_hotkey = settings.toggle_hotkey.clone();
     let teleprompter_hotkey = settings.teleprompter_hotkey.clone();
@@ -339,6 +341,30 @@ fn apply_window_size_at_startup(app: &AppHandle, settings: &settings::Settings) 
             settings.window_width,
             settings.window_height,
         ));
+    }
+}
+
+fn clip_native_window_corners(app: &AppHandle) {
+    use objc2::{msg_send, runtime::AnyObject};
+    let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
+        return;
+    };
+    let Ok(ns_window) = w.ns_window() else {
+        return;
+    };
+    let ns_window = ns_window.cast::<AnyObject>();
+    unsafe {
+        let content_view: *mut AnyObject = msg_send![ns_window, contentView];
+        if content_view.is_null() {
+            return;
+        }
+        let _: () = msg_send![content_view, setWantsLayer: true];
+        let layer: *mut AnyObject = msg_send![content_view, layer];
+        if layer.is_null() {
+            return;
+        }
+        let _: () = msg_send![layer, setCornerRadius: WINDOW_CORNER_RADIUS_LOGICAL_PX];
+        let _: () = msg_send![layer, setMasksToBounds: true];
     }
 }
 
