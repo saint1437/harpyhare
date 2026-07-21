@@ -103,7 +103,7 @@ const MarkdownChunk = memo(function MarkdownChunk({
 
 function Assistant({ text, components }: { text: string; components: Components }) {
   return (
-    <div className={ASSISTANT_PROSE_CLASS}>
+    <div className={`chat-item ${ASSISTANT_PROSE_CLASS}`}>
       <MarkdownChunk text={text} components={components} />
     </div>
   );
@@ -160,7 +160,7 @@ function EmptyState() {
 
 function UserBubble({ text }: { text: string }) {
   return (
-    <div className="max-w-[85%] self-end rounded-lg bg-white/5 px-3 py-1.5 text-[length:var(--chat-font-size)] break-words whitespace-pre-wrap text-foreground/80">
+    <div className="chat-item max-w-[85%] self-end rounded-lg bg-white/5 px-3 py-1.5 text-[length:var(--chat-font-size)] break-words whitespace-pre-wrap text-foreground/80">
       {text}
     </div>
   );

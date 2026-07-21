@@ -259,3 +259,8 @@ body {
     transform: scaleY(1);
   }
 }
+
+.chat-item {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 48px;
+}
