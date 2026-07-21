@@ -1,5 +1,13 @@
 import { ArrowUp, Eraser, NotebookText, RotateCcw, SlidersHorizontal, Square } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,7 +40,6 @@ export interface ComposerProps {
   onStop: () => void;
   onClear: () => void;
   onRetry: () => void;
-  hotkey: string;
   streaming: boolean;
   showRetry: boolean;
   presets: { id: string; name: string }[];
@@ -61,14 +68,37 @@ function pasteHasImages(items: DataTransferItemList) {
   return extractImageItems(items).length > 0;
 }
 
-type PromptTextareaProps = Pick<
-  ComposerProps,
-  "value" | "onChange" | "onPaste" | "onSend" | "hotkey"
->;
+type PromptTextareaProps = Pick<ComposerProps, "value" | "onChange" | "onPaste" | "onSend">;
+
+const PROMPT_MAX_HEIGHT_PX = 160;
+
+function usePromptAutosize(ref: RefObject<HTMLTextAreaElement | null>, value: string): void {
+  const fit = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${String(Math.min(el.scrollHeight, PROMPT_MAX_HEIGHT_PX))}px`;
+  }, [ref]);
+
+  useLayoutEffect(fit, [fit, value]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new ResizeObserver(fit);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+    };
+  }, [ref, fit]);
+}
 
 function PromptTextarea(props: PromptTextareaProps) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  usePromptAutosize(ref, props.value);
   return (
     <Textarea
+      ref={ref}
       value={props.value}
       onChange={(e) => {
         props.onChange(e.target.value);
@@ -86,8 +116,8 @@ function PromptTextarea(props: PromptTextareaProps) {
         }
       }}
       spellCheck={false}
-      placeholder={`Зажми ${props.hotkey} — расшифровка появится здесь. ⌘V — скриншот.`}
-      className="max-h-40 min-h-9 resize-none border-0 bg-transparent py-1.5 text-[13px] shadow-none focus-visible:ring-0 md:text-[13px]"
+      placeholder="Расшифровка появится здесь — или напиши вопрос сам"
+      className="field-sizing-fixed max-h-40 min-h-9 resize-none overflow-y-auto border-0 bg-transparent py-1.5 text-[13px] shadow-none focus-visible:ring-0 md:text-[13px]"
     />
   );
 }
@@ -384,7 +414,7 @@ function ChatContextDialog(props: ChatContextDialogProps) {
         if (!open) props.onCancel();
       }}
     >
-      <DialogContent className="max-w-[480px]">
+      <DialogContent className="max-w-[min(480px,95vw)] sm:max-w-[min(480px,95vw)]">
         <DialogHeader>
           <DialogTitle>Контекст чата</DialogTitle>
         </DialogHeader>
@@ -436,7 +466,6 @@ export function Composer(props: ComposerProps) {
           onChange={props.onChange}
           onPaste={props.onPaste}
           onSend={props.onSend}
-          hotkey={props.hotkey}
         />
         <AttachmentList attachments={props.attachments} onRemove={props.onRemoveAttachment} />
         <ComposerToolbar

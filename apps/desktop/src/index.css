@@ -35,6 +35,18 @@
   --recording: oklch(0.62 0.2 18);
 }
 
+:root[data-theme="black"] {
+  --background: oklch(0.17 0.004 285);
+  --card: oklch(0.21 0.003 285);
+  --popover: oklch(0.21 0.003 285);
+  --muted: oklch(0.24 0.003 285);
+  --muted-foreground: oklch(0.68 0.006 285);
+  --secondary: oklch(0.24 0.004 285);
+  --accent: oklch(0.26 0.02 18);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 12%);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

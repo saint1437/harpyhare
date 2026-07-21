@@ -391,7 +391,6 @@ interface AppComposerProps {
   chats: ChatsApi;
   models: ModelInfo[];
   presets: PromptPreset[];
-  hotkey: string;
   streaming: boolean;
   showRetry: boolean;
   disabled: boolean;
@@ -404,7 +403,6 @@ function AppComposer({
   chats,
   models,
   presets,
-  hotkey,
   streaming,
   showRetry,
   disabled,
@@ -430,7 +428,6 @@ function AppComposer({
         chats.setDraft(activeId, "", []);
       }}
       onRetry={onRetry}
-      hotkey={hotkey}
       streaming={streaming}
       showRetry={showRetry}
       presets={presets}
@@ -702,7 +699,6 @@ export default function App() {
           chats={chats}
           models={models}
           presets={presets}
-          hotkey={settings.hotkey}
           streaming={activeStreaming}
           showRetry={showRetry}
           disabled={keysGate.keysMissing}

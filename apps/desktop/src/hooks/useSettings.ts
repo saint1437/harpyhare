@@ -8,7 +8,7 @@ import {
 } from "react";
 import { getSettings, setSettings as ipcSet } from "@/ipc/commands";
 import { DEFAULT_SETTINGS, type Settings } from "@/ipc/types";
-import { applyChatFontSize, applyOpacity, stepOpacity } from "@/lib/window-controls";
+import { applyChatFontSize, applyOpacity, applyTheme, stepOpacity } from "@/lib/window-controls";
 import { stepWindowSize, type WindowDimension } from "@/lib/window-size";
 
 const OPACITY_STEP = 0.1;
@@ -24,9 +24,10 @@ export interface SettingsApi {
   bumpWindowSize: (dim: WindowDimension, dir: 1 | -1) => void;
 }
 
-function applyVisualSettings(windowOpacity: number, chatFontSize: number): void {
+function applyVisualSettings(windowOpacity: number, chatFontSize: number, theme: string): void {
   applyOpacity(document.documentElement, windowOpacity);
   applyChatFontSize(document.documentElement, chatFontSize);
+  applyTheme(document.documentElement, theme);
 }
 
 function useBumpOpacity(setSettings: Dispatch<SetStateAction<Settings>>): (dir: 1 | -1) => void {
@@ -97,7 +98,7 @@ export function useSettings(): SettingsApi {
       .then((s) => {
         if (!live) return;
         setSettings(s);
-        applyVisualSettings(s.window_opacity, s.chat_font_size);
+        applyVisualSettings(s.window_opacity, s.chat_font_size, s.theme);
       })
       .finally(() => {
         if (live) setLoading(false);
@@ -113,20 +114,20 @@ export function useSettings(): SettingsApi {
         await ipcSet(next);
         const fresh = await getSettings();
         setSettings(fresh);
-        applyVisualSettings(fresh.window_opacity, fresh.chat_font_size);
+        applyVisualSettings(fresh.window_opacity, fresh.chat_font_size, fresh.theme);
         return null;
       } catch (e) {
-        applyVisualSettings(settings.window_opacity, settings.chat_font_size);
+        applyVisualSettings(settings.window_opacity, settings.chat_font_size, settings.theme);
         return String(e);
       }
     },
-    [settings.window_opacity, settings.chat_font_size],
+    [settings.window_opacity, settings.chat_font_size, settings.theme],
   );
 
   const reload = useCallback(async (): Promise<void> => {
     const fresh = await getSettings();
     setSettings(fresh);
-    applyVisualSettings(fresh.window_opacity, fresh.chat_font_size);
+    applyVisualSettings(fresh.window_opacity, fresh.chat_font_size, fresh.theme);
   }, []);
 
   const bumpOpacity = useBumpOpacity(setSettings);

@@ -49,3 +49,11 @@ export function applyChatFontSize(root: HTMLElement, px: number): void {
   const clamped = clamp(px, CHAT_FONT_SIZE_MIN_PX, CHAT_FONT_SIZE_MAX_PX);
   root.style.setProperty(CHAT_FONT_SIZE_CSS_VAR, `${String(clamped)}px`);
 }
+
+const THEME_DATA_ATTR = "data-theme";
+export const THEME_GRAY = "gray";
+export const THEME_BLACK = "black";
+
+export function applyTheme(root: HTMLElement, theme: string): void {
+  root.setAttribute(THEME_DATA_ATTR, theme === THEME_BLACK ? THEME_BLACK : THEME_GRAY);
+}

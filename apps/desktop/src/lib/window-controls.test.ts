@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyChatFontSize,
   applyOpacity,
+  applyTheme,
   isDraggableChromeTarget,
   moveDelta,
   stepOpacity,
@@ -92,5 +93,21 @@ describe("stepOpacity", () => {
   });
   it("без дрейфа float", () => {
     expect(stepOpacity(0.7, 1, 0.1)).toBe(0.8);
+  });
+});
+
+describe("applyTheme", () => {
+  it("ставит data-theme=black и возвращает gray", () => {
+    const el = document.createElement("div");
+    applyTheme(el, "black");
+    expect(el.getAttribute("data-theme")).toBe("black");
+    applyTheme(el, "gray");
+    expect(el.getAttribute("data-theme")).toBe("gray");
+  });
+
+  it("неизвестная тема падает на gray", () => {
+    const el = document.createElement("div");
+    applyTheme(el, "neon");
+    expect(el.getAttribute("data-theme")).toBe("gray");
   });
 });

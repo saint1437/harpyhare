@@ -28,6 +28,7 @@ export interface Settings {
   window_height: number;
   resize_step: number;
   capture_device_uid: string;
+  theme: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -55,6 +56,7 @@ export const DEFAULT_SETTINGS: Settings = {
   window_height: 680,
   resize_step: 20,
   capture_device_uid: "",
+  theme: "gray",
 };
 
 export interface AudioOutputDevice {

@@ -28,7 +28,13 @@ import type { Settings } from "@/ipc/types";
 import { BRAND_NAME } from "@/lib/brand";
 import type { PromptPreset } from "@/lib/presets";
 import { cn } from "@/lib/utils";
-import { applyChatFontSize, applyOpacity } from "@/lib/window-controls";
+import {
+  applyChatFontSize,
+  applyOpacity,
+  applyTheme,
+  THEME_BLACK,
+  THEME_GRAY,
+} from "@/lib/window-controls";
 
 export interface SettingsDialogProps {
   open: boolean;
@@ -165,6 +171,7 @@ export function SettingsDialog({
   const revertUnsavedLivePreviews = () => {
     applyOpacity(document.documentElement, settings.window_opacity);
     applyChatFontSize(document.documentElement, settings.chat_font_size);
+    applyTheme(document.documentElement, settings.theme);
   };
 
   const handleOpenChange = (next: boolean) => {
@@ -186,7 +193,7 @@ export function SettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="flex h-[92vh] w-[95vw] max-w-[95vw] flex-col gap-4 rounded-[22px] sm:max-w-[95vw]">
+      <DialogContent className="flex h-[92vh] w-[95vw] max-w-[95vw] flex-col gap-4 rounded-[22px] p-4 sm:max-w-[95vw] sm:p-6">
         <DialogHeader>
           <DialogTitle>Настройки</DialogTitle>
         </DialogHeader>
@@ -231,7 +238,10 @@ export function SettingsDialog({
 
 function TabBar({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => void }) {
   return (
-    <div role="tablist" className="flex gap-1 border-b border-white/10">
+    <div
+      role="tablist"
+      className="no-scrollbar flex gap-1 overflow-x-auto border-b border-white/10"
+    >
       {SETTINGS_TABS.map((t) => (
         <button
           key={t.id}
@@ -242,7 +252,7 @@ function TabBar({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => 
             onSelect(t.id);
           }}
           className={cn(
-            "relative px-3 py-1.5 text-[12.5px] transition-colors",
+            "relative shrink-0 px-3 py-1.5 text-[12.5px] whitespace-nowrap transition-colors",
             active === t.id ? "text-foreground" : "text-muted-foreground hover:text-foreground",
           )}
         >
@@ -644,6 +654,23 @@ function SwitchesSection({ draft, set }: SectionProps) {
 function SlidersSection({ draft, set }: SectionProps) {
   return (
     <>
+      <Field label="Тема">
+        <Select
+          value={draft.theme === THEME_BLACK ? THEME_BLACK : THEME_GRAY}
+          onValueChange={(v) => {
+            set("theme", v);
+            applyTheme(document.documentElement, v);
+          }}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent position="popper">
+            <SelectItem value={THEME_GRAY}>Серая (светлее)</SelectItem>
+            <SelectItem value={THEME_BLACK}>Чёрная (темнее)</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>
       <Field label={`Размер шрифта чата — ${draft.chat_font_size}px`}>
         <Slider
           min={CHAT_FONT_SIZE_MIN}

@@ -39,7 +39,7 @@ export function MissingKeysDialog({
         if (!next) onClose();
       }}
     >
-      <DialogContent className="max-w-[440px]">
+      <DialogContent className="max-w-[min(440px,95vw)] sm:max-w-[min(440px,95vw)]">
         <DialogHeader>
           <DialogTitle>Нужен доступ</DialogTitle>
         </DialogHeader>

@@ -9,6 +9,8 @@ const DEFAULT_MOVE_STEP: u32 = 20;
 const DEFAULT_RESIZE_STEP: u32 = 20;
 const DEFAULT_CHAT_FONT_SIZE: f64 = 13.5;
 const DEFAULT_STT_LANGUAGE: &str = "ru";
+const THEME_GRAY: &str = "gray";
+const THEME_BLACK: &str = "black";
 const DEFAULT_TELEPROMPTER_SPEED: f64 = 40.0;
 const DEFAULT_TELEPROMPTER_FONT_SIZE: f64 = 28.0;
 const DEFAULT_WINDOW_WIDTH: f64 = 960.0;
@@ -66,6 +68,7 @@ pub struct Settings {
     pub window_height: f64,
     pub resize_step: u32,
     pub capture_device_uid: String,
+    pub theme: String,
 }
 
 impl Default for Settings {
@@ -95,6 +98,7 @@ impl Default for Settings {
             window_height: DEFAULT_WINDOW_HEIGHT,
             resize_step: DEFAULT_RESIZE_STEP,
             capture_device_uid: String::new(),
+            theme: THEME_GRAY.into(),
         }
     }
 }
@@ -128,6 +132,9 @@ impl Settings {
         }
         self.window_height = self.window_height.clamp(WINDOW_HEIGHT_MIN, WINDOW_HEIGHT_MAX);
         self.resize_step = self.resize_step.clamp(MOVE_STEP_MIN, MOVE_STEP_MAX);
+        if self.theme != THEME_GRAY && self.theme != THEME_BLACK {
+            self.theme = THEME_GRAY.into();
+        }
     }
 
     pub fn load(path: &Path) -> std::io::Result<Self> {
@@ -287,6 +294,7 @@ mod tests {
         assert_eq!(s.window_height, 680.0);
         assert_eq!(s.resize_step, 20);
         assert_eq!(s.capture_device_uid, "");
+        assert_eq!(s.theme, "gray");
     }
 
     #[test]
@@ -298,6 +306,17 @@ mod tests {
         s.resize_step = 0;
         s.clamp();
         assert_eq!(s.resize_step, 1);
+    }
+
+    #[test]
+    fn clamp_resets_unknown_theme() {
+        let mut s = Settings::default();
+        s.theme = "neon".into();
+        s.clamp();
+        assert_eq!(s.theme, "gray");
+        s.theme = "black".into();
+        s.clamp();
+        assert_eq!(s.theme, "black");
     }
 
     #[test]
