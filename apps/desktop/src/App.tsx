@@ -330,7 +330,6 @@ function useSendPipeline(
 interface AppHeaderProps {
   state: RecorderState;
   error: string | null;
-  hotkey: string;
   toggleHotkey: string;
   updater: UpdaterApi;
   onOpenSettings: () => void;
@@ -340,7 +339,6 @@ interface AppHeaderProps {
 function AppHeader({
   state,
   error,
-  hotkey,
   toggleHotkey,
   updater,
   onOpenSettings,
@@ -350,7 +348,6 @@ function AppHeader({
     <StatusBar
       state={state}
       error={error}
-      hotkey={hotkey}
       toggleHotkey={toggleHotkey}
       update={updateBadge(updater, onOpenUpdate)}
       onOpenSettings={onOpenSettings}
@@ -642,7 +639,6 @@ export default function App() {
         <AppHeader
           state={state}
           error={error}
-          hotkey={settings.hotkey}
           toggleHotkey={settings.toggle_hotkey}
           updater={updater}
           onOpenSettings={() => {

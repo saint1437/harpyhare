@@ -3,11 +3,11 @@ import type { ReactNode } from "react";
 import { useWindowDrag } from "@/hooks/useWindowDrag";
 import type { RecorderState } from "@/ipc/types";
 import { cn } from "@/lib/utils";
+import { EqBars, type EqBarsProps } from "./EqBars";
 
 export interface StatusBarProps {
   state: RecorderState;
   error: string | null;
-  hotkey: string;
   toggleHotkey: string;
   update: { version: string; busy: boolean; onOpen: () => void } | null;
   onOpenSettings: () => void;
@@ -15,25 +15,15 @@ export interface StatusBarProps {
   onHide: () => void;
 }
 
-function statusTextFor(state: RecorderState, hotkey: string): string {
-  const texts: Record<RecorderState, string> = {
-    idle: `Зажми ${hotkey} — записать системный звук`,
-    recording: "Запись…",
-    transcribing: "Распознаю…",
-  };
-  return texts[state];
-}
-
-function statusDotClass(state: RecorderState, showError: boolean): string {
-  if (state === "recording") return "bg-recording animate-pulse";
-  if (state === "transcribing") return "bg-primary animate-pulse";
-  return showError ? "bg-destructive" : "bg-muted-foreground";
+function indicatorProps(state: RecorderState, showError: boolean): EqBarsProps {
+  if (state === "recording") return { animated: true, barClass: "bg-recording" };
+  if (state === "transcribing") return { animated: true, barClass: "bg-primary" };
+  return { animated: false, barClass: showError ? "bg-destructive" : "bg-muted-foreground/50" };
 }
 
 export function StatusBar({
   state,
   error,
-  hotkey,
   toggleHotkey,
   update,
   onOpenSettings,
@@ -46,18 +36,12 @@ export function StatusBar({
   return (
     <header className="flex min-h-7 items-center gap-2" onMouseDown={onDragMouseDown}>
       <WindowButtons toggleHotkey={toggleHotkey} onClose={onClose} onHide={onHide} />
-      <span
-        className={cn("size-2.5 shrink-0 rounded-full", statusDotClass(state, showError))}
-        aria-hidden
-      />
+      <EqBars {...indicatorProps(state, showError)} />
       <span
         title={showError ? error : undefined}
-        className={cn(
-          "min-w-0 flex-1 truncate font-mono text-[11.5px]",
-          showError ? "text-destructive" : "text-muted-foreground",
-        )}
+        className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-destructive"
       >
-        {showError ? error : statusTextFor(state, hotkey)}
+        {showError ? error : ""}
       </span>
       <div className="flex shrink-0 items-center gap-0.5">
         {update && <UpdateBadge update={update} />}

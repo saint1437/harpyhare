@@ -232,3 +232,18 @@ body {
     scrollbar-width: none;
   }
 }
+
+.eq-bar {
+  transform-origin: center;
+  animation: eq 1.1s ease-in-out infinite;
+}
+
+@keyframes eq {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
