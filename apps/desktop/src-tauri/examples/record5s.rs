@@ -13,7 +13,7 @@ fn counting_sink(streamed: Arc<AtomicUsize>) -> harpyhare_lib::capture::ChunkSin
 }
 
 fn main() {
-    let mut cap = harpyhare_lib::capture::SystemAudioCapture::new().expect("создание tap");
+    let mut cap = harpyhare_lib::capture::SystemAudioCapture::new(None).expect("создание tap");
 
     let streamed = Arc::new(AtomicUsize::new(0));
     cap.start(Some(counting_sink(Arc::clone(&streamed))))

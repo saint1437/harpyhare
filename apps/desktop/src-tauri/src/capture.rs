@@ -78,8 +78,51 @@ pub struct SystemAudioCapture {
 
 unsafe impl Send for SystemAudioCapture {}
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct OutputDeviceInfo {
+    pub uid: String,
+    pub name: String,
+}
+
+fn device_has_output(device: &ca::Device) -> bool {
+    device.output_asbd().is_ok()
+}
+
+pub fn list_output_devices() -> Vec<OutputDeviceInfo> {
+    let Ok(devices) = ca::System::devices() else {
+        return Vec::new();
+    };
+    devices
+        .iter()
+        .filter(|d| device_has_output(d))
+        .filter_map(|d| {
+            Some(OutputDeviceInfo {
+                uid: d.uid().ok()?.to_string(),
+                name: d.name().ok()?.to_string(),
+            })
+        })
+        .collect()
+}
+
+fn find_output_device_by_uid(uid: &str) -> Option<ca::Device> {
+    let devices = ca::System::devices().ok()?;
+    devices
+        .into_iter()
+        .find(|d| device_has_output(d) && d.uid().map(|u| u.to_string() == uid).unwrap_or(false))
+}
+
+fn resolve_output_device(uid: Option<&str>) -> Result<ca::Device, CaptureError> {
+    if let Some(uid) = uid {
+        if let Some(device) = find_output_device_by_uid(uid) {
+            return Ok(device);
+        }
+        eprintln!("устройство захвата {uid:?} не найдено — используется системный вывод");
+    }
+    ca::System::default_output_device().map_err(CaptureError::from_os)
+}
+
 impl SystemAudioCapture {
-    pub fn new() -> Result<Self, CaptureError> {
+    pub fn new(output_device_uid: Option<&str>) -> Result<Self, CaptureError> {
         let tap_desc = ca::TapDesc::with_stereo_global_tap_excluding_processes(&ns::Array::new());
 
         let tap = tap_desc
@@ -102,7 +145,7 @@ impl SystemAudioCapture {
         let sample_rate = asbd.sample_rate as u32;
         let channels = asbd.channels_per_frame as usize;
 
-        let output_device = ca::System::default_output_device().map_err(CaptureError::from_os)?;
+        let output_device = resolve_output_device(output_device_uid)?;
         let output_uid = output_device.uid().map_err(CaptureError::from_os)?;
         let sub_device =
             cf::DictionaryOf::with_keys_values(&[sub_keys::uid()], &[output_uid.as_type_ref()]);

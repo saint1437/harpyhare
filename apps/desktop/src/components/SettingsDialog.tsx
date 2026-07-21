@@ -22,7 +22,8 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import type { UpdateInfo } from "@/ipc/types";
+import { listAudioOutputDevices } from "@/ipc/commands";
+import type { AudioOutputDevice, UpdateInfo } from "@/ipc/types";
 import type { Settings } from "@/ipc/types";
 import { BRAND_NAME } from "@/lib/brand";
 import type { PromptPreset } from "@/lib/presets";
@@ -404,9 +405,62 @@ function ApiKeyField({
   );
 }
 
+const CAPTURE_DEVICE_SYSTEM_DEFAULT = "system-default";
+const CAPTURE_DEVICE_MISSING_LABEL = "Недоступное устройство";
+
+function useAudioOutputDevices(): AudioOutputDevice[] {
+  const [devices, setDevices] = useState<AudioOutputDevice[]>([]);
+  useEffect(() => {
+    let live = true;
+    void listAudioOutputDevices().then((list) => {
+      if (live) setDevices(list);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return devices;
+}
+
+function withSavedDevice(devices: AudioOutputDevice[], savedUid: string): AudioOutputDevice[] {
+  if (savedUid === "" || devices.some((d) => d.uid === savedUid)) return devices;
+  return [...devices, { uid: savedUid, name: CAPTURE_DEVICE_MISSING_LABEL }];
+}
+
+function CaptureDeviceField({ draft, set }: SectionProps) {
+  const devices = withSavedDevice(useAudioOutputDevices(), draft.capture_device_uid);
+  return (
+    <Field label="Устройство захвата звука">
+      <Select
+        value={
+          draft.capture_device_uid === "" ? CAPTURE_DEVICE_SYSTEM_DEFAULT : draft.capture_device_uid
+        }
+        onValueChange={(v) => {
+          set("capture_device_uid", v === CAPTURE_DEVICE_SYSTEM_DEFAULT ? "" : v);
+        }}
+      >
+        <SelectTrigger className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent position="popper">
+          <SelectItem value={CAPTURE_DEVICE_SYSTEM_DEFAULT}>
+            Системный вывод (следует за настройками macOS)
+          </SelectItem>
+          {devices.map((d) => (
+            <SelectItem key={d.uid} value={d.uid}>
+              {d.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Field>
+  );
+}
+
 function SttSection({ draft, set }: SectionProps) {
   return (
     <>
+      <CaptureDeviceField draft={draft} set={set} />
       <Field label="Язык распознавания">
         <Select
           value={draft.stt_language === "" ? STT_LANGUAGE_AUTO : draft.stt_language}

@@ -18,6 +18,7 @@ use std::sync::{
     Arc, Mutex,
 };
 use std::time::Duration;
+use cidre::core_audio;
 use futures_util::StreamExt;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio_util::sync::CancellationToken;
@@ -78,6 +79,7 @@ pub struct App {
     pub models: Mutex<Vec<llm::ModelInfo>>,
     pub recording_gen: AtomicU64,
     pub resize_gen: AtomicU64,
+    pub capture_rebuild_pending: AtomicBool,
     pub preview_html: Mutex<String>,
     pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
     pub update_installing: AtomicBool,
@@ -156,6 +158,7 @@ pub fn run() {
             retry_transcription,
             get_settings,
             set_settings,
+            list_audio_output_devices,
             redeem_access_code,
             get_official_presets,
             move_window_by,
@@ -179,7 +182,7 @@ fn setup_app(handle: &AppHandle) {
     load_dotenv_files();
     let settings = load_settings_with_env_key_fallback(handle);
     let official_presets = remote_presets::load_initial(handle);
-    let capture = init_system_audio_capture();
+    let capture = build_capture(&settings.capture_device_uid);
     let stt = build_stt_client(&settings);
     let llm = build_llm_client(&settings);
     apply_screen_share_visibility_at_startup(handle, &settings);
@@ -190,6 +193,7 @@ fn setup_app(handle: &AppHandle) {
     spawn_startup_warm_up_and_model_fetch(handle.clone(), stt.clone(), llm.clone());
     handle.manage(build_app_state(settings, official_presets, capture, stt, llm));
     register_startup_hotkeys(handle, &ptt_hotkey, &toggle_hotkey, &teleprompter_hotkey);
+    install_default_output_device_listener(handle);
     install_move_keys_monitor(handle.clone());
     disable_cursor_autohide_on_typing();
     update::spawn_auto_check(handle.clone());
@@ -236,14 +240,68 @@ fn load_settings_with_env_key_fallback(app: &AppHandle) -> settings::Settings {
     settings
 }
 
-fn init_system_audio_capture() -> Option<capture::SystemAudioCapture> {
-    match capture::SystemAudioCapture::new() {
+fn build_capture(device_uid: &str) -> Option<capture::SystemAudioCapture> {
+    let uid = if device_uid.is_empty() { None } else { Some(device_uid) };
+    match capture::SystemAudioCapture::new(uid) {
         Ok(c) => Some(c),
         Err(e) => {
             eprintln!("захват системного звука недоступен: {e}");
             None
         }
     }
+}
+
+extern "C-unwind" fn on_default_output_device_changed(
+    _obj: core_audio::Obj,
+    _number_addresses: u32,
+    _addresses: *const core_audio::PropAddr,
+    client_data: *mut AppHandle,
+) -> cidre::os::Status {
+    let app = unsafe { &*client_data }.clone();
+    tauri::async_runtime::spawn(async move {
+        handle_default_output_device_changed(&app);
+    });
+    cidre::os::Status::NO_ERR
+}
+
+fn install_default_output_device_listener(app: &AppHandle) {
+    let client_data = Box::leak(Box::new(app.clone()));
+    let addr = core_audio::PropSelector::HW_DEFAULT_OUTPUT_DEVICE.global_addr();
+    if let Err(e) =
+        core_audio::System::OBJ.add_prop_listener(&addr, on_default_output_device_changed, client_data)
+    {
+        eprintln!("не удалось подписаться на смену аудио-вывода: {e:?}");
+    }
+}
+
+fn handle_default_output_device_changed(app: &AppHandle) {
+    let follows_system_default = app
+        .state::<App>()
+        .settings
+        .lock()
+        .unwrap()
+        .capture_device_uid
+        .is_empty();
+    if follows_system_default {
+        request_capture_rebuild(app);
+    }
+}
+
+fn request_capture_rebuild(app: &AppHandle) {
+    let st = app.state::<App>();
+    let idle = *st.recorder.lock().unwrap() == state::RecorderState::Idle;
+    if idle {
+        rebuild_capture_now(app);
+    } else {
+        st.capture_rebuild_pending.store(true, Ordering::SeqCst);
+    }
+}
+
+fn rebuild_capture_now(app: &AppHandle) {
+    let st = app.state::<App>();
+    let device_uid = st.settings.lock().unwrap().capture_device_uid.clone();
+    let new_capture = build_capture(&device_uid);
+    *st.capture.lock().unwrap() = new_capture;
 }
 
 fn build_stt_client(s: &settings::Settings) -> stt::GroqStt {
@@ -318,6 +376,7 @@ fn build_app_state(
         models: Mutex::new(llm::fallback_models()),
         recording_gen: AtomicU64::new(0),
         resize_gen: AtomicU64::new(0),
+        capture_rebuild_pending: AtomicBool::new(false),
         preview_html: Mutex::new(String::new()),
         pending_update: Mutex::new(None),
         update_installing: AtomicBool::new(false),
@@ -404,6 +463,9 @@ fn emit_state(app: &AppHandle, s: state::RecorderState) {
 
 pub fn on_ptt_pressed(app: &AppHandle) {
     let st = app.state::<App>();
+    if st.capture_rebuild_pending.swap(false, Ordering::SeqCst) {
+        rebuild_capture_now(app);
+    }
     if st.capture.lock().unwrap().is_none() {
         let _ = app.emit(EVENT_STT_ERROR, ERR_NO_CAPTURE_PERMISSION);
         return;
@@ -854,11 +916,20 @@ fn set_settings(app: AppHandle, mut new_settings: settings::Settings) -> Result<
     reregister_changed_hotkeys(&app, &old, &new_settings)?;
     rebuild_changed_api_clients(&st, &old, &new_settings);
     apply_screen_share_visibility_change(&app, &old, &new_settings);
+    let capture_device_changed = old.capture_device_uid != new_settings.capture_device_uid;
     new_settings
         .save(&settings_path(&app))
         .map_err(|e| e.to_string())?;
     *st.settings.lock().unwrap() = new_settings;
+    if capture_device_changed {
+        request_capture_rebuild(&app);
+    }
     Ok(())
+}
+
+#[tauri::command]
+fn list_audio_output_devices() -> Vec<capture::OutputDeviceInfo> {
+    capture::list_output_devices()
 }
 
 #[tauri::command]

@@ -65,6 +65,7 @@ pub struct Settings {
     pub window_width: f64,
     pub window_height: f64,
     pub resize_step: u32,
+    pub capture_device_uid: String,
 }
 
 impl Default for Settings {
@@ -93,6 +94,7 @@ impl Default for Settings {
             window_width: DEFAULT_WINDOW_WIDTH,
             window_height: DEFAULT_WINDOW_HEIGHT,
             resize_step: DEFAULT_RESIZE_STEP,
+            capture_device_uid: String::new(),
         }
     }
 }
@@ -210,6 +212,7 @@ mod tests {
         assert_eq!(s.window_width, 960.0);
         assert_eq!(s.window_height, 680.0);
         assert_eq!(s.resize_step, 20);
+        assert_eq!(s.capture_device_uid, "");
     }
 
     #[test]
@@ -283,6 +286,7 @@ mod tests {
         assert_eq!(s.window_width, 960.0);
         assert_eq!(s.window_height, 680.0);
         assert_eq!(s.resize_step, 20);
+        assert_eq!(s.capture_device_uid, "");
     }
 
     #[test]

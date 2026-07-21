@@ -4,7 +4,13 @@ import { normalizeAccessCode } from "@/lib/access-code";
 import { FALLBACK_MODELS, type ModelInfo } from "@/lib/models";
 import { OFFICIAL_PRESETS_FALLBACK, type PromptPreset } from "@/lib/presets";
 import { isTauri } from "./env";
-import { DEFAULT_SETTINGS, type ChatMessageDto, type Settings, type UpdateInfo } from "./types";
+import {
+  DEFAULT_SETTINGS,
+  type AudioOutputDevice,
+  type ChatMessageDto,
+  type Settings,
+  type UpdateInfo,
+} from "./types";
 
 const IDEMPOTENCY_STORAGE_PREFIX = "redeem-idem:";
 
@@ -63,6 +69,10 @@ export async function getSettings(): Promise<Settings> {
 
 export async function setSettings(newSettings: Settings): Promise<void> {
   await invokeOrNoopInBrowser("set_settings", { newSettings });
+}
+
+export async function listAudioOutputDevices(): Promise<AudioOutputDevice[]> {
+  return invokeOrFallbackInBrowser("list_audio_output_devices", []);
 }
 
 async function idempotencyStorageKey(normalizedCode: string): Promise<string> {

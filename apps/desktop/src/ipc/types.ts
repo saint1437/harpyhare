@@ -27,6 +27,7 @@ export interface Settings {
   window_width: number;
   window_height: number;
   resize_step: number;
+  capture_device_uid: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -53,7 +54,13 @@ export const DEFAULT_SETTINGS: Settings = {
   window_width: 960,
   window_height: 680,
   resize_step: 20,
+  capture_device_uid: "",
 };
+
+export interface AudioOutputDevice {
+  uid: string;
+  name: string;
+}
 
 export type RecorderState = "idle" | "recording" | "transcribing";
 
