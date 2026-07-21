@@ -17,8 +17,8 @@
       {
         "label": "main",
         "title": "Audio System",
-        "width": 1140,
-        "height": 860,
+        "width": 960,
+        "height": 680,
         "transparent": true,
         "decorations": false,
         "alwaysOnTop": true,

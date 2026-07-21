@@ -120,8 +120,8 @@ export async function openExternal(url: string): Promise<void> {
   await invokeOrNoopInBrowser("open_external", { url });
 }
 
-export async function setWindowWidth(width: number): Promise<void> {
-  await invokeOrNoopInBrowser("set_window_width", { width });
+export async function setWindowSize(width: number, height: number): Promise<void> {
+  await invokeOrNoopInBrowser("set_window_size", { width, height });
 }
 
 export async function loadChats(): Promise<string> {

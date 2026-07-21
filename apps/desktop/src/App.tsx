@@ -35,7 +35,7 @@ import {
   openAudioPermissionSettings,
   redeemAccessCode,
   retryTranscription,
-  setWindowWidth,
+  setWindowSize,
   startWindowDrag,
 } from "@/ipc/commands";
 import { isTauri } from "@/ipc/env";
@@ -57,11 +57,9 @@ import { toReadingText } from "@/lib/teleprompter";
 
 const RETRYABLE_STT_ERROR = /перегружен|соединение|VPN|интернет|оборван/i;
 
-const BASE_WINDOW_WIDTH = 1140;
 const SHELL_COLUMN_GAP_PX = 12;
 const SHELL_PADDING_PX = 16;
-const CHAT_COLUMN_WIDTH_PX = BASE_WINDOW_WIDTH - SHELL_PADDING_PX * 2;
-const PREVIEW_OPEN_WINDOW_WIDTH = BASE_WINDOW_WIDTH + PREVIEW_PANEL_WIDTH_PX + SHELL_COLUMN_GAP_PX;
+const PREVIEW_EXTRA_WIDTH_PX = PREVIEW_PANEL_WIDTH_PX + SHELL_COLUMN_GAP_PX;
 
 const USER_CONTEXT_SYSTEM_HEADER = "Контекст от пользователя (справочные материалы):\n";
 const SYSTEM_BLOCKS_SEPARATOR = "\n\n";
@@ -259,11 +257,19 @@ function usePreviewPanel(): PreviewPanelState {
     setPreviewOpen(false);
   }, []);
 
-  useEffect(() => {
-    void setWindowWidth(previewOpen ? PREVIEW_OPEN_WINDOW_WIDTH : BASE_WINDOW_WIDTH);
-  }, [previewOpen]);
-
   return { previewHtml, previewOpen, openPreview, togglePreview, closePreview };
+}
+
+function useWindowFrameSync(
+  windowWidth: number,
+  windowHeight: number,
+  previewOpen: boolean,
+  ready: boolean,
+): void {
+  useEffect(() => {
+    if (!ready) return;
+    void setWindowSize(windowWidth + (previewOpen ? PREVIEW_EXTRA_WIDTH_PX : 0), windowHeight);
+  }, [windowWidth, windowHeight, previewOpen, ready]);
 }
 
 function useBrowserDemoSeed(activeId: string, chatsRef: RefObject<ChatsApi>): void {
@@ -524,6 +530,8 @@ export default function App() {
   const { sttError, showRetry, setSttError, clearError, clearFeedback, retry } =
     useSttFeedback(state);
   const { previewHtml, previewOpen, openPreview, togglePreview, closePreview } = usePreviewPanel();
+  useWindowFrameSync(settings.window_width, settings.window_height, previewOpen, !settingsLoading);
+  const chatColumnWidth = settings.window_width - SHELL_PADDING_PX * 2;
 
   const officialPresets = useOfficialPresets();
   const presets = useMemo(
@@ -628,7 +636,7 @@ export default function App() {
       className="app-shell relative flex h-screen gap-3 overflow-hidden rounded-[22px] p-4"
       onMouseDown={onShellDragStart}
     >
-      <div className="flex shrink-0 flex-col gap-3" style={{ width: CHAT_COLUMN_WIDTH_PX }}>
+      <div className="flex shrink-0 flex-col gap-3" style={{ width: chatColumnWidth }}>
         <AppHeader
           state={state}
           error={error}

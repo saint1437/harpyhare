@@ -49,8 +49,7 @@ const MAX_DURATION_WATCHDOG_INTERVAL: Duration = Duration::from_secs(1);
 
 const RESIZE_TWEEN_STEPS: u32 = 14;
 const RESIZE_TWEEN_FRAME_INTERVAL: Duration = Duration::from_millis(13);
-const RESIZE_WIDTH_EPSILON_LOGICAL_PX: f64 = 1.0;
-const FALLBACK_WINDOW_HEIGHT_LOGICAL_PX: f64 = 640.0;
+const RESIZE_EPSILON_LOGICAL_PX: f64 = 1.0;
 
 const KEY_CODE_ARROW_LEFT: u16 = 123;
 const KEY_CODE_ARROW_RIGHT: u16 = 124;
@@ -157,7 +156,7 @@ pub fn run() {
             redeem_access_code,
             get_official_presets,
             move_window_by,
-            set_window_width,
+            set_window_size,
             set_ptt_suspended,
             close_app,
             hide_main_window,
@@ -181,6 +180,7 @@ fn setup_app(handle: &AppHandle) {
     let stt = build_stt_client(&settings);
     let llm = build_llm_client(&settings);
     apply_screen_share_visibility_at_startup(handle, &settings);
+    apply_window_size_at_startup(handle, &settings);
     let ptt_hotkey = settings.hotkey.clone();
     let toggle_hotkey = settings.toggle_hotkey.clone();
     let teleprompter_hotkey = settings.teleprompter_hotkey.clone();
@@ -268,6 +268,15 @@ fn apply_screen_share_visibility_at_startup(app: &AppHandle, settings: &settings
         if let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) {
             let _ = w.set_content_protected(false);
         }
+    }
+}
+
+fn apply_window_size_at_startup(app: &AppHandle, settings: &settings::Settings) {
+    if let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        let _ = w.set_size(tauri::LogicalSize::new(
+            settings.window_width,
+            settings.window_height,
+        ));
     }
 }
 
@@ -910,27 +919,26 @@ fn move_window_by(app: AppHandle, dx: i32, dy: i32) {
 struct ResizeTween {
     from_width: f64,
     to_width: f64,
+    from_height: f64,
+    to_height: f64,
     from_x: i32,
     to_x: i32,
     y: i32,
-    height: f64,
 }
 
 #[tauri::command]
-fn set_window_width(app: AppHandle, width: f64) {
+fn set_window_size(app: AppHandle, width: f64, height: f64) {
     let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
         return;
     };
     let scale = w.scale_factor().unwrap_or(1.0);
     let from_width = w.outer_size().map(|s| s.width as f64 / scale).unwrap_or(width);
-    let height = w
-        .outer_size()
-        .map(|s| s.height as f64 / scale)
-        .unwrap_or(FALLBACK_WINDOW_HEIGHT_LOGICAL_PX);
+    let from_height = w.outer_size().map(|s| s.height as f64 / scale).unwrap_or(height);
     let from_pos = w.outer_position().unwrap_or(tauri::PhysicalPosition::new(0, 0));
-    let target_x = centered_target_x(&w, width, scale);
 
-    if (from_width - width).abs() < RESIZE_WIDTH_EPSILON_LOGICAL_PX && from_pos.x == target_x {
+    if (from_width - width).abs() < RESIZE_EPSILON_LOGICAL_PX
+        && (from_height - height).abs() < RESIZE_EPSILON_LOGICAL_PX
+    {
         return;
     }
 
@@ -942,10 +950,11 @@ fn set_window_width(app: AppHandle, width: f64) {
     let tween = ResizeTween {
         from_width,
         to_width: width,
+        from_height,
+        to_height: height,
         from_x: from_pos.x,
-        to_x: target_x,
+        to_x: centered_target_x(&w, width, scale),
         y: from_pos.y,
-        height,
     };
     std::thread::spawn(move || run_resize_tween(app, w, tween, my_gen));
 }
@@ -973,13 +982,21 @@ fn run_resize_tween(app: AppHandle, w: tauri::WebviewWindow, tween: ResizeTween,
         }
         let eased = ease_out_cubic(f64::from(i) / f64::from(RESIZE_TWEEN_STEPS));
         let cur_w = tween.from_width + (tween.to_width - tween.from_width) * eased;
+        let cur_h = tween.from_height + (tween.to_height - tween.from_height) * eased;
         let cur_x = (f64::from(tween.from_x) + f64::from(tween.to_x - tween.from_x) * eased)
             .round() as i32;
-        apply_window_frame(&app, &w, cur_x, tween.y, cur_w, tween.height);
+        apply_window_frame(&app, &w, cur_x, tween.y, cur_w, cur_h);
         std::thread::sleep(RESIZE_TWEEN_FRAME_INTERVAL);
     }
     if app.state::<App>().resize_gen.load(Ordering::SeqCst) == my_gen {
-        apply_window_frame(&app, &w, tween.to_x, tween.y, tween.to_width, tween.height);
+        apply_window_frame(
+            &app,
+            &w,
+            tween.to_x,
+            tween.y,
+            tween.to_width,
+            tween.to_height,
+        );
     }
 }
 
