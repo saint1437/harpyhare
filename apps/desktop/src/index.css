@@ -260,11 +260,6 @@ body {
   }
 }
 
-.chat-item {
-  content-visibility: auto;
-  contain-intrinsic-block-size: auto 48px;
-}
-
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;

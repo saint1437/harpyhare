@@ -1,5 +1,14 @@
 import { RotateCw, Trash2 } from "lucide-react";
-import { isValidElement, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  isValidElement,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode, RefObject } from "react";
 import Markdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -142,7 +151,7 @@ function MessageShell({
   children: ReactNode;
 }) {
   return (
-    <div className={cn("chat-item group/msg relative", align === "end" && "flex justify-end")}>
+    <div className={cn("group/msg relative", align === "end" && "flex justify-end")}>
       {children}
       <div className="absolute top-0 right-0 z-10 flex gap-0.5 rounded-md border border-white/10 bg-popover/95 p-0.5 opacity-0 shadow-md backdrop-blur-sm transition-opacity group-hover/msg:opacity-100">
         {onResend && (
@@ -195,8 +204,6 @@ function useHotkeyScroll(scrollRef: RefObject<HTMLDivElement | null>, stepPx: nu
   }, [scrollRef, stepPx]);
 }
 
-const RESET_SCROLL_SETTLE_FRAMES = 3;
-
 function useStickToBottom() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
@@ -221,17 +228,9 @@ function useStickToBottom() {
 
   const resetToBottom = useCallback(() => {
     nearBottomRef.current = true;
-    setShowJump(false);
     scrollToBottom();
-    let framesLeft = RESET_SCROLL_SETTLE_FRAMES;
-    const settle = () => {
-      scrollToBottom();
-      framesLeft -= 1;
-      if (framesLeft > 0) requestAnimationFrame(settle);
-      else syncJump();
-    };
-    requestAnimationFrame(settle);
-  }, [scrollToBottom, syncJump]);
+    setShowJump(false);
+  }, [scrollToBottom]);
 
   const onScroll = syncJump;
 
@@ -332,17 +331,14 @@ export function AnswerPanel({
     useStickToBottom();
   useHotkeyScroll(scrollRef, scrollStep ?? FALLBACK_SCROLL_STEP_PX);
 
-  useEffect(() => {
-    scrollIfNearBottom();
-    const raf = requestAnimationFrame(syncJump);
-    return () => {
-      cancelAnimationFrame(raf);
-    };
-  }, [messages, partial, scrollIfNearBottom, syncJump]);
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     resetToBottom();
   }, [chatId, resetToBottom]);
+
+  useEffect(() => {
+    scrollIfNearBottom();
+    syncJump();
+  }, [messages, partial, scrollIfNearBottom, syncJump]);
 
   const components = useMemo<Components>(
     () => ({ ...markdownComponents, pre: makePre(onTogglePreview) }),
