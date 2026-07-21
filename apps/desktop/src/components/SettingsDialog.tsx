@@ -289,7 +289,7 @@ function TabContent({
   switch (tab) {
     case "main":
       return (
-        <div className="grid grid-cols-2 gap-x-10 gap-y-5">
+        <div className="grid grid-cols-1 gap-y-5 sm:grid-cols-2 sm:gap-x-10">
           <SectionGroup title="Доступ">
             <ApiKeysSection draft={draft} set={set} onRedeem={onRedeem} />
           </SectionGroup>
@@ -300,19 +300,19 @@ function TabContent({
       );
     case "hotkeys":
       return (
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <HotkeysSection draft={draft} set={set} />
         </div>
       );
     case "behavior":
       return (
-        <div className="grid grid-cols-2 gap-x-10 gap-y-3.5">
+        <div className="grid grid-cols-1 gap-y-3.5 sm:grid-cols-2 sm:gap-x-10">
           <SwitchesSection draft={draft} set={set} />
         </div>
       );
     case "appearance":
       return (
-        <div className="grid grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-3 md:gap-8">
           <SlidersSection draft={draft} set={set} />
         </div>
       );
@@ -516,7 +516,7 @@ function PresetsSection({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {presets.map((p, i) => (
           <PresetEditor
             key={p.id}
