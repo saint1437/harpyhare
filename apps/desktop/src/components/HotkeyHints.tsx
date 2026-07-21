@@ -20,7 +20,7 @@ export function HotkeyHints({ hotkey }: HotkeyHintsProps) {
   const onDragMouseDown = useWindowDrag();
   return (
     <footer
-      className="flex justify-center gap-4 text-[10.5px] text-muted-foreground select-none"
+      className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-[10.5px] text-muted-foreground select-none"
       aria-hidden
       onMouseDown={onDragMouseDown}
     >

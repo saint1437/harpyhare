@@ -1,5 +1,5 @@
-import { Eraser, NotebookText } from "lucide-react";
-import { useState } from "react";
+import { ArrowUp, Eraser, NotebookText, RotateCcw, SlidersHorizontal, Square } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -49,12 +50,8 @@ export interface ComposerProps {
   disabled: boolean;
 }
 
-const CONTROL_HEIGHT_CLASS = "h-7";
-const CONTROL_WIDTH_CLASS = "w-[112px]";
-const CONTROL_TEXT_CLASS = "text-[11px]";
-const SELECT_TRIGGER_CLASS = `${CONTROL_HEIGHT_CLASS} ${CONTROL_WIDTH_CLASS} ${CONTROL_TEXT_CLASS}`;
+const SELECT_TRIGGER_CLASS = "h-7 w-full text-[11px]";
 const ICON_BUTTON_CLASS = "size-7 p-0";
-const SEND_BUTTON_CLASS = `${CONTROL_HEIGHT_CLASS} ${CONTROL_WIDTH_CLASS} ${CONTROL_TEXT_CLASS}`;
 const SELECT_CONTENT_POSITION = "popper";
 const TOGGLE_ON = "on";
 const TOGGLE_OFF = "off";
@@ -64,38 +61,34 @@ function pasteHasImages(items: DataTransferItemList) {
   return extractImageItems(items).length > 0;
 }
 
-type PromptFieldProps = Pick<
+type PromptTextareaProps = Pick<
   ComposerProps,
-  "value" | "onChange" | "attachments" | "onRemoveAttachment" | "onPaste" | "onSend" | "hotkey"
+  "value" | "onChange" | "onPaste" | "onSend" | "hotkey"
 >;
 
-function PromptField(props: PromptFieldProps) {
+function PromptTextarea(props: PromptTextareaProps) {
   return (
-    <div className="rounded-xl bg-card/60 ring-1 ring-border transition-[box-shadow] ring-inset focus-within:ring-primary/50">
-      <Textarea
-        value={props.value}
-        onChange={(e) => {
-          props.onChange(e.target.value);
-        }}
-        onPaste={(e) => {
-          const items = e.clipboardData.items;
-          if (pasteHasImages(items)) e.preventDefault();
-          props.onPaste(items);
-        }}
-        onKeyDown={(e) => {
-          const sendShortcutPressed =
-            e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing;
-          if (sendShortcutPressed) {
-            e.preventDefault();
-            props.onSend();
-          }
-        }}
-        spellCheck={false}
-        placeholder={`Зажми ${props.hotkey} у видео — расшифровка появится здесь. Текст можно править, ⌘V вставляет скриншот.`}
-        className="max-h-40 min-h-9 resize-none border-0 bg-transparent py-1.5 shadow-none focus-visible:ring-0"
-      />
-      <AttachmentList attachments={props.attachments} onRemove={props.onRemoveAttachment} />
-    </div>
+    <Textarea
+      value={props.value}
+      onChange={(e) => {
+        props.onChange(e.target.value);
+      }}
+      onPaste={(e) => {
+        const items = e.clipboardData.items;
+        if (pasteHasImages(items)) e.preventDefault();
+        props.onPaste(items);
+      }}
+      onKeyDown={(e) => {
+        const sendShortcutPressed = e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing;
+        if (sendShortcutPressed) {
+          e.preventDefault();
+          props.onSend();
+        }
+      }}
+      spellCheck={false}
+      placeholder={`Зажми ${props.hotkey} — расшифровка появится здесь. ⌘V — скриншот.`}
+      className="max-h-40 min-h-9 resize-none border-0 bg-transparent py-1.5 text-[13px] shadow-none focus-visible:ring-0 md:text-[13px]"
+    />
   );
 }
 
@@ -107,7 +100,7 @@ interface AttachmentListProps {
 function AttachmentList({ attachments, onRemove }: AttachmentListProps) {
   if (attachments.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-2 px-3 pb-3">
+    <div className="flex flex-wrap gap-2 px-3 pb-2">
       {attachments.map((att, i) => (
         <AttachmentChip
           key={att.preview}
@@ -124,8 +117,6 @@ function AttachmentList({ attachments, onRemove }: AttachmentListProps) {
 interface ToggleSelectProps {
   value: boolean;
   onChange: (enabled: boolean) => void;
-  onLabel: string;
-  offLabel: string;
   disabled?: boolean;
 }
 
@@ -142,8 +133,8 @@ function ToggleSelect(props: ToggleSelectProps) {
         <SelectValue />
       </SelectTrigger>
       <SelectContent position={SELECT_CONTENT_POSITION}>
-        <SelectItem value={TOGGLE_ON}>{props.onLabel}</SelectItem>
-        <SelectItem value={TOGGLE_OFF}>{props.offLabel}</SelectItem>
+        <SelectItem value={TOGGLE_ON}>Вкл</SelectItem>
+        <SelectItem value={TOGGLE_OFF}>Выкл</SelectItem>
       </SelectContent>
     </Select>
   );
@@ -206,11 +197,17 @@ function PresetSelect({ presets, presetId, onChange, disabled }: PresetSelectPro
   );
 }
 
-type ComposerControlsProps = Pick<
+function ParamRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-[76px] shrink-0 text-[11px] text-muted-foreground">{label}</span>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
+}
+
+type RequestParamsProps = Pick<
   ComposerProps,
-  | "onClear"
-  | "showRetry"
-  | "onRetry"
   | "webSearch"
   | "onWebSearchChange"
   | "model"
@@ -220,20 +217,74 @@ type ComposerControlsProps = Pick<
   | "presets"
   | "presetId"
   | "onPresetChange"
-  | "streaming"
-  | "onStop"
-  | "onSend"
   | "disabled"
 > & {
-  hasContext: boolean;
-  onOpenContext: () => void;
   modelOptions: ModelInfo[];
   thinkingDisabled: boolean;
 };
 
-function ComposerControls(props: ComposerControlsProps) {
+function RequestParamsPopover(props: RequestParamsProps) {
   return (
-    <div className="flex items-center gap-2">
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={ICON_BUTTON_CLASS}
+          disabled={props.disabled}
+          title="Параметры запроса"
+          aria-label="Параметры запроса"
+        >
+          <SlidersHorizontal className="size-3.5" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="start" className="w-60 p-2.5">
+        <div className="flex flex-col gap-1.5">
+          <ParamRow label="Модель">
+            <ModelSelect
+              models={props.modelOptions}
+              value={props.model}
+              disabled={props.disabled}
+              onChange={props.onModelChange}
+            />
+          </ParamRow>
+          <ParamRow label="Thinking">
+            <ToggleSelect
+              value={props.thinkingEnabled}
+              disabled={props.disabled || props.thinkingDisabled}
+              onChange={props.onThinkingChange}
+            />
+          </ParamRow>
+          <ParamRow label="Веб-поиск">
+            <ToggleSelect
+              value={props.webSearch}
+              disabled={props.disabled}
+              onChange={props.onWebSearchChange}
+            />
+          </ParamRow>
+          <ParamRow label="Препромпт">
+            <PresetSelect
+              presets={props.presets}
+              presetId={props.presetId}
+              disabled={props.disabled}
+              onChange={props.onPresetChange}
+            />
+          </ParamRow>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+type ComposerToolbarProps = RequestParamsProps &
+  Pick<ComposerProps, "onClear" | "showRetry" | "onRetry" | "streaming" | "onStop" | "onSend"> & {
+    hasContext: boolean;
+    onOpenContext: () => void;
+  };
+
+function ComposerToolbar(props: ComposerToolbarProps) {
+  return (
+    <div className="flex items-center gap-1 px-1.5 pb-1.5">
       <Button
         variant="ghost"
         size="sm"
@@ -262,61 +313,55 @@ function ComposerControls(props: ComposerControlsProps) {
           />
         )}
       </Button>
+      <RequestParamsPopover
+        webSearch={props.webSearch}
+        onWebSearchChange={props.onWebSearchChange}
+        model={props.model}
+        modelOptions={props.modelOptions}
+        onModelChange={props.onModelChange}
+        thinkingEnabled={props.thinkingEnabled}
+        thinkingDisabled={props.thinkingDisabled}
+        onThinkingChange={props.onThinkingChange}
+        presets={props.presets}
+        presetId={props.presetId}
+        onPresetChange={props.onPresetChange}
+        disabled={props.disabled}
+      />
       <div className="flex-1" />
       {props.showRetry && (
         <Button
           variant="ghost"
           size="sm"
-          className={`${CONTROL_HEIGHT_CLASS} ${CONTROL_TEXT_CLASS} px-2`}
+          className={ICON_BUTTON_CLASS}
           disabled={props.disabled}
           onClick={props.onRetry}
+          title="Повторить распознавание"
+          aria-label="Повторить распознавание"
         >
-          Повторить
+          <RotateCcw className="size-3.5" />
         </Button>
       )}
-      <ToggleSelect
-        value={props.webSearch}
-        disabled={props.disabled}
-        onChange={props.onWebSearchChange}
-        onLabel="Веб-поиск"
-        offLabel="Без поиска"
-      />
-      <ModelSelect
-        models={props.modelOptions}
-        value={props.model}
-        disabled={props.disabled}
-        onChange={props.onModelChange}
-      />
-      <ToggleSelect
-        value={props.thinkingEnabled}
-        disabled={props.disabled || props.thinkingDisabled}
-        onChange={props.onThinkingChange}
-        onLabel="Thinking"
-        offLabel="Без thinking"
-      />
-      <PresetSelect
-        presets={props.presets}
-        presetId={props.presetId}
-        disabled={props.disabled}
-        onChange={props.onPresetChange}
-      />
       {props.streaming ? (
         <Button
           variant="destructive"
           size="sm"
-          className={SEND_BUTTON_CLASS}
+          className={ICON_BUTTON_CLASS}
           onClick={props.onStop}
+          title="Остановить ответ"
+          aria-label="Остановить ответ"
         >
-          Стоп
+          <Square className="size-3 fill-current" />
         </Button>
       ) : (
         <Button
           size="sm"
-          className={SEND_BUTTON_CLASS}
+          className={ICON_BUTTON_CLASS}
           onClick={props.onSend}
           disabled={props.disabled}
+          title="Отправить (⏎)"
+          aria-label="Отправить"
         >
-          Отправить
+          <ArrowUp className="size-3.5" />
         </Button>
       )}
     </div>
@@ -384,38 +429,39 @@ export function Composer(props: ComposerProps) {
     setContextOpen(false);
   };
   return (
-    <section className="flex flex-col gap-2">
-      <PromptField
-        value={props.value}
-        onChange={props.onChange}
-        attachments={props.attachments}
-        onRemoveAttachment={props.onRemoveAttachment}
-        onPaste={props.onPaste}
-        onSend={props.onSend}
-        hotkey={props.hotkey}
-      />
-      <ComposerControls
-        disabled={props.disabled}
-        onClear={props.onClear}
-        hasContext={props.context.trim() !== ""}
-        onOpenContext={openContextDialog}
-        showRetry={props.showRetry}
-        onRetry={props.onRetry}
-        webSearch={props.webSearch}
-        onWebSearchChange={props.onWebSearchChange}
-        model={props.model}
-        modelOptions={modelOptions}
-        onModelChange={props.onModelChange}
-        thinkingEnabled={props.thinkingEnabled}
-        thinkingDisabled={thinkingDisabled}
-        onThinkingChange={props.onThinkingChange}
-        presets={props.presets}
-        presetId={props.presetId}
-        onPresetChange={props.onPresetChange}
-        streaming={props.streaming}
-        onStop={props.onStop}
-        onSend={props.onSend}
-      />
+    <section>
+      <div className="rounded-xl bg-card/60 ring-1 ring-border transition-[box-shadow] ring-inset focus-within:ring-primary/50">
+        <PromptTextarea
+          value={props.value}
+          onChange={props.onChange}
+          onPaste={props.onPaste}
+          onSend={props.onSend}
+          hotkey={props.hotkey}
+        />
+        <AttachmentList attachments={props.attachments} onRemove={props.onRemoveAttachment} />
+        <ComposerToolbar
+          disabled={props.disabled}
+          onClear={props.onClear}
+          hasContext={props.context.trim() !== ""}
+          onOpenContext={openContextDialog}
+          showRetry={props.showRetry}
+          onRetry={props.onRetry}
+          webSearch={props.webSearch}
+          onWebSearchChange={props.onWebSearchChange}
+          model={props.model}
+          modelOptions={modelOptions}
+          onModelChange={props.onModelChange}
+          thinkingEnabled={props.thinkingEnabled}
+          thinkingDisabled={thinkingDisabled}
+          onThinkingChange={props.onThinkingChange}
+          presets={props.presets}
+          presetId={props.presetId}
+          onPresetChange={props.onPresetChange}
+          streaming={props.streaming}
+          onStop={props.onStop}
+          onSend={props.onSend}
+        />
+      </div>
       <ChatContextDialog
         open={contextOpen}
         draft={contextDraft}
