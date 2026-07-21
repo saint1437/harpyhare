@@ -5,16 +5,48 @@ import type { RecorderState } from "@/ipc/types";
 import { cn } from "@/lib/utils";
 import { EqBars, type EqBarsProps } from "./EqBars";
 
+export interface ContextUsage {
+  usedTokens: number;
+  maxTokens: number;
+}
+
 export interface StatusBarProps {
   state: RecorderState;
   error: string | null;
   toggleHotkey: string;
   tabs: ReactNode;
   actions: ReactNode;
+  contextUsage: ContextUsage | null;
   update: { version: string; busy: boolean; onOpen: () => void } | null;
   onOpenSettings: () => void;
   onClose: () => void;
   onHide: () => void;
+}
+
+const CONTEXT_USAGE_WARN_PERCENT = 80;
+const CONTEXT_GAUGE_MIN_FILL_PERCENT = 3;
+const PERCENT_SCALE = 100;
+
+function ContextUsageGauge({ usage }: { usage: ContextUsage }) {
+  const percent = Math.min(
+    PERCENT_SCALE,
+    Math.round((usage.usedTokens / usage.maxTokens) * PERCENT_SCALE),
+  );
+  const title = `Контекст чата: ${usage.usedTokens.toLocaleString("ru-RU")} из ${usage.maxTokens.toLocaleString("ru-RU")} токенов (по последнему запросу)`;
+  return (
+    <div className="flex shrink-0 items-center gap-1.5 px-1" title={title}>
+      <span className="h-1 w-10 overflow-hidden rounded-full bg-white/10">
+        <span
+          className={cn(
+            "block h-full rounded-full",
+            percent >= CONTEXT_USAGE_WARN_PERCENT ? "bg-recording" : "bg-muted-foreground/60",
+          )}
+          style={{ width: `${String(Math.max(CONTEXT_GAUGE_MIN_FILL_PERCENT, percent))}%` }}
+        />
+      </span>
+      <span className="text-[10px] text-muted-foreground">{percent}%</span>
+    </div>
+  );
 }
 
 export function HeaderActionButton({
@@ -51,6 +83,7 @@ export function StatusBar({
   toggleHotkey,
   tabs,
   actions,
+  contextUsage,
   update,
   onOpenSettings,
   onClose,
@@ -71,6 +104,7 @@ export function StatusBar({
         {showError ? error : ""}
       </span>
       <div className="flex shrink-0 items-center gap-0.5">
+        {contextUsage && <ContextUsageGauge usage={contextUsage} />}
         {actions}
         {update && <UpdateBadge update={update} />}
         <SettingsButton onClick={onOpenSettings} />

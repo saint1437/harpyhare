@@ -10,12 +10,17 @@ import {
 } from "react";
 import { AnswerPanel } from "@/components/AnswerPanel";
 import { ChatTabs } from "@/components/ChatTabs";
-import { Composer, type ContextUsage } from "@/components/Composer";
+import { Composer } from "@/components/Composer";
 import { HotkeysPopover } from "@/components/HotkeysPopover";
 import { MissingKeysDialog } from "@/components/MissingKeysDialog";
 import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
 import { SettingsDialog } from "@/components/SettingsDialog";
-import { HeaderActionButton, StatusBar, type StatusBarProps } from "@/components/StatusBar";
+import {
+  HeaderActionButton,
+  StatusBar,
+  type ContextUsage,
+  type StatusBarProps,
+} from "@/components/StatusBar";
 import { Teleprompter } from "@/components/Teleprompter";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { WarningBanner } from "@/components/WarningBanner";
@@ -399,6 +404,7 @@ interface AppHeaderProps {
   stream: ClaudeStreams;
   canCopy: boolean;
   canTeleprompt: boolean;
+  contextUsage: ContextUsage | null;
   onCopy: () => void;
   onOpenTeleprompter: () => void;
   onOpenSettings: () => void;
@@ -416,6 +422,7 @@ function AppHeader({
   stream,
   canCopy,
   canTeleprompt,
+  contextUsage,
   onCopy,
   onOpenTeleprompter,
   onOpenSettings,
@@ -426,6 +433,7 @@ function AppHeader({
       state={state}
       error={error}
       toggleHotkey={toggleHotkey}
+      contextUsage={contextUsage}
       update={updateBadge(updater, onOpenUpdate)}
       onOpenSettings={onOpenSettings}
       onClose={() => void closeApp()}
@@ -471,7 +479,6 @@ interface AppComposerProps {
   models: ModelInfo[];
   presets: PromptPreset[];
   library: ContextLibrary;
-  contextUsage: ContextUsage | null;
   streaming: boolean;
   showRetry: boolean;
   disabled: boolean;
@@ -485,7 +492,6 @@ function AppComposer({
   models,
   presets,
   library,
-  contextUsage,
   streaming,
   showRetry,
   disabled,
@@ -539,7 +545,6 @@ function AppComposer({
       onLibraryDocsChange={(ids) => {
         chats.setChatLibraryDocs(activeId, ids);
       }}
-      contextUsage={contextUsage}
       models={models}
       disabled={disabled}
     />
@@ -784,6 +789,7 @@ export default function App() {
           stream={stream}
           canCopy={canCopy}
           canTeleprompt={canTeleprompt}
+          contextUsage={contextUsage}
           onCopy={() => {
             copyLastAssistantMessage(active.messages);
           }}
@@ -828,7 +834,6 @@ export default function App() {
           models={models}
           presets={presets}
           library={contextLibrary.library}
-          contextUsage={contextUsage}
           streaming={activeStreaming}
           showRetry={showRetry}
           disabled={keysGate.keysMissing}
