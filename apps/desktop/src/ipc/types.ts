@@ -30,6 +30,9 @@ export interface Settings {
   capture_device_uid: string;
   theme: string;
   scroll_step: number;
+  buffer_enabled: boolean;
+  buffer_seconds: number;
+  buffer_hotkey: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -59,6 +62,9 @@ export const DEFAULT_SETTINGS: Settings = {
   capture_device_uid: "",
   theme: "gray",
   scroll_step: 120,
+  buffer_enabled: true,
+  buffer_seconds: 4,
+  buffer_hotkey: "F8",
 };
 
 export interface AudioOutputDevice {

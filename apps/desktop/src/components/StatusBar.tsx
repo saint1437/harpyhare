@@ -1,4 +1,4 @@
-import { ArrowDownCircle, Minus, Settings as SettingsIcon, X } from "lucide-react";
+import { ArrowDownCircle, History, Minus, Settings as SettingsIcon, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { IconButton } from "@/components/IconButton";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ export interface ContextUsage {
 export interface StatusBarProps {
   state: RecorderState;
   error: string | null;
+  bufferGrab: { hotkey: string; onGrab: () => void } | null;
   toggleHotkey: string;
   tabs: ReactNode;
   actions: ReactNode;
@@ -60,6 +61,7 @@ function indicatorProps(state: RecorderState, showError: boolean): EqBarsProps {
 export function StatusBar({
   state,
   error,
+  bufferGrab,
   toggleHotkey,
   tabs,
   actions,
@@ -76,6 +78,15 @@ export function StatusBar({
     <header className="flex min-h-7 items-center gap-2" onMouseDown={onDragMouseDown}>
       <WindowButtons toggleHotkey={toggleHotkey} onClose={onClose} onHide={onHide} />
       <EqBars {...indicatorProps(state, showError)} />
+      {bufferGrab && (
+        <IconButton
+          title={`Расшифровать фоновый буфер (${bufferGrab.hotkey})`}
+          onClick={bufferGrab.onGrab}
+          disabled={state !== "idle"}
+        >
+          <History className="size-4" />
+        </IconButton>
+      )}
       {tabs}
       <span
         title={showError ? error : undefined}

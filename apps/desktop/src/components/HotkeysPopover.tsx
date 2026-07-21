@@ -24,6 +24,7 @@ export interface HotkeysPopoverProps {
   hotkey: string;
   toggleHotkey: string;
   teleprompterHotkey: string;
+  bufferGrabHotkey: string | null;
 }
 
 const COMBO_ICONS: Record<ComboIconName, LucideIcon> = {
@@ -63,6 +64,7 @@ export function HotkeysPopover(props: HotkeysPopoverProps) {
     ptt: props.hotkey,
     toggleWindow: props.toggleHotkey,
     teleprompter: props.teleprompterHotkey,
+    bufferGrab: props.bufferGrabHotkey,
   });
   return (
     <Popover>

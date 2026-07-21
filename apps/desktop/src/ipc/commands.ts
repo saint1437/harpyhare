@@ -79,6 +79,10 @@ export async function retryTranscription(): Promise<void> {
   await invokeOrNoopInBrowser("retry_transcription");
 }
 
+export async function grabBuffer(): Promise<void> {
+  await invokeOrNoopInBrowser("grab_buffer");
+}
+
 export async function getSettings(): Promise<Settings> {
   return invokeOrFallbackInBrowser("get_settings", DEFAULT_SETTINGS);
 }

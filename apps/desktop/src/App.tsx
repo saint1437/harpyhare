@@ -35,6 +35,7 @@ import { useWindowControls } from "@/hooks/useWindowControls";
 import {
   captureAvailable,
   closeApp,
+  grabBuffer,
   hideMainWindow,
   openAudioPermissionSettings,
   countChatTokens,
@@ -445,6 +446,7 @@ function useSendPipeline(
 interface AppHeaderProps {
   state: RecorderState;
   error: string | null;
+  bufferGrab: { hotkey: string; onGrab: () => void } | null;
   hotkey: string;
   toggleHotkey: string;
   teleprompterHotkey: string;
@@ -463,6 +465,7 @@ interface AppHeaderProps {
 function AppHeader({
   state,
   error,
+  bufferGrab,
   hotkey,
   toggleHotkey,
   teleprompterHotkey,
@@ -481,6 +484,7 @@ function AppHeader({
     <StatusBar
       state={state}
       error={error}
+      bufferGrab={bufferGrab}
       toggleHotkey={toggleHotkey}
       contextUsage={contextUsage}
       update={updateBadge(updater, onOpenUpdate)}
@@ -516,6 +520,7 @@ function AppHeader({
             hotkey={hotkey}
             toggleHotkey={toggleHotkey}
             teleprompterHotkey={teleprompterHotkey}
+            bufferGrabHotkey={bufferGrab?.hotkey ?? null}
           />
         </>
       }
@@ -843,6 +848,11 @@ export default function App() {
         <AppHeader
           state={state}
           error={error}
+          bufferGrab={
+            settings.buffer_enabled
+              ? { hotkey: settings.buffer_hotkey, onGrab: () => void grabBuffer() }
+              : null
+          }
           hotkey={settings.hotkey}
           toggleHotkey={settings.toggle_hotkey}
           teleprompterHotkey={settings.teleprompter_hotkey}

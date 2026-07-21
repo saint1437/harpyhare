@@ -12,6 +12,7 @@ export interface HotkeyConfig {
   ptt: string;
   toggleWindow: string;
   teleprompter: string;
+  bufferGrab: string | null;
 }
 
 const COMBO_REPLACEMENTS: [RegExp, string][] = [
@@ -76,6 +77,9 @@ export function hotkeyGroups(cfg: HotkeyConfig): HotkeyGroup[] {
       title: "Запись",
       hints: [
         { combo: formatCombo(cfg.ptt), label: "записать системный звук (зажать)" },
+        ...(cfg.bufferGrab !== null
+          ? [{ combo: formatCombo(cfg.bufferGrab), label: "расшифровать фоновый буфер" }]
+          : []),
         { combo: "Esc", label: "отменить запись" },
       ],
     },

@@ -88,6 +88,7 @@ const STT_LANGUAGES = [
 const FALLBACK_PTT_HOTKEY = "V";
 const FALLBACK_TOGGLE_HOTKEY = "Cmd+Shift+H";
 const FALLBACK_TELEPROMPTER_HOTKEY = "F10";
+const FALLBACK_BUFFER_HOTKEY = "F8";
 
 const CHAT_FONT_SIZE_MIN = 11;
 const CHAT_FONT_SIZE_MAX = 18;
@@ -103,6 +104,8 @@ const RESIZE_STEP_MIN_PX = 1;
 const RESIZE_STEP_MAX_PX = 200;
 const SCROLL_STEP_MIN_PX = 10;
 const SCROLL_STEP_MAX_PX = 1000;
+const BUFFER_SECONDS_MIN = 4;
+const BUFFER_SECONDS_MAX = 10;
 
 const PRESET_TEXT_ROWS = 3;
 
@@ -198,6 +201,7 @@ export function SettingsDialog({
       hotkey: draft.hotkey.trim() || FALLBACK_PTT_HOTKEY,
       toggle_hotkey: draft.toggle_hotkey.trim() || FALLBACK_TOGGLE_HOTKEY,
       teleprompter_hotkey: draft.teleprompter_hotkey.trim() || FALLBACK_TELEPROMPTER_HOTKEY,
+      buffer_hotkey: draft.buffer_hotkey.trim() || FALLBACK_BUFFER_HOTKEY,
       prompt_presets: draft.prompt_presets.filter(isPresetFilled),
     });
   };
@@ -508,6 +512,26 @@ function SttSection({ draft, set }: SectionProps) {
       >
         Переводить речь на английский (язык исходника — любой)
       </SwitchRow>
+      <SwitchRow
+        checked={draft.buffer_enabled}
+        onCheckedChange={(v) => {
+          set("buffer_enabled", v);
+        }}
+      >
+        Фоновый буфер: постоянно держать последние секунды звука
+      </SwitchRow>
+      <Field label="Глубина буфера, секунд">
+        <Input
+          type="number"
+          min={BUFFER_SECONDS_MIN}
+          max={BUFFER_SECONDS_MAX}
+          disabled={!draft.buffer_enabled}
+          value={draft.buffer_seconds}
+          onChange={(e) => {
+            set("buffer_seconds", Number(e.target.value));
+          }}
+        />
+      </Field>
     </>
   );
 }
@@ -606,6 +630,14 @@ function HotkeysSection({ draft, set }: SectionProps) {
           value={draft.teleprompter_hotkey}
           onChange={(hk) => {
             set("teleprompter_hotkey", hk);
+          }}
+        />
+      </Field>
+      <Field label="Расшифровать фоновый буфер">
+        <HotkeyCapture
+          value={draft.buffer_hotkey}
+          onChange={(hk) => {
+            set("buffer_hotkey", hk);
           }}
         />
       </Field>
