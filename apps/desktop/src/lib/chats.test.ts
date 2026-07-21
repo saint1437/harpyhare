@@ -17,6 +17,7 @@ function chatWith(messages: Chat["messages"], extra: Partial<Chat> = {}): Chat {
     webSearch: false,
     context: "",
     libraryDocIds: [],
+    lastInputTokens: 0,
     ...extra,
   };
 }

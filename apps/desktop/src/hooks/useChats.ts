@@ -48,6 +48,7 @@ const EMPTY_CHAT: Chat = {
   webSearch: false,
   context: "",
   libraryDocIds: [],
+  lastInputTokens: 0,
 };
 
 function readAsDataUrl(file: File): Promise<string> {
@@ -153,6 +154,7 @@ export interface ChatsApi {
   appendAssistantMessage: (id: string, text: string) => void;
   removeMessage: (id: string, index: number) => void;
   truncateMessages: (id: string, count: number) => void;
+  setChatUsage: (id: string, lastInputTokens: number) => void;
 }
 
 export function useChats(): ChatsApi {
@@ -328,6 +330,13 @@ export function useChats(): ChatsApi {
     [patch],
   );
 
+  const setChatUsage = useCallback(
+    (id: string, lastInputTokens: number) => {
+      patch(id, (c) => ({ ...c, lastInputTokens }));
+    },
+    [patch],
+  );
+
   const active = chats.find((c) => c.id === effectiveActiveId) ?? chats[0] ?? EMPTY_CHAT;
 
   return {
@@ -350,5 +359,6 @@ export function useChats(): ChatsApi {
     appendAssistantMessage,
     removeMessage,
     truncateMessages,
+    setChatUsage,
   };
 }

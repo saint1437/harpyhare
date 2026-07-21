@@ -195,6 +195,8 @@ function useHotkeyScroll(scrollRef: RefObject<HTMLDivElement | null>, stepPx: nu
   }, [scrollRef, stepPx]);
 }
 
+const RESET_SCROLL_SETTLE_FRAMES = 3;
+
 function useStickToBottom() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
@@ -205,6 +207,14 @@ function useStickToBottom() {
     if (el) el.scrollTop = el.scrollHeight;
   }, []);
 
+  const syncJump = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    nearBottomRef.current = near;
+    setShowJump(!near && el.scrollHeight > el.clientHeight);
+  }, []);
+
   const scrollIfNearBottom = useCallback(() => {
     if (nearBottomRef.current) scrollToBottom();
   }, [scrollToBottom]);
@@ -213,17 +223,19 @@ function useStickToBottom() {
     nearBottomRef.current = true;
     setShowJump(false);
     scrollToBottom();
-  }, [scrollToBottom]);
+    let framesLeft = RESET_SCROLL_SETTLE_FRAMES;
+    const settle = () => {
+      scrollToBottom();
+      framesLeft -= 1;
+      if (framesLeft > 0) requestAnimationFrame(settle);
+      else syncJump();
+    };
+    requestAnimationFrame(settle);
+  }, [scrollToBottom, syncJump]);
 
-  const onScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const near = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
-    nearBottomRef.current = near;
-    setShowJump(!near);
-  }, []);
+  const onScroll = syncJump;
 
-  return { scrollRef, showJump, onScroll, scrollIfNearBottom, resetToBottom };
+  return { scrollRef, showJump, onScroll, scrollIfNearBottom, resetToBottom, syncJump };
 }
 
 function EmptyState() {
@@ -316,12 +328,17 @@ export function AnswerPanel({
   onRemoveMessage,
   onResendMessage,
 }: AnswerPanelProps) {
-  const { scrollRef, showJump, onScroll, scrollIfNearBottom, resetToBottom } = useStickToBottom();
+  const { scrollRef, showJump, onScroll, scrollIfNearBottom, resetToBottom, syncJump } =
+    useStickToBottom();
   useHotkeyScroll(scrollRef, scrollStep ?? FALLBACK_SCROLL_STEP_PX);
 
   useEffect(() => {
     scrollIfNearBottom();
-  }, [messages, partial, scrollIfNearBottom]);
+    const raf = requestAnimationFrame(syncJump);
+    return () => {
+      cancelAnimationFrame(raf);
+    };
+  }, [messages, partial, scrollIfNearBottom, syncJump]);
 
   useEffect(() => {
     resetToBottom();

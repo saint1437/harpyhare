@@ -27,7 +27,6 @@ import { WarningBanner } from "@/components/WarningBanner";
 import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
 import { useContextLibrary, type ContextLibraryApi } from "@/hooks/useContextLibrary";
-import { useLlmUsage } from "@/hooks/useLlmUsage";
 import { useModels } from "@/hooks/useModels";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
 import { usePttSuspend } from "@/hooks/usePttSuspend";
@@ -746,6 +745,14 @@ export default function App() {
     [],
   );
 
+  useEffect(
+    () =>
+      onEvent("llm-usage", ({ chatId, inputTokens }) => {
+        chatsRef.current.setChatUsage(chatId, inputTokens);
+      }),
+    [chatsRef],
+  );
+
   const active = chats.active;
   const activeId = chats.activeId;
   const activeStreaming = !!stream.streaming[activeId];
@@ -757,12 +764,10 @@ export default function App() {
   const hasAssistantReply = active.messages.some((m) => m.role === "assistant");
   const canCopy = !activeStreaming && hasAssistantReply;
   const canTeleprompt = hasAssistantReply || (partial !== null && partial !== "");
-  const llmUsage = useLlmUsage();
   const activeModelMaxInput = models.find((m) => m.id === active.model)?.maxInputTokens ?? 0;
-  const activeUsedTokens = llmUsage[activeId] ?? 0;
   const contextUsage: ContextUsage | null =
-    activeModelMaxInput > 0 && activeUsedTokens > 0
-      ? { usedTokens: activeUsedTokens, maxTokens: activeModelMaxInput }
+    activeModelMaxInput > 0 && active.lastInputTokens > 0
+      ? { usedTokens: active.lastInputTokens, maxTokens: activeModelMaxInput }
       : null;
 
   const saveSettingsReportingError = (next: Settings) => {

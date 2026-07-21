@@ -29,6 +29,7 @@ export interface Chat {
   webSearch: boolean;
   context: string;
   libraryDocIds: string[];
+  lastInputTokens: number;
 }
 
 const NEW_CHAT_DEFAULTS = {
@@ -40,6 +41,7 @@ const NEW_CHAT_DEFAULTS = {
   webSearch: false,
   context: "",
   libraryDocIds: [],
+  lastInputTokens: 0,
 } satisfies Partial<Chat>;
 
 function uid(): string {
@@ -77,6 +79,7 @@ export function serializeChats(chats: Chat[]): string {
     webSearch: c.webSearch,
     context: c.context,
     libraryDocIds: c.libraryDocIds,
+    lastInputTokens: c.lastInputTokens,
     messages: c.messages.map((m) => ({ role: m.role, text: m.text, images: [] })),
     draft: c.draft,
     draftAttachments: [],
@@ -109,6 +112,10 @@ function restoreChat(c: unknown): Chat {
     libraryDocIds: Array.isArray(o.libraryDocIds)
       ? o.libraryDocIds.filter((id): id is string => typeof id === "string")
       : [],
+    lastInputTokens:
+      typeof o.lastInputTokens === "number" && Number.isFinite(o.lastInputTokens)
+        ? Math.max(0, o.lastInputTokens)
+        : 0,
     messages: Array.isArray(o.messages) ? o.messages.map(restoreMessage) : [],
     draft: typeof o.draft === "string" ? o.draft : NEW_CHAT_DEFAULTS.draft,
     draftAttachments: [],
