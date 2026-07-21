@@ -152,6 +152,7 @@ export interface ChatsApi {
   appendUserMessage: (id: string, text: string, images: ImagePayload[]) => void;
   appendAssistantMessage: (id: string, text: string) => void;
   removeMessage: (id: string, index: number) => void;
+  truncateMessages: (id: string, count: number) => void;
 }
 
 export function useChats(): ChatsApi {
@@ -320,6 +321,13 @@ export function useChats(): ChatsApi {
     [patch],
   );
 
+  const truncateMessages = useCallback(
+    (id: string, count: number) => {
+      patch(id, (c) => ({ ...c, messages: c.messages.slice(0, count) }));
+    },
+    [patch],
+  );
+
   const active = chats.find((c) => c.id === effectiveActiveId) ?? chats[0] ?? EMPTY_CHAT;
 
   return {
@@ -341,5 +349,6 @@ export function useChats(): ChatsApi {
     appendUserMessage,
     appendAssistantMessage,
     removeMessage,
+    truncateMessages,
   };
 }

@@ -40,6 +40,7 @@ struct RedeemResponse {
 
 pub async fn redeem(base_url: &str, code: &str, idempotency_key: &str) -> Result<String, String> {
     let client = reqwest::Client::builder()
+        .user_agent(crate::llm::APP_USER_AGENT)
         .timeout(REDEEM_TIMEOUT)
         .build()
         .map_err(|e| e.to_string())?;

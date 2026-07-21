@@ -31,6 +31,7 @@ describe("AnswerPanel — подсветка кода", () => {
         streaming={false}
         onTogglePreview={() => undefined}
         onRemoveMessage={() => undefined}
+        onResendMessage={() => undefined}
       />,
     );
     expect(container.querySelector("code.hljs")).toBeTruthy();
@@ -52,6 +53,7 @@ describe("AnswerPanel — подсветка кода", () => {
         streaming={false}
         onTogglePreview={() => undefined}
         onRemoveMessage={() => undefined}
+        onResendMessage={() => undefined}
       />,
     );
     expect(container.querySelector(".hljs-keyword")).toBeTruthy();
@@ -70,6 +72,7 @@ describe("AnswerPanel — подсветка кода", () => {
         streaming={false}
         onTogglePreview={() => undefined}
         onRemoveMessage={() => undefined}
+        onResendMessage={() => undefined}
       />,
     );
     expect(getByText(/Открыть превью/)).toBeTruthy();
@@ -86,6 +89,7 @@ describe("AnswerPanel — индикатор ожидания", () => {
         streaming={true}
         onTogglePreview={() => undefined}
         onRemoveMessage={() => undefined}
+        onResendMessage={() => undefined}
       />,
     );
     expect(getByText(/Думает…/)).toBeTruthy();
@@ -99,6 +103,7 @@ describe("AnswerPanel — индикатор ожидания", () => {
         streaming={true}
         onTogglePreview={() => undefined}
         onRemoveMessage={() => undefined}
+        onResendMessage={() => undefined}
       />,
     );
     expect(queryByText(/Думает…/)).toBeNull();
@@ -112,6 +117,7 @@ describe("AnswerPanel — индикатор ожидания", () => {
         streaming={false}
         onTogglePreview={() => undefined}
         onRemoveMessage={() => undefined}
+        onResendMessage={() => undefined}
       />,
     );
     expect(queryByText(/Думает…/)).toBeNull();

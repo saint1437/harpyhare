@@ -351,6 +351,7 @@ function useBrowserDemoSeed(activeId: string, chatsRef: RefObject<ChatsApi>): vo
 interface SendPipeline {
   dispatchSend: (rawText: string) => void;
   doSend: () => void;
+  resendFromMessage: (index: number) => void;
 }
 
 function useSendPipeline(
@@ -390,7 +391,30 @@ function useSendPipeline(
     dispatchSend(chatsRef.current.active.draft);
   }, [dispatchSend, chatsRef]);
 
-  return { dispatchSend, doSend };
+  const resendFromMessage = useCallback(
+    (index: number) => {
+      if (sendBlockedRef.current) return;
+      const chat = chatsRef.current.active;
+      if (streamRef.current.streaming[chat.id]) return;
+      if (chat.messages[index]?.role !== "user") return;
+      clearSttError();
+      const kept = chat.messages.slice(0, index + 1);
+      chatsRef.current.truncateMessages(chat.id, kept.length);
+      const history = kept.map((m) => ({ role: m.role, text: m.text, images: m.images }));
+      const system = chatSystemPrompt(presetsRef.current, chat, libraryRef.current);
+      void streamRef.current.send(
+        chat.id,
+        history,
+        system,
+        chat.thinkingEnabled,
+        chat.model,
+        chat.webSearch,
+      );
+    },
+    [chatsRef, streamRef, presetsRef, libraryRef, clearSttError, sendBlockedRef],
+  );
+
+  return { dispatchSend, doSend, resendFromMessage };
 }
 
 interface AppHeaderProps {
@@ -688,7 +712,7 @@ export default function App() {
   const stream = useClaudeStream(onAssistantDone);
   const streamRef = useLatestRef(stream);
 
-  const { dispatchSend, doSend } = useSendPipeline(
+  const { dispatchSend, doSend, resendFromMessage } = useSendPipeline(
     chatsRef,
     streamRef,
     presetsRef,
@@ -830,6 +854,7 @@ export default function App() {
           onRemoveMessage={(index) => {
             chats.removeMessage(activeId, index);
           }}
+          onResendMessage={resendFromMessage}
         />
 
         <AppComposer

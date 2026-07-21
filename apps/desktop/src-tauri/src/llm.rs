@@ -4,6 +4,8 @@ use serde_json::{json, Value};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
+pub const APP_USER_AGENT: &str = concat!("AudioSystem/", env!("CARGO_PKG_VERSION"));
+
 const ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com";
 const MESSAGES_PATH: &str = "/v1/messages";
 const MODELS_PATH: &str = "/v1/models";
@@ -165,6 +167,7 @@ pub fn web_search_value(info: Option<&ModelInfo>, model_id: &str, requested: boo
 
 fn build_http_client(read_timeout: Duration) -> reqwest::Client {
     reqwest::Client::builder()
+        .user_agent(APP_USER_AGENT)
         .connect_timeout(CONNECT_TIMEOUT)
         .read_timeout(read_timeout)
         .pool_idle_timeout(None)
@@ -184,12 +187,21 @@ async fn require_ok_status(resp: reqwest::Response, proxy: bool) -> Result<reqwe
     }
 }
 
+const ERROR_BODY_SNIPPET_CHARS: usize = 120;
+
 async fn api_error_message(resp: reqwest::Response, code: u16) -> String {
     let body = resp.text().await.unwrap_or_default();
     serde_json::from_str::<Value>(&body)
         .ok()
         .and_then(|v| v["error"]["message"].as_str().map(str::to_string))
-        .unwrap_or_else(|| format!("HTTP {code}"))
+        .unwrap_or_else(|| {
+            let snippet: String = body.trim().chars().take(ERROR_BODY_SNIPPET_CHARS).collect();
+            if snippet.is_empty() {
+                format!("HTTP {code}")
+            } else {
+                format!("HTTP {code}: {snippet}")
+            }
+        })
 }
 
 async fn pump_sse_stream(

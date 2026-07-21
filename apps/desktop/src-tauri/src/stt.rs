@@ -51,6 +51,7 @@ pub struct GroqStt {
 
 fn warm_pooled_client() -> reqwest::Client {
     reqwest::Client::builder()
+        .user_agent(crate::llm::APP_USER_AGENT)
         .connect_timeout(CONNECT_TIMEOUT)
         .pool_idle_timeout(None)
         .http2_keep_alive_interval(HTTP2_KEEP_ALIVE_INTERVAL)

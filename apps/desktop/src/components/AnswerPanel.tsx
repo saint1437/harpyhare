@@ -1,4 +1,4 @@
-import { Trash2 } from "lucide-react";
+import { RotateCw, Trash2 } from "lucide-react";
 import { isValidElement, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import Markdown, { type Components } from "react-markdown";
@@ -20,6 +20,7 @@ export interface AnswerPanelProps {
   scrollStep?: number;
   onTogglePreview: (code: string) => void;
   onRemoveMessage: (index: number) => void;
+  onResendMessage: (index: number) => void;
 }
 
 const FALLBACK_SCROLL_STEP_PX = 120;
@@ -107,27 +108,55 @@ const MarkdownChunk = memo(function MarkdownChunk({
   );
 });
 
+function MessageActionButton({
+  title,
+  onClick,
+  children,
+}: {
+  title: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
+    >
+      {children}
+    </button>
+  );
+}
+
 function MessageShell({
   align,
   onRemove,
+  onResend,
   children,
 }: {
   align: "start" | "end";
   onRemove: () => void;
+  onResend: (() => void) | null;
   children: ReactNode;
 }) {
   return (
     <div className={cn("chat-item group/msg relative", align === "end" && "flex justify-end")}>
       {children}
-      <button
-        type="button"
-        title="Удалить сообщение"
-        aria-label="Удалить сообщение"
-        onClick={onRemove}
-        className="absolute top-0 right-0 grid size-6 place-items-center rounded-md bg-background/60 text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity group-hover/msg:opacity-100 hover:text-foreground"
-      >
-        <Trash2 className="size-3.5" />
-      </button>
+      <div className="absolute top-0 right-0 z-10 flex gap-0.5 rounded-md border border-white/10 bg-popover/95 p-0.5 opacity-0 shadow-md backdrop-blur-sm transition-opacity group-hover/msg:opacity-100">
+        {onResend && (
+          <MessageActionButton
+            title="Переотправить (всё, что ниже, будет заменено новым ответом)"
+            onClick={onResend}
+          >
+            <RotateCw className="size-3.5" />
+          </MessageActionButton>
+        )}
+        <MessageActionButton title="Удалить сообщение" onClick={onRemove}>
+          <Trash2 className="size-3.5" />
+        </MessageActionButton>
+      </div>
     </div>
   );
 }
@@ -232,6 +261,7 @@ function ChatMessages({
   streamStartedAt,
   components,
   onRemoveMessage,
+  onResendMessage,
 }: {
   messages: ChatMessage[];
   partial: string | null;
@@ -239,6 +269,7 @@ function ChatMessages({
   streamStartedAt?: number;
   components: Components;
   onRemoveMessage: (index: number) => void;
+  onResendMessage: (index: number) => void;
 }) {
   return (
     <>
@@ -249,6 +280,13 @@ function ChatMessages({
           onRemove={() => {
             onRemoveMessage(i);
           }}
+          onResend={
+            m.role === "user" && !streaming
+              ? () => {
+                  onResendMessage(i);
+                }
+              : null
+          }
         >
           {m.role === "user" ? (
             <UserBubble text={m.text} />
@@ -276,6 +314,7 @@ export function AnswerPanel({
   scrollStep,
   onTogglePreview,
   onRemoveMessage,
+  onResendMessage,
 }: AnswerPanelProps) {
   const { scrollRef, showJump, onScroll, scrollIfNearBottom, resetToBottom } = useStickToBottom();
   useHotkeyScroll(scrollRef, scrollStep ?? FALLBACK_SCROLL_STEP_PX);
@@ -313,6 +352,7 @@ export function AnswerPanel({
               streamStartedAt={streamStartedAt}
               components={components}
               onRemoveMessage={onRemoveMessage}
+              onResendMessage={onResendMessage}
             />
           )}
         </div>
