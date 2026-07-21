@@ -14,6 +14,7 @@ import Markdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { HtmlBlockChip } from "@/components/HtmlBlockChip";
+import { IconButton } from "@/components/IconButton";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { openExternal } from "@/ipc/commands";
 import type { ChatMessage } from "@/lib/chats";
@@ -52,8 +53,9 @@ const AUTODETECT_LANGUAGE_SUBSET = [
   "go",
   "java",
 ];
-const ASSISTANT_PROSE_CLASS =
-  "prose-answer text-[length:var(--chat-font-size)] leading-relaxed text-foreground/90";
+const ASSISTANT_PROSE_CLASS = "prose-answer text-chat leading-relaxed text-foreground/90";
+
+const FLOATING_CHIP_CLASS = "border bg-popover/95 shadow-md backdrop-blur-sm";
 
 const REHYPE_PLUGINS: NonNullable<Parameters<typeof Markdown>[0]["rehypePlugins"]> = [
   [
@@ -127,15 +129,9 @@ function MessageActionButton({
   children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      onClick={onClick}
-      className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
-    >
+    <IconButton title={title} onClick={onClick} className="size-6 rounded-md">
       {children}
-    </button>
+    </IconButton>
   );
 }
 
@@ -153,7 +149,12 @@ function MessageShell({
   return (
     <div className={cn("group/msg relative", align === "end" && "flex justify-end")}>
       {children}
-      <div className="absolute top-0 right-0 z-10 flex gap-0.5 rounded-md border border-white/10 bg-popover/95 p-0.5 opacity-0 shadow-md backdrop-blur-sm transition-opacity group-hover/msg:opacity-100">
+      <div
+        className={cn(
+          FLOATING_CHIP_CLASS,
+          "absolute top-0 right-0 z-10 flex gap-0.5 rounded-md p-0.5 opacity-0 transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100",
+        )}
+      >
         {onResend && (
           <MessageActionButton
             title="Переотправить (всё, что ниже, будет заменено новым ответом)"
@@ -240,14 +241,14 @@ function useStickToBottom() {
 function EmptyState() {
   return (
     <div className="grid h-full place-items-center">
-      <span className="text-[13px] text-muted-foreground">Чат появится здесь</span>
+      <span className="text-body text-muted-foreground">Чат появится здесь</span>
     </div>
   );
 }
 
 function UserBubble({ text }: { text: string }) {
   return (
-    <div className="max-w-[85%] rounded-lg bg-white/5 px-3 py-1.5 text-[length:var(--chat-font-size)] break-words whitespace-pre-wrap text-foreground/80">
+    <div className="max-w-[85%] rounded-lg bg-surface px-3 py-1.5 text-chat break-words whitespace-pre-wrap text-foreground/80">
       {text}
     </div>
   );
@@ -258,7 +259,10 @@ function JumpToBottomButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full border border-border bg-card/90 px-3 py-1 font-mono text-[11px] text-muted-foreground shadow-md backdrop-blur transition-colors hover:text-foreground"
+      className={cn(
+        FLOATING_CHIP_CLASS,
+        "absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-caption text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50",
+      )}
     >
       ↓ Вниз
     </button>

@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&);
 
 :root {
   --app-opacity: 0.9;
@@ -29,9 +29,11 @@
 
   --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.45 0.16 18 / 50%);
+  --ring: oklch(0.45 0.16 18);
 
-  --primary-hover: oklch(0.5 0.18 20);
+  --surface: oklch(1 0 0 / 5%);
+  --surface-active: oklch(1 0 0 / 10%);
+  --code-surface: oklch(0 0 0 / 28%);
   --recording: oklch(0.62 0.2 18);
 }
 
@@ -67,11 +69,18 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-surface: var(--surface);
+  --color-surface-active: var(--surface-active);
+  --color-code-surface: var(--code-surface);
   --color-recording: var(--recording);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --text-hint: 10.5px;
+  --text-caption: 11.5px;
+  --text-body: 12.5px;
+  --text-chat: var(--chat-font-size);
 }
 
 html,
@@ -119,13 +128,13 @@ body {
   color: var(--foreground);
 }
 .prose-answer h1 {
-  font-size: 18px;
+  font-size: 1.33em;
 }
 .prose-answer h2 {
-  font-size: 16px;
+  font-size: 1.19em;
 }
 .prose-answer h3 {
-  font-size: 14.5px;
+  font-size: 1.07em;
 }
 .prose-answer ul,
 .prose-answer ol {
@@ -140,7 +149,7 @@ body {
 }
 .prose-answer code {
   padding: 1.5px 5.5px;
-  border-radius: 6px;
+  border-radius: calc(var(--radius) - 4px);
   background: color-mix(in oklch, var(--primary) 14%, transparent);
   color: oklch(0.8 0.09 18);
   font-family: var(--font-mono);
@@ -149,8 +158,8 @@ body {
 .prose-answer pre {
   margin: 0.65em 0 0.85em;
   padding: 12px 14px;
-  border-radius: 9px;
-  background: oklch(0.22 0.003 285);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--code-surface);
   border: 1px solid var(--border);
   overflow-x: auto;
 }
@@ -222,7 +231,7 @@ body {
 .prose-answer td {
   padding: 5px 10px;
   border: 1px solid var(--border);
-  font-size: 12.5px;
+  font-size: 0.93em;
 }
 .prose-answer th {
   color: var(--foreground);

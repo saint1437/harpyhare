@@ -1,5 +1,7 @@
 import { ArrowDownCircle, Minus, Settings as SettingsIcon, X } from "lucide-react";
 import type { ReactNode } from "react";
+import { IconButton } from "@/components/IconButton";
+import { Button } from "@/components/ui/button";
 import { useWindowDrag } from "@/hooks/useWindowDrag";
 import type { RecorderState } from "@/ipc/types";
 import { cn } from "@/lib/utils";
@@ -35,39 +37,17 @@ function ContextUsageGauge({ usage }: { usage: ContextUsage }) {
   const title = `Контекст чата: ${usage.usedTokens.toLocaleString("ru-RU")} из ${usage.maxTokens.toLocaleString("ru-RU")} токенов (по последнему запросу)`;
   return (
     <div className="flex shrink-0 items-center gap-1.5 px-1" title={title}>
-      <span className="h-1 w-10 overflow-hidden rounded-full bg-white/10">
+      <span className="h-1 w-10 overflow-hidden rounded-full bg-surface-active">
         <span
           className={cn(
             "block h-full rounded-full",
-            percent >= CONTEXT_USAGE_WARN_PERCENT ? "bg-recording" : "bg-muted-foreground/60",
+            percent >= CONTEXT_USAGE_WARN_PERCENT ? "bg-destructive" : "bg-muted-foreground/60",
           )}
           style={{ width: `${String(Math.max(CONTEXT_GAUGE_MIN_FILL_PERCENT, percent))}%` }}
         />
       </span>
-      <span className="text-[10px] text-muted-foreground">{percent}%</span>
+      <span className="text-hint text-muted-foreground">{percent}%</span>
     </div>
-  );
-}
-
-export function HeaderActionButton({
-  title,
-  onClick,
-  children,
-}: {
-  title: string;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      aria-label={title}
-      className="grid size-7 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-    >
-      {children}
-    </button>
   );
 }
 
@@ -99,7 +79,7 @@ export function StatusBar({
       {tabs}
       <span
         title={showError ? error : undefined}
-        className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-destructive"
+        className="min-w-0 flex-1 truncate text-caption text-destructive"
       >
         {showError ? error : ""}
       </span>
@@ -107,7 +87,9 @@ export function StatusBar({
         {contextUsage && <ContextUsageGauge usage={contextUsage} />}
         {actions}
         {update && <UpdateBadge update={update} />}
-        <SettingsButton onClick={onOpenSettings} />
+        <IconButton title="Настройки" onClick={onOpenSettings} className="hover:rotate-45">
+          <SettingsIcon />
+        </IconButton>
       </div>
     </header>
   );
@@ -124,80 +106,37 @@ function WindowButtons({
 }) {
   return (
     <div className="flex shrink-0 items-center gap-0.5 pr-1">
-      <WindowButton
-        label="Закрыть приложение"
+      <IconButton
         title="Закрыть приложение"
         onClick={onClose}
-        hoverClass="hover:bg-destructive/15 hover:text-destructive"
+        className="hover:bg-destructive/15 hover:text-destructive"
       >
-        <X className="size-4" />
-      </WindowButton>
-      <WindowButton
-        label="Скрыть окно"
+        <X />
+      </IconButton>
+      <IconButton
         title={`Скрыть окно — вернуть: ${toggleHotkey}`}
+        aria-label="Скрыть окно"
         onClick={onHide}
-        hoverClass="hover:bg-white/5 hover:text-foreground"
       >
-        <Minus className="size-4" />
-      </WindowButton>
+        <Minus />
+      </IconButton>
     </div>
-  );
-}
-
-function WindowButton({
-  label,
-  title,
-  onClick,
-  hoverClass,
-  children,
-}: {
-  label: string;
-  title: string;
-  onClick: () => void;
-  hoverClass: string;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={title}
-      className={cn(
-        "grid size-7 place-items-center rounded-full text-muted-foreground transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-        hoverClass,
-      )}
-    >
-      {children}
-    </button>
   );
 }
 
 function UpdateBadge({ update }: { update: NonNullable<StatusBarProps["update"]> }) {
   const availableTitle = `Доступна версия ${update.version}`;
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="compact"
       onClick={update.onOpen}
       aria-label={availableTitle}
       title={update.busy ? `Обновление до ${update.version}…` : availableTitle}
-      className="flex h-7 items-center gap-1.5 rounded-full px-2.5 font-mono text-[11.5px] text-foreground/85 transition-colors hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-ring"
+      className="rounded-full font-mono text-muted-foreground"
     >
-      <ArrowDownCircle className={cn("size-4 text-primary", update.busy && "animate-pulse")} />
+      <ArrowDownCircle className={cn("text-primary", update.busy && "animate-pulse")} />
       {update.version}
-    </button>
-  );
-}
-
-function SettingsButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label="Настройки"
-      className="grid size-7 place-items-center rounded-full text-muted-foreground transition-[color,background,transform] hover:rotate-45 hover:bg-white/5 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-    >
-      <SettingsIcon className="size-4" />
-    </button>
+    </Button>
   );
 }

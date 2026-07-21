@@ -1,5 +1,6 @@
 import { Minus, Pause, Play, Plus, RotateCcw, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { IconButton } from "@/components/IconButton";
 import {
   advanceOffset,
   clampFont,
@@ -118,7 +119,7 @@ export function Teleprompter({
           style={{ maskImage: EDGE_FADE, WebkitMaskImage: EDGE_FADE }}
         >
           <div
-            className="mx-auto max-w-[26ch] px-8 text-center leading-[1.7] font-medium tracking-wide whitespace-pre-wrap text-white/90"
+            className="mx-auto max-w-[26ch] px-8 text-center leading-[1.7] font-medium tracking-wide whitespace-pre-wrap text-foreground/90"
             style={{ fontSize, paddingTop: "46vh", paddingBottom: "54vh" }}
           >
             {text || EMPTY_HINT}
@@ -131,16 +132,16 @@ export function Teleprompter({
       </div>
 
       <div className="flex items-center justify-center gap-1.5 pb-4">
-        <IconButton label="Сначала" onClick={restart}>
-          <RotateCcw className="size-4" />
+        <IconButton title="Сначала" onClick={restart}>
+          <RotateCcw />
         </IconButton>
         <IconButton
-          label={playing ? "Пауза (Пробел)" : "Воспроизвести (Пробел)"}
+          title={playing ? "Пауза (Пробел)" : "Воспроизвести (Пробел)"}
           onClick={() => {
             setPlaying((p) => !p);
           }}
         >
-          {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
+          {playing ? <Pause /> : <Play />}
         </IconButton>
 
         <Stepper
@@ -164,33 +165,11 @@ export function Teleprompter({
           }}
         />
 
-        <IconButton label="Закрыть (Esc)" onClick={onClose}>
-          <X className="size-4" />
+        <IconButton title="Закрыть (Esc)" onClick={onClose}>
+          <X />
         </IconButton>
       </div>
     </div>
-  );
-}
-
-function IconButton({
-  label,
-  onClick,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className="grid size-8 place-items-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-ring"
-    >
-      {children}
-    </button>
   );
 }
 
@@ -206,15 +185,15 @@ function Stepper({
   onInc: () => void;
 }) {
   return (
-    <div className="flex items-center gap-1 rounded-full bg-white/5 px-1">
-      <IconButton label={`${label} −`} onClick={onDec}>
-        <Minus className="size-3.5" />
+    <div className="flex items-center gap-1 rounded-full bg-surface px-1">
+      <IconButton title={`${label} −`} onClick={onDec}>
+        <Minus />
       </IconButton>
-      <span className="w-14 text-center font-mono text-[11px] text-white/60">
+      <span className="w-14 text-center font-mono text-caption text-muted-foreground">
         {label} {value}
       </span>
-      <IconButton label={`${label} +`} onClick={onInc}>
-        <Plus className="size-3.5" />
+      <IconButton title={`${label} +`} onClick={onInc}>
+        <Plus />
       </IconButton>
     </div>
   );

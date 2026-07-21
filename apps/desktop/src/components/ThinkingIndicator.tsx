@@ -25,7 +25,7 @@ export function ThinkingIndicator({ startedAt }: { startedAt: number }) {
   const seconds = useElapsedSeconds(startedAt);
 
   return (
-    <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+    <div className="flex items-center gap-2 text-chat text-muted-foreground">
       <span className="size-2 animate-pulse rounded-full bg-primary" aria-hidden />
       <span aria-live="polite">Думает…</span>
       <span aria-hidden> {seconds}с</span>

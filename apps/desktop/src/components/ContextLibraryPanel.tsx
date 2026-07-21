@@ -18,6 +18,8 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import { IconButton } from "@/components/IconButton";
+import { SectionLabel } from "@/components/SectionLabel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -151,7 +153,7 @@ async function importBrowserFiles(
 
 function RowIconBadge({ children }: { children: ReactNode }) {
   return (
-    <span className="grid size-6 shrink-0 place-items-center rounded-md bg-white/5">
+    <span className="grid size-6 shrink-0 place-items-center rounded-md bg-surface">
       {children}
     </span>
   );
@@ -169,21 +171,15 @@ function RowActions({
   removeTitle: string;
 }) {
   return (
-    <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+    <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
       {onEdit && (
-        <Button variant="ghost" size="sm" className="size-6 p-0" title={editTitle} onClick={onEdit}>
+        <IconButton title={editTitle ?? ""} className="size-6 rounded-md" onClick={onEdit}>
           <Pencil className="size-3.5" />
-        </Button>
+        </IconButton>
       )}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="size-6 p-0"
-        title={removeTitle}
-        onClick={onRemove}
-      >
+      <IconButton title={removeTitle} className="size-6 rounded-md" onClick={onRemove}>
         <Trash2 className="size-3.5" />
-      </Button>
+      </IconButton>
     </div>
   );
 }
@@ -212,7 +208,7 @@ function DocRow({
       onMouseDown={onMouseDown}
       title="Перетащи, чтобы переложить в папку"
       className={cn(
-        "group flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-white/5",
+        "group flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-surface",
         dragging && "opacity-40",
       )}
     >
@@ -220,8 +216,8 @@ function DocRow({
       <RowIconBadge>
         <FileText className="size-3.5 text-muted-foreground" />
       </RowIconBadge>
-      <span className="min-w-0 flex-1 truncate text-[12px]">{doc.name}</span>
-      <span className="shrink-0 text-[10px] text-muted-foreground/60">
+      <span className="min-w-0 flex-1 truncate text-body">{doc.name}</span>
+      <span className="shrink-0 text-hint text-muted-foreground">
         {formatChars(doc.text.length)}
       </span>
       <RowActions
@@ -256,7 +252,7 @@ function FolderHeader({
         <Input
           autoFocus
           value={draft}
-          className="h-6 flex-1 text-[12px]"
+          className="h-6 flex-1 text-body"
           onChange={(e) => {
             setDraft(e.target.value);
           }}
@@ -274,8 +270,8 @@ function FolderHeader({
         />
       ) : (
         <>
-          <span className="min-w-0 truncate text-[12.5px] font-medium">{name}</span>
-          <span className="shrink-0 rounded-full bg-white/5 px-1.5 py-px text-[10px] text-muted-foreground">
+          <span className="min-w-0 truncate text-body font-medium">{name}</span>
+          <span className="shrink-0 rounded-full bg-surface px-1.5 py-px text-hint text-muted-foreground">
             {docCount}
           </span>
           <span className="flex-1" />
@@ -310,10 +306,8 @@ function DocEditor({
   onCancel: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-lg bg-card/60 p-3 ring-1 ring-border ring-inset">
-      <span className="text-[10.5px] font-medium text-foreground/55">
-        {draft.id === null ? "Новый материал" : "Материал"}
-      </span>
+    <div className="flex flex-col gap-2 rounded-xl bg-card/60 p-3 ring-1 ring-border ring-inset">
+      <SectionLabel>{draft.id === null ? "Новый материал" : "Материал"}</SectionLabel>
       <div className="flex gap-2">
         <Input
           autoFocus
@@ -349,12 +343,10 @@ function DocEditor({
         onChange={(e) => {
           onChange({ ...draft, text: e.target.value });
         }}
-        className="field-sizing-fixed max-h-56 overflow-y-auto"
+        className="max-h-56 overflow-y-auto"
       />
       <div className="flex items-center justify-between">
-        <span className="text-[10px] text-muted-foreground/60">
-          {formatChars(draft.text.length)}
-        </span>
+        <span className="text-hint text-muted-foreground">{formatChars(draft.text.length)}</span>
         <div className="flex gap-2">
           <Button variant="ghost" size="sm" onClick={onCancel}>
             Отмена
@@ -374,15 +366,15 @@ function EmptyDropZone({ onPick }: { onPick: () => void }) {
       type="button"
       onClick={onPick}
       {...{ [DROP_FOLDER_ATTR]: ROOT_FOLDER_ID }}
-      className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-white/15 px-4 py-8 text-center transition-colors hover:border-white/30 hover:bg-white/[0.03]"
+      className="flex flex-col items-center gap-2 rounded-xl border border-dashed px-4 py-8 text-center transition-colors outline-none hover:border-foreground/30 hover:bg-surface focus-visible:ring-[3px] focus-visible:ring-ring/50"
     >
-      <span className="grid size-9 place-items-center rounded-full bg-white/5">
+      <span className="grid size-9 place-items-center rounded-full bg-surface">
         <Upload className="size-4 text-muted-foreground" />
       </span>
-      <span className="text-[12px] text-foreground/80">
+      <span className="text-body text-foreground/80">
         Перетащи .md или .txt из Finder — или нажми, чтобы выбрать файлы
       </span>
-      <span className="text-[10.5px] text-muted-foreground">
+      <span className="text-caption text-muted-foreground">
         Материалы можно добавлять и текстом — кнопка «Материал»
       </span>
     </button>
@@ -446,39 +438,36 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
       onDrop={onBrowserDrop}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-caption text-muted-foreground">
           {librarySummary(library.docs.length, library.folders.length)}
         </span>
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-[11.5px]"
+            size="compact"
             onClick={() => {
               setDocDraft({ id: null, name: "", text: "", folderId: ROOT_FOLDER_ID });
             }}
           >
-            <Plus className="size-4" /> Материал
+            <Plus /> Материал
           </Button>
           <Button
             variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-[11.5px]"
+            size="compact"
             onClick={() => {
               api.addFolder(`Папка ${String(library.folders.length + 1)}`);
             }}
           >
-            <FolderPlus className="size-4" /> Папка
+            <FolderPlus /> Папка
           </Button>
           <Button
             variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-[11.5px]"
+            size="compact"
             onClick={() => {
               fileInputRef.current?.click();
             }}
           >
-            <Upload className="size-4" /> Импорт
+            <Upload /> Импорт
           </Button>
         </div>
         <input
@@ -491,7 +480,7 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
         />
       </div>
 
-      {importError !== null && <p className="text-[11px] text-destructive">{importError}</p>}
+      {importError !== null && <p className="text-caption text-destructive">{importError}</p>}
 
       {docDraft && (
         <DocEditor
@@ -521,12 +510,10 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
             )}
           >
             {library.folders.length > 0 && (
-              <span className="px-1.5 pt-0.5 pb-1 text-[10.5px] font-medium text-foreground/55">
-                Без папки
-              </span>
+              <SectionLabel className="px-1.5 pt-0.5 pb-1">Без папки</SectionLabel>
             )}
             {roots.length === 0 && (
-              <p className="px-1.5 pb-1 text-[10.5px] text-muted-foreground/60">
+              <p className="px-1.5 pb-1 text-caption text-muted-foreground">
                 Перетащи файлы сюда, чтобы добавить без папки
               </p>
             )}
@@ -572,9 +559,9 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
                   api.removeFolder(folder.id);
                 }}
               />
-              <div className="ml-4 flex flex-col gap-0.5 border-l border-white/10 pl-2">
+              <div className="ml-4 flex flex-col gap-0.5 border-l pl-2">
                 {docs.length === 0 && (
-                  <p className="px-1.5 py-1 text-[10.5px] text-muted-foreground/60">
+                  <p className="px-1.5 py-1 text-caption text-muted-foreground">
                     Пусто — перетащи файлы сюда
                   </p>
                 )}

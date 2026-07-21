@@ -13,15 +13,11 @@ import { AnswerPanel } from "@/components/AnswerPanel";
 import { ChatTabs } from "@/components/ChatTabs";
 import { Composer } from "@/components/Composer";
 import { HotkeysPopover } from "@/components/HotkeysPopover";
+import { IconButton } from "@/components/IconButton";
 import { MissingKeysDialog } from "@/components/MissingKeysDialog";
 import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
 import { SettingsDialog } from "@/components/SettingsDialog";
-import {
-  HeaderActionButton,
-  StatusBar,
-  type ContextUsage,
-  type StatusBarProps,
-} from "@/components/StatusBar";
+import { StatusBar, type ContextUsage, type StatusBarProps } from "@/components/StatusBar";
 import { Teleprompter } from "@/components/Teleprompter";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { WarningBanner } from "@/components/WarningBanner";
@@ -507,14 +503,14 @@ function AppHeader({
       actions={
         <>
           {canTeleprompt && (
-            <HeaderActionButton title="Суфлёр" onClick={onOpenTeleprompter}>
-              <ScrollText className="size-4" />
-            </HeaderActionButton>
+            <IconButton title="Суфлёр" onClick={onOpenTeleprompter}>
+              <ScrollText />
+            </IconButton>
           )}
           {canCopy && (
-            <HeaderActionButton title="Копировать последний ответ" onClick={onCopy}>
-              <Copy className="size-4" />
-            </HeaderActionButton>
+            <IconButton title="Копировать последний ответ" onClick={onCopy}>
+              <Copy />
+            </IconButton>
           )}
           <HotkeysPopover
             hotkey={hotkey}
@@ -839,7 +835,8 @@ export default function App() {
 
   return (
     <div
-      className="app-shell relative flex h-screen gap-2.5 overflow-hidden rounded-[22px] p-3"
+      className="app-shell relative flex h-screen overflow-hidden rounded-[22px]"
+      style={{ gap: SHELL_COLUMN_GAP_PX, padding: SHELL_PADDING_PX }}
       onMouseDown={onShellDragStart}
     >
       <div className="flex shrink-0 flex-col gap-2.5" style={{ width: chatColumnWidth }}>

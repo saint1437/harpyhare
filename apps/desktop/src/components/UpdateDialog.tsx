@@ -69,14 +69,14 @@ export function UpdateDialog({
         if (!next) onClose();
       }}
     >
-      <DialogContent className="max-w-[400px]">
+      <DialogContent className="max-w-[min(440px,95vw)] sm:max-w-[min(440px,95vw)]">
         <DialogHeader>
           <DialogTitle>Доступна версия {info.version}</DialogTitle>
         </DialogHeader>
 
         <div className="grid gap-3 py-1">
           {currentVersion !== "" && (
-            <span className="font-mono text-[11.5px] text-muted-foreground">
+            <span className="font-mono text-caption text-muted-foreground">
               {currentVersion} → {info.version}
             </span>
           )}
@@ -86,11 +86,11 @@ export function UpdateDialog({
           {busy && <DownloadProgress status={status} progress={progress} />}
 
           {status === "error" && error !== null && (
-            <span className="text-[12.5px] whitespace-pre-wrap text-destructive">{error}</span>
+            <span className="text-body whitespace-pre-wrap text-destructive">{error}</span>
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex-wrap">
           {!busy && (
             <UpdateActions
               status={status}
@@ -107,7 +107,7 @@ export function UpdateDialog({
 
 function ReleaseNotes({ notes }: { notes: string }) {
   return (
-    <div className="prose-answer max-h-48 overflow-y-auto rounded-md bg-white/5 p-3 text-[12.5px] leading-relaxed text-foreground/90">
+    <div className="prose-answer max-h-48 overflow-y-auto rounded-md bg-surface px-3 py-2.5 text-body leading-relaxed text-foreground/90">
       <Markdown remarkPlugins={REMARK_PLUGINS}>{notes}</Markdown>
     </div>
   );
@@ -123,7 +123,7 @@ function DownloadProgress({
   const percent = downloadPercent(progress);
   return (
     <div className="grid gap-1.5">
-      <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+      <div className="h-1.5 overflow-hidden rounded-full bg-surface-active">
         <div
           className={
             percent === null
@@ -133,7 +133,7 @@ function DownloadProgress({
           style={percent === null ? undefined : { width: `${percent}%` }}
         />
       </div>
-      <span className="font-mono text-[11.5px] text-muted-foreground">
+      <span className="font-mono text-caption text-muted-foreground">
         {progressCaption(status, percent, progress)}
       </span>
     </div>
@@ -153,13 +153,13 @@ function UpdateActions({
 }) {
   return (
     <>
-      <Button variant="ghost" size="sm" onClick={onSkip}>
+      <Button variant="ghost" onClick={onSkip}>
         Пропустить эту версию
       </Button>
-      <Button variant="ghost" size="sm" onClick={onClose}>
+      <Button variant="ghost" onClick={onClose}>
         Позже
       </Button>
-      <Button size="sm" onClick={onInstall}>
+      <Button onClick={onInstall}>
         {status === "error" ? "Повторить" : "Обновить и перезапустить"}
       </Button>
     </>

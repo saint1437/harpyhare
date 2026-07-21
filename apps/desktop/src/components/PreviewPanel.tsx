@@ -1,5 +1,8 @@
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { IconButton } from "@/components/IconButton";
+import { SectionLabel } from "@/components/SectionLabel";
+import { Button } from "@/components/ui/button";
 import { setPreviewHtml } from "@/ipc/commands";
 import { isTauri } from "@/ipc/env";
 
@@ -12,7 +15,7 @@ export const PREVIEW_PANEL_WIDTH_PX = 570;
 
 const PREVIEW_ORIGIN = "preview://localhost";
 const PREVIEW_IFRAME_TITLE = "HTML превью";
-const PREVIEW_IFRAME_CLASS = "min-h-0 flex-1 rounded-[12px] border-0 bg-white";
+const PREVIEW_IFRAME_CLASS = "min-h-0 flex-1 rounded-xl border-0 bg-white";
 const TAURI_SANDBOX = "allow-scripts allow-same-origin";
 const SRCDOC_SANDBOX = "allow-scripts";
 
@@ -40,23 +43,19 @@ function usePreviewSrc(html: string) {
 function PreviewHeader({ html, onClose }: { html: string; onClose: () => void }) {
   return (
     <header className="flex items-center gap-2.5">
-      <span className="text-[10.5px] font-medium text-foreground/55">Превью</span>
+      <SectionLabel>Превью</SectionLabel>
       <span className="h-px flex-1 bg-border" aria-hidden />
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="compact"
+        className="text-muted-foreground"
         onClick={() => void navigator.clipboard.writeText(html)}
-        className="font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
       >
         Копировать код
-      </button>
-      <button
-        type="button"
-        aria-label="Закрыть"
-        onClick={onClose}
-        className="text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <X className="size-3.5" />
-      </button>
+      </Button>
+      <IconButton title="Закрыть" onClick={onClose}>
+        <X />
+      </IconButton>
     </header>
   );
 }
@@ -65,7 +64,7 @@ function PreviewBody({ html, src }: { html: string; src: string }) {
   if (html === "") {
     return (
       <div className="grid flex-1 place-items-center">
-        <span className="text-[13px] text-muted-foreground">Нет содержимого</span>
+        <span className="text-body text-muted-foreground">Нет содержимого</span>
       </div>
     );
   }
@@ -93,7 +92,7 @@ export function PreviewPanel({ html, onClose }: PreviewPanelProps) {
   const src = usePreviewSrc(html);
 
   return (
-    <aside className="flex flex-col gap-2" style={{ width: PREVIEW_PANEL_WIDTH_PX }}>
+    <aside className="flex flex-col gap-2.5" style={{ width: PREVIEW_PANEL_WIDTH_PX }}>
       <PreviewHeader html={html} onClose={onClose} />
       <PreviewBody html={html} src={src} />
     </aside>

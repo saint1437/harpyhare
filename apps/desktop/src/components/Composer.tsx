@@ -16,6 +16,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { SectionLabel } from "@/components/SectionLabel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
@@ -42,6 +44,7 @@ import {
   type ContextLibrary,
 } from "@/lib/context-library";
 import { modelLabel, selectableModels, thinkingLocked, type ModelInfo } from "@/lib/models";
+import { cn } from "@/lib/utils";
 import { AttachmentChip } from "./AttachmentChip";
 
 export interface ComposerProps {
@@ -74,8 +77,7 @@ export interface ComposerProps {
   disabled: boolean;
 }
 
-const SELECT_TRIGGER_CLASS = "h-7 w-full text-[11px]";
-const ICON_BUTTON_CLASS = "size-7 p-0";
+const SELECT_TRIGGER_CLASS = "h-7 w-full text-caption";
 const SELECT_CONTENT_POSITION = "popper";
 const TOGGLE_ON = "on";
 const TOGGLE_OFF = "off";
@@ -134,7 +136,7 @@ function PromptTextarea(props: PromptTextareaProps) {
       }}
       spellCheck={false}
       placeholder="Расшифровка появится здесь — или напиши вопрос сам"
-      className="field-sizing-fixed max-h-40 min-h-9 resize-none overflow-y-auto border-0 bg-transparent py-1.5 text-[13px] shadow-none focus-visible:ring-0 md:text-[13px]"
+      className="max-h-40 min-h-9 resize-none overflow-y-auto border-0 bg-transparent py-1.5 text-body shadow-none focus-visible:ring-0 dark:bg-transparent"
     />
   );
 }
@@ -247,7 +249,7 @@ function PresetSelect({ presets, presetId, onChange, disabled }: PresetSelectPro
 function ParamRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="w-[76px] shrink-0 text-[11px] text-muted-foreground">{label}</span>
+      <Label className="w-[76px] shrink-0">{label}</Label>
       <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
@@ -276,16 +278,15 @@ function RequestParamsPopover(props: RequestParamsProps) {
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
-          size="sm"
-          className={ICON_BUTTON_CLASS}
+          size="icon-compact"
           disabled={props.disabled}
           title="Параметры запроса"
           aria-label="Параметры запроса"
         >
-          <SlidersHorizontal className="size-4" />
+          <SlidersHorizontal />
         </Button>
       </PopoverTrigger>
-      <PopoverContent side="top" align="start" className="w-60 p-2.5">
+      <PopoverContent side="top" align="start" className="w-60 p-3">
         <div className="flex flex-col gap-1.5">
           <ParamRow label="Модель">
             <ModelSelect
@@ -334,25 +335,24 @@ function ComposerToolbar(props: ComposerToolbarProps) {
     <div className="flex items-center gap-1 px-1.5 pb-1.5">
       <Button
         variant="ghost"
-        size="sm"
-        className={ICON_BUTTON_CLASS}
+        size="icon-compact"
         disabled={props.disabled}
         onClick={props.onClear}
         title="Очистить черновик"
         aria-label="Очистить черновик"
       >
-        <Eraser className="size-4" />
+        <Eraser />
       </Button>
       <Button
         variant="ghost"
-        size="sm"
-        className={`relative ${ICON_BUTTON_CLASS}`}
+        size="icon-compact"
+        className="relative"
         disabled={props.disabled}
         onClick={props.onOpenContext}
         title="Контекст чата"
         aria-label="Контекст чата"
       >
-        <NotebookText className="size-4" />
+        <NotebookText />
         {props.hasContext && (
           <span
             className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-primary"
@@ -378,21 +378,19 @@ function ComposerToolbar(props: ComposerToolbarProps) {
       {props.showRetry && (
         <Button
           variant="ghost"
-          size="sm"
-          className={ICON_BUTTON_CLASS}
+          size="icon-compact"
           disabled={props.disabled}
           onClick={props.onRetry}
           title="Повторить распознавание"
           aria-label="Повторить распознавание"
         >
-          <RotateCcw className="size-4" />
+          <RotateCcw />
         </Button>
       )}
       {props.streaming ? (
         <Button
           variant="destructive"
-          size="sm"
-          className={ICON_BUTTON_CLASS}
+          size="icon-compact"
           onClick={props.onStop}
           title="Остановить ответ"
           aria-label="Остановить ответ"
@@ -401,14 +399,13 @@ function ComposerToolbar(props: ComposerToolbarProps) {
         </Button>
       ) : (
         <Button
-          size="sm"
-          className={ICON_BUTTON_CLASS}
+          size="icon-compact"
           onClick={props.onSend}
           disabled={props.disabled}
           title="Отправить (⏎)"
           aria-label="Отправить"
         >
-          <ArrowUp className="size-4" />
+          <ArrowUp />
         </Button>
       )}
     </div>
@@ -439,9 +436,10 @@ function LibraryDocToggle({
     <button
       type="button"
       onClick={onToggle}
-      className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[12px] transition-colors ${
-        selected ? "bg-white/10 text-foreground" : "text-muted-foreground hover:bg-white/5"
-      }`}
+      className={cn(
+        "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-body transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        selected ? "bg-surface-active text-foreground" : "text-muted-foreground hover:bg-surface",
+      )}
     >
       <Check className={`size-3.5 shrink-0 ${selected ? "" : "opacity-0"}`} />
       <span className="min-w-0 truncate">{doc.name}</span>
@@ -460,7 +458,7 @@ function LibraryPicker({
 }) {
   if (library.docs.length === 0) {
     return (
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-caption text-muted-foreground">
         Библиотека пуста — материалы добавляются в Настройках, вкладка «Контексты».
       </p>
     );
@@ -474,9 +472,7 @@ function LibraryPicker({
     <div className="flex max-h-48 flex-col gap-1 overflow-y-auto">
       {groups.map((g) => (
         <div key={g.id} className="flex flex-col gap-0.5">
-          {g.name !== "" && (
-            <span className="px-2 pt-1 text-[10.5px] font-medium text-foreground/55">{g.name}</span>
-          )}
+          {g.name !== "" && <SectionLabel className="px-2 pt-1">{g.name}</SectionLabel>}
           {g.docs.map((doc) => (
             <LibraryDocToggle
               key={doc.id}
@@ -506,7 +502,7 @@ function ChatContextDialog(props: ChatContextDialogProps) {
           <DialogTitle>Контекст чата</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-1.5">
-          <span className="text-[10.5px] font-medium text-foreground/55">Из библиотеки</span>
+          <SectionLabel>Из библиотеки</SectionLabel>
           <LibraryPicker
             library={props.library}
             selectedDocIds={props.selectedDocIds}
@@ -514,8 +510,8 @@ function ChatContextDialog(props: ChatContextDialogProps) {
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <span className="text-[10.5px] font-medium text-foreground/55">Свой текст</span>
-          <p className="text-[11px] text-muted-foreground">
+          <SectionLabel>Свой текст</SectionLabel>
+          <p className="text-caption text-muted-foreground">
             Уникальный справочный текст этого чата — уходит в системный промпт каждого запроса
             вместе с выбранными материалами.
           </p>
@@ -526,7 +522,7 @@ function ChatContextDialog(props: ChatContextDialogProps) {
               props.onDraftChange(e.target.value);
             }}
             placeholder="Вставь сюда справочные материалы"
-            className="field-sizing-fixed max-h-40 overflow-y-auto"
+            className="max-h-40 overflow-y-auto"
           />
         </div>
         <DialogFooter>
@@ -564,7 +560,7 @@ export function Composer(props: ComposerProps) {
   };
   return (
     <section>
-      <div className="rounded-xl bg-card/60 ring-1 ring-border transition-[box-shadow] ring-inset focus-within:ring-primary/50">
+      <div className="rounded-xl bg-card/60 ring-1 ring-border transition-[box-shadow] ring-inset focus-within:ring-ring/50">
         <PromptTextarea
           value={props.value}
           onChange={props.onChange}

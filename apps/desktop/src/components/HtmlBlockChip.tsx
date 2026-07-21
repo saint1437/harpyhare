@@ -17,7 +17,7 @@ export function HtmlBlockChip({ code, onToggle }: HtmlBlockChipProps) {
     <button
       type="button"
       onClick={onToggle}
-      className="my-1.5 flex items-center gap-2 rounded-lg border border-border bg-black/30 px-3 py-1.5 font-mono text-[11.5px] text-muted-foreground transition-colors hover:text-foreground"
+      className="my-1.5 flex items-center gap-2 rounded-md border bg-code-surface px-3 py-1.5 font-mono text-caption text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
     >
       <span className="font-medium text-foreground/80">html</span>
       <span>{lines} строк</span>

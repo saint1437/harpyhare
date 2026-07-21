@@ -1,4 +1,5 @@
 import { Plus, X } from "lucide-react";
+import { IconButton } from "@/components/IconButton";
 import { CHAT_LIMIT, type Chat } from "@/lib/chats";
 import { cn } from "@/lib/utils";
 
@@ -65,10 +66,10 @@ function ChatTab({
       title={title || `Чат ${String(number)}`}
       aria-label={closeOnClick ? `Закрыть чат ${String(number)}` : `Чат ${String(number)}`}
       className={cn(
-        "group relative grid size-7 shrink-0 place-items-center rounded-md font-mono text-[11px] transition-colors",
+        "group relative grid size-7 shrink-0 place-items-center rounded-md font-mono text-caption transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
         isActive
-          ? "bg-white/10 text-foreground"
-          : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+          ? "bg-surface-active text-foreground"
+          : "text-muted-foreground hover:bg-surface hover:text-foreground",
       )}
     >
       <span className={cn(closeOnClick && "group-hover:hidden")}>{number}</span>
@@ -85,14 +86,13 @@ function ChatTab({
 
 function NewChatButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
   return (
-    <button
-      type="button"
+    <IconButton
+      title="Новый чат"
       onClick={onClick}
       disabled={disabled}
-      aria-label="Новый чат"
-      className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+      className="shrink-0 rounded-md"
     >
-      <Plus className="size-4" />
-    </button>
+      <Plus />
+    </IconButton>
   );
 }

@@ -13,7 +13,7 @@ export interface WarningBannerProps {
 
 const TONE_STYLES: Record<WarningTone, string> = {
   error: "bg-destructive/10 text-destructive ring-destructive/30",
-  info: "bg-white/5 text-muted-foreground ring-white/10",
+  info: "bg-surface text-muted-foreground ring-border",
 };
 
 export function WarningBanner({
@@ -29,7 +29,7 @@ export function WarningBanner({
         TONE_STYLES[tone],
       )}
     >
-      <span className="text-[12.5px]">{children}</span>
+      <span className="text-body">{children}</span>
       <Button variant="ghost" size="sm" onClick={onAction}>
         {actionLabel}
       </Button>

@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import { AccessCodeForm } from "@/components/AccessCodeForm";
 import { ContextLibraryPanel } from "@/components/ContextLibraryPanel";
 import { HotkeyCapture } from "@/components/HotkeyCapture";
+import { LabeledDivider } from "@/components/LabeledDivider";
+import { SectionLabel } from "@/components/SectionLabel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -227,7 +229,7 @@ export function SettingsDialog({
           />
         </div>
 
-        <DialogFooter className="items-center border-t border-white/5 pt-3 sm:justify-between">
+        <DialogFooter className="items-center border-t pt-3 sm:justify-between">
           <VersionRow
             name={BRAND_NAME}
             appVersion={appVersion}
@@ -253,10 +255,7 @@ export function SettingsDialog({
 
 function TabBar({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => void }) {
   return (
-    <div
-      role="tablist"
-      className="no-scrollbar flex gap-1 overflow-x-auto border-b border-white/10"
-    >
+    <div role="tablist" className="no-scrollbar flex gap-1 overflow-x-auto border-b">
       {SETTINGS_TABS.map((t) => (
         <button
           key={t.id}
@@ -267,7 +266,7 @@ function TabBar({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => 
             onSelect(t.id);
           }}
           className={cn(
-            "relative shrink-0 px-3 py-1.5 text-[12.5px] whitespace-nowrap transition-colors outline-none focus-visible:outline-2 focus-visible:outline-ring",
+            "relative shrink-0 px-3 py-1.5 text-body whitespace-nowrap transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
             active === t.id ? "text-foreground" : "text-muted-foreground hover:text-foreground",
           )}
         >
@@ -319,7 +318,7 @@ function TabContent({
       return <ContextLibraryPanel api={contextLibrary} />;
     case "hotkeys":
       return (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-y-5 md:grid-cols-3 md:gap-x-10">
           <HotkeysSection draft={draft} set={set} />
         </div>
       );
@@ -331,7 +330,7 @@ function TabContent({
       );
     case "appearance":
       return (
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-3 md:gap-8">
+        <div className="grid grid-cols-1 gap-y-5 md:grid-cols-3 md:gap-x-10">
           <SlidersSection draft={draft} set={set} />
         </div>
       );
@@ -366,13 +365,7 @@ function ApiKeysSection({
       <Field label="Код доступа">
         <AccessCodeForm onRedeem={onRedeem} />
       </Field>
-      <div className="flex items-center gap-3">
-        <span className="h-px flex-1 bg-white/10" />
-        <span className="text-[10.5px] tracking-wide text-muted-foreground uppercase">
-          или свои ключи
-        </span>
-        <span className="h-px flex-1 bg-white/10" />
-      </div>
+      <LabeledDivider label="или свои ключи" />
       <ApiKeyField
         label="Ключ Anthropic"
         placeholder="sk-ant-…"
@@ -395,9 +388,9 @@ function ApiKeysSection({
 
 function ActiveAccessCode({ onUnlink }: { onUnlink: () => void }) {
   return (
-    <div className="flex flex-col gap-2 rounded-md bg-white/5 px-3 py-2.5">
-      <span className="text-[12.5px]">Доступ по коду активен</span>
-      <span className="text-[11px] text-muted-foreground">
+    <div className="flex flex-col gap-2 rounded-md bg-surface px-3 py-2.5">
+      <span className="text-body">Доступ по коду активен</span>
+      <span className="text-caption text-muted-foreground">
         Запросы идут через бесплатный доступ, свои ключи не используются. Отвяжи код, чтобы
         вернуться к собственным ключам — изменение вступит в силу после «Сохранить».
       </span>
@@ -563,7 +556,7 @@ function PresetEditor({
   onRemove: () => void;
 }) {
   return (
-    <div className="grid gap-1.5 rounded-md bg-white/5 p-2">
+    <div className="grid gap-2 rounded-xl bg-card/60 p-3 ring-1 ring-border ring-inset">
       <div className="flex items-center gap-2">
         <Input
           placeholder="Имя"
@@ -583,7 +576,7 @@ function PresetEditor({
         onChange={(e) => {
           onChange({ text: e.target.value });
         }}
-        className="field-sizing-fixed max-h-32 overflow-y-auto"
+        className="max-h-32 overflow-y-auto"
       />
     </div>
   );
@@ -764,7 +757,7 @@ function VersionRow({
   if (appVersion === "") return <span />;
   return (
     <div className="flex items-center gap-3">
-      <span className="font-mono text-[11.5px] text-muted-foreground">
+      <span className="font-mono text-caption text-muted-foreground">
         {name} {appVersion}
         {checkState === "latest" && " — у вас последняя версия"}
         {checkState === "error" && (
@@ -788,7 +781,7 @@ function SwitchRow({
   children: ReactNode;
 }) {
   return (
-    <label className="flex items-center gap-2.5 text-[12.5px]">
+    <label className="flex items-center gap-2.5 text-body">
       <Switch checked={checked} onCheckedChange={onCheckedChange} />
       {children}
     </label>
@@ -798,7 +791,7 @@ function SwitchRow({
 function SectionGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="text-[10.5px] font-medium text-foreground/55">{title}</h3>
+      <SectionLabel>{title}</SectionLabel>
       <div className="flex flex-col gap-2.5">{children}</div>
     </section>
   );
@@ -807,7 +800,7 @@ function SectionGroup({ title, children }: { title: string; children: ReactNode 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid gap-1.5">
-      <Label className="text-[11.5px] text-muted-foreground">{label}</Label>
+      <Label>{label}</Label>
       {children}
     </div>
   );
