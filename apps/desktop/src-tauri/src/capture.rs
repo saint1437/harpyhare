@@ -435,6 +435,7 @@ fn take_pending_session(shared: &Shared) -> Option<BufferedSession> {
     drop(s);
     shared.produced.store(0, Ordering::Relaxed);
     shared.dropped.store(0, Ordering::Relaxed);
+    shared.recording.store(true, Ordering::Release);
     let preroll = shared.rolling.lock().unwrap().snapshot();
     let mut out = Vec::with_capacity(
         preroll.len() + audio::TARGET_SAMPLE_RATE as usize * OUT_PREALLOC_SECONDS,
@@ -453,6 +454,7 @@ fn finish_buffered_session(
     session: &mut Option<BufferedSession>,
     result: Result<(), String>,
 ) {
+    shared.recording.store(false, Ordering::Release);
     let Some(sess) = session.take() else { return };
     drop(sess.sink);
     let dropped = shared.dropped.load(Ordering::Relaxed);
@@ -479,11 +481,15 @@ fn run_buffering(shared: &Shared, ring: &mut HeapCons<f32>, scratch: &mut Scratc
     loop {
         if session.is_none() {
             if !shared.buffering.load(Ordering::Acquire) {
+                shared.rolling.lock().unwrap().clear();
                 return;
             }
             session = take_pending_session(shared);
         }
         let stopping = session.is_some() && shared.stop_requested.load(Ordering::Acquire);
+        if stopping {
+            shared.recording.store(false, Ordering::Release);
+        }
         let n = drain_ring_chunk(shared, ring, scratch);
         if n > 0 {
             chunk.clear();
