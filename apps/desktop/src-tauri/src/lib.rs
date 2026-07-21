@@ -975,22 +975,21 @@ fn set_window_size(app: AppHandle, width: f64, height: f64) {
         from_height,
         to_height: height,
         from_x: from_pos.x,
-        to_x: centered_target_x(&w, width, scale),
+        to_x: anchored_target_x(&w, from_pos.x, width, scale),
         y: from_pos.y,
     };
     std::thread::spawn(move || run_resize_tween(app, w, tween, my_gen));
 }
 
-fn centered_target_x(w: &tauri::WebviewWindow, width: f64, scale: f64) -> i32 {
+fn anchored_target_x(w: &tauri::WebviewWindow, from_x: i32, width: f64, scale: f64) -> i32 {
     let target_phys_w = (width * scale).round() as u32;
     let (mon_x, mon_w) = w
         .current_monitor()
         .ok()
         .flatten()
         .map(|m| (m.position().x, m.size().width))
-        .unwrap_or((0, target_phys_w));
-    let centered = mon_x + (mon_w as i32 - target_phys_w as i32) / 2;
-    window_geom::clamp_window_x(centered, target_phys_w, mon_x, mon_w)
+        .unwrap_or((from_x, target_phys_w));
+    window_geom::clamp_window_x(from_x, target_phys_w, mon_x, mon_w)
 }
 
 fn ease_out_cubic(t: f64) -> f64 {
