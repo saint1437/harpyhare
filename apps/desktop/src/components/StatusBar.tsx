@@ -10,10 +10,33 @@ export interface StatusBarProps {
   error: string | null;
   toggleHotkey: string;
   tabs: ReactNode;
+  actions: ReactNode;
   update: { version: string; busy: boolean; onOpen: () => void } | null;
   onOpenSettings: () => void;
   onClose: () => void;
   onHide: () => void;
+}
+
+export function HeaderActionButton({
+  title,
+  onClick,
+  children,
+}: {
+  title: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className="grid size-7 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+    >
+      {children}
+    </button>
+  );
 }
 
 function indicatorProps(state: RecorderState, showError: boolean): EqBarsProps {
@@ -27,6 +50,7 @@ export function StatusBar({
   error,
   toggleHotkey,
   tabs,
+  actions,
   update,
   onOpenSettings,
   onClose,
@@ -47,6 +71,7 @@ export function StatusBar({
         {showError ? error : ""}
       </span>
       <div className="flex shrink-0 items-center gap-0.5">
+        {actions}
         {update && <UpdateBadge update={update} />}
         <SettingsButton onClick={onOpenSettings} />
       </div>

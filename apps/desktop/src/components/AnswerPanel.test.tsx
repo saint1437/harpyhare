@@ -29,9 +29,7 @@ describe("AnswerPanel — подсветка кода", () => {
         messages={[assistant]}
         partial={null}
         streaming={false}
-        onCopy={() => undefined}
         onTogglePreview={() => undefined}
-        onOpenTeleprompter={() => undefined}
       />,
     );
     expect(container.querySelector("code.hljs")).toBeTruthy();
@@ -51,9 +49,7 @@ describe("AnswerPanel — подсветка кода", () => {
         messages={[assistant]}
         partial={null}
         streaming={false}
-        onCopy={() => undefined}
         onTogglePreview={() => undefined}
-        onOpenTeleprompter={() => undefined}
       />,
     );
     expect(container.querySelector(".hljs-keyword")).toBeTruthy();
@@ -70,9 +66,7 @@ describe("AnswerPanel — подсветка кода", () => {
         messages={[assistant]}
         partial={null}
         streaming={false}
-        onCopy={() => undefined}
         onTogglePreview={() => undefined}
-        onOpenTeleprompter={() => undefined}
       />,
     );
     expect(getByText(/Открыть превью/)).toBeTruthy();
@@ -87,9 +81,7 @@ describe("AnswerPanel — индикатор ожидания", () => {
         messages={[userMsg]}
         partial=""
         streaming={true}
-        onCopy={() => undefined}
         onTogglePreview={() => undefined}
-        onOpenTeleprompter={() => undefined}
       />,
     );
     expect(getByText(/Думает…/)).toBeTruthy();
@@ -101,9 +93,7 @@ describe("AnswerPanel — индикатор ожидания", () => {
         messages={[userMsg]}
         partial="Привет"
         streaming={true}
-        onCopy={() => undefined}
         onTogglePreview={() => undefined}
-        onOpenTeleprompter={() => undefined}
       />,
     );
     expect(queryByText(/Думает…/)).toBeNull();
@@ -115,9 +105,7 @@ describe("AnswerPanel — индикатор ожидания", () => {
         messages={[userMsg]}
         partial={null}
         streaming={false}
-        onCopy={() => undefined}
         onTogglePreview={() => undefined}
-        onOpenTeleprompter={() => undefined}
       />,
     );
     expect(queryByText(/Думает…/)).toBeNull();

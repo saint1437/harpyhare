@@ -1,4 +1,3 @@
-import { Copy, ScrollText } from "lucide-react";
 import { isValidElement, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
@@ -16,9 +15,7 @@ export interface AnswerPanelProps {
   partial: string | null;
   streaming: boolean;
   streamStartedAt?: number;
-  onCopy: () => void;
   onTogglePreview: (code: string) => void;
-  onOpenTeleprompter: () => void;
 }
 
 const NEAR_BOTTOM_PX = 40;
@@ -153,56 +150,6 @@ function useStickToBottom() {
   return { scrollRef, showJump, onScroll, scrollIfNearBottom, resetToBottom };
 }
 
-function PanelActionButton({
-  title,
-  onClick,
-  children,
-}: {
-  title: string;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      aria-label={title}
-      className="grid size-7 place-items-center rounded-md bg-background/60 text-muted-foreground backdrop-blur-sm transition-colors hover:bg-white/10 hover:text-foreground"
-    >
-      {children}
-    </button>
-  );
-}
-
-function PanelActions({
-  canCopy,
-  canTeleprompt,
-  onCopy,
-  onOpenTeleprompter,
-}: {
-  canCopy: boolean;
-  canTeleprompt: boolean;
-  onCopy: () => void;
-  onOpenTeleprompter: () => void;
-}) {
-  if (!canCopy && !canTeleprompt) return null;
-  return (
-    <div className="absolute top-0 right-1.5 z-10 flex gap-1">
-      {canTeleprompt && (
-        <PanelActionButton title="Суфлёр" onClick={onOpenTeleprompter}>
-          <ScrollText className="size-3.5" />
-        </PanelActionButton>
-      )}
-      {canCopy && (
-        <PanelActionButton title="Копировать последний ответ" onClick={onCopy}>
-          <Copy className="size-3.5" />
-        </PanelActionButton>
-      )}
-    </div>
-  );
-}
-
 function EmptyState() {
   return (
     <div className="grid h-full place-items-center">
@@ -269,9 +216,7 @@ export function AnswerPanel({
   partial,
   streaming,
   streamStartedAt,
-  onCopy,
   onTogglePreview,
-  onOpenTeleprompter,
 }: AnswerPanelProps) {
   const { scrollRef, showJump, onScroll, scrollIfNearBottom, resetToBottom } = useStickToBottom();
 
@@ -289,19 +234,10 @@ export function AnswerPanel({
   );
 
   const empty = messages.length === 0 && !partial;
-  const hasAssistantReply = messages.some((m) => m.role === "assistant");
-  const canCopy = !streaming && hasAssistantReply;
-  const canTeleprompt = hasAssistantReply || (partial !== null && partial !== "");
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <div className="relative flex min-h-0 flex-1">
-        <PanelActions
-          canCopy={canCopy}
-          canTeleprompt={canTeleprompt}
-          onCopy={onCopy}
-          onOpenTeleprompter={onOpenTeleprompter}
-        />
         <div
           ref={scrollRef}
           onScroll={onScroll}

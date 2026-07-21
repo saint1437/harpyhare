@@ -1,3 +1,4 @@
+import { Copy, ScrollText } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -14,7 +15,7 @@ import { HotkeyHints } from "@/components/HotkeyHints";
 import { MissingKeysDialog } from "@/components/MissingKeysDialog";
 import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
 import { SettingsDialog } from "@/components/SettingsDialog";
-import { StatusBar, type StatusBarProps } from "@/components/StatusBar";
+import { HeaderActionButton, StatusBar, type StatusBarProps } from "@/components/StatusBar";
 import { Teleprompter } from "@/components/Teleprompter";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { WarningBanner } from "@/components/WarningBanner";
@@ -389,6 +390,10 @@ interface AppHeaderProps {
   updater: UpdaterApi;
   chats: ChatsApi;
   stream: ClaudeStreams;
+  canCopy: boolean;
+  canTeleprompt: boolean;
+  onCopy: () => void;
+  onOpenTeleprompter: () => void;
   onOpenSettings: () => void;
   onOpenUpdate: () => void;
 }
@@ -400,6 +405,10 @@ function AppHeader({
   updater,
   chats,
   stream,
+  canCopy,
+  canTeleprompt,
+  onCopy,
+  onOpenTeleprompter,
   onOpenSettings,
   onOpenUpdate,
 }: AppHeaderProps) {
@@ -424,6 +433,20 @@ function AppHeader({
           }}
           onNew={chats.newChat}
         />
+      }
+      actions={
+        <>
+          {canTeleprompt && (
+            <HeaderActionButton title="Суфлёр" onClick={onOpenTeleprompter}>
+              <ScrollText className="size-4" />
+            </HeaderActionButton>
+          )}
+          {canCopy && (
+            <HeaderActionButton title="Копировать последний ответ" onClick={onCopy}>
+              <Copy className="size-4" />
+            </HeaderActionButton>
+          )}
+        </>
       }
     />
   );
@@ -671,6 +694,9 @@ export default function App() {
   const teleprompterText = toReadingText(
     partial !== null && partial !== "" ? partial : lastAssistantText(active.messages),
   );
+  const hasAssistantReply = active.messages.some((m) => m.role === "assistant");
+  const canCopy = !activeStreaming && hasAssistantReply;
+  const canTeleprompt = hasAssistantReply || (partial !== null && partial !== "");
 
   const saveSettingsReportingError = (next: Settings) => {
     void save(next).then((err) => {
@@ -716,6 +742,14 @@ export default function App() {
           updater={updater}
           chats={chats}
           stream={stream}
+          canCopy={canCopy}
+          canTeleprompt={canTeleprompt}
+          onCopy={() => {
+            copyLastAssistantMessage(active.messages);
+          }}
+          onOpenTeleprompter={() => {
+            setTeleprompterOpen(true);
+          }}
           onOpenSettings={() => {
             setSettingsOpen(true);
           }}
@@ -745,13 +779,7 @@ export default function App() {
           partial={partial}
           streaming={activeStreaming}
           streamStartedAt={stream.startedAt[activeId]}
-          onCopy={() => {
-            copyLastAssistantMessage(active.messages);
-          }}
           onTogglePreview={togglePreview}
-          onOpenTeleprompter={() => {
-            setTeleprompterOpen(true);
-          }}
         />
 
         <AppComposer
