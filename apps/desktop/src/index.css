@@ -264,3 +264,21 @@ body {
   content-visibility: auto;
   contain-intrinsic-block-size: auto 48px;
 }
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(1 0 0 / 14%);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(1 0 0 / 28%);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
