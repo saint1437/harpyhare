@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Ревизия B:** ручной забор (F8/кнопка/grab_buffer/buffer_hotkey) удалён после реализации — буфер автоматически добавляется в начало PTT-записи. См. раздел «Ревизия B» в спеке. Задачи ниже описывают ревизию A и сохранены как история.
+
 **Goal:** Непрерывный кольцевой буфер последних N секунд системного звука (настройка 4–10 с, дефолт 4, тумблер, дефолт вкл.) с транскрипцией по хоткею (дефолт F8, изменяемый) или кнопке в статус-баре; текст — в буфер обмена и черновик чата, как у PTT.
 
 **Architecture:** Вариант A из спеки `docs/superpowers/specs/2026-07-21-background-audio-buffer-design.md`: `io_proc` пропускает семплы при `recording || buffering`; поток `audio-consumer` при включённом буфере непрерывно ресемплирует в 16 кГц долгоживущим ресемплером и складывает чанки в `RollingBuffer` (VecDeque с капом) под мьютексом; PTT-сессия при этом обслуживается тем же потоком чанков. Забор = снимок буфера → гейты (занятость/длина/тишина) → классическая транскрипция Groq → существующий путь `deliver_transcript`.
