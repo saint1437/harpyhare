@@ -11,7 +11,7 @@ import {
 import { AnswerPanel } from "@/components/AnswerPanel";
 import { ChatTabs } from "@/components/ChatTabs";
 import { Composer } from "@/components/Composer";
-import { HotkeyHints } from "@/components/HotkeyHints";
+import { HotkeysPopover } from "@/components/HotkeysPopover";
 import { MissingKeysDialog } from "@/components/MissingKeysDialog";
 import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
 import { SettingsDialog } from "@/components/SettingsDialog";
@@ -386,7 +386,9 @@ function useSendPipeline(
 interface AppHeaderProps {
   state: RecorderState;
   error: string | null;
+  hotkey: string;
   toggleHotkey: string;
+  teleprompterHotkey: string;
   updater: UpdaterApi;
   chats: ChatsApi;
   stream: ClaudeStreams;
@@ -401,7 +403,9 @@ interface AppHeaderProps {
 function AppHeader({
   state,
   error,
+  hotkey,
   toggleHotkey,
+  teleprompterHotkey,
   updater,
   chats,
   stream,
@@ -446,6 +450,11 @@ function AppHeader({
               <Copy className="size-4" />
             </HeaderActionButton>
           )}
+          <HotkeysPopover
+            hotkey={hotkey}
+            toggleHotkey={toggleHotkey}
+            teleprompterHotkey={teleprompterHotkey}
+          />
         </>
       }
     />
@@ -738,7 +747,9 @@ export default function App() {
         <AppHeader
           state={state}
           error={error}
+          hotkey={settings.hotkey}
           toggleHotkey={settings.toggle_hotkey}
+          teleprompterHotkey={settings.teleprompter_hotkey}
           updater={updater}
           chats={chats}
           stream={stream}
@@ -796,8 +807,6 @@ export default function App() {
           }}
           onRetry={retry}
         />
-
-        <HotkeyHints hotkey={settings.hotkey} />
       </div>
 
       {previewOpen && <PreviewPanel html={previewHtml} onClose={closePreview} />}
