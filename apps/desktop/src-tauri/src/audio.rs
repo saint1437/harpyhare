@@ -53,6 +53,53 @@ pub fn is_silence(samples: &[f32]) -> bool {
     rms(samples) < SILENCE_RMS_THRESHOLD
 }
 
+pub struct RollingBuffer {
+    buf: std::collections::VecDeque<f32>,
+    capacity: usize,
+}
+
+fn rolling_capacity_for_secs(secs: u64) -> usize {
+    secs as usize * TARGET_SAMPLE_RATE as usize
+}
+
+impl RollingBuffer {
+    pub fn new(secs: u64) -> Self {
+        Self {
+            buf: std::collections::VecDeque::new(),
+            capacity: rolling_capacity_for_secs(secs),
+        }
+    }
+
+    pub fn push_chunk(&mut self, chunk: &[f32]) {
+        if self.capacity == 0 {
+            return;
+        }
+        let skip = chunk.len().saturating_sub(self.capacity);
+        self.buf.extend(&chunk[skip..]);
+        self.trim_to_capacity();
+    }
+
+    pub fn snapshot(&self) -> Vec<f32> {
+        self.buf.iter().copied().collect()
+    }
+
+    pub fn set_capacity_secs(&mut self, secs: u64) {
+        self.capacity = rolling_capacity_for_secs(secs);
+        self.trim_to_capacity();
+    }
+
+    pub fn clear(&mut self) {
+        self.buf.clear();
+    }
+
+    fn trim_to_capacity(&mut self) {
+        let overflow = self.buf.len().saturating_sub(self.capacity);
+        if overflow > 0 {
+            self.buf.drain(..overflow);
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum AudioError {
     #[error("ресемплинг: {0}")]
@@ -407,5 +454,54 @@ mod tests {
         assert_eq!(spec.channels, 1);
         assert_eq!(spec.bits_per_sample, 16);
         assert_eq!(reader.len(), 5);
+    }
+
+    #[test]
+    fn rolling_buffer_keeps_order_under_capacity() {
+        let mut rb = RollingBuffer::new(1);
+        rb.push_chunk(&[1.0, 2.0]);
+        rb.push_chunk(&[3.0]);
+        assert_eq!(rb.snapshot(), vec![1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn rolling_buffer_evicts_oldest_on_overflow() {
+        let mut rb = RollingBuffer::new(1);
+        let first: Vec<f32> = (0..TARGET_SAMPLE_RATE).map(|i| i as f32).collect();
+        rb.push_chunk(&first);
+        rb.push_chunk(&[-1.0, -2.0]);
+        let snap = rb.snapshot();
+        assert_eq!(snap.len(), TARGET_SAMPLE_RATE as usize);
+        assert_eq!(snap[0], 2.0);
+        assert_eq!(snap[snap.len() - 2..], [-1.0, -2.0]);
+    }
+
+    #[test]
+    fn rolling_buffer_chunk_larger_than_capacity_keeps_tail() {
+        let mut rb = RollingBuffer::new(1);
+        let big: Vec<f32> = (0..TARGET_SAMPLE_RATE * 2).map(|i| i as f32).collect();
+        rb.push_chunk(&big);
+        let snap = rb.snapshot();
+        assert_eq!(snap.len(), TARGET_SAMPLE_RATE as usize);
+        assert_eq!(snap[0], TARGET_SAMPLE_RATE as f32);
+    }
+
+    #[test]
+    fn rolling_buffer_shrink_capacity_trims_oldest() {
+        let mut rb = RollingBuffer::new(2);
+        let two_secs: Vec<f32> = (0..TARGET_SAMPLE_RATE * 2).map(|i| i as f32).collect();
+        rb.push_chunk(&two_secs);
+        rb.set_capacity_secs(1);
+        let snap = rb.snapshot();
+        assert_eq!(snap.len(), TARGET_SAMPLE_RATE as usize);
+        assert_eq!(snap[0], TARGET_SAMPLE_RATE as f32);
+    }
+
+    #[test]
+    fn rolling_buffer_clear_empties() {
+        let mut rb = RollingBuffer::new(1);
+        rb.push_chunk(&[1.0, 2.0]);
+        rb.clear();
+        assert!(rb.snapshot().is_empty());
     }
 }
