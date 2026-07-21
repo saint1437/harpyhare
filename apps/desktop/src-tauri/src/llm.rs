@@ -8,6 +8,7 @@ pub const APP_USER_AGENT: &str = concat!("AudioSystem/", env!("CARGO_PKG_VERSION
 
 const ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com";
 const MESSAGES_PATH: &str = "/v1/messages";
+const COUNT_TOKENS_PATH: &str = "/v1/messages/count_tokens";
 const MODELS_PATH: &str = "/v1/models";
 const MODELS_PAGE_LIMIT: u32 = 100;
 
@@ -311,6 +312,21 @@ impl AnthropicClient {
         req
     }
 
+    pub async fn count_tokens(&self, body: Value) -> Result<u64, LlmError> {
+        let resp = self
+            .authorize(self.client.post(format!("{}{COUNT_TOKENS_PATH}", self.base_url)))
+            .header(VERSION_HEADER, ANTHROPIC_VERSION)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| LlmError::Network(e.to_string()))?;
+        let resp = require_ok_status(resp, self.is_proxy()).await?;
+        let v: Value = resp.json().await.map_err(|e| LlmError::Network(e.to_string()))?;
+        v["input_tokens"]
+            .as_u64()
+            .ok_or_else(|| LlmError::Api(UNKNOWN_API_ERROR.into()))
+    }
+
     pub async fn stream_message(
         &self,
         body: serde_json::Value,
@@ -390,6 +406,21 @@ fn system_json(system: &str) -> Value {
     } else {
         json!([{"type": "text", "text": system, "cache_control": ephemeral_cache_control()}])
     }
+}
+
+pub fn build_count_tokens_body(
+    model: &str,
+    system: &str,
+    messages: &[ChatMessage],
+    thinking: Option<Value>,
+    web_search: Option<Value>,
+) -> Value {
+    let mut body = build_request_body(model, system, messages, thinking, false, web_search);
+    if let Some(o) = body.as_object_mut() {
+        o.remove("max_tokens");
+        o.remove("stream");
+    }
+    body
 }
 
 pub fn build_request_body(

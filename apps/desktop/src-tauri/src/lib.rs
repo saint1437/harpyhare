@@ -163,6 +163,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             send_to_claude,
             cancel_stream,
+            count_chat_tokens,
             list_models,
             load_chats,
             save_chats,
@@ -903,6 +904,24 @@ async fn send_to_claude(
     eprintln!("[perf] llm stream total {:?}", started.elapsed());
     unregister_llm_cancel(&app, &chat_id);
     emit_llm_result(&app, chat_id, res);
+}
+
+#[tauri::command]
+async fn count_chat_tokens(
+    app: AppHandle,
+    messages: Vec<llm::ChatMessage>,
+    system: String,
+    thinking: bool,
+    model: String,
+    web_search: bool,
+) -> Result<u64, String> {
+    let model_info = find_cached_model(&app, &model);
+    let thinking_field = llm::thinking_value(model_info.as_ref(), &model, thinking);
+    let web_search_field = llm::web_search_value(model_info.as_ref(), &model, web_search);
+    let client = app.state::<App>().llm.lock().unwrap().clone();
+    let body =
+        llm::build_count_tokens_body(&model, &system, &messages, thinking_field, web_search_field);
+    client.count_tokens(body).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]

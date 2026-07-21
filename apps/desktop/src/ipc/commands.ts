@@ -59,6 +59,22 @@ export async function cancelStream(chatId: string): Promise<void> {
   await invokeOrNoopInBrowser("cancel_stream", { chatId });
 }
 
+export async function countChatTokens(
+  messages: ChatMessageDto[],
+  system: string,
+  thinking: boolean,
+  model: string,
+  webSearch: boolean,
+): Promise<number> {
+  return invokeOrFallbackInBrowser("count_chat_tokens", 0, {
+    messages,
+    system,
+    thinking,
+    model,
+    webSearch,
+  });
+}
+
 export async function retryTranscription(): Promise<void> {
   await invokeOrNoopInBrowser("retry_transcription");
 }

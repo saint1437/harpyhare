@@ -40,6 +40,7 @@ import {
   closeApp,
   hideMainWindow,
   openAudioPermissionSettings,
+  countChatTokens,
   redeemAccessCode,
   requestAudioCapturePermission,
   retryTranscription,
@@ -345,6 +346,35 @@ function useBrowserDemoSeed(activeId: string, chatsRef: RefObject<ChatsApi>): vo
     chatsRef.current.appendAssistantMessage(activeId, DEMO_SEED_ASSISTANT_MESSAGE);
     chatsRef.current.setDraft(activeId, DEMO_SEED_DRAFT, []);
   }, [activeId, chatsRef]);
+}
+
+const PROJECTED_TOKENS_DEBOUNCE_MS = 400;
+const TOKEN_COUNT_PLACEHOLDER_MESSAGE: ChatMessageDto = { role: "user", text: ".", images: [] };
+
+function useProjectedContextTokens(chat: Chat, system: string, streaming: boolean): number {
+  const [tokens, setTokens] = useState(0);
+  const messagesKey = chat.messages.map((m) => `${m.role}:${String(m.text.length)}`).join("|");
+  useEffect(() => {
+    if (streaming) return;
+    let live = true;
+    const handle = setTimeout(() => {
+      const history: ChatMessageDto[] =
+        chat.messages.length > 0
+          ? chat.messages.map((m) => ({ role: m.role, text: m.text, images: m.images }))
+          : [TOKEN_COUNT_PLACEHOLDER_MESSAGE];
+      void countChatTokens(history, system, chat.thinkingEnabled, chat.model, chat.webSearch)
+        .then((n) => {
+          if (live) setTokens(n);
+        })
+        .catch(() => undefined);
+    }, PROJECTED_TOKENS_DEBOUNCE_MS);
+    return () => {
+      live = false;
+      clearTimeout(handle);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat.id, messagesKey, system, chat.thinkingEnabled, chat.model, chat.webSearch, streaming]);
+  return tokens;
 }
 
 interface SendPipeline {
@@ -765,9 +795,15 @@ export default function App() {
   const canCopy = !activeStreaming && hasAssistantReply;
   const canTeleprompt = hasAssistantReply || (partial !== null && partial !== "");
   const activeModelMaxInput = models.find((m) => m.id === active.model)?.maxInputTokens ?? 0;
+  const activeSystem = useMemo(
+    () => chatSystemPrompt(presets, active, contextLibrary.library),
+    [presets, active, contextLibrary.library],
+  );
+  const projectedTokens = useProjectedContextTokens(active, activeSystem, activeStreaming);
+  const usedTokens = projectedTokens > 0 ? projectedTokens : active.lastInputTokens;
   const contextUsage: ContextUsage | null =
-    activeModelMaxInput > 0 && active.lastInputTokens > 0
-      ? { usedTokens: active.lastInputTokens, maxTokens: activeModelMaxInput }
+    activeModelMaxInput > 0 && usedTokens > 0
+      ? { usedTokens, maxTokens: activeModelMaxInput }
       : null;
 
   const saveSettingsReportingError = (next: Settings) => {
