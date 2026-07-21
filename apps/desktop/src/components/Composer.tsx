@@ -1,3 +1,4 @@
+import { Eraser, NotebookText } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,8 +49,12 @@ export interface ComposerProps {
   disabled: boolean;
 }
 
-const CONTROL_WIDTH_CLASS = "w-[120px]";
-const SELECT_TRIGGER_CLASS = `h-8 ${CONTROL_WIDTH_CLASS} text-[12px]`;
+const CONTROL_HEIGHT_CLASS = "h-7";
+const CONTROL_WIDTH_CLASS = "w-[112px]";
+const CONTROL_TEXT_CLASS = "text-[11px]";
+const SELECT_TRIGGER_CLASS = `${CONTROL_HEIGHT_CLASS} ${CONTROL_WIDTH_CLASS} ${CONTROL_TEXT_CLASS}`;
+const ICON_BUTTON_CLASS = "size-7 p-0";
+const SEND_BUTTON_CLASS = `${CONTROL_HEIGHT_CLASS} ${CONTROL_WIDTH_CLASS} ${CONTROL_TEXT_CLASS}`;
 const SELECT_CONTENT_POSITION = "popper";
 const TOGGLE_ON = "on";
 const TOGGLE_OFF = "off";
@@ -87,7 +92,7 @@ function PromptField(props: PromptFieldProps) {
         }}
         spellCheck={false}
         placeholder={`Зажми ${props.hotkey} у видео — расшифровка появится здесь. Текст можно править, ⌘V вставляет скриншот.`}
-        className="max-h-44 min-h-24 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
+        className="max-h-40 min-h-9 resize-none border-0 bg-transparent py-1.5 shadow-none focus-visible:ring-0"
       />
       <AttachmentList attachments={props.attachments} onRemove={props.onRemoveAttachment} />
     </div>
@@ -232,27 +237,37 @@ function ComposerControls(props: ComposerControlsProps) {
       <Button
         variant="ghost"
         size="sm"
-        className={CONTROL_WIDTH_CLASS}
+        className={ICON_BUTTON_CLASS}
         disabled={props.disabled}
         onClick={props.onClear}
+        title="Очистить черновик"
+        aria-label="Очистить черновик"
       >
-        Очистить
+        <Eraser className="size-3.5" />
       </Button>
       <Button
         variant="ghost"
         size="sm"
-        className="min-w-[96px]"
+        className={`relative ${ICON_BUTTON_CLASS}`}
         disabled={props.disabled}
         onClick={props.onOpenContext}
+        title="Контекст чата"
+        aria-label="Контекст чата"
       >
-        {props.hasContext ? "Контекст •" : "Контекст"}
+        <NotebookText className="size-3.5" />
+        {props.hasContext && (
+          <span
+            className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-primary"
+            aria-hidden
+          />
+        )}
       </Button>
       <div className="flex-1" />
       {props.showRetry && (
         <Button
           variant="ghost"
           size="sm"
-          className={CONTROL_WIDTH_CLASS}
+          className={`${CONTROL_HEIGHT_CLASS} ${CONTROL_TEXT_CLASS} px-2`}
           disabled={props.disabled}
           onClick={props.onRetry}
         >
@@ -285,24 +300,25 @@ function ComposerControls(props: ComposerControlsProps) {
         disabled={props.disabled}
         onChange={props.onPresetChange}
       />
-      {props.streaming && (
+      {props.streaming ? (
         <Button
           variant="destructive"
           size="sm"
-          className={CONTROL_WIDTH_CLASS}
+          className={SEND_BUTTON_CLASS}
           onClick={props.onStop}
         >
           Стоп
         </Button>
+      ) : (
+        <Button
+          size="sm"
+          className={SEND_BUTTON_CLASS}
+          onClick={props.onSend}
+          disabled={props.disabled}
+        >
+          Отправить
+        </Button>
       )}
-      <Button
-        size="sm"
-        className={CONTROL_WIDTH_CLASS}
-        onClick={props.onSend}
-        disabled={props.streaming || props.disabled}
-      >
-        Отправить
-      </Button>
     </div>
   );
 }
@@ -368,7 +384,7 @@ export function Composer(props: ComposerProps) {
     setContextOpen(false);
   };
   return (
-    <section className="flex flex-col gap-2.5">
+    <section className="flex flex-col gap-2">
       <PromptField
         value={props.value}
         onChange={props.onChange}

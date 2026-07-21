@@ -57,8 +57,8 @@ import { toReadingText } from "@/lib/teleprompter";
 
 const RETRYABLE_STT_ERROR = /перегружен|соединение|VPN|интернет|оборван/i;
 
-const SHELL_COLUMN_GAP_PX = 12;
-const SHELL_PADDING_PX = 16;
+const SHELL_COLUMN_GAP_PX = 10;
+const SHELL_PADDING_PX = 12;
 const PREVIEW_EXTRA_WIDTH_PX = PREVIEW_PANEL_WIDTH_PX + SHELL_COLUMN_GAP_PX;
 
 const USER_CONTEXT_SYSTEM_HEADER = "Контекст от пользователя (справочные материалы):\n";
@@ -623,7 +623,7 @@ export default function App() {
 
   return (
     <div
-      className="app-shell relative flex h-screen gap-3 overflow-hidden rounded-[22px] p-4"
+      className="app-shell relative flex h-screen gap-2.5 overflow-hidden rounded-[22px] p-3"
       onMouseDown={onShellDragStart}
     >
       <TabRail
@@ -638,7 +638,7 @@ export default function App() {
         onNew={chats.newChat}
       />
 
-      <div className="flex shrink-0 flex-col gap-3" style={{ width: chatColumnWidth }}>
+      <div className="flex shrink-0 flex-col gap-2.5" style={{ width: chatColumnWidth }}>
         <AppHeader
           state={state}
           error={error}
