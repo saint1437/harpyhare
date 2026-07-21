@@ -96,7 +96,7 @@ function WindowButtons({
         onClick={onClose}
         hoverClass="hover:bg-destructive/15 hover:text-destructive"
       >
-        <X className="size-3.5" />
+        <X className="size-4" />
       </WindowButton>
       <WindowButton
         label="Скрыть окно"
@@ -104,7 +104,7 @@ function WindowButtons({
         onClick={onHide}
         hoverClass="hover:bg-white/5 hover:text-foreground"
       >
-        <Minus className="size-3.5" />
+        <Minus className="size-4" />
       </WindowButton>
     </div>
   );
