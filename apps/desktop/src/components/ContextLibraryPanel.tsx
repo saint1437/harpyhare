@@ -1,10 +1,21 @@
-import { FileText, Folder, FolderPlus, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import {
+  FileText,
+  Folder,
+  FolderPlus,
+  GripVertical,
+  Pencil,
+  Plus,
+  Trash2,
+  Upload,
+} from "lucide-react";
+import {
+  useCallback,
   useEffect,
   useRef,
   useState,
   type ChangeEvent,
   type DragEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { Button } from "@/components/ui/button";
@@ -88,6 +99,45 @@ function useNativeFileDrop(
   );
 }
 
+const DOC_DRAG_THRESHOLD_PX = 5;
+
+function useDocDrag(
+  api: ContextLibraryApi,
+  setDropTarget: (t: string | null) => void,
+): { dragDocId: string | null; startDrag: (docId: string, x: number, y: number) => void } {
+  const [dragDocId, setDragDocId] = useState<string | null>(null);
+
+  const startDrag = useCallback(
+    (docId: string, startX: number, startY: number) => {
+      let active = false;
+      const onMove = (e: MouseEvent) => {
+        if (!active && Math.hypot(e.clientX - startX, e.clientY - startY) < DOC_DRAG_THRESHOLD_PX)
+          return;
+        if (!active) {
+          active = true;
+          setDragDocId(docId);
+        }
+        setDropTarget(dropTargetAt(e.clientX, e.clientY));
+      };
+      const onUp = (e: MouseEvent) => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        if (active) {
+          const target = dropTargetAt(e.clientX, e.clientY);
+          if (target !== null) api.moveDoc(docId, target);
+        }
+        setDragDocId(null);
+        setDropTarget(null);
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [api, setDropTarget],
+  );
+
+  return { dragDocId, startDrag };
+}
+
 async function importBrowserFiles(
   api: ContextLibraryApi,
   files: FileList,
@@ -140,15 +190,33 @@ function RowActions({
 
 function DocRow({
   doc,
+  dragging,
+  onDragStart,
   onEdit,
   onRemove,
 }: {
   doc: ContextDoc;
+  dragging: boolean;
+  onDragStart: (x: number, y: number) => void;
   onEdit: () => void;
   onRemove: () => void;
 }) {
+  const onMouseDown = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    if (e.target instanceof Element && e.target.closest("button")) return;
+    e.preventDefault();
+    onDragStart(e.clientX, e.clientY);
+  };
   return (
-    <div className="group flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-white/5">
+    <div
+      onMouseDown={onMouseDown}
+      title="Перетащи, чтобы переложить в папку"
+      className={cn(
+        "group flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-white/5",
+        dragging && "opacity-40",
+      )}
+    >
+      <GripVertical className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50" />
       <RowIconBadge>
         <FileText className="size-3.5 text-muted-foreground" />
       </RowIconBadge>
@@ -335,6 +403,7 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useNativeFileDrop(api, setDropTarget, setImportError);
+  const { dragDocId, startDrag } = useDocDrag(api, setDropTarget);
 
   const saveDocDraft = () => {
     if (!docDraft) return;
@@ -465,6 +534,10 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
               <DocRow
                 key={doc.id}
                 doc={doc}
+                dragging={dragDocId === doc.id}
+                onDragStart={(x, y) => {
+                  startDrag(doc.id, x, y);
+                }}
                 onEdit={() => {
                   setDocDraft({
                     id: doc.id,
@@ -509,6 +582,10 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
                   <DocRow
                     key={doc.id}
                     doc={doc}
+                    dragging={dragDocId === doc.id}
+                    onDragStart={(x, y) => {
+                      startDrag(doc.id, x, y);
+                    }}
                     onEdit={() => {
                       setDocDraft({
                         id: doc.id,
