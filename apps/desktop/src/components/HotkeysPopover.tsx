@@ -1,5 +1,6 @@
 import { Keyboard } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { hotkeyGroups, type HotkeyGroup, type HotkeyHint } from "@/lib/hotkeys";
 
 export interface HotkeysPopoverProps {
   hotkey: string;
@@ -7,36 +8,34 @@ export interface HotkeysPopoverProps {
   teleprompterHotkey: string;
 }
 
-type Hint = [combo: string, label: string];
-
-function hintsFor({ hotkey, toggleHotkey, teleprompterHotkey }: HotkeysPopoverProps): Hint[] {
-  return [
-    [hotkey, "записать системный звук (зажать)"],
-    ["Esc", "отменить запись"],
-    ["⏎", "отправить"],
-    ["⇧⏎", "перенос строки"],
-    ["⌘V", "вставить скриншот"],
-    [toggleHotkey, "скрыть/показать окно"],
-    [teleprompterHotkey, "суфлёр"],
-    ["⌘←→↑↓", "передвинуть окно"],
-    ["⌘⇧←→↑↓", "изменить размер окна"],
-    ["⌥↑↓", "скролл чата"],
-    ["⌘⇧ + / −", "прозрачность окна"],
-  ];
-}
-
-function HintRow({ combo, label }: { combo: string; label: string }) {
+function HintRow({ combo, label }: HotkeyHint) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-[11px] text-muted-foreground">{label}</span>
-      <kbd className="shrink-0 rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10.5px] text-foreground/80">
+    <div className="flex items-center gap-2.5">
+      <kbd className="inline-flex min-w-[76px] shrink-0 items-center justify-center rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-foreground/85">
         {combo}
       </kbd>
+      <span className="min-w-0 truncate text-[11px] text-muted-foreground">{label}</span>
     </div>
   );
 }
 
+function HintGroup({ title, hints }: HotkeyGroup) {
+  return (
+    <section className="flex flex-col gap-1">
+      <h4 className="font-mono text-[9.5px] tracking-wider text-primary/70 uppercase">{title}</h4>
+      {hints.map((hint) => (
+        <HintRow key={hint.label} {...hint} />
+      ))}
+    </section>
+  );
+}
+
 export function HotkeysPopover(props: HotkeysPopoverProps) {
+  const groups = hotkeyGroups({
+    ptt: props.hotkey,
+    toggleWindow: props.toggleHotkey,
+    teleprompter: props.teleprompterHotkey,
+  });
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -50,9 +49,9 @@ export function HotkeysPopover(props: HotkeysPopoverProps) {
         </button>
       </PopoverTrigger>
       <PopoverContent side="bottom" align="end" className="max-h-[70vh] w-72 overflow-y-auto p-3">
-        <div className="flex flex-col gap-1.5">
-          {hintsFor(props).map(([combo, label]) => (
-            <HintRow key={label} combo={combo} label={label} />
+        <div className="flex flex-col gap-2.5">
+          {groups.map((group) => (
+            <HintGroup key={group.title} {...group} />
           ))}
         </div>
       </PopoverContent>
