@@ -9,7 +9,6 @@ export interface StatusBarProps {
   error: string | null;
   hotkey: string;
   toggleHotkey: string;
-  tabs: ReactNode;
   update: { version: string; busy: boolean; onOpen: () => void } | null;
   onOpenSettings: () => void;
   onClose: () => void;
@@ -36,7 +35,6 @@ export function StatusBar({
   error,
   hotkey,
   toggleHotkey,
-  tabs,
   update,
   onOpenSettings,
   onClose,
@@ -46,29 +44,25 @@ export function StatusBar({
   const onDragMouseDown = useWindowDrag();
 
   return (
-    <header className="flex flex-col gap-1.5" onMouseDown={onDragMouseDown}>
-      <div className="flex min-h-7 items-center justify-between gap-2">
-        <div className="no-scrollbar flex min-w-0 items-center gap-2 overflow-x-auto">
-          <WindowButtons toggleHotkey={toggleHotkey} onClose={onClose} onHide={onHide} />
-          <span
-            className={cn("size-2.5 shrink-0 rounded-full", statusDotClass(state, showError))}
-            aria-hidden
-          />
-          {tabs}
-        </div>
-        <div className="flex shrink-0 items-center gap-0.5">
-          {update && <UpdateBadge update={update} />}
-          <SettingsButton onClick={onOpenSettings} />
-        </div>
-      </div>
+    <header className="flex min-h-7 items-center gap-2" onMouseDown={onDragMouseDown}>
+      <WindowButtons toggleHotkey={toggleHotkey} onClose={onClose} onHide={onHide} />
       <span
+        className={cn("size-2.5 shrink-0 rounded-full", statusDotClass(state, showError))}
+        aria-hidden
+      />
+      <span
+        title={showError ? error : undefined}
         className={cn(
-          "truncate font-mono text-[11.5px]",
-          showError ? "whitespace-normal text-destructive" : "text-muted-foreground",
+          "min-w-0 flex-1 truncate font-mono text-[11.5px]",
+          showError ? "text-destructive" : "text-muted-foreground",
         )}
       >
         {showError ? error : statusTextFor(state, hotkey)}
       </span>
+      <div className="flex shrink-0 items-center gap-0.5">
+        {update && <UpdateBadge update={update} />}
+        <SettingsButton onClick={onOpenSettings} />
+      </div>
     </header>
   );
 }

@@ -138,7 +138,6 @@ export interface ChatsApi {
   active: Chat;
   newChat: () => void;
   removeChat: (id: string) => void;
-  renameChat: (id: string, title: string) => void;
   setChatPreset: (id: string, presetId: string) => void;
   setChatThinking: (id: string, enabled: boolean) => void;
   setChatModel: (id: string, model: string) => void;
@@ -188,15 +187,6 @@ export function useChats(): ChatsApi {
       return next;
     });
   }, []);
-
-  const renameChat = useCallback(
-    (id: string, title: string) => {
-      const trimmed = title.trim();
-      if (trimmed === "") return;
-      patch(id, (c) => ({ ...c, title: trimmed, titlePinned: true }));
-    },
-    [patch],
-  );
 
   const setChatPreset = useCallback(
     (id: string, presetId: string) => {
@@ -321,7 +311,6 @@ export function useChats(): ChatsApi {
     active,
     newChat,
     removeChat,
-    renameChat,
     setChatPreset,
     setChatThinking,
     setChatModel,
