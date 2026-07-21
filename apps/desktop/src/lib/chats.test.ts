@@ -16,6 +16,7 @@ function chatWith(messages: Chat["messages"], extra: Partial<Chat> = {}): Chat {
     model: "claude-opus-4-8",
     webSearch: false,
     context: "",
+    libraryDocIds: [],
     ...extra,
   };
 }

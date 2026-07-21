@@ -1,4 +1,12 @@
-import { ArrowUp, Eraser, NotebookText, RotateCcw, SlidersHorizontal, Square } from "lucide-react";
+import {
+  ArrowUp,
+  Check,
+  Eraser,
+  NotebookText,
+  RotateCcw,
+  SlidersHorizontal,
+  Square,
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -27,6 +35,12 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { extractImageItems } from "@/lib/composer";
 import type { Attachment } from "@/lib/composer";
+import {
+  docsInFolder,
+  rootDocs,
+  type ContextDoc,
+  type ContextLibrary,
+} from "@/lib/context-library";
 import { modelLabel, selectableModels, thinkingLocked, type ModelInfo } from "@/lib/models";
 import { AttachmentChip } from "./AttachmentChip";
 
@@ -53,6 +67,9 @@ export interface ComposerProps {
   onWebSearchChange: (enabled: boolean) => void;
   context: string;
   onContextChange: (context: string) => void;
+  library: ContextLibrary;
+  libraryDocIds: string[];
+  onLibraryDocsChange: (ids: string[]) => void;
   models: ModelInfo[];
   disabled: boolean;
 }
@@ -401,9 +418,79 @@ function ComposerToolbar(props: ComposerToolbarProps) {
 interface ChatContextDialogProps {
   open: boolean;
   draft: string;
+  library: ContextLibrary;
+  selectedDocIds: string[];
   onDraftChange: (draft: string) => void;
+  onToggleDoc: (id: string) => void;
   onCancel: () => void;
   onSave: () => void;
+}
+
+function LibraryDocToggle({
+  doc,
+  selected,
+  onToggle,
+}: {
+  doc: ContextDoc;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[12px] transition-colors ${
+        selected ? "bg-white/10 text-foreground" : "text-muted-foreground hover:bg-white/5"
+      }`}
+    >
+      <Check className={`size-3.5 shrink-0 ${selected ? "" : "opacity-0"}`} />
+      <span className="min-w-0 truncate">{doc.name}</span>
+    </button>
+  );
+}
+
+function LibraryPicker({
+  library,
+  selectedDocIds,
+  onToggleDoc,
+}: {
+  library: ContextLibrary;
+  selectedDocIds: string[];
+  onToggleDoc: (id: string) => void;
+}) {
+  if (library.docs.length === 0) {
+    return (
+      <p className="text-[11px] text-muted-foreground">
+        Библиотека пуста — материалы добавляются в Настройках, вкладка «Контексты».
+      </p>
+    );
+  }
+  const selected = new Set(selectedDocIds);
+  const groups = [
+    { id: "", name: library.folders.length > 0 ? "Без папки" : "", docs: rootDocs(library) },
+    ...library.folders.map((f) => ({ id: f.id, name: f.name, docs: docsInFolder(library, f.id) })),
+  ].filter((g) => g.docs.length > 0);
+  return (
+    <div className="flex max-h-48 flex-col gap-1 overflow-y-auto">
+      {groups.map((g) => (
+        <div key={g.id} className="flex flex-col gap-0.5">
+          {g.name !== "" && (
+            <span className="px-2 pt-1 text-[10.5px] font-medium text-foreground/55">{g.name}</span>
+          )}
+          {g.docs.map((doc) => (
+            <LibraryDocToggle
+              key={doc.id}
+              doc={doc}
+              selected={selected.has(doc.id)}
+              onToggle={() => {
+                onToggleDoc(doc.id);
+              }}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function ChatContextDialog(props: ChatContextDialogProps) {
@@ -418,19 +505,30 @@ function ChatContextDialog(props: ChatContextDialogProps) {
         <DialogHeader>
           <DialogTitle>Контекст чата</DialogTitle>
         </DialogHeader>
-        <p className="text-[12px] text-muted-foreground">
-          Постоянный справочный текст этого чата (вакансия, резюме, конспект…) — уходит в системный
-          промпт каждого запроса и сохраняется на диск.
-        </p>
-        <Textarea
-          rows={10}
-          value={props.draft}
-          onChange={(e) => {
-            props.onDraftChange(e.target.value);
-          }}
-          placeholder="Вставь сюда справочные материалы"
-          className="field-sizing-fixed max-h-64 overflow-y-auto"
-        />
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[10.5px] font-medium text-foreground/55">Из библиотеки</span>
+          <LibraryPicker
+            library={props.library}
+            selectedDocIds={props.selectedDocIds}
+            onToggleDoc={props.onToggleDoc}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[10.5px] font-medium text-foreground/55">Свой текст</span>
+          <p className="text-[11px] text-muted-foreground">
+            Уникальный справочный текст этого чата — уходит в системный промпт каждого запроса
+            вместе с выбранными материалами.
+          </p>
+          <Textarea
+            rows={6}
+            value={props.draft}
+            onChange={(e) => {
+              props.onDraftChange(e.target.value);
+            }}
+            placeholder="Вставь сюда справочные материалы"
+            className="field-sizing-fixed max-h-40 overflow-y-auto"
+          />
+        </div>
         <DialogFooter>
           <Button variant="ghost" onClick={props.onCancel}>
             Отмена
@@ -447,15 +545,21 @@ export function Composer(props: ComposerProps) {
   const thinkingDisabled = thinkingLocked(modelOptions, props.model);
   const [contextOpen, setContextOpen] = useState(false);
   const [contextDraft, setContextDraft] = useState("");
+  const [selectedDraft, setSelectedDraft] = useState<string[]>([]);
   const openContextDialog = () => {
     setContextDraft(props.context);
+    setSelectedDraft(props.libraryDocIds);
     setContextOpen(true);
   };
   const closeContextDialog = () => {
     setContextOpen(false);
   };
+  const toggleSelectedDoc = (id: string) => {
+    setSelectedDraft((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
   const saveContext = () => {
     props.onContextChange(contextDraft);
+    props.onLibraryDocsChange(selectedDraft);
     setContextOpen(false);
   };
   return (
@@ -471,7 +575,7 @@ export function Composer(props: ComposerProps) {
         <ComposerToolbar
           disabled={props.disabled}
           onClear={props.onClear}
-          hasContext={props.context.trim() !== ""}
+          hasContext={props.context.trim() !== "" || props.libraryDocIds.length > 0}
           onOpenContext={openContextDialog}
           showRetry={props.showRetry}
           onRetry={props.onRetry}
@@ -494,7 +598,10 @@ export function Composer(props: ComposerProps) {
       <ChatContextDialog
         open={contextOpen}
         draft={contextDraft}
+        library={props.library}
+        selectedDocIds={selectedDraft}
         onDraftChange={setContextDraft}
+        onToggleDoc={toggleSelectedDoc}
         onCancel={closeContextDialog}
         onSave={saveContext}
       />

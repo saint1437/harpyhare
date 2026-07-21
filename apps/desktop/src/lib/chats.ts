@@ -28,6 +28,7 @@ export interface Chat {
   model: string;
   webSearch: boolean;
   context: string;
+  libraryDocIds: string[];
 }
 
 const NEW_CHAT_DEFAULTS = {
@@ -38,6 +39,7 @@ const NEW_CHAT_DEFAULTS = {
   model: DEFAULT_MODEL,
   webSearch: false,
   context: "",
+  libraryDocIds: [],
 } satisfies Partial<Chat>;
 
 function uid(): string {
@@ -74,6 +76,7 @@ export function serializeChats(chats: Chat[]): string {
     model: c.model,
     webSearch: c.webSearch,
     context: c.context,
+    libraryDocIds: c.libraryDocIds,
     messages: c.messages.map((m) => ({ role: m.role, text: m.text, images: [] })),
     draft: c.draft,
     draftAttachments: [],
@@ -103,6 +106,9 @@ function restoreChat(c: unknown): Chat {
     model: typeof o.model === "string" && o.model !== "" ? o.model : NEW_CHAT_DEFAULTS.model,
     webSearch: typeof o.webSearch === "boolean" ? o.webSearch : NEW_CHAT_DEFAULTS.webSearch,
     context: typeof o.context === "string" ? o.context : NEW_CHAT_DEFAULTS.context,
+    libraryDocIds: Array.isArray(o.libraryDocIds)
+      ? o.libraryDocIds.filter((id): id is string => typeof id === "string")
+      : [],
     messages: Array.isArray(o.messages) ? o.messages.map(restoreMessage) : [],
     draft: typeof o.draft === "string" ? o.draft : NEW_CHAT_DEFAULTS.draft,
     draftAttachments: [],

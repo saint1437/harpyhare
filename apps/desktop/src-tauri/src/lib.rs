@@ -2,6 +2,7 @@ pub mod access;
 pub mod audio;
 pub mod capture;
 pub mod chats;
+pub mod context_import;
 pub mod hotkey;
 pub mod llm;
 pub mod preview_protocol;
@@ -25,6 +26,7 @@ use tokio_util::sync::CancellationToken;
 
 const SETTINGS_FILE_NAME: &str = "settings.json";
 const CHATS_FILE_NAME: &str = "chats.json";
+const CONTEXT_LIBRARY_FILE_NAME: &str = "context-library.json";
 const ENV_FILE_NAME: &str = ".env";
 const ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
 const GROQ_API_KEY_ENV: &str = "GROQ_API_KEY";
@@ -156,6 +158,9 @@ pub fn run() {
             list_models,
             load_chats,
             save_chats,
+            load_context_library,
+            save_context_library,
+            read_context_import_file,
             retry_transcription,
             get_settings,
             set_settings,
@@ -963,6 +968,25 @@ fn list_audio_output_devices() -> Vec<capture::OutputDeviceInfo> {
 fn request_audio_capture_permission(app: AppHandle) -> bool {
     rebuild_capture_now(&app);
     app.state::<App>().capture.lock().unwrap().is_some()
+}
+
+fn context_library_path(app: &AppHandle) -> std::path::PathBuf {
+    app_data_file(app, CONTEXT_LIBRARY_FILE_NAME)
+}
+
+#[tauri::command]
+fn load_context_library(app: AppHandle) -> String {
+    chats::load(&context_library_path(&app))
+}
+
+#[tauri::command]
+fn save_context_library(app: AppHandle, json: String) -> Result<(), String> {
+    chats::save(&context_library_path(&app), &json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn read_context_import_file(path: String) -> Result<String, String> {
+    context_import::read_import_file(std::path::Path::new(&path))
 }
 
 #[tauri::command]

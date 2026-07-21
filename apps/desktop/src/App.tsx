@@ -21,6 +21,7 @@ import { UpdateDialog } from "@/components/UpdateDialog";
 import { WarningBanner } from "@/components/WarningBanner";
 import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
+import { useContextLibrary, type ContextLibraryApi } from "@/hooks/useContextLibrary";
 import { useModels } from "@/hooks/useModels";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
 import { usePttSuspend } from "@/hooks/usePttSuspend";
@@ -52,6 +53,7 @@ import type {
 import { missingApiKeys, missingKeysNotice, type ApiKeyInfo } from "@/lib/api-keys";
 import type { Chat, ChatMessage } from "@/lib/chats";
 import { appendTranscript } from "@/lib/composer";
+import { libraryContextBlocks, type ContextLibrary } from "@/lib/context-library";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
 import type { ModelInfo } from "@/lib/models";
 import { mergePresets, presetText, type PromptPreset } from "@/lib/presets";
@@ -97,10 +99,11 @@ function historyWithNewUserMessage(
   ];
 }
 
-function chatSystemPrompt(presets: PromptPreset[], chat: Chat): string {
+function chatSystemPrompt(presets: PromptPreset[], chat: Chat, library: ContextLibrary): string {
   const context = chat.context.trim();
   return [
     presetText(presets, chat.presetId),
+    ...libraryContextBlocks(library, chat.libraryDocIds),
     context === "" ? "" : `${USER_CONTEXT_SYSTEM_HEADER}${context}`,
   ]
     .filter((s) => s !== "")
@@ -348,6 +351,7 @@ function useSendPipeline(
   chatsRef: RefObject<ChatsApi>,
   streamRef: RefObject<ClaudeStreams>,
   presetsRef: RefObject<PromptPreset[]>,
+  libraryRef: RefObject<ContextLibrary>,
   clearSttError: () => void,
   sendBlocked: boolean,
 ): SendPipeline {
@@ -363,7 +367,7 @@ function useSendPipeline(
       clearSttError();
       chatsRef.current.appendUserMessage(chat.id, trimmed, images);
       const history = historyWithNewUserMessage(chat, trimmed, images);
-      const system = chatSystemPrompt(presetsRef.current, chat);
+      const system = chatSystemPrompt(presetsRef.current, chat, libraryRef.current);
       void streamRef.current.send(
         chat.id,
         history,
@@ -373,7 +377,7 @@ function useSendPipeline(
         chat.webSearch,
       );
     },
-    [chatsRef, streamRef, presetsRef, clearSttError, sendBlockedRef],
+    [chatsRef, streamRef, presetsRef, libraryRef, clearSttError, sendBlockedRef],
   );
 
   const doSend = useCallback(() => {
@@ -465,6 +469,7 @@ interface AppComposerProps {
   chats: ChatsApi;
   models: ModelInfo[];
   presets: PromptPreset[];
+  library: ContextLibrary;
   streaming: boolean;
   showRetry: boolean;
   disabled: boolean;
@@ -477,6 +482,7 @@ function AppComposer({
   chats,
   models,
   presets,
+  library,
   streaming,
   showRetry,
   disabled,
@@ -525,6 +531,11 @@ function AppComposer({
       onContextChange={(context) => {
         chats.setChatContext(activeId, context);
       }}
+      library={library}
+      libraryDocIds={active.libraryDocIds}
+      onLibraryDocsChange={(ids) => {
+        chats.setChatLibraryDocs(activeId, ids);
+      }}
       models={models}
       disabled={disabled}
     />
@@ -534,6 +545,7 @@ function AppComposer({
 interface AppDialogsProps {
   settings: Settings;
   updater: UpdaterApi;
+  contextLibrary: ContextLibraryApi;
   settingsOpen: boolean;
   updateOpen: boolean;
   onCheckUpdates: () => Promise<UpdateInfo | null>;
@@ -547,6 +559,7 @@ interface AppDialogsProps {
 function AppDialogs({
   settings,
   updater,
+  contextLibrary,
   settingsOpen,
   updateOpen,
   onCheckUpdates,
@@ -562,6 +575,7 @@ function AppDialogs({
         open={settingsOpen}
         settings={settings}
         appVersion={updater.currentVersion}
+        contextLibrary={contextLibrary}
         onCheckUpdates={onCheckUpdates}
         onRedeem={onRedeem}
         onClose={onCloseSettings}
@@ -643,9 +657,12 @@ export default function App() {
     [officialPresets, settings.prompt_presets],
   );
 
+  const contextLibrary = useContextLibrary();
+
   const settingsRef = useLatestRef(settings);
   const presetsRef = useLatestRef(presets);
   const chatsRef = useLatestRef(chats);
+  const libraryRef = useLatestRef(contextLibrary.library);
 
   const onAssistantDone = useCallback(
     (chatId: string, text: string) => {
@@ -666,6 +683,7 @@ export default function App() {
     chatsRef,
     streamRef,
     presetsRef,
+    libraryRef,
     clearError,
     keysGate.keysMissing,
   );
@@ -798,6 +816,7 @@ export default function App() {
           chats={chats}
           models={models}
           presets={presets}
+          library={contextLibrary.library}
           streaming={activeStreaming}
           showRetry={showRetry}
           disabled={keysGate.keysMissing}
@@ -852,6 +871,7 @@ export default function App() {
       <AppDialogs
         settings={settings}
         updater={updater}
+        contextLibrary={contextLibrary}
         settingsOpen={settingsOpen}
         updateOpen={updateOpen}
         onCheckUpdates={checkUpdatesFromSettings}

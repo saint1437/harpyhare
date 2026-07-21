@@ -146,6 +146,18 @@ export async function saveChats(json: string): Promise<void> {
   await invokeOrNoopInBrowser("save_chats", { json });
 }
 
+export async function loadContextLibrary(): Promise<string> {
+  return invokeOrFallbackInBrowser("load_context_library", "");
+}
+
+export async function saveContextLibrary(json: string): Promise<void> {
+  await invokeOrNoopInBrowser("save_context_library", { json });
+}
+
+export async function readContextImportFile(path: string): Promise<string> {
+  return invokeOrFallbackInBrowser("read_context_import_file", "", { path });
+}
+
 export async function setPreviewHtml(html: string): Promise<void> {
   await invokeOrNoopInBrowser("set_preview_html", { html });
 }

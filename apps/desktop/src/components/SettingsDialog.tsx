@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AccessCodeForm } from "@/components/AccessCodeForm";
+import { ContextLibraryPanel } from "@/components/ContextLibraryPanel";
 import { HotkeyCapture } from "@/components/HotkeyCapture";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +23,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import type { ContextLibraryApi } from "@/hooks/useContextLibrary";
 import { listAudioOutputDevices } from "@/ipc/commands";
 import type { AudioOutputDevice, UpdateInfo } from "@/ipc/types";
 import type { Settings } from "@/ipc/types";
@@ -40,6 +42,7 @@ export interface SettingsDialogProps {
   open: boolean;
   settings: Settings;
   appVersion: string;
+  contextLibrary: ContextLibraryApi;
   onCheckUpdates: () => Promise<UpdateInfo | null>;
   onRedeem: (code: string) => Promise<string | null>;
   onClose: () => void;
@@ -48,10 +51,11 @@ export interface SettingsDialogProps {
 
 type CheckState = "idle" | "checking" | "latest" | "error";
 
-type TabId = "main" | "hotkeys" | "behavior" | "appearance" | "presets";
+type TabId = "main" | "contexts" | "hotkeys" | "behavior" | "appearance" | "presets";
 
 const SETTINGS_TABS: { id: TabId; label: string }[] = [
   { id: "main", label: "Основное" },
+  { id: "contexts", label: "Контексты" },
   { id: "hotkeys", label: "Горячие клавиши" },
   { id: "behavior", label: "Поведение" },
   { id: "appearance", label: "Вид" },
@@ -112,6 +116,7 @@ export function SettingsDialog({
   open,
   settings,
   appVersion,
+  contextLibrary,
   onCheckUpdates,
   onRedeem,
   onClose,
@@ -212,6 +217,7 @@ export function SettingsDialog({
             tab={tab}
             draft={draft}
             set={set}
+            contextLibrary={contextLibrary}
             onRedeem={onRedeem}
             onUpdatePreset={updatePreset}
             onAddPreset={addPreset}
@@ -280,6 +286,7 @@ function TabContent({
   tab,
   draft,
   set,
+  contextLibrary,
   onRedeem,
   onUpdatePreset,
   onAddPreset,
@@ -288,6 +295,7 @@ function TabContent({
   tab: TabId;
   draft: Settings;
   set: SetSetting;
+  contextLibrary: ContextLibraryApi;
   onRedeem: (code: string) => Promise<string | null>;
   onUpdatePreset: (index: number, patch: Partial<PromptPreset>) => void;
   onAddPreset: () => void;
@@ -305,6 +313,8 @@ function TabContent({
           </SectionGroup>
         </div>
       );
+    case "contexts":
+      return <ContextLibraryPanel api={contextLibrary} />;
     case "hotkeys":
       return (
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">

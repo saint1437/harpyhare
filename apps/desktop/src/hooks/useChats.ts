@@ -47,6 +47,7 @@ const EMPTY_CHAT: Chat = {
   model: DEFAULT_MODEL,
   webSearch: false,
   context: "",
+  libraryDocIds: [],
 };
 
 function readAsDataUrl(file: File): Promise<string> {
@@ -143,6 +144,7 @@ export interface ChatsApi {
   setChatModel: (id: string, model: string) => void;
   setChatWebSearch: (id: string, enabled: boolean) => void;
   setChatContext: (id: string, context: string) => void;
+  setChatLibraryDocs: (id: string, libraryDocIds: string[]) => void;
   selectChat: (id: string) => void;
   setDraft: (id: string, draft: string, draftAttachments: Attachment[]) => void;
   addDraftAttachments: (id: string, items: DataTransferItemList) => Promise<void>;
@@ -219,6 +221,13 @@ export function useChats(): ChatsApi {
   const setChatContext = useCallback(
     (id: string, context: string) => {
       patch(id, (c) => ({ ...c, context }));
+    },
+    [patch],
+  );
+
+  const setChatLibraryDocs = useCallback(
+    (id: string, libraryDocIds: string[]) => {
+      patch(id, (c) => ({ ...c, libraryDocIds }));
     },
     [patch],
   );
@@ -316,6 +325,7 @@ export function useChats(): ChatsApi {
     setChatModel,
     setChatWebSearch,
     setChatContext,
+    setChatLibraryDocs,
     selectChat,
     setDraft,
     addDraftAttachments,
