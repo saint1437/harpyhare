@@ -48,9 +48,9 @@ function indexedChatTitle(index: number): string {
   return `${UNTITLED_CHAT_TITLE} ${index}`;
 }
 
-export function createChat(index: number): Chat {
+export function createChat(index: number, id: string = uid()): Chat {
   return {
-    id: uid(),
+    id,
     title: indexedChatTitle(index),
     messages: [],
     draftAttachments: [],

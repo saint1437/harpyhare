@@ -166,13 +166,13 @@ export function useChats(): ChatsApi {
   }, []);
 
   const newChat = useCallback(() => {
-    setChats((prev) => {
-      if (prev.length >= CHAT_LIMIT) return prev;
-      const next = createChat(prev.length + 1);
-      setActiveId(next.id);
-      return [...prev, next];
-    });
-  }, []);
+    if (chats.length >= CHAT_LIMIT) return;
+    const id = crypto.randomUUID();
+    setChats((prev) =>
+      prev.length >= CHAT_LIMIT ? prev : [...prev, createChat(prev.length + 1, id)],
+    );
+    setActiveId(id);
+  }, [chats.length]);
 
   const removeChat = useCallback((id: string) => {
     setChats((prev) => {

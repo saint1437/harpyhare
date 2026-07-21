@@ -7,6 +7,7 @@ const DEFAULT_TELEPROMPTER_HOTKEY: &str = "F10";
 const DEFAULT_WINDOW_OPACITY: f64 = 0.9;
 const DEFAULT_MOVE_STEP: u32 = 20;
 const DEFAULT_RESIZE_STEP: u32 = 20;
+const DEFAULT_SCROLL_STEP: u32 = 120;
 const DEFAULT_CHAT_FONT_SIZE: f64 = 13.5;
 const DEFAULT_STT_LANGUAGE: &str = "ru";
 const THEME_GRAY: &str = "gray";
@@ -20,6 +21,8 @@ const WINDOW_OPACITY_MIN: f64 = 0.2;
 const WINDOW_OPACITY_MAX: f64 = 1.0;
 const MOVE_STEP_MIN: u32 = 1;
 const MOVE_STEP_MAX: u32 = 200;
+const SCROLL_STEP_MIN: u32 = 10;
+const SCROLL_STEP_MAX: u32 = 1000;
 const CHAT_FONT_SIZE_MIN: f64 = 10.0;
 const CHAT_FONT_SIZE_MAX: f64 = 20.0;
 const TELEPROMPTER_SPEED_MIN: f64 = 10.0;
@@ -69,6 +72,7 @@ pub struct Settings {
     pub resize_step: u32,
     pub capture_device_uid: String,
     pub theme: String,
+    pub scroll_step: u32,
 }
 
 impl Default for Settings {
@@ -99,6 +103,7 @@ impl Default for Settings {
             resize_step: DEFAULT_RESIZE_STEP,
             capture_device_uid: String::new(),
             theme: THEME_GRAY.into(),
+            scroll_step: DEFAULT_SCROLL_STEP,
         }
     }
 }
@@ -135,6 +140,7 @@ impl Settings {
         if self.theme != THEME_GRAY && self.theme != THEME_BLACK {
             self.theme = THEME_GRAY.into();
         }
+        self.scroll_step = self.scroll_step.clamp(SCROLL_STEP_MIN, SCROLL_STEP_MAX);
     }
 
     pub fn load(path: &Path) -> std::io::Result<Self> {
@@ -295,6 +301,18 @@ mod tests {
         assert_eq!(s.resize_step, 20);
         assert_eq!(s.capture_device_uid, "");
         assert_eq!(s.theme, "gray");
+        assert_eq!(s.scroll_step, 120);
+    }
+
+    #[test]
+    fn clamp_limits_scroll_step() {
+        let mut s = Settings::default();
+        s.scroll_step = 1;
+        s.clamp();
+        assert_eq!(s.scroll_step, 10);
+        s.scroll_step = 100_000;
+        s.clamp();
+        assert_eq!(s.scroll_step, 1000);
     }
 
     #[test]

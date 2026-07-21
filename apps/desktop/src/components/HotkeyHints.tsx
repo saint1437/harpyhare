@@ -13,6 +13,7 @@ const STATIC_HINTS: Hint[] = [
   ["⌘V", "скриншот"],
   ["⌘←→↑↓", "окно"],
   ["⌘⇧←→↑↓", "размер"],
+  ["⌥↑↓", "скролл"],
 ];
 
 export function HotkeyHints({ hotkey }: HotkeyHintsProps) {

@@ -779,6 +779,7 @@ export default function App() {
           partial={partial}
           streaming={activeStreaming}
           streamStartedAt={stream.startedAt[activeId]}
+          scrollStep={settings.scroll_step}
           onTogglePreview={togglePreview}
         />
 

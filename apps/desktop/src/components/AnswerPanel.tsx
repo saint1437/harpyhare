@@ -1,5 +1,5 @@
 import { isValidElement, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import Markdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -15,8 +15,11 @@ export interface AnswerPanelProps {
   partial: string | null;
   streaming: boolean;
   streamStartedAt?: number;
+  scrollStep?: number;
   onTogglePreview: (code: string) => void;
 }
+
+const FALLBACK_SCROLL_STEP_PX = 120;
 
 const NEAR_BOTTOM_PX = 40;
 const EXTERNAL_HTTP_URL = /^https?:\/\//;
@@ -119,6 +122,22 @@ function StreamingAssistant({ text, components }: { text: string; components: Co
   );
 }
 
+function useHotkeyScroll(scrollRef: RefObject<HTMLDivElement | null>, stepPx: number): void {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.altKey || e.metaKey || e.ctrlKey) return;
+      const dir = e.code === "ArrowDown" ? 1 : e.code === "ArrowUp" ? -1 : 0;
+      if (dir === 0) return;
+      e.preventDefault();
+      scrollRef.current?.scrollBy({ top: dir * stepPx, behavior: "smooth" });
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [scrollRef, stepPx]);
+}
+
 function useStickToBottom() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
@@ -216,9 +235,11 @@ export function AnswerPanel({
   partial,
   streaming,
   streamStartedAt,
+  scrollStep,
   onTogglePreview,
 }: AnswerPanelProps) {
   const { scrollRef, showJump, onScroll, scrollIfNearBottom, resetToBottom } = useStickToBottom();
+  useHotkeyScroll(scrollRef, scrollStep ?? FALLBACK_SCROLL_STEP_PX);
 
   useEffect(() => {
     scrollIfNearBottom();
