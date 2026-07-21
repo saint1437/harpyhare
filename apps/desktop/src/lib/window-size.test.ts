@@ -22,7 +22,7 @@ describe("stepWindowSize", () => {
   });
 
   it("клампит по минимуму ширины", () => {
-    expect(stepWindowSize({ width: 890, height: 680 }, "width", -1, 40).width).toBe(
+    expect(stepWindowSize({ width: 320, height: 680 }, "width", -1, 40).width).toBe(
       WINDOW_WIDTH_MIN_PX,
     );
   });

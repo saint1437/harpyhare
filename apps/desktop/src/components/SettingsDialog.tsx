@@ -84,6 +84,8 @@ const WINDOW_OPACITY_STEP = 0.05;
 
 const MOVE_STEP_MIN_PX = 1;
 const MOVE_STEP_MAX_PX = 200;
+const RESIZE_STEP_MIN_PX = 1;
+const RESIZE_STEP_MAX_PX = 200;
 
 const PRESET_TEXT_ROWS = 3;
 
@@ -622,6 +624,17 @@ function SlidersSection({ draft, set }: SectionProps) {
           value={draft.move_step}
           onChange={(e) => {
             set("move_step", Number(e.target.value));
+          }}
+        />
+      </Field>
+      <Field label="Шаг изменения размера (⌘⇧+стрелки), px">
+        <Input
+          type="number"
+          min={RESIZE_STEP_MIN_PX}
+          max={RESIZE_STEP_MAX_PX}
+          value={draft.resize_step}
+          onChange={(e) => {
+            set("resize_step", Number(e.target.value));
           }}
         />
       </Field>

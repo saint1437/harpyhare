@@ -1,4 +1,4 @@
-export const WINDOW_WIDTH_MIN_PX = 880;
+export const WINDOW_WIDTH_MIN_PX = 300;
 export const WINDOW_WIDTH_MAX_PX = 1600;
 export const WINDOW_HEIGHT_MIN_PX = 520;
 export const WINDOW_HEIGHT_MAX_PX = 1100;

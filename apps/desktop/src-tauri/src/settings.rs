@@ -6,6 +6,7 @@ const DEFAULT_TOGGLE_HOTKEY: &str = "Cmd+Shift+H";
 const DEFAULT_TELEPROMPTER_HOTKEY: &str = "F10";
 const DEFAULT_WINDOW_OPACITY: f64 = 0.9;
 const DEFAULT_MOVE_STEP: u32 = 20;
+const DEFAULT_RESIZE_STEP: u32 = 20;
 const DEFAULT_CHAT_FONT_SIZE: f64 = 13.5;
 const DEFAULT_STT_LANGUAGE: &str = "ru";
 const DEFAULT_TELEPROMPTER_SPEED: f64 = 40.0;
@@ -23,7 +24,7 @@ const TELEPROMPTER_SPEED_MIN: f64 = 10.0;
 const TELEPROMPTER_SPEED_MAX: f64 = 150.0;
 const TELEPROMPTER_FONT_SIZE_MIN: f64 = 20.0;
 const TELEPROMPTER_FONT_SIZE_MAX: f64 = 48.0;
-const WINDOW_WIDTH_MIN: f64 = 880.0;
+const WINDOW_WIDTH_MIN: f64 = 300.0;
 const WINDOW_WIDTH_MAX: f64 = 1600.0;
 const WINDOW_HEIGHT_MIN: f64 = 520.0;
 const WINDOW_HEIGHT_MAX: f64 = 1100.0;
@@ -63,6 +64,7 @@ pub struct Settings {
     pub teleprompter_resume: bool,
     pub window_width: f64,
     pub window_height: f64,
+    pub resize_step: u32,
 }
 
 impl Default for Settings {
@@ -90,6 +92,7 @@ impl Default for Settings {
             teleprompter_resume: true,
             window_width: DEFAULT_WINDOW_WIDTH,
             window_height: DEFAULT_WINDOW_HEIGHT,
+            resize_step: DEFAULT_RESIZE_STEP,
         }
     }
 }
@@ -122,6 +125,7 @@ impl Settings {
             self.window_height = DEFAULT_WINDOW_HEIGHT;
         }
         self.window_height = self.window_height.clamp(WINDOW_HEIGHT_MIN, WINDOW_HEIGHT_MAX);
+        self.resize_step = self.resize_step.clamp(MOVE_STEP_MIN, MOVE_STEP_MAX);
     }
 
     pub fn load(path: &Path) -> std::io::Result<Self> {
@@ -205,6 +209,7 @@ mod tests {
         assert!(s.teleprompter_resume);
         assert_eq!(s.window_width, 960.0);
         assert_eq!(s.window_height, 680.0);
+        assert_eq!(s.resize_step, 20);
     }
 
     #[test]
@@ -255,7 +260,7 @@ mod tests {
         s.window_width = 100.0;
         s.window_height = 100.0;
         s.clamp();
-        assert_eq!(s.window_width, 880.0);
+        assert_eq!(s.window_width, 300.0);
         assert_eq!(s.window_height, 520.0);
         s.window_width = 5000.0;
         s.window_height = 5000.0;
@@ -277,6 +282,18 @@ mod tests {
         let s = Settings::load(&path).unwrap();
         assert_eq!(s.window_width, 960.0);
         assert_eq!(s.window_height, 680.0);
+        assert_eq!(s.resize_step, 20);
+    }
+
+    #[test]
+    fn clamp_limits_resize_step() {
+        let mut s = Settings::default();
+        s.resize_step = 1000;
+        s.clamp();
+        assert_eq!(s.resize_step, 200);
+        s.resize_step = 0;
+        s.clamp();
+        assert_eq!(s.resize_step, 1);
     }
 
     #[test]

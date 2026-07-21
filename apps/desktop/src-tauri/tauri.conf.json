@@ -24,7 +24,7 @@
         "alwaysOnTop": true,
         "visibleOnAllWorkspaces": true,
         "contentProtected": true,
-        "minWidth": 720,
+        "minWidth": 300,
         "minHeight": 360
       }
     ],

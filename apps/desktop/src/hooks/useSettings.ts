@@ -73,7 +73,7 @@ function useBumpWindowSize(
           { width: prev.window_width, height: prev.window_height },
           dim,
           dir,
-          prev.move_step,
+          prev.resize_step,
         );
         const updated = { ...prev, window_width: next.width, window_height: next.height };
         clearTimeout(persistTimer.current);

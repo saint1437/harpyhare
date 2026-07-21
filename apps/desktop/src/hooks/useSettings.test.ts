@@ -76,7 +76,7 @@ describe("useSettings", () => {
   });
 
   it("bumpWindowSize клампит по минимуму ширины", async () => {
-    getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, window_width: 880 });
+    getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, window_width: 300 });
     const { result } = renderHook(() => useSettings());
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -84,7 +84,19 @@ describe("useSettings", () => {
     act(() => {
       result.current.bumpWindowSize("width", -1);
     });
-    expect(result.current.settings.window_width).toBe(880);
+    expect(result.current.settings.window_width).toBe(300);
+  });
+
+  it("bumpWindowSize шагает на resize_step, а не move_step", async () => {
+    getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, move_step: 20, resize_step: 50 });
+    const { result } = renderHook(() => useSettings());
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    act(() => {
+      result.current.bumpWindowSize("width", 1);
+    });
+    expect(result.current.settings.window_width).toBe(1010);
   });
 
   it("bumpOpacity меняет прозрачность, применяет и персистит с дебаунсом", async () => {

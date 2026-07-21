@@ -26,6 +26,7 @@ export interface Settings {
   teleprompter_resume: boolean;
   window_width: number;
   window_height: number;
+  resize_step: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -51,6 +52,7 @@ export const DEFAULT_SETTINGS: Settings = {
   teleprompter_resume: true,
   window_width: 960,
   window_height: 680,
+  resize_step: 20,
 };
 
 export type RecorderState = "idle" | "recording" | "transcribing";
