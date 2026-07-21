@@ -193,7 +193,12 @@ export function SettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="flex h-[92vh] w-[95vw] max-w-[95vw] flex-col gap-4 rounded-[22px] p-4 sm:max-w-[95vw] sm:p-6">
+      <DialogContent
+        className="flex h-[92vh] w-[95vw] max-w-[95vw] flex-col gap-4 rounded-[22px] p-4 sm:max-w-[95vw] sm:p-6"
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Настройки</DialogTitle>
         </DialogHeader>
@@ -252,7 +257,7 @@ function TabBar({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => 
             onSelect(t.id);
           }}
           className={cn(
-            "relative shrink-0 px-3 py-1.5 text-[12.5px] whitespace-nowrap transition-colors",
+            "relative shrink-0 px-3 py-1.5 text-[12.5px] whitespace-nowrap transition-colors outline-none focus-visible:outline-2 focus-visible:outline-ring",
             active === t.id ? "text-foreground" : "text-muted-foreground hover:text-foreground",
           )}
         >

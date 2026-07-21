@@ -40,7 +40,7 @@ import {
   startWindowDrag,
 } from "@/ipc/commands";
 import { isTauri } from "@/ipc/env";
-import { onEvent } from "@/ipc/events";
+import { onEvent, onWindowResized, type LogicalWindowSize } from "@/ipc/events";
 import type {
   ChatMessageDto,
   ImagePayload,
@@ -273,16 +273,58 @@ function usePreviewPanel(): PreviewPanelState {
   return { previewHtml, previewOpen, openPreview, togglePreview, closePreview };
 }
 
+const PROGRAMMATIC_RESIZE_GUARD_MS = 600;
+const NATIVE_SIZE_EPSILON_PX = 1.5;
+
+function sizesEqual(a: LogicalWindowSize, b: LogicalWindowSize): boolean {
+  return (
+    Math.abs(a.width - b.width) < NATIVE_SIZE_EPSILON_PX &&
+    Math.abs(a.height - b.height) < NATIVE_SIZE_EPSILON_PX
+  );
+}
+
 function useWindowFrameSync(
   windowWidth: number,
   windowHeight: number,
   previewOpen: boolean,
   ready: boolean,
+  nativeSizeRef: RefObject<LogicalWindowSize>,
+  guardUntilRef: RefObject<number>,
 ): void {
   useEffect(() => {
     if (!ready) return;
-    void setWindowSize(windowWidth + (previewOpen ? PREVIEW_EXTRA_WIDTH_PX : 0), windowHeight);
-  }, [windowWidth, windowHeight, previewOpen, ready]);
+    const target = {
+      width: windowWidth + (previewOpen ? PREVIEW_EXTRA_WIDTH_PX : 0),
+      height: windowHeight,
+    };
+    if (!sizesEqual(target, nativeSizeRef.current)) {
+      guardUntilRef.current = Date.now() + PROGRAMMATIC_RESIZE_GUARD_MS;
+    }
+    void setWindowSize(target.width, target.height);
+  }, [windowWidth, windowHeight, previewOpen, ready, nativeSizeRef, guardUntilRef]);
+}
+
+function useNativeResizeSync(
+  previewOpen: boolean,
+  ready: boolean,
+  nativeSizeRef: RefObject<LogicalWindowSize>,
+  guardUntilRef: RefObject<number>,
+  applyNativeWindowSize: (width: number, height: number) => void,
+): void {
+  const previewOpenRef = useLatestRef(previewOpen);
+  const readyRef = useLatestRef(ready);
+  const applyRef = useLatestRef(applyNativeWindowSize);
+  useEffect(
+    () =>
+      onWindowResized((size) => {
+        nativeSizeRef.current = size;
+        if (!readyRef.current) return;
+        if (Date.now() < guardUntilRef.current) return;
+        const base = size.width - (previewOpenRef.current ? PREVIEW_EXTRA_WIDTH_PX : 0);
+        applyRef.current(base, size.height);
+      }),
+    [nativeSizeRef, guardUntilRef, previewOpenRef, readyRef, applyRef],
+  );
 }
 
 function useBrowserDemoSeed(activeId: string, chatsRef: RefObject<ChatsApi>): void {
@@ -519,6 +561,7 @@ export default function App() {
     reload,
     bumpOpacity,
     bumpWindowSize,
+    applyNativeWindowSize,
   } = useSettings();
   const state = useRecorder();
   const chats = useChats();
@@ -543,7 +586,23 @@ export default function App() {
   const { sttError, showRetry, setSttError, clearError, clearFeedback, retry } =
     useSttFeedback(state);
   const { previewHtml, previewOpen, openPreview, togglePreview, closePreview } = usePreviewPanel();
-  useWindowFrameSync(settings.window_width, settings.window_height, previewOpen, !settingsLoading);
+  const nativeSizeRef = useRef<LogicalWindowSize>({ width: 0, height: 0 });
+  const resizeGuardUntilRef = useRef(0);
+  useWindowFrameSync(
+    settings.window_width,
+    settings.window_height,
+    previewOpen,
+    !settingsLoading,
+    nativeSizeRef,
+    resizeGuardUntilRef,
+  );
+  useNativeResizeSync(
+    previewOpen,
+    !settingsLoading,
+    nativeSizeRef,
+    resizeGuardUntilRef,
+    applyNativeWindowSize,
+  );
   const chatColumnWidth = settings.window_width - SHELL_PADDING_PX * 2;
 
   const officialPresets = useOfficialPresets();

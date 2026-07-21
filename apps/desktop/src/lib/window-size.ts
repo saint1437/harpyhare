@@ -14,6 +14,13 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+export function clampWindowSize(size: WindowSize): WindowSize {
+  return {
+    width: clamp(size.width, WINDOW_WIDTH_MIN_PX, WINDOW_WIDTH_MAX_PX),
+    height: clamp(size.height, WINDOW_HEIGHT_MIN_PX, WINDOW_HEIGHT_MAX_PX),
+  };
+}
+
 export function stepWindowSize(
   size: WindowSize,
   dim: WindowDimension,

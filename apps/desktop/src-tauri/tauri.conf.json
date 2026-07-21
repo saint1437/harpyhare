@@ -21,12 +21,11 @@
         "height": 680,
         "transparent": true,
         "decorations": false,
-        "resizable": false,
         "alwaysOnTop": true,
         "visibleOnAllWorkspaces": true,
         "contentProtected": true,
         "minWidth": 300,
-        "minHeight": 360
+        "minHeight": 520
       }
     ],
     "security": {
