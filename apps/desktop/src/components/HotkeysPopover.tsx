@@ -28,7 +28,7 @@ export function HotkeysPopover(props: HotkeysPopoverProps) {
           <Keyboard className="size-4.5" />
         </button>
       </PopoverTrigger>
-      <PopoverContent side="bottom" align="end" className="max-h-[70vh] w-72 overflow-y-auto p-3">
+      <PopoverContent side="bottom" align="end" className="max-h-[70vh] w-80 overflow-y-auto p-3">
         <div className="grid grid-cols-[max-content_1fr] items-center gap-x-2.5 gap-y-1">
           {groups.map((group, index) => (
             <Fragment key={group.title}>
@@ -42,10 +42,10 @@ export function HotkeysPopover(props: HotkeysPopoverProps) {
               </h4>
               {group.hints.map((hint) => (
                 <Fragment key={hint.label}>
-                  <kbd className="inline-flex w-full items-center justify-center rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap text-foreground/85">
+                  <kbd className="inline-flex w-full items-center justify-center rounded-md border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[16px] leading-6 whitespace-nowrap text-foreground/90">
                     {hint.combo}
                   </kbd>
-                  <span className="min-w-0 truncate text-[11px] text-muted-foreground">
+                  <span className="min-w-0 truncate text-[11.5px] text-muted-foreground">
                     {hint.label}
                   </span>
                 </Fragment>
