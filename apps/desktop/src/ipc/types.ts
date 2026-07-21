@@ -92,6 +92,7 @@ export interface EventMap {
   "llm-delta": { chatId: string; delta: string };
   "llm-done": { chatId: string };
   "llm-error": { chatId: string; message: string };
+  "llm-usage": { chatId: string; inputTokens: number };
   "update-available": UpdateInfo;
   "update-progress": UpdateProgress;
   "update-done": { version: string };

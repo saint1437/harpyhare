@@ -10,7 +10,7 @@ import {
 } from "react";
 import { AnswerPanel } from "@/components/AnswerPanel";
 import { ChatTabs } from "@/components/ChatTabs";
-import { Composer } from "@/components/Composer";
+import { Composer, type ContextUsage } from "@/components/Composer";
 import { HotkeysPopover } from "@/components/HotkeysPopover";
 import { MissingKeysDialog } from "@/components/MissingKeysDialog";
 import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
@@ -22,6 +22,7 @@ import { WarningBanner } from "@/components/WarningBanner";
 import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
 import { useContextLibrary, type ContextLibraryApi } from "@/hooks/useContextLibrary";
+import { useLlmUsage } from "@/hooks/useLlmUsage";
 import { useModels } from "@/hooks/useModels";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
 import { usePttSuspend } from "@/hooks/usePttSuspend";
@@ -470,6 +471,7 @@ interface AppComposerProps {
   models: ModelInfo[];
   presets: PromptPreset[];
   library: ContextLibrary;
+  contextUsage: ContextUsage | null;
   streaming: boolean;
   showRetry: boolean;
   disabled: boolean;
@@ -483,6 +485,7 @@ function AppComposer({
   models,
   presets,
   library,
+  contextUsage,
   streaming,
   showRetry,
   disabled,
@@ -536,6 +539,7 @@ function AppComposer({
       onLibraryDocsChange={(ids) => {
         chats.setChatLibraryDocs(activeId, ids);
       }}
+      contextUsage={contextUsage}
       models={models}
       disabled={disabled}
     />
@@ -724,6 +728,13 @@ export default function App() {
   const hasAssistantReply = active.messages.some((m) => m.role === "assistant");
   const canCopy = !activeStreaming && hasAssistantReply;
   const canTeleprompt = hasAssistantReply || (partial !== null && partial !== "");
+  const llmUsage = useLlmUsage();
+  const activeModelMaxInput = models.find((m) => m.id === active.model)?.maxInputTokens ?? 0;
+  const activeUsedTokens = llmUsage[activeId] ?? 0;
+  const contextUsage: ContextUsage | null =
+    activeModelMaxInput > 0 && activeUsedTokens > 0
+      ? { usedTokens: activeUsedTokens, maxTokens: activeModelMaxInput }
+      : null;
 
   const saveSettingsReportingError = (next: Settings) => {
     void save(next).then((err) => {
@@ -817,6 +828,7 @@ export default function App() {
           models={models}
           presets={presets}
           library={contextLibrary.library}
+          contextUsage={contextUsage}
           streaming={activeStreaming}
           showRetry={showRetry}
           disabled={keysGate.keysMissing}

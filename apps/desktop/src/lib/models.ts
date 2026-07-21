@@ -3,6 +3,7 @@ export interface ModelInfo {
   displayName: string;
   adaptive: boolean;
   alwaysThinks: boolean;
+  maxInputTokens?: number;
 }
 
 export const DEFAULT_MODEL = "claude-opus-4-8";

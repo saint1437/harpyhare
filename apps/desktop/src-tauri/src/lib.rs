@@ -40,6 +40,7 @@ const EVENT_STT_ERROR: &str = "stt-error";
 const EVENT_LLM_DELTA: &str = "llm-delta";
 const EVENT_LLM_DONE: &str = "llm-done";
 const EVENT_LLM_ERROR: &str = "llm-error";
+const EVENT_LLM_USAGE: &str = "llm-usage";
 const EVENT_TOGGLE_TELEPROMPTER: &str = "toggle-teleprompter";
 const EVENT_RESIZE_KEY: &str = "resize-key";
 const RESIZE_DIM_WIDTH: &str = "width";
@@ -123,6 +124,13 @@ struct LlmDelta {
 #[serde(rename_all = "camelCase")]
 struct LlmDone {
     chat_id: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LlmUsage {
+    chat_id: String,
+    input_tokens: u64,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -877,6 +885,18 @@ async fn send_to_claude(
                 eprintln!("[perf] llm ttfb (первая текстовая дельта) {:?}", started.elapsed());
             }
             pending_in.lock().unwrap().push_str(delta);
+        }, {
+            let app = app.clone();
+            let chat_id = chat_id.clone();
+            move |input_tokens| {
+                let _ = app.emit(
+                    EVENT_LLM_USAGE,
+                    LlmUsage {
+                        chat_id: chat_id.clone(),
+                        input_tokens,
+                    },
+                );
+            }
         })
         .await;
     flusher.stop_and_await_final_drain().await;

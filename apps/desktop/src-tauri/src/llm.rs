@@ -80,6 +80,7 @@ pub struct ModelInfo {
     pub adaptive: bool,
     pub always_thinks: bool,
     pub code_exec: bool,
+    pub max_input_tokens: u64,
 }
 
 fn fallback_adaptive(id: &str) -> bool {
@@ -107,6 +108,7 @@ fn model_info_from_json(v: &Value) -> Option<ModelInfo> {
         always_thinks: always_thinks(&id),
         adaptive,
         code_exec,
+        max_input_tokens: v["max_input_tokens"].as_u64().unwrap_or(0),
         id,
         display_name,
     })
@@ -125,6 +127,7 @@ pub fn fallback_models() -> Vec<ModelInfo> {
         adaptive: caps,
         code_exec: caps,
         always_thinks: false,
+        max_input_tokens: 0,
     })
     .collect()
 }
@@ -193,6 +196,7 @@ async fn pump_sse_stream(
     resp: reqwest::Response,
     cancel: &CancellationToken,
     on_delta: &mut impl FnMut(&str),
+    on_input_tokens: &mut impl FnMut(u64),
 ) -> Result<(), LlmError> {
     let mut parser = SseParser::new();
     let mut stream = resp.bytes_stream();
@@ -208,6 +212,7 @@ async fn pump_sse_stream(
         for out in parser.feed_bytes(&bytes) {
             match out {
                 SseOut::TextDelta(t) => on_delta(&t),
+                SseOut::InputTokens(n) => on_input_tokens(n),
                 SseOut::Done => return Ok(()),
                 SseOut::ApiError(m) => return Err(LlmError::Api(m)),
             }
@@ -299,6 +304,7 @@ impl AnthropicClient {
         body: serde_json::Value,
         cancel: CancellationToken,
         mut on_delta: impl FnMut(&str),
+        mut on_input_tokens: impl FnMut(u64),
     ) -> Result<(), LlmError> {
         let send = self.messages_request(&body).json(&body).send();
         let resp = tokio::select! {
@@ -306,7 +312,7 @@ impl AnthropicClient {
             _ = cancel.cancelled() => return Err(LlmError::Cancelled),
         };
         let resp = require_ok_status(resp, self.is_proxy()).await?;
-        pump_sse_stream(resp, &cancel, &mut on_delta).await
+        pump_sse_stream(resp, &cancel, &mut on_delta, &mut on_input_tokens).await
     }
 }
 
@@ -404,6 +410,7 @@ pub fn build_request_body(
 #[derive(Debug, Clone, PartialEq)]
 pub enum SseOut {
     TextDelta(String),
+    InputTokens(u64),
     Done,
     ApiError(String),
 }
@@ -460,6 +467,13 @@ impl SseParser {
             "content_block_delta" if v["delta"]["type"] == "text_delta" => {
                 Some(SseOut::TextDelta(v["delta"]["text"].as_str()?.to_string()))
             }
+            "message_start" => {
+                let usage = &v["message"]["usage"];
+                let total = usage["input_tokens"].as_u64().unwrap_or(0)
+                    + usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
+                    + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
+                (total > 0).then_some(SseOut::InputTokens(total))
+            }
             "message_stop" => Some(SseOut::Done),
             "error" => Some(SseOut::ApiError(
                 v["error"]["message"].as_str().unwrap_or(UNKNOWN_API_ERROR).to_string(),
@@ -498,6 +512,7 @@ mod tests {
             adaptive: false,
             always_thinks: false,
             code_exec: true,
+            max_input_tokens: 0,
         };
         assert_eq!(thinking_value(Some(&info), "claude-newmodel-9", true), None);
     }
@@ -681,6 +696,7 @@ mod tests {
             adaptive: true,
             always_thinks: false,
             code_exec: false,
+            max_input_tokens: 0,
         };
         let tool = web_search_value(Some(&info), "claude-newmodel-9", true).unwrap();
         assert_eq!(tool["allowed_callers"], json!(["direct"]));
@@ -769,6 +785,20 @@ mod tests {
     }
 
     #[test]
+    fn sse_message_start_usage_summed_with_cache() {
+        let mut p = SseParser::new();
+        let block = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":100,\"cache_read_input_tokens\":2000,\"cache_creation_input_tokens\":30}}}\n\n";
+        assert_eq!(p.feed(block), vec![SseOut::InputTokens(2130)]);
+    }
+
+    #[test]
+    fn sse_message_start_without_usage_ignored() {
+        let mut p = SseParser::new();
+        let block = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\"}}\n\n";
+        assert_eq!(p.feed(block), vec![]);
+    }
+
+    #[test]
     fn feed_bytes_handles_utf8_split_across_chunks() {
         let raw = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Привет\"}}\n\n";
         let bytes = raw.as_bytes();
@@ -817,6 +847,7 @@ mod tests {
                 build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false, None),
                 cancel,
                 move |delta| c2.lock().unwrap().push_str(delta),
+                |_| {},
             )
             .await
             .unwrap();
@@ -843,6 +874,7 @@ mod tests {
             .stream_message(
                 build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), true, None),
                 tokio_util::sync::CancellationToken::new(),
+                |_| {},
                 |_| {},
             )
             .await
@@ -871,6 +903,7 @@ mod tests {
             .stream_message(
                 build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false, None),
                 tokio_util::sync::CancellationToken::new(),
+                |_| {},
                 |_| {},
             )
             .await
@@ -901,6 +934,7 @@ mod tests {
                 build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false, None),
                 tokio_util::sync::CancellationToken::new(),
                 move |d| c2.lock().unwrap().push_str(d),
+                |_| {},
             )
             .await
             .unwrap_err();
@@ -927,6 +961,7 @@ mod tests {
                 build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false, None),
                 tokio_util::sync::CancellationToken::new(),
                 |_| {},
+                |_| {},
             )
             .await
             .unwrap_err();
@@ -951,6 +986,7 @@ mod tests {
             .stream_message(
                 build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false, None),
                 tokio_util::sync::CancellationToken::new(),
+                |_| {},
                 |_| {},
             )
             .await
@@ -985,6 +1021,7 @@ mod tests {
                 build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false, None),
                 tokio_util::sync::CancellationToken::new(),
                 |_| {},
+                |_| {},
             )
             .await
             .unwrap();
@@ -1007,6 +1044,7 @@ mod tests {
             .stream_message(
                 build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false, None),
                 tokio_util::sync::CancellationToken::new(),
+                |_| {},
                 |_| {},
             )
             .await
@@ -1043,6 +1081,7 @@ mod tests {
             .stream_message(
                 build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), false, None),
                 cancel,
+                |_| {},
                 |_| {},
             )
             .await
