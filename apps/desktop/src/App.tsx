@@ -34,6 +34,7 @@ import {
   hideMainWindow,
   openAudioPermissionSettings,
   redeemAccessCode,
+  requestAudioCapturePermission,
   retryTranscription,
   setWindowSize,
   startWindowDrag,
@@ -134,14 +135,22 @@ function useLatestRef<T>(value: T): RefObject<T> {
   return ref;
 }
 
-function useCapturePermission(): boolean {
+interface CapturePermission {
+  permissionOk: boolean;
+  requestPermission: () => Promise<void>;
+}
+
+function useCapturePermission(): CapturePermission {
   const [permissionOk, setPermissionOk] = useState(true);
   useEffect(() => {
     void captureAvailable().then((ok) => {
       setPermissionOk(ok);
     });
   }, []);
-  return permissionOk;
+  const requestPermission = useCallback(async () => {
+    setPermissionOk(await requestAudioCapturePermission());
+  }, []);
+  return { permissionOk, requestPermission };
 }
 
 const BROWSER_DEMO_MISSING_KEYS_PARAM = "nokeys";
@@ -158,7 +167,11 @@ interface MissingKeysGate {
   closeDialog: () => void;
 }
 
-function useMissingKeysGate(settings: Settings, settingsLoading: boolean): MissingKeysGate {
+function useMissingKeysGate(
+  settings: Settings,
+  settingsLoading: boolean,
+  permissionMissing: boolean,
+): MissingKeysGate {
   const missingKeys = useMemo(() => missingApiKeys(settings), [settings]);
   const keysMissing = isTauri()
     ? !settingsLoading && missingKeys.length > 0
@@ -166,8 +179,8 @@ function useMissingKeysGate(settings: Settings, settingsLoading: boolean): Missi
   const [dialogOpen, setDialogOpen] = useState(false);
 
   useEffect(() => {
-    setDialogOpen(keysMissing);
-  }, [keysMissing]);
+    setDialogOpen(keysMissing || permissionMissing);
+  }, [keysMissing, permissionMissing]);
 
   const openDialog = useCallback(() => {
     setDialogOpen(true);
@@ -520,8 +533,8 @@ export default function App() {
   const [teleprompterOpen, setTeleprompterOpen] = useState(false);
   const teleprompterResumeRef = useRef({ text: "", offset: 0 });
 
-  const permissionOk = useCapturePermission();
-  const keysGate = useMissingKeysGate(settings, settingsLoading);
+  const { permissionOk, requestPermission } = useCapturePermission();
+  const keysGate = useMissingKeysGate(settings, settingsLoading, !permissionOk);
   const handleRedeem = useCallback(
     async (code: string): Promise<string | null> => {
       const error = await redeemAccessCode(code);
@@ -731,7 +744,10 @@ export default function App() {
 
       <MissingKeysDialog
         open={keysGate.dialogOpen}
-        missing={keysGate.missingKeys}
+        missing={keysGate.keysMissing ? keysGate.missingKeys : []}
+        permissionMissing={!permissionOk}
+        onRequestPermission={requestPermission}
+        onOpenAudioSettings={() => void openAudioPermissionSettings()}
         onRedeem={handleRedeem}
         onOpenSettings={() => {
           keysGate.closeDialog();

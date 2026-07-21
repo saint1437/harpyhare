@@ -126,6 +126,10 @@ export async function captureAvailable(): Promise<boolean> {
   return invokeOrFallbackInBrowser("capture_available", true);
 }
 
+export async function requestAudioCapturePermission(): Promise<boolean> {
+  return invokeOrFallbackInBrowser("request_audio_capture_permission", true);
+}
+
 export async function openExternal(url: string): Promise<void> {
   await invokeOrNoopInBrowser("open_external", { url });
 }

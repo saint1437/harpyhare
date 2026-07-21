@@ -45,7 +45,7 @@ const RESIZE_DIM_HEIGHT: &str = "height";
 
 const ERR_NO_CAPTURE_PERMISSION: &str = "Нет разрешения на запись системного звука";
 const ERR_NO_AUDIO_BUFFER: &str = "нет аудио-буфера";
-const ERR_SILENCE: &str = "Тишина — нечего распознавать";
+const ERR_SILENCE: &str = "Тишина — нечего распознавать (если звук играл: проверь право «Запись системного звука» у macOS и устройство захвата в настройках)";
 
 const STT_STREAM_CHANNEL_CAPACITY: usize = 256;
 const LLM_DELTA_FLUSH_INTERVAL: Duration = Duration::from_millis(25);
@@ -169,6 +169,7 @@ pub fn run() {
             open_audio_permission_settings,
             open_external,
             capture_available,
+            request_audio_capture_permission,
             set_preview_html,
             check_for_update,
             install_update,
@@ -930,6 +931,12 @@ fn set_settings(app: AppHandle, mut new_settings: settings::Settings) -> Result<
 #[tauri::command]
 fn list_audio_output_devices() -> Vec<capture::OutputDeviceInfo> {
     capture::list_output_devices()
+}
+
+#[tauri::command]
+fn request_audio_capture_permission(app: AppHandle) -> bool {
+    rebuild_capture_now(&app);
+    app.state::<App>().capture.lock().unwrap().is_some()
 }
 
 #[tauri::command]
