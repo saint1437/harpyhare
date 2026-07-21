@@ -1,3 +1,4 @@
+import { Trash2 } from "lucide-react";
 import { isValidElement, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import Markdown, { type Components } from "react-markdown";
@@ -8,6 +9,7 @@ import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { openExternal } from "@/ipc/commands";
 import type { ChatMessage } from "@/lib/chats";
 import { splitStableTail } from "@/lib/stream-markdown";
+import { cn } from "@/lib/utils";
 
 export interface AnswerPanelProps {
   messages: ChatMessage[];
@@ -17,6 +19,7 @@ export interface AnswerPanelProps {
   streamStartedAt?: number;
   scrollStep?: number;
   onTogglePreview: (code: string) => void;
+  onRemoveMessage: (index: number) => void;
 }
 
 const FALLBACK_SCROLL_STEP_PX = 120;
@@ -104,9 +107,34 @@ const MarkdownChunk = memo(function MarkdownChunk({
   );
 });
 
+function MessageShell({
+  align,
+  onRemove,
+  children,
+}: {
+  align: "start" | "end";
+  onRemove: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className={cn("chat-item group/msg relative", align === "end" && "flex justify-end")}>
+      {children}
+      <button
+        type="button"
+        title="Удалить сообщение"
+        aria-label="Удалить сообщение"
+        onClick={onRemove}
+        className="absolute top-0 right-0 grid size-6 place-items-center rounded-md bg-background/60 text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity group-hover/msg:opacity-100 hover:text-foreground"
+      >
+        <Trash2 className="size-3.5" />
+      </button>
+    </div>
+  );
+}
+
 function Assistant({ text, components }: { text: string; components: Components }) {
   return (
-    <div className={`chat-item ${ASSISTANT_PROSE_CLASS}`}>
+    <div className={ASSISTANT_PROSE_CLASS}>
       <MarkdownChunk text={text} components={components} />
     </div>
   );
@@ -179,7 +207,7 @@ function EmptyState() {
 
 function UserBubble({ text }: { text: string }) {
   return (
-    <div className="chat-item max-w-[85%] self-end rounded-lg bg-white/5 px-3 py-1.5 text-[length:var(--chat-font-size)] break-words whitespace-pre-wrap text-foreground/80">
+    <div className="max-w-[85%] rounded-lg bg-white/5 px-3 py-1.5 text-[length:var(--chat-font-size)] break-words whitespace-pre-wrap text-foreground/80">
       {text}
     </div>
   );
@@ -203,22 +231,32 @@ function ChatMessages({
   streaming,
   streamStartedAt,
   components,
+  onRemoveMessage,
 }: {
   messages: ChatMessage[];
   partial: string | null;
   streaming: boolean;
   streamStartedAt?: number;
   components: Components;
+  onRemoveMessage: (index: number) => void;
 }) {
   return (
     <>
-      {messages.map((m, i) =>
-        m.role === "user" ? (
-          <UserBubble key={i} text={m.text} />
-        ) : (
-          <Assistant key={i} text={m.text} components={components} />
-        ),
-      )}
+      {messages.map((m, i) => (
+        <MessageShell
+          key={i}
+          align={m.role === "user" ? "end" : "start"}
+          onRemove={() => {
+            onRemoveMessage(i);
+          }}
+        >
+          {m.role === "user" ? (
+            <UserBubble text={m.text} />
+          ) : (
+            <Assistant text={m.text} components={components} />
+          )}
+        </MessageShell>
+      ))}
       {partial !== null && partial !== "" && (
         <StreamingAssistant text={partial} components={components} />
       )}
@@ -237,6 +275,7 @@ export function AnswerPanel({
   streamStartedAt,
   scrollStep,
   onTogglePreview,
+  onRemoveMessage,
 }: AnswerPanelProps) {
   const { scrollRef, showJump, onScroll, scrollIfNearBottom, resetToBottom } = useStickToBottom();
   useHotkeyScroll(scrollRef, scrollStep ?? FALLBACK_SCROLL_STEP_PX);
@@ -273,6 +312,7 @@ export function AnswerPanel({
               streaming={streaming}
               streamStartedAt={streamStartedAt}
               components={components}
+              onRemoveMessage={onRemoveMessage}
             />
           )}
         </div>

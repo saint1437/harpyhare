@@ -151,6 +151,7 @@ export interface ChatsApi {
   removeDraftAttachment: (id: string, index: number) => void;
   appendUserMessage: (id: string, text: string, images: ImagePayload[]) => void;
   appendAssistantMessage: (id: string, text: string) => void;
+  removeMessage: (id: string, index: number) => void;
 }
 
 export function useChats(): ChatsApi {
@@ -312,6 +313,13 @@ export function useChats(): ChatsApi {
     [patch],
   );
 
+  const removeMessage = useCallback(
+    (id: string, index: number) => {
+      patch(id, (c) => ({ ...c, messages: c.messages.filter((_, i) => i !== index) }));
+    },
+    [patch],
+  );
+
   const active = chats.find((c) => c.id === effectiveActiveId) ?? chats[0] ?? EMPTY_CHAT;
 
   return {
@@ -332,5 +340,6 @@ export function useChats(): ChatsApi {
     removeDraftAttachment,
     appendUserMessage,
     appendAssistantMessage,
+    removeMessage,
   };
 }

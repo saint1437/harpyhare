@@ -827,6 +827,9 @@ export default function App() {
           streamStartedAt={stream.startedAt[activeId]}
           scrollStep={settings.scroll_step}
           onTogglePreview={togglePreview}
+          onRemoveMessage={(index) => {
+            chats.removeMessage(activeId, index);
+          }}
         />
 
         <AppComposer

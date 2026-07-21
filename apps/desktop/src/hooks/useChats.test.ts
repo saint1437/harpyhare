@@ -68,6 +68,28 @@ describe("useChats", () => {
     expect(result.current.active.messages[0]?.role).toBe("user");
   });
 
+  it("removeMessage удаляет сообщение по индексу (и своё, и ответ)", async () => {
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(1);
+    });
+    const id = result.current.activeId;
+    act(() => {
+      result.current.appendUserMessage(id, "вопрос", []);
+    });
+    act(() => {
+      result.current.appendAssistantMessage(id, "ответ");
+    });
+    act(() => {
+      result.current.removeMessage(id, 1);
+    });
+    expect(result.current.active.messages.map((m) => m.role)).toEqual(["user"]);
+    act(() => {
+      result.current.removeMessage(id, 0);
+    });
+    expect(result.current.active.messages).toEqual([]);
+  });
+
   it("appendAssistantMessage дописывает ответ", async () => {
     const { result } = renderHook(() => useChats());
     await waitFor(() => {
