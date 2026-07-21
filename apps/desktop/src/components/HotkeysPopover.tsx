@@ -43,7 +43,7 @@ function ComboTokenView({ token }: { token: ComboToken }) {
     return <span className="font-mono text-[12.5px] text-foreground/90">{token.text}</span>;
   }
   const Icon = COMBO_ICONS[token.icon];
-  return <Icon className="size-4 text-foreground/90" />;
+  return <Icon className="size-3.5 text-foreground/90" />;
 }
 
 function ComboChip({ combo }: { combo: string }) {
