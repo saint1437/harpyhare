@@ -38,6 +38,9 @@ const EVENT_LLM_DELTA: &str = "llm-delta";
 const EVENT_LLM_DONE: &str = "llm-done";
 const EVENT_LLM_ERROR: &str = "llm-error";
 const EVENT_TOGGLE_TELEPROMPTER: &str = "toggle-teleprompter";
+const EVENT_RESIZE_KEY: &str = "resize-key";
+const RESIZE_DIM_WIDTH: &str = "width";
+const RESIZE_DIM_HEIGHT: &str = "height";
 
 const ERR_NO_CAPTURE_PERMISSION: &str = "Нет разрешения на запись системного звука";
 const ERR_NO_AUDIO_BUFFER: &str = "нет аудио-буфера";
@@ -338,6 +341,21 @@ fn register_startup_hotkeys(
     }
 }
 
+#[derive(Clone, serde::Serialize)]
+struct ResizeKeyPayload {
+    dim: &'static str,
+    dir: i32,
+}
+
+fn emit_resize_key(app: &AppHandle, dx: i32, dy: i32) {
+    let (dim, dir) = if dx != 0 {
+        (RESIZE_DIM_WIDTH, dx)
+    } else {
+        (RESIZE_DIM_HEIGHT, dy)
+    };
+    let _ = app.emit(EVENT_RESIZE_KEY, ResizeKeyPayload { dim, dir });
+}
+
 fn install_move_keys_monitor(app: AppHandle) {
     use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags};
 
@@ -358,6 +376,10 @@ fn install_move_keys_monitor(app: AppHandle) {
                 KEY_CODE_ARROW_UP => (0, -1),
                 _ => return pass,
             };
+            if flags.contains(NSEventModifierFlags::Shift) {
+                emit_resize_key(&app, dx, dy);
+                return std::ptr::null_mut();
+            }
             let step = app.state::<App>().settings.lock().unwrap().move_step as i32;
             if let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) {
                 if let Ok(pos) = w.outer_position() {

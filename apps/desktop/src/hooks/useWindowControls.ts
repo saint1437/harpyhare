@@ -1,11 +1,15 @@
 import { useEffect } from "react";
 import { moveWindowBy } from "@/ipc/commands";
+import { onEvent } from "@/ipc/events";
 import { moveDelta } from "@/lib/window-controls";
+import { resizeKeyFromCode, type WindowDimension } from "@/lib/window-size";
 
 const KEYDOWN_EVENT = "keydown";
 const OPACITY_UP_CODE = "Equal";
 const OPACITY_DOWN_CODE = "Minus";
 const SEND_CODE = "Enter";
+
+type ResizeKeyHandler = (dim: WindowDimension, dir: 1 | -1) => void;
 
 function opacityStepFromEvent(e: KeyboardEvent): 1 | -1 | null {
   if (!(e.metaKey && e.shiftKey)) return null;
@@ -14,17 +18,37 @@ function opacityStepFromEvent(e: KeyboardEvent): 1 | -1 | null {
   return null;
 }
 
+function resizeKeyFromEvent(e: KeyboardEvent): { dim: WindowDimension; dir: 1 | -1 } | null {
+  if (!((e.metaKey || e.ctrlKey) && e.shiftKey)) return null;
+  return resizeKeyFromCode(e.code);
+}
+
 export function useWindowControls(
   moveStep: number,
   onSend: () => void,
   onOpacityStep: (dir: 1 | -1) => void,
+  onResizeKey: ResizeKeyHandler,
 ): void {
+  useEffect(
+    () =>
+      onEvent("resize-key", ({ dim, dir }) => {
+        onResizeKey(dim, dir);
+      }),
+    [onResizeKey],
+  );
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const opacityDir = opacityStepFromEvent(e);
       if (opacityDir !== null) {
         e.preventDefault();
         onOpacityStep(opacityDir);
+        return;
+      }
+      const resizeKey = resizeKeyFromEvent(e);
+      if (resizeKey) {
+        e.preventDefault();
+        onResizeKey(resizeKey.dim, resizeKey.dir);
         return;
       }
       if (!(e.metaKey || e.ctrlKey)) return;
@@ -43,5 +67,5 @@ export function useWindowControls(
     return () => {
       document.removeEventListener(KEYDOWN_EVENT, onKey);
     };
-  }, [moveStep, onSend, onOpacityStep]);
+  }, [moveStep, onSend, onOpacityStep, onResizeKey]);
 }

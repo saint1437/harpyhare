@@ -506,7 +506,14 @@ function AppDialogs({
 }
 
 export default function App() {
-  const { settings, loading: settingsLoading, save, reload, bumpOpacity } = useSettings();
+  const {
+    settings,
+    loading: settingsLoading,
+    save,
+    reload,
+    bumpOpacity,
+    bumpWindowSize,
+  } = useSettings();
   const state = useRecorder();
   const chats = useChats();
   const models = useModels();
@@ -579,7 +586,7 @@ export default function App() {
     ),
   );
 
-  useWindowControls(settings.move_step, doSend, bumpOpacity);
+  useWindowControls(settings.move_step, doSend, bumpOpacity, bumpWindowSize);
   usePttSuspend(settings.hotkey);
   useBrowserDemoSeed(chats.activeId, chatsRef);
 

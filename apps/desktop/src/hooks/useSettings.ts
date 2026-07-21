@@ -9,9 +9,11 @@ import {
 import { getSettings, setSettings as ipcSet } from "@/ipc/commands";
 import { DEFAULT_SETTINGS, type Settings } from "@/ipc/types";
 import { applyChatFontSize, applyOpacity, stepOpacity } from "@/lib/window-controls";
+import { stepWindowSize, type WindowDimension } from "@/lib/window-size";
 
 const OPACITY_STEP = 0.1;
 const OPACITY_PERSIST_DEBOUNCE_MS = 400;
+const WINDOW_SIZE_PERSIST_DEBOUNCE_MS = 400;
 
 export interface SettingsApi {
   settings: Settings;
@@ -19,6 +21,7 @@ export interface SettingsApi {
   save: (next: Settings) => Promise<string | null>;
   reload: () => Promise<void>;
   bumpOpacity: (dir: 1 | -1) => void;
+  bumpWindowSize: (dim: WindowDimension, dir: 1 | -1) => void;
 }
 
 function applyVisualSettings(windowOpacity: number, chatFontSize: number): void {
@@ -45,6 +48,38 @@ function useBumpOpacity(setSettings: Dispatch<SetStateAction<Settings>>): (dir: 
         persistTimer.current = setTimeout(() => {
           void ipcSet(updated);
         }, OPACITY_PERSIST_DEBOUNCE_MS);
+        return updated;
+      });
+    },
+    [setSettings],
+  );
+}
+
+function useBumpWindowSize(
+  setSettings: Dispatch<SetStateAction<Settings>>,
+): (dim: WindowDimension, dir: 1 | -1) => void {
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(
+    () => () => {
+      clearTimeout(persistTimer.current);
+    },
+    [],
+  );
+
+  return useCallback(
+    (dim, dir) => {
+      setSettings((prev) => {
+        const next = stepWindowSize(
+          { width: prev.window_width, height: prev.window_height },
+          dim,
+          dir,
+          prev.move_step,
+        );
+        const updated = { ...prev, window_width: next.width, window_height: next.height };
+        clearTimeout(persistTimer.current);
+        persistTimer.current = setTimeout(() => {
+          void ipcSet(updated);
+        }, WINDOW_SIZE_PERSIST_DEBOUNCE_MS);
         return updated;
       });
     },
@@ -95,6 +130,7 @@ export function useSettings(): SettingsApi {
   }, []);
 
   const bumpOpacity = useBumpOpacity(setSettings);
+  const bumpWindowSize = useBumpWindowSize(setSettings);
 
-  return { settings, loading, save, reload, bumpOpacity };
+  return { settings, loading, save, reload, bumpOpacity, bumpWindowSize };
 }

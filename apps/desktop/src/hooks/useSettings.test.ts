@@ -53,6 +53,40 @@ describe("useSettings", () => {
     expect(result.current.settings.window_opacity).toBe(0.4);
   });
 
+  it("bumpWindowSize шагает ширину и персистит с дебаунсом", async () => {
+    vi.useFakeTimers();
+    getSettings.mockResolvedValue(DEFAULT_SETTINGS);
+    const { result } = renderHook(() => useSettings());
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    setSettings.mockClear();
+    act(() => {
+      result.current.bumpWindowSize("width", 1);
+    });
+    expect(result.current.settings.window_width).toBe(980);
+    expect(result.current.settings.window_height).toBe(680);
+    expect(setSettings).not.toHaveBeenCalled();
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(setSettings).toHaveBeenCalledTimes(1);
+    expect(setSettings.mock.calls[0]?.[0]?.window_width).toBe(980);
+    vi.useRealTimers();
+  });
+
+  it("bumpWindowSize клампит по минимуму ширины", async () => {
+    getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, window_width: 880 });
+    const { result } = renderHook(() => useSettings());
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    act(() => {
+      result.current.bumpWindowSize("width", -1);
+    });
+    expect(result.current.settings.window_width).toBe(880);
+  });
+
   it("bumpOpacity меняет прозрачность, применяет и персистит с дебаунсом", async () => {
     vi.useFakeTimers();
     getSettings.mockResolvedValue(DEFAULT_SETTINGS);

@@ -83,5 +83,6 @@ export interface EventMap {
   "update-progress": UpdateProgress;
   "update-done": { version: string };
   "toggle-teleprompter": null;
+  "resize-key": { dim: "width" | "height"; dir: 1 | -1 };
   "official-presets-updated": PromptPreset[];
 }
