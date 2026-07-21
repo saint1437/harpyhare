@@ -49,6 +49,8 @@ const RESIZE_DIM_HEIGHT: &str = "height";
 const ERR_NO_CAPTURE_PERMISSION: &str = "Нет разрешения на запись системного звука";
 const ERR_NO_AUDIO_BUFFER: &str = "нет аудио-буфера";
 const ERR_SILENCE: &str = "Тишина — нечего распознавать (если звук играл: проверь право «Запись системного звука» у macOS и устройство захвата в настройках)";
+const ERR_BUFFER_DISABLED: &str = "Фоновый буфер выключен в настройках";
+const ERR_BUSY_RECORDING: &str = "Дождитесь окончания текущей записи";
 
 const STT_STREAM_CHANNEL_CAPACITY: usize = 256;
 const LLM_DELTA_FLUSH_INTERVAL: Duration = Duration::from_millis(25);
@@ -171,6 +173,7 @@ pub fn run() {
             save_context_library,
             read_context_import_file,
             retry_transcription,
+            grab_buffer,
             get_settings,
             set_settings,
             list_audio_output_devices,
@@ -198,18 +201,16 @@ fn setup_app(handle: &AppHandle) {
     load_dotenv_files();
     let settings = load_settings_with_env_key_fallback(handle);
     let official_presets = remote_presets::load_initial(handle);
-    let capture = build_capture(&settings.capture_device_uid);
+    let capture = build_capture(&settings);
     let stt = build_stt_client(&settings);
     let llm = build_llm_client(&settings);
     apply_screen_share_visibility_at_startup(handle, &settings);
     apply_window_size_at_startup(handle, &settings);
     clip_native_window_corners(handle);
-    let ptt_hotkey = settings.hotkey.clone();
-    let toggle_hotkey = settings.toggle_hotkey.clone();
-    let teleprompter_hotkey = settings.teleprompter_hotkey.clone();
+    let startup_hotkeys = settings.clone();
     spawn_startup_warm_up_and_model_fetch(handle.clone(), stt.clone(), llm.clone());
     handle.manage(build_app_state(settings, official_presets, capture, stt, llm));
-    register_startup_hotkeys(handle, &ptt_hotkey, &toggle_hotkey, &teleprompter_hotkey);
+    register_startup_hotkeys(handle, &startup_hotkeys);
     install_default_output_device_listener(handle);
     install_move_keys_monitor(handle.clone());
     disable_cursor_autohide_on_typing();
@@ -257,10 +258,17 @@ fn load_settings_with_env_key_fallback(app: &AppHandle) -> settings::Settings {
     settings
 }
 
-fn build_capture(device_uid: &str) -> Option<capture::SystemAudioCapture> {
-    let uid = if device_uid.is_empty() { None } else { Some(device_uid) };
-    match capture::SystemAudioCapture::new(uid) {
-        Ok(c) => Some(c),
+fn build_capture(settings: &settings::Settings) -> Option<capture::SystemAudioCapture> {
+    let uid = if settings.capture_device_uid.is_empty() {
+        None
+    } else {
+        Some(settings.capture_device_uid.as_str())
+    };
+    match capture::SystemAudioCapture::new(uid, settings.buffer_seconds) {
+        Ok(c) => {
+            c.set_buffering(settings.buffer_enabled);
+            Some(c)
+        }
         Err(e) => {
             eprintln!("захват системного звука недоступен: {e}");
             None
@@ -316,8 +324,8 @@ fn request_capture_rebuild(app: &AppHandle) {
 
 fn rebuild_capture_now(app: &AppHandle) {
     let st = app.state::<App>();
-    let device_uid = st.settings.lock().unwrap().capture_device_uid.clone();
-    let new_capture = build_capture(&device_uid);
+    let settings = st.settings.lock().unwrap().clone();
+    let new_capture = build_capture(&settings);
     *st.capture.lock().unwrap() = new_capture;
 }
 
@@ -424,20 +432,20 @@ fn build_app_state(
     }
 }
 
-fn register_startup_hotkeys(
-    app: &AppHandle,
-    ptt_hotkey: &str,
-    toggle_hotkey: &str,
-    teleprompter_hotkey: &str,
-) {
-    if let Err(e) = hotkey::register_ptt(app, ptt_hotkey) {
-        eprintln!("не удалось зарегистрировать PTT-хоткей {ptt_hotkey:?}: {e}");
+fn register_startup_hotkeys(app: &AppHandle, s: &settings::Settings) {
+    if let Err(e) = hotkey::register_ptt(app, &s.hotkey) {
+        eprintln!("не удалось зарегистрировать PTT-хоткей {:?}: {e}", s.hotkey);
     }
-    if let Err(e) = hotkey::register_toggle(app, toggle_hotkey) {
-        eprintln!("не удалось зарегистрировать toggle-хоткей {toggle_hotkey:?}: {e}");
+    if let Err(e) = hotkey::register_toggle(app, &s.toggle_hotkey) {
+        eprintln!("не удалось зарегистрировать toggle-хоткей {:?}: {e}", s.toggle_hotkey);
     }
-    if let Err(e) = hotkey::register_teleprompter(app, teleprompter_hotkey) {
-        eprintln!("не удалось зарегистрировать суфлёр-хоткей {teleprompter_hotkey:?}: {e}");
+    if let Err(e) = hotkey::register_teleprompter(app, &s.teleprompter_hotkey) {
+        eprintln!("не удалось зарегистрировать суфлёр-хоткей {:?}: {e}", s.teleprompter_hotkey);
+    }
+    if s.buffer_enabled {
+        if let Err(e) = hotkey::register_buffer_grab(app, &s.buffer_hotkey) {
+            eprintln!("не удалось зарегистрировать хоткей буфера {:?}: {e}", s.buffer_hotkey);
+        }
     }
 }
 
@@ -626,6 +634,60 @@ pub fn on_toggle_visibility(app: &AppHandle) {
 
 pub fn on_toggle_teleprompter(app: &AppHandle) {
     let _ = app.emit(EVENT_TOGGLE_TELEPROMPTER, ());
+}
+
+pub fn on_grab_buffer(app: &AppHandle) {
+    grab_buffer_now(app);
+}
+
+fn grab_buffer_now(app: &AppHandle) {
+    let st = app.state::<App>();
+    if *st.recorder.lock().unwrap() != state::RecorderState::Idle {
+        let _ = app.emit(EVENT_STT_ERROR, ERR_BUSY_RECORDING);
+        return;
+    }
+    if !st.settings.lock().unwrap().buffer_enabled {
+        let _ = app.emit(EVENT_STT_ERROR, ERR_BUFFER_DISABLED);
+        return;
+    }
+    if st.capture_rebuild_pending.swap(false, Ordering::SeqCst) {
+        rebuild_capture_now(app);
+    }
+    let snapshot = {
+        let capture = st.capture.lock().unwrap();
+        match capture.as_ref() {
+            Some(c) => c.buffer_snapshot(),
+            None => {
+                let _ = app.emit(EVENT_STT_ERROR, ERR_NO_CAPTURE_PERMISSION);
+                return;
+            }
+        }
+    };
+    let min_samples = (state::MIN_RECORDING_SECS * audio::TARGET_SAMPLE_RATE as f32) as usize;
+    if snapshot.len() < min_samples {
+        return;
+    }
+    if audio::is_silence(&snapshot) {
+        let _ = app.emit(EVENT_STT_ERROR, ERR_SILENCE);
+        return;
+    }
+    {
+        let mut rec = st.recorder.lock().unwrap();
+        if *rec != state::RecorderState::Idle {
+            let _ = app.emit(EVENT_STT_ERROR, ERR_BUSY_RECORDING);
+            return;
+        }
+        *rec = state::RecorderState::Transcribing;
+    }
+    emit_state(app, state::RecorderState::Transcribing);
+    *st.last_recording.lock().unwrap() = Some(snapshot.clone());
+    let app2 = app.clone();
+    tauri::async_runtime::spawn(async move { transcribe_and_emit(app2, snapshot).await });
+}
+
+#[tauri::command]
+fn grab_buffer(app: AppHandle) {
+    grab_buffer_now(&app);
 }
 
 fn finish_recording(app: &AppHandle, action: state::Action) {
@@ -987,6 +1049,7 @@ fn set_settings(app: AppHandle, mut new_settings: settings::Settings) -> Result<
     reregister_changed_hotkeys(&app, &old, &new_settings)?;
     rebuild_changed_api_clients(&st, &old, &new_settings);
     apply_screen_share_visibility_change(&app, &old, &new_settings);
+    apply_buffer_settings_change(&app, &old, &new_settings);
     let capture_device_changed = old.capture_device_uid != new_settings.capture_device_uid;
     new_settings
         .save(&settings_path(&app))
@@ -1067,6 +1130,14 @@ fn reregister_changed_hotkeys(
         hotkey::register_teleprompter(app, &new.teleprompter_hotkey)?;
         hotkey::unregister_teleprompter(app, &old.teleprompter_hotkey);
     }
+    if old.buffer_enabled != new.buffer_enabled || old.buffer_hotkey != new.buffer_hotkey {
+        if new.buffer_enabled {
+            hotkey::register_buffer_grab(app, &new.buffer_hotkey)?;
+        }
+        if old.buffer_enabled && (!new.buffer_enabled || old.buffer_hotkey != new.buffer_hotkey) {
+            hotkey::unregister_buffer_grab(app, &old.buffer_hotkey);
+        }
+    }
     Ok(())
 }
 
@@ -1093,6 +1164,20 @@ fn apply_screen_share_visibility_change(
         if let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) {
             let _ = w.set_content_protected(!new.screen_share_visible);
         }
+    }
+}
+
+fn apply_buffer_settings_change(
+    app: &AppHandle,
+    old: &settings::Settings,
+    new: &settings::Settings,
+) {
+    if old.buffer_enabled == new.buffer_enabled && old.buffer_seconds == new.buffer_seconds {
+        return;
+    }
+    if let Some(c) = app.state::<App>().capture.lock().unwrap().as_ref() {
+        c.set_buffer_capacity_secs(new.buffer_seconds);
+        c.set_buffering(new.buffer_enabled);
     }
 }
 

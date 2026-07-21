@@ -55,12 +55,14 @@ enum Session {
 
 struct Shared {
     recording: AtomicBool,
+    buffering: AtomicBool,
     stop_requested: AtomicBool,
     produced: AtomicU64,
     dropped: AtomicU64,
     sample_rate: u32,
     channels: usize,
     session: Mutex<Session>,
+    rolling: Mutex<audio::RollingBuffer>,
     cv: Condvar,
 }
 
@@ -122,7 +124,7 @@ fn resolve_output_device(uid: Option<&str>) -> Result<ca::Device, CaptureError> 
 }
 
 impl SystemAudioCapture {
-    pub fn new(output_device_uid: Option<&str>) -> Result<Self, CaptureError> {
+    pub fn new(output_device_uid: Option<&str>, buffer_secs: u64) -> Result<Self, CaptureError> {
         let tap_desc = ca::TapDesc::with_stereo_global_tap_excluding_processes(&ns::Array::new());
 
         let tap = tap_desc
@@ -180,12 +182,14 @@ impl SystemAudioCapture {
         let (prod, cons) = ring.split();
         let shared = Arc::new(Shared {
             recording: AtomicBool::new(false),
+            buffering: AtomicBool::new(false),
             stop_requested: AtomicBool::new(false),
             produced: AtomicU64::new(0),
             dropped: AtomicU64::new(0),
             sample_rate,
             channels,
             session: Mutex::new(Session::Idle),
+            rolling: Mutex::new(audio::RollingBuffer::new(buffer_secs)),
             cv: Condvar::new(),
         });
         let mut ctx = Box::new(CallbackCtx {
@@ -256,100 +260,250 @@ impl SystemAudioCapture {
         let frames = samples / self.shared.channels.max(1) as u64;
         frames as f32 / self.shared.sample_rate.max(1) as f32
     }
+
+    pub fn set_buffering(&self, enabled: bool) {
+        self.shared.buffering.store(enabled, Ordering::Release);
+        if enabled {
+            let _wake = self.shared.session.lock().unwrap();
+            self.shared.cv.notify_all();
+        } else {
+            self.shared.rolling.lock().unwrap().clear();
+        }
+    }
+
+    pub fn set_buffer_capacity_secs(&self, secs: u64) {
+        self.shared.rolling.lock().unwrap().set_capacity_secs(secs);
+    }
+
+    pub fn buffer_snapshot(&self) -> Vec<f32> {
+        self.shared.rolling.lock().unwrap().snapshot()
+    }
+}
+
+struct Scratch {
+    raw: Vec<f32>,
+    mono: Vec<f32>,
+    read_buf: Vec<f32>,
+}
+
+impl Scratch {
+    fn new() -> Self {
+        Self {
+            raw: Vec::with_capacity(RAW_SCRATCH_CAPACITY),
+            mono: Vec::with_capacity(MONO_SCRATCH_CAPACITY),
+            read_buf: vec![0f32; READ_BUF_SAMPLES],
+        }
+    }
+}
+
+enum ConsumerWork {
+    Session(Option<ChunkSink>),
+    Buffering,
+}
+
+fn wait_for_work(shared: &Shared) -> ConsumerWork {
+    let mut s = shared.session.lock().unwrap();
+    loop {
+        if let Session::Start(sink) = &mut *s {
+            let sink = sink.take();
+            *s = Session::Running;
+            return ConsumerWork::Session(sink);
+        }
+        if shared.buffering.load(Ordering::Acquire) {
+            return ConsumerWork::Buffering;
+        }
+        s = shared.cv.wait(s).unwrap();
+    }
 }
 
 fn consumer_main(shared: &Shared, mut ring: HeapCons<f32>) {
-    let mut raw: Vec<f32> = Vec::with_capacity(RAW_SCRATCH_CAPACITY);
-    let mut mono: Vec<f32> = Vec::with_capacity(MONO_SCRATCH_CAPACITY);
-    let mut read_buf = vec![0f32; READ_BUF_SAMPLES];
+    let mut scratch = Scratch::new();
+    loop {
+        match wait_for_work(shared) {
+            ConsumerWork::Session(sink) => run_ptt_session(shared, &mut ring, &mut scratch, sink),
+            ConsumerWork::Buffering => run_buffering(shared, &mut ring, &mut scratch),
+        }
+    }
+}
+
+fn drain_ring_chunk(
+    shared: &Shared,
+    ring: &mut HeapCons<f32>,
+    scratch: &mut Scratch,
+) -> usize {
+    let n = ring.pop_slice(&mut scratch.read_buf);
+    if n == 0 {
+        return 0;
+    }
+    scratch.raw.extend_from_slice(&scratch.read_buf[..n]);
+    let whole = scratch.raw.len() - scratch.raw.len() % shared.channels.max(1);
+    scratch.mono.clear();
+    audio::downmix_into(&scratch.raw[..whole], shared.channels, &mut scratch.mono);
+    scratch.raw.drain(..whole);
+    n
+}
+
+fn run_ptt_session(
+    shared: &Shared,
+    ring: &mut HeapCons<f32>,
+    scratch: &mut Scratch,
+    mut sink: Option<ChunkSink>,
+) {
+    while ring.pop_slice(&mut scratch.read_buf) > 0 {}
+    scratch.raw.clear();
+    shared.produced.store(0, Ordering::Relaxed);
+    shared.dropped.store(0, Ordering::Relaxed);
+
+    let mut resampler = audio::StreamResampler::new(shared.sample_rate);
+    let mut out: Vec<f32> =
+        Vec::with_capacity(audio::TARGET_SAMPLE_RATE as usize * OUT_PREALLOC_SECONDS);
+    let mut failure: Option<String> = None;
+
+    shared.recording.store(true, Ordering::Release);
 
     loop {
-        let mut sink = {
-            let mut s = shared.session.lock().unwrap();
-            loop {
-                if let Session::Start(sink) = &mut *s {
-                    let sink = sink.take();
-                    *s = Session::Running;
-                    break sink;
-                }
-                s = shared.cv.wait(s).unwrap();
-            }
-        };
-
-        while ring.pop_slice(&mut read_buf) > 0 {}
-        raw.clear();
-        shared.produced.store(0, Ordering::Relaxed);
-        shared.dropped.store(0, Ordering::Relaxed);
-
-        let mut resampler = audio::StreamResampler::new(shared.sample_rate);
-        let mut out: Vec<f32> =
-            Vec::with_capacity(audio::TARGET_SAMPLE_RATE as usize * OUT_PREALLOC_SECONDS);
-        let mut failure: Option<String> = None;
-
-        shared.recording.store(true, Ordering::Release);
-
-        loop {
-            let stopping = shared.stop_requested.load(Ordering::Acquire);
-            if stopping {
-                shared.recording.store(false, Ordering::Release);
-            }
-            let n = ring.pop_slice(&mut read_buf);
-            if n > 0 {
-                if failure.is_none() {
-                    raw.extend_from_slice(&read_buf[..n]);
-                    let whole = raw.len() - raw.len() % shared.channels.max(1);
-                    mono.clear();
-                    audio::downmix_into(&raw[..whole], shared.channels, &mut mono);
-                    raw.drain(..whole);
-                    let before = out.len();
-                    match &mut resampler {
-                        Ok(rs) => {
-                            if let Err(e) = rs.feed(&mono, &mut out) {
-                                failure = Some(e.to_string());
-                            }
-                        }
-                        Err(e) => failure = Some(e.to_string()),
-                    }
-                    if let Some(sink) = sink.as_mut() {
-                        if out.len() > before {
-                            sink(&out[before..]);
+        let stopping = shared.stop_requested.load(Ordering::Acquire);
+        if stopping {
+            shared.recording.store(false, Ordering::Release);
+        }
+        let n = drain_ring_chunk(shared, ring, scratch);
+        if n > 0 {
+            if failure.is_none() {
+                let before = out.len();
+                match &mut resampler {
+                    Ok(rs) => {
+                        if let Err(e) = rs.feed(&scratch.mono, &mut out) {
+                            failure = Some(e.to_string());
                         }
                     }
+                    Err(e) => failure = Some(e.to_string()),
                 }
-                continue;
+                forward_session_chunk(shared, &out[before..], &mut sink);
             }
-            if stopping {
-                break;
-            }
-            std::thread::sleep(CONSUMER_IDLE_SLEEP);
+            continue;
         }
+        if stopping {
+            break;
+        }
+        std::thread::sleep(CONSUMER_IDLE_SLEEP);
+    }
 
-        if failure.is_none() {
-            let before = out.len();
-            if let Ok(rs) = &mut resampler {
-                if let Err(e) = rs.finish(&mut out) {
-                    failure = Some(e.to_string());
-                }
-            }
-            if let Some(sink) = sink.as_mut() {
-                if out.len() > before {
-                    sink(&out[before..]);
-                }
+    if failure.is_none() {
+        let before = out.len();
+        if let Ok(rs) = &mut resampler {
+            if let Err(e) = rs.finish(&mut out) {
+                failure = Some(e.to_string());
             }
         }
-        drop(sink);
+        forward_session_chunk(shared, &out[before..], &mut sink);
+    }
+    drop(sink);
 
-        let dropped = shared.dropped.load(Ordering::Relaxed);
-        if dropped > 0 {
-            eprintln!("[perf] капчер: кольцо переполнялось, потеряно {dropped} сэмплов");
+    let dropped = shared.dropped.load(Ordering::Relaxed);
+    if dropped > 0 {
+        eprintln!("[perf] капчер: кольцо переполнялось, потеряно {dropped} сэмплов");
+    }
+
+    let mut s = shared.session.lock().unwrap();
+    *s = Session::Done(match failure {
+        None => Ok(out),
+        Some(e) => Err(e),
+    });
+    shared.cv.notify_all();
+}
+
+fn forward_session_chunk(shared: &Shared, chunk: &[f32], sink: &mut Option<ChunkSink>) {
+    if chunk.is_empty() {
+        return;
+    }
+    if let Some(sink) = sink.as_mut() {
+        sink(chunk);
+    }
+    if shared.buffering.load(Ordering::Acquire) {
+        shared.rolling.lock().unwrap().push_chunk(chunk);
+    }
+}
+
+struct BufferedSession {
+    out: Vec<f32>,
+    sink: Option<ChunkSink>,
+}
+
+fn take_pending_session(shared: &Shared) -> Option<BufferedSession> {
+    let mut s = shared.session.lock().unwrap();
+    let Session::Start(sink) = &mut *s else {
+        return None;
+    };
+    let sink = sink.take();
+    *s = Session::Running;
+    shared.produced.store(0, Ordering::Relaxed);
+    shared.dropped.store(0, Ordering::Relaxed);
+    Some(BufferedSession {
+        out: Vec::with_capacity(audio::TARGET_SAMPLE_RATE as usize * OUT_PREALLOC_SECONDS),
+        sink,
+    })
+}
+
+fn finish_buffered_session(
+    shared: &Shared,
+    session: &mut Option<BufferedSession>,
+    result: Result<(), String>,
+) {
+    let Some(sess) = session.take() else { return };
+    drop(sess.sink);
+    let dropped = shared.dropped.load(Ordering::Relaxed);
+    if dropped > 0 {
+        eprintln!("[perf] капчер: кольцо переполнялось, потеряно {dropped} сэмплов");
+    }
+    let mut s = shared.session.lock().unwrap();
+    *s = Session::Done(result.map(|()| sess.out));
+    shared.cv.notify_all();
+}
+
+fn run_buffering(shared: &Shared, ring: &mut HeapCons<f32>, scratch: &mut Scratch) {
+    let mut resampler = match audio::StreamResampler::new(shared.sample_rate) {
+        Ok(rs) => rs,
+        Err(e) => {
+            eprintln!("фоновый буфер: ресемплер недоступен: {e}");
+            shared.buffering.store(false, Ordering::Release);
+            return;
         }
+    };
+    let mut chunk: Vec<f32> = Vec::with_capacity(MONO_SCRATCH_CAPACITY);
+    let mut session: Option<BufferedSession> = None;
 
-        let mut s = shared.session.lock().unwrap();
-        *s = Session::Done(match failure {
-            None => Ok(std::mem::take(&mut out)),
-            Some(e) => Err(e),
-        });
-        shared.cv.notify_all();
+    loop {
+        if session.is_none() {
+            if !shared.buffering.load(Ordering::Acquire) {
+                return;
+            }
+            session = take_pending_session(shared);
+        }
+        let stopping = session.is_some() && shared.stop_requested.load(Ordering::Acquire);
+        let n = drain_ring_chunk(shared, ring, scratch);
+        if n > 0 {
+            chunk.clear();
+            if let Err(e) = resampler.feed(&scratch.mono, &mut chunk) {
+                eprintln!("фоновый буфер: ресемплинг упал: {e}");
+                finish_buffered_session(shared, &mut session, Err(e.to_string()));
+                return;
+            }
+            if !chunk.is_empty() {
+                shared.rolling.lock().unwrap().push_chunk(&chunk);
+                if let Some(sess) = session.as_mut() {
+                    sess.out.extend_from_slice(&chunk);
+                    if let Some(sink) = sess.sink.as_mut() {
+                        sink(&chunk);
+                    }
+                }
+            }
+            continue;
+        }
+        if stopping {
+            finish_buffered_session(shared, &mut session, Ok(()));
+            continue;
+        }
+        std::thread::sleep(CONSUMER_IDLE_SLEEP);
     }
 }
 
@@ -367,7 +521,7 @@ extern "C" fn io_proc(
     };
     let shared = &ctx.shared;
 
-    if !shared.recording.load(Ordering::Acquire) {
+    if !shared.recording.load(Ordering::Acquire) && !shared.buffering.load(Ordering::Acquire) {
         return os::Status::NO_ERR;
     }
 
