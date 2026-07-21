@@ -10,6 +10,8 @@ const DEFAULT_CHAT_FONT_SIZE: f64 = 13.5;
 const DEFAULT_STT_LANGUAGE: &str = "ru";
 const DEFAULT_TELEPROMPTER_SPEED: f64 = 40.0;
 const DEFAULT_TELEPROMPTER_FONT_SIZE: f64 = 28.0;
+const DEFAULT_WINDOW_WIDTH: f64 = 960.0;
+const DEFAULT_WINDOW_HEIGHT: f64 = 680.0;
 
 const WINDOW_OPACITY_MIN: f64 = 0.2;
 const WINDOW_OPACITY_MAX: f64 = 1.0;
@@ -21,6 +23,10 @@ const TELEPROMPTER_SPEED_MIN: f64 = 10.0;
 const TELEPROMPTER_SPEED_MAX: f64 = 150.0;
 const TELEPROMPTER_FONT_SIZE_MIN: f64 = 20.0;
 const TELEPROMPTER_FONT_SIZE_MAX: f64 = 48.0;
+const WINDOW_WIDTH_MIN: f64 = 880.0;
+const WINDOW_WIDTH_MAX: f64 = 1600.0;
+const WINDOW_HEIGHT_MIN: f64 = 520.0;
+const WINDOW_HEIGHT_MAX: f64 = 1100.0;
 
 const OWNER_ONLY_FILE_MODE: u32 = 0o600;
 const TMP_FILE_EXTENSION: &str = "tmp";
@@ -55,6 +61,8 @@ pub struct Settings {
     pub teleprompter_font_size: f64,
     pub teleprompter_hotkey: String,
     pub teleprompter_resume: bool,
+    pub window_width: f64,
+    pub window_height: f64,
 }
 
 impl Default for Settings {
@@ -80,6 +88,8 @@ impl Default for Settings {
             teleprompter_font_size: DEFAULT_TELEPROMPTER_FONT_SIZE,
             teleprompter_hotkey: DEFAULT_TELEPROMPTER_HOTKEY.into(),
             teleprompter_resume: true,
+            window_width: DEFAULT_WINDOW_WIDTH,
+            window_height: DEFAULT_WINDOW_HEIGHT,
         }
     }
 }
@@ -104,6 +114,14 @@ impl Settings {
         self.teleprompter_font_size = self
             .teleprompter_font_size
             .clamp(TELEPROMPTER_FONT_SIZE_MIN, TELEPROMPTER_FONT_SIZE_MAX);
+        if !self.window_width.is_finite() {
+            self.window_width = DEFAULT_WINDOW_WIDTH;
+        }
+        self.window_width = self.window_width.clamp(WINDOW_WIDTH_MIN, WINDOW_WIDTH_MAX);
+        if !self.window_height.is_finite() {
+            self.window_height = DEFAULT_WINDOW_HEIGHT;
+        }
+        self.window_height = self.window_height.clamp(WINDOW_HEIGHT_MIN, WINDOW_HEIGHT_MAX);
     }
 
     pub fn load(path: &Path) -> std::io::Result<Self> {
@@ -185,6 +203,8 @@ mod tests {
         assert_eq!(s.teleprompter_font_size, 28.0);
         assert_eq!(s.teleprompter_hotkey, "F10");
         assert!(s.teleprompter_resume);
+        assert_eq!(s.window_width, 960.0);
+        assert_eq!(s.window_height, 680.0);
     }
 
     #[test]
@@ -227,6 +247,36 @@ mod tests {
         s.chat_font_size = f64::NAN;
         s.clamp();
         assert_eq!(s.chat_font_size, 13.5);
+    }
+
+    #[test]
+    fn clamp_limits_window_size() {
+        let mut s = Settings::default();
+        s.window_width = 100.0;
+        s.window_height = 100.0;
+        s.clamp();
+        assert_eq!(s.window_width, 880.0);
+        assert_eq!(s.window_height, 520.0);
+        s.window_width = 5000.0;
+        s.window_height = 5000.0;
+        s.clamp();
+        assert_eq!(s.window_width, 1600.0);
+        assert_eq!(s.window_height, 1100.0);
+        s.window_width = f64::NAN;
+        s.window_height = f64::NAN;
+        s.clamp();
+        assert_eq!(s.window_width, 960.0);
+        assert_eq!(s.window_height, 680.0);
+    }
+
+    #[test]
+    fn load_missing_window_size_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.json");
+        std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+        let s = Settings::load(&path).unwrap();
+        assert_eq!(s.window_width, 960.0);
+        assert_eq!(s.window_height, 680.0);
     }
 
     #[test]

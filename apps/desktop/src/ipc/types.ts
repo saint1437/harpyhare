@@ -24,6 +24,8 @@ export interface Settings {
   teleprompter_font_size: number;
   teleprompter_hotkey: string;
   teleprompter_resume: boolean;
+  window_width: number;
+  window_height: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -47,6 +49,8 @@ export const DEFAULT_SETTINGS: Settings = {
   teleprompter_font_size: 28,
   teleprompter_hotkey: "F10",
   teleprompter_resume: true,
+  window_width: 960,
+  window_height: 680,
 };
 
 export type RecorderState = "idle" | "recording" | "transcribing";
