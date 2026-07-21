@@ -274,10 +274,6 @@ impl SystemAudioCapture {
     pub fn set_buffer_capacity_secs(&self, secs: u64) {
         self.shared.rolling.lock().unwrap().set_capacity_secs(secs);
     }
-
-    pub fn buffer_snapshot(&self) -> Vec<f32> {
-        self.shared.rolling.lock().unwrap().snapshot()
-    }
 }
 
 struct Scratch {
