@@ -16,6 +16,8 @@ const DEFAULT_TELEPROMPTER_SPEED: f64 = 40.0;
 const DEFAULT_TELEPROMPTER_FONT_SIZE: f64 = 28.0;
 const DEFAULT_WINDOW_WIDTH: f64 = 960.0;
 const DEFAULT_WINDOW_HEIGHT: f64 = 680.0;
+const DEFAULT_BUFFER_HOTKEY: &str = "F8";
+const DEFAULT_BUFFER_SECONDS: u64 = 4;
 
 const WINDOW_OPACITY_MIN: f64 = 0.2;
 const WINDOW_OPACITY_MAX: f64 = 1.0;
@@ -33,6 +35,8 @@ const WINDOW_WIDTH_MIN: f64 = 300.0;
 const WINDOW_WIDTH_MAX: f64 = 1600.0;
 const WINDOW_HEIGHT_MIN: f64 = 520.0;
 const WINDOW_HEIGHT_MAX: f64 = 1100.0;
+const BUFFER_SECONDS_MIN: u64 = 4;
+const BUFFER_SECONDS_MAX: u64 = 10;
 
 const OWNER_ONLY_FILE_MODE: u32 = 0o600;
 const TMP_FILE_EXTENSION: &str = "tmp";
@@ -73,6 +77,9 @@ pub struct Settings {
     pub capture_device_uid: String,
     pub theme: String,
     pub scroll_step: u32,
+    pub buffer_enabled: bool,
+    pub buffer_seconds: u64,
+    pub buffer_hotkey: String,
 }
 
 impl Default for Settings {
@@ -104,6 +111,9 @@ impl Default for Settings {
             capture_device_uid: String::new(),
             theme: THEME_GRAY.into(),
             scroll_step: DEFAULT_SCROLL_STEP,
+            buffer_enabled: true,
+            buffer_seconds: DEFAULT_BUFFER_SECONDS,
+            buffer_hotkey: DEFAULT_BUFFER_HOTKEY.into(),
         }
     }
 }
@@ -141,6 +151,7 @@ impl Settings {
             self.theme = THEME_GRAY.into();
         }
         self.scroll_step = self.scroll_step.clamp(SCROLL_STEP_MIN, SCROLL_STEP_MAX);
+        self.buffer_seconds = self.buffer_seconds.clamp(BUFFER_SECONDS_MIN, BUFFER_SECONDS_MAX);
     }
 
     pub fn load(path: &Path) -> std::io::Result<Self> {
@@ -226,6 +237,31 @@ mod tests {
         assert_eq!(s.window_height, 680.0);
         assert_eq!(s.resize_step, 20);
         assert_eq!(s.capture_device_uid, "");
+        assert!(s.buffer_enabled);
+        assert_eq!(s.buffer_seconds, 4);
+        assert_eq!(s.buffer_hotkey, "F8");
+    }
+
+    #[test]
+    fn load_missing_buffer_fields_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.json");
+        std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+        let s = Settings::load(&path).unwrap();
+        assert!(s.buffer_enabled);
+        assert_eq!(s.buffer_seconds, 4);
+        assert_eq!(s.buffer_hotkey, "F8");
+    }
+
+    #[test]
+    fn clamp_limits_buffer_seconds() {
+        let mut s = Settings::default();
+        s.buffer_seconds = 1;
+        s.clamp();
+        assert_eq!(s.buffer_seconds, 4);
+        s.buffer_seconds = 120;
+        s.clamp();
+        assert_eq!(s.buffer_seconds, 10);
     }
 
     #[test]
