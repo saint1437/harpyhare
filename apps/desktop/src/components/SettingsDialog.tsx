@@ -789,7 +789,7 @@ function SwitchRow({
 function SectionGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="font-mono text-[10px] tracking-wider text-primary/80 uppercase">{title}</h3>
+      <h3 className="text-[10.5px] font-medium text-foreground/55">{title}</h3>
       <div className="flex flex-col gap-2.5">{children}</div>
     </section>
   );

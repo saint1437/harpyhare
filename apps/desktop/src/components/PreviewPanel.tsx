@@ -40,11 +40,8 @@ function usePreviewSrc(html: string) {
 function PreviewHeader({ html, onClose }: { html: string; onClose: () => void }) {
   return (
     <header className="flex items-center gap-2.5">
-      <span className="font-mono text-[11px] tracking-wider text-primary uppercase">Превью</span>
-      <span
-        className="h-px flex-1 bg-gradient-to-r from-primary/40 via-border to-transparent"
-        aria-hidden
-      />
+      <span className="text-[10.5px] font-medium text-foreground/55">Превью</span>
+      <span className="h-px flex-1 bg-border" aria-hidden />
       <button
         type="button"
         onClick={() => void navigator.clipboard.writeText(html)}

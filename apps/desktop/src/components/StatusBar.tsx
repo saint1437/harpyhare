@@ -147,9 +147,9 @@ function UpdateBadge({ update }: { update: NonNullable<StatusBarProps["update"]>
       onClick={update.onOpen}
       aria-label={availableTitle}
       title={update.busy ? `Обновление до ${update.version}…` : availableTitle}
-      className="flex h-7 items-center gap-1.5 rounded-full px-2.5 font-mono text-[11.5px] text-primary transition-colors hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-ring"
+      className="flex h-7 items-center gap-1.5 rounded-full px-2.5 font-mono text-[11.5px] text-foreground/85 transition-colors hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-ring"
     >
-      <ArrowDownCircle className={cn("size-4", update.busy && "animate-pulse")} />
+      <ArrowDownCircle className={cn("size-4 text-primary", update.busy && "animate-pulse")} />
       {update.version}
     </button>
   );

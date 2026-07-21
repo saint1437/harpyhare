@@ -19,9 +19,9 @@ export function HtmlBlockChip({ code, onToggle }: HtmlBlockChipProps) {
       onClick={onToggle}
       className="my-1.5 flex items-center gap-2 rounded-lg border border-border bg-black/30 px-3 py-1.5 font-mono text-[11.5px] text-muted-foreground transition-colors hover:text-foreground"
     >
-      <span className="text-primary">html</span>
+      <span className="font-medium text-foreground/80">html</span>
       <span>{lines} строк</span>
-      <span className="flex items-center gap-1 text-primary">
+      <span className="flex items-center gap-1">
         Открыть превью <ExternalLink className="size-3" />
       </span>
     </button>

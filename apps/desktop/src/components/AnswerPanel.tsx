@@ -57,7 +57,7 @@ function ExternalLinkAnchor({ href, children }: { href?: string; children?: Reac
         e.preventDefault();
         if (href && EXTERNAL_HTTP_URL.test(href)) void openExternal(href);
       }}
-      className="text-primary underline underline-offset-2 hover:brightness-125"
+      className="text-foreground underline decoration-foreground/40 underline-offset-2 hover:decoration-foreground"
     >
       {children}
     </a>
