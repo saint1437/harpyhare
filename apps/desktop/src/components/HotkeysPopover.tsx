@@ -1,13 +1,59 @@
-import { Keyboard } from "lucide-react";
+import {
+  ArrowBigUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  ChevronUp,
+  Command,
+  CornerDownLeft,
+  Keyboard,
+  Minus,
+  Option,
+  Plus,
+  type LucideIcon,
+} from "lucide-react";
 import { Fragment } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { hotkeyGroups } from "@/lib/hotkeys";
+import { comboTokens, hotkeyGroups, type ComboIconName, type ComboToken } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 
 export interface HotkeysPopoverProps {
   hotkey: string;
   toggleHotkey: string;
   teleprompterHotkey: string;
+}
+
+const COMBO_ICONS: Record<ComboIconName, LucideIcon> = {
+  cmd: Command,
+  shift: ArrowBigUp,
+  option: Option,
+  ctrl: ChevronUp,
+  enter: CornerDownLeft,
+  up: ArrowUp,
+  down: ArrowDown,
+  left: ArrowLeft,
+  right: ArrowRight,
+  plus: Plus,
+  minus: Minus,
+};
+
+function ComboTokenView({ token }: { token: ComboToken }) {
+  if (token.type === "text") {
+    return <span className="font-mono text-[12.5px] text-foreground/90">{token.text}</span>;
+  }
+  const Icon = COMBO_ICONS[token.icon];
+  return <Icon className="size-4 text-foreground/90" />;
+}
+
+function ComboChip({ combo }: { combo: string }) {
+  return (
+    <kbd className="inline-flex w-full items-center justify-center gap-0.5 rounded-md border border-white/10 bg-white/5 px-2 py-1">
+      {comboTokens(combo).map((token, i) => (
+        <ComboTokenView key={i} token={token} />
+      ))}
+    </kbd>
+  );
 }
 
 export function HotkeysPopover(props: HotkeysPopoverProps) {
@@ -25,7 +71,7 @@ export function HotkeysPopover(props: HotkeysPopoverProps) {
           aria-label="Горячие клавиши"
           className="grid size-7 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
         >
-          <Keyboard className="size-4.5" />
+          <Keyboard className="size-4" />
         </button>
       </PopoverTrigger>
       <PopoverContent side="bottom" align="end" className="max-h-[70vh] w-80 overflow-y-auto p-3">
@@ -42,9 +88,7 @@ export function HotkeysPopover(props: HotkeysPopoverProps) {
               </h4>
               {group.hints.map((hint) => (
                 <Fragment key={hint.label}>
-                  <kbd className="inline-flex w-full items-center justify-center rounded-md border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[16px] leading-6 whitespace-nowrap text-foreground/90">
-                    {hint.combo}
-                  </kbd>
+                  <ComboChip combo={hint.combo} />
                   <span className="min-w-0 truncate text-[11.5px] text-muted-foreground">
                     {hint.label}
                   </span>

@@ -92,7 +92,7 @@ function NewChatButton({ disabled, onClick }: { disabled: boolean; onClick: () =
       aria-label="Новый чат"
       className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
     >
-      <Plus className="size-4.5" />
+      <Plus className="size-4" />
     </button>
   );
 }

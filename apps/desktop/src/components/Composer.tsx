@@ -265,7 +265,7 @@ function RequestParamsPopover(props: RequestParamsProps) {
           title="Параметры запроса"
           aria-label="Параметры запроса"
         >
-          <SlidersHorizontal className="size-4.5" />
+          <SlidersHorizontal className="size-4" />
         </Button>
       </PopoverTrigger>
       <PopoverContent side="top" align="start" className="w-60 p-2.5">
@@ -324,7 +324,7 @@ function ComposerToolbar(props: ComposerToolbarProps) {
         title="Очистить черновик"
         aria-label="Очистить черновик"
       >
-        <Eraser className="size-4.5" />
+        <Eraser className="size-4" />
       </Button>
       <Button
         variant="ghost"
@@ -335,7 +335,7 @@ function ComposerToolbar(props: ComposerToolbarProps) {
         title="Контекст чата"
         aria-label="Контекст чата"
       >
-        <NotebookText className="size-4.5" />
+        <NotebookText className="size-4" />
         {props.hasContext && (
           <span
             className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-primary"
@@ -368,7 +368,7 @@ function ComposerToolbar(props: ComposerToolbarProps) {
           title="Повторить распознавание"
           aria-label="Повторить распознавание"
         >
-          <RotateCcw className="size-4.5" />
+          <RotateCcw className="size-4" />
         </Button>
       )}
       {props.streaming ? (
@@ -380,7 +380,7 @@ function ComposerToolbar(props: ComposerToolbarProps) {
           title="Остановить ответ"
           aria-label="Остановить ответ"
         >
-          <Square className="size-4 fill-current" />
+          <Square className="size-3.5 fill-current" />
         </Button>
       ) : (
         <Button
@@ -391,7 +391,7 @@ function ComposerToolbar(props: ComposerToolbarProps) {
           title="Отправить (⏎)"
           aria-label="Отправить"
         >
-          <ArrowUp className="size-4.5" />
+          <ArrowUp className="size-4" />
         </Button>
       )}
     </div>

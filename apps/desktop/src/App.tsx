@@ -442,12 +442,12 @@ function AppHeader({
         <>
           {canTeleprompt && (
             <HeaderActionButton title="Суфлёр" onClick={onOpenTeleprompter}>
-              <ScrollText className="size-4.5" />
+              <ScrollText className="size-4" />
             </HeaderActionButton>
           )}
           {canCopy && (
             <HeaderActionButton title="Копировать последний ответ" onClick={onCopy}>
-              <Copy className="size-4.5" />
+              <Copy className="size-4" />
             </HeaderActionButton>
           )}
           <HotkeysPopover

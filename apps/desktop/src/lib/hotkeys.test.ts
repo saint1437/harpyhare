@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatCombo, hotkeyGroups } from "./hotkeys";
+import { comboTokens, formatCombo, hotkeyGroups } from "./hotkeys";
 
 const CFG = { ptt: "F9", toggleWindow: "Cmd+Shift+H", teleprompter: "F10" };
 
@@ -11,6 +11,26 @@ describe("formatCombo", () => {
 
   it("не трогает одиночные клавиши", () => {
     expect(formatCombo("F9")).toBe("F9");
+  });
+});
+
+describe("comboTokens", () => {
+  it("модификаторы и стрелки становятся иконками, буквы — текстом", () => {
+    expect(comboTokens("⌘⇧H")).toEqual([
+      { type: "icon", icon: "cmd" },
+      { type: "icon", icon: "shift" },
+      { type: "text", text: "H" },
+    ]);
+  });
+
+  it("текстовые клавиши склеиваются, пробелы выбрасываются", () => {
+    expect(comboTokens("F9")).toEqual([{ type: "text", text: "F9" }]);
+    expect(comboTokens("⌘⇧ + −")).toEqual([
+      { type: "icon", icon: "cmd" },
+      { type: "icon", icon: "shift" },
+      { type: "icon", icon: "plus" },
+      { type: "icon", icon: "minus" },
+    ]);
   });
 });
 
