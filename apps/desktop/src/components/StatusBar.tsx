@@ -96,7 +96,7 @@ function WindowButtons({
         onClick={onClose}
         hoverClass="hover:bg-destructive/15 hover:text-destructive"
       >
-        <X className="size-4" />
+        <X className="size-4.5" />
       </WindowButton>
       <WindowButton
         label="Скрыть окно"
@@ -104,7 +104,7 @@ function WindowButtons({
         onClick={onHide}
         hoverClass="hover:bg-white/5 hover:text-foreground"
       >
-        <Minus className="size-4" />
+        <Minus className="size-4.5" />
       </WindowButton>
     </div>
   );
@@ -130,7 +130,7 @@ function WindowButton({
       aria-label={label}
       title={title}
       className={cn(
-        "grid size-6 place-items-center rounded-full text-muted-foreground transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+        "grid size-7 place-items-center rounded-full text-muted-foreground transition-colors focus-visible:outline-2 focus-visible:outline-ring",
         hoverClass,
       )}
     >
@@ -163,7 +163,7 @@ function SettingsButton({ onClick }: { onClick: () => void }) {
       aria-label="Настройки"
       className="grid size-7 place-items-center rounded-full text-muted-foreground transition-[color,background,transform] hover:rotate-45 hover:bg-white/5 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
     >
-      <SettingsIcon className="size-4" />
+      <SettingsIcon className="size-4.5" />
     </button>
   );
 }

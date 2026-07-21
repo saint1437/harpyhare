@@ -72,7 +72,7 @@ function ChatTab({
       )}
     >
       <span className={cn(closeOnClick && "group-hover:hidden")}>{number}</span>
-      {closeOnClick && <X className="hidden size-3.5 group-hover:block" />}
+      {closeOnClick && <X className="hidden size-4 group-hover:block" />}
       {isStreaming && (
         <span
           className="absolute -top-0.5 -right-0.5 size-1.5 animate-pulse rounded-full bg-primary"
@@ -92,7 +92,7 @@ function NewChatButton({ disabled, onClick }: { disabled: boolean; onClick: () =
       aria-label="Новый чат"
       className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
     >
-      <Plus className="size-4" />
+      <Plus className="size-4.5" />
     </button>
   );
 }

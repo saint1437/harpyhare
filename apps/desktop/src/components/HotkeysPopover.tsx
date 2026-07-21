@@ -25,7 +25,7 @@ export function HotkeysPopover(props: HotkeysPopoverProps) {
           aria-label="Горячие клавиши"
           className="grid size-7 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
         >
-          <Keyboard className="size-4" />
+          <Keyboard className="size-4.5" />
         </button>
       </PopoverTrigger>
       <PopoverContent side="bottom" align="end" className="max-h-[70vh] w-72 overflow-y-auto p-3">
