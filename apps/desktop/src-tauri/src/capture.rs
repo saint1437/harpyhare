@@ -486,10 +486,14 @@ fn run_buffering(shared: &Shared, ring: &mut HeapCons<f32>, scratch: &mut Scratc
             if let Err(e) = resampler.feed(&scratch.mono, &mut chunk) {
                 eprintln!("фоновый буфер: ресемплинг упал: {e}");
                 finish_buffered_session(shared, &mut session, Err(e.to_string()));
+                shared.buffering.store(false, Ordering::Release);
+                shared.rolling.lock().unwrap().clear();
                 return;
             }
             if !chunk.is_empty() {
-                shared.rolling.lock().unwrap().push_chunk(&chunk);
+                if shared.buffering.load(Ordering::Acquire) {
+                    shared.rolling.lock().unwrap().push_chunk(&chunk);
+                }
                 if let Some(sess) = session.as_mut() {
                     sess.out.extend_from_slice(&chunk);
                     if let Some(sink) = sess.sink.as_mut() {
