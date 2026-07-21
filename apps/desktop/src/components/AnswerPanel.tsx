@@ -1,3 +1,4 @@
+import { Copy, ScrollText } from "lucide-react";
 import { isValidElement, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
@@ -152,7 +153,29 @@ function useStickToBottom() {
   return { scrollRef, showJump, onScroll, scrollIfNearBottom, resetToBottom };
 }
 
-function PanelHeader({
+function PanelActionButton({
+  title,
+  onClick,
+  children,
+}: {
+  title: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className="grid size-7 place-items-center rounded-md bg-background/60 text-muted-foreground backdrop-blur-sm transition-colors hover:bg-white/10 hover:text-foreground"
+    >
+      {children}
+    </button>
+  );
+}
+
+function PanelActions({
   canCopy,
   canTeleprompt,
   onCopy,
@@ -163,30 +186,18 @@ function PanelHeader({
   onCopy: () => void;
   onOpenTeleprompter: () => void;
 }) {
+  if (!canCopy && !canTeleprompt) return null;
   return (
-    <div className="flex items-center gap-2.5">
-      <span className="font-mono text-[11px] tracking-wider text-primary uppercase">Чат</span>
-      <span
-        className="h-px flex-1 bg-gradient-to-r from-primary/40 via-border to-transparent"
-        aria-hidden
-      />
+    <div className="absolute top-0 right-1.5 z-10 flex gap-1">
       {canTeleprompt && (
-        <button
-          type="button"
-          onClick={onOpenTeleprompter}
-          className="font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-        >
-          Суфлёр
-        </button>
+        <PanelActionButton title="Суфлёр" onClick={onOpenTeleprompter}>
+          <ScrollText className="size-3.5" />
+        </PanelActionButton>
       )}
       {canCopy && (
-        <button
-          type="button"
-          onClick={onCopy}
-          className="font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-        >
-          Копировать
-        </button>
+        <PanelActionButton title="Копировать последний ответ" onClick={onCopy}>
+          <Copy className="size-3.5" />
+        </PanelActionButton>
       )}
     </div>
   );
@@ -283,15 +294,14 @@ export function AnswerPanel({
   const canTeleprompt = hasAssistantReply || (partial !== null && partial !== "");
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col gap-2">
-      <PanelHeader
-        canCopy={canCopy}
-        canTeleprompt={canTeleprompt}
-        onCopy={onCopy}
-        onOpenTeleprompter={onOpenTeleprompter}
-      />
-
+    <section className="flex min-h-0 flex-1 flex-col">
       <div className="relative flex min-h-0 flex-1">
+        <PanelActions
+          canCopy={canCopy}
+          canTeleprompt={canTeleprompt}
+          onCopy={onCopy}
+          onOpenTeleprompter={onOpenTeleprompter}
+        />
         <div
           ref={scrollRef}
           onScroll={onScroll}
