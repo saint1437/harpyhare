@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AccessCodeForm } from "@/components/AccessCodeForm";
@@ -29,6 +30,7 @@ import type { AudioOutputDevice, UpdateInfo } from "@/ipc/types";
 import type { Settings } from "@/ipc/types";
 import { BRAND_NAME } from "@/lib/brand";
 import type { PromptPreset } from "@/lib/presets";
+import { queryKeys } from "@/lib/query-client";
 import { cn } from "@/lib/utils";
 import {
   applyChatFontSize,
@@ -435,18 +437,15 @@ function ApiKeyField({
 const CAPTURE_DEVICE_SYSTEM_DEFAULT = "system-default";
 const CAPTURE_DEVICE_MISSING_LABEL = "Недоступное устройство";
 
+const AUDIO_DEVICES_STALE_MS = 30 * 1000;
+
 function useAudioOutputDevices(): AudioOutputDevice[] {
-  const [devices, setDevices] = useState<AudioOutputDevice[]>([]);
-  useEffect(() => {
-    let live = true;
-    void listAudioOutputDevices().then((list) => {
-      if (live) setDevices(list);
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
-  return devices;
+  const { data } = useQuery({
+    queryKey: queryKeys.audioDevices,
+    queryFn: listAudioOutputDevices,
+    staleTime: AUDIO_DEVICES_STALE_MS,
+  });
+  return data ?? [];
 }
 
 function withSavedDevice(devices: AudioOutputDevice[], savedUid: string): AudioOutputDevice[] {

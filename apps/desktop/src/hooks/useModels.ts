@@ -1,27 +1,21 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { listModels } from "@/ipc/commands";
 import { FALLBACK_MODELS, type ModelInfo } from "@/lib/models";
+import { queryKeys } from "@/lib/query-client";
 
-async function listModelsOrEmpty(): Promise<ModelInfo[]> {
-  try {
-    return await listModels();
-  } catch {
-    return [];
-  }
+const MODELS_STALE_MS = 60 * 60 * 1000;
+
+async function listModelsOrFallback(): Promise<ModelInfo[]> {
+  const fetched = await listModels();
+  return fetched.length > 0 ? fetched : FALLBACK_MODELS;
 }
 
 export function useModels(): ModelInfo[] {
-  const [models, setModels] = useState<ModelInfo[]>(FALLBACK_MODELS);
-
-  useEffect(() => {
-    let live = true;
-    void listModelsOrEmpty().then((fetched) => {
-      if (live && fetched.length > 0) setModels(fetched);
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  return models;
+  const { data } = useQuery({
+    queryKey: queryKeys.models,
+    queryFn: listModelsOrFallback,
+    staleTime: MODELS_STALE_MS,
+    placeholderData: FALLBACK_MODELS,
+  });
+  return data ?? FALLBACK_MODELS;
 }

@@ -1,22 +1,25 @@
-import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { getOfficialPresets } from "@/ipc/commands";
 import { onEvent } from "@/ipc/events";
 import { OFFICIAL_PRESETS_FALLBACK, type PromptPreset } from "@/lib/presets";
+import { queryKeys } from "@/lib/query-client";
 
 export function useOfficialPresets(): PromptPreset[] {
-  const [presets, setPresets] = useState<PromptPreset[]>(OFFICIAL_PRESETS_FALLBACK);
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: queryKeys.officialPresets,
+    queryFn: getOfficialPresets,
+    placeholderData: OFFICIAL_PRESETS_FALLBACK,
+  });
 
-  useEffect(() => {
-    let live = true;
-    void getOfficialPresets().then((p) => {
-      if (live) setPresets(p);
-    });
-    const off = onEvent("official-presets-updated", setPresets);
-    return () => {
-      live = false;
-      off();
-    };
-  }, []);
+  useEffect(
+    () =>
+      onEvent("official-presets-updated", (fresh) => {
+        queryClient.setQueryData(queryKeys.officialPresets, fresh);
+      }),
+    [queryClient],
+  );
 
-  return presets;
+  return data ?? OFFICIAL_PRESETS_FALLBACK;
 }

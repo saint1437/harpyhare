@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { Copy, ScrollText } from "lucide-react";
 import {
   useCallback,
@@ -63,6 +64,7 @@ import { libraryContextBlocks, type ContextLibrary } from "@/lib/context-library
 import { extractHtmlBlocks } from "@/lib/html-blocks";
 import type { ModelInfo } from "@/lib/models";
 import { mergePresets, presetText, type PromptPreset } from "@/lib/presets";
+import { queryKeys } from "@/lib/query-client";
 import { toReadingText } from "@/lib/teleprompter";
 
 const RETRYABLE_STT_ERROR = /перегружен|соединение|VPN|интернет|оборван/i;
@@ -348,33 +350,31 @@ function useBrowserDemoSeed(activeId: string, chatsRef: RefObject<ChatsApi>): vo
   }, [activeId, chatsRef]);
 }
 
-const PROJECTED_TOKENS_DEBOUNCE_MS = 400;
 const TOKEN_COUNT_PLACEHOLDER_MESSAGE: ChatMessageDto = { role: "user", text: ".", images: [] };
+const PROJECTED_TOKENS_STALE_MS = 10 * 60 * 1000;
 
 function useProjectedContextTokens(chat: Chat, system: string, streaming: boolean): number {
-  const [tokens, setTokens] = useState(0);
   const messagesKey = chat.messages.map((m) => `${m.role}:${String(m.text.length)}`).join("|");
-  useEffect(() => {
-    if (streaming) return;
-    let live = true;
-    const handle = setTimeout(() => {
+  const { data } = useQuery({
+    queryKey: queryKeys.countTokens(
+      chat.model,
+      chat.thinkingEnabled,
+      chat.webSearch,
+      system,
+      messagesKey,
+    ),
+    queryFn: () => {
       const history: ChatMessageDto[] =
         chat.messages.length > 0
           ? chat.messages.map((m) => ({ role: m.role, text: m.text, images: m.images }))
           : [TOKEN_COUNT_PLACEHOLDER_MESSAGE];
-      void countChatTokens(history, system, chat.thinkingEnabled, chat.model, chat.webSearch)
-        .then((n) => {
-          if (live) setTokens(n);
-        })
-        .catch(() => undefined);
-    }, PROJECTED_TOKENS_DEBOUNCE_MS);
-    return () => {
-      live = false;
-      clearTimeout(handle);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.id, messagesKey, system, chat.thinkingEnabled, chat.model, chat.webSearch, streaming]);
-  return tokens;
+      return countChatTokens(history, system, chat.thinkingEnabled, chat.model, chat.webSearch);
+    },
+    enabled: !streaming,
+    staleTime: PROJECTED_TOKENS_STALE_MS,
+    placeholderData: (prev) => prev,
+  });
+  return data ?? 0;
 }
 
 interface SendPipeline {
