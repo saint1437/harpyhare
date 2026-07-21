@@ -49,8 +49,6 @@ const RESIZE_DIM_HEIGHT: &str = "height";
 const ERR_NO_CAPTURE_PERMISSION: &str = "Нет разрешения на запись системного звука";
 const ERR_NO_AUDIO_BUFFER: &str = "нет аудио-буфера";
 const ERR_SILENCE: &str = "Тишина — нечего распознавать (если звук играл: проверь право «Запись системного звука» у macOS и устройство захвата в настройках)";
-const ERR_BUFFER_DISABLED: &str = "Фоновый буфер выключен в настройках";
-const ERR_BUSY_RECORDING: &str = "Дождитесь окончания текущей записи";
 
 const STT_STREAM_CHANNEL_CAPACITY: usize = 256;
 const LLM_DELTA_FLUSH_INTERVAL: Duration = Duration::from_millis(25);
@@ -173,7 +171,6 @@ pub fn run() {
             save_context_library,
             read_context_import_file,
             retry_transcription,
-            grab_buffer,
             get_settings,
             set_settings,
             list_audio_output_devices,
@@ -442,11 +439,6 @@ fn register_startup_hotkeys(app: &AppHandle, s: &settings::Settings) {
     if let Err(e) = hotkey::register_teleprompter(app, &s.teleprompter_hotkey) {
         eprintln!("не удалось зарегистрировать суфлёр-хоткей {:?}: {e}", s.teleprompter_hotkey);
     }
-    if s.buffer_enabled {
-        if let Err(e) = hotkey::register_buffer_grab(app, &s.buffer_hotkey) {
-            eprintln!("не удалось зарегистрировать хоткей буфера {:?}: {e}", s.buffer_hotkey);
-        }
-    }
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -634,60 +626,6 @@ pub fn on_toggle_visibility(app: &AppHandle) {
 
 pub fn on_toggle_teleprompter(app: &AppHandle) {
     let _ = app.emit(EVENT_TOGGLE_TELEPROMPTER, ());
-}
-
-pub fn on_grab_buffer(app: &AppHandle) {
-    grab_buffer_now(app);
-}
-
-fn grab_buffer_now(app: &AppHandle) {
-    let st = app.state::<App>();
-    if *st.recorder.lock().unwrap() != state::RecorderState::Idle {
-        let _ = app.emit(EVENT_STT_ERROR, ERR_BUSY_RECORDING);
-        return;
-    }
-    if !st.settings.lock().unwrap().buffer_enabled {
-        let _ = app.emit(EVENT_STT_ERROR, ERR_BUFFER_DISABLED);
-        return;
-    }
-    if st.capture_rebuild_pending.swap(false, Ordering::SeqCst) {
-        rebuild_capture_now(app);
-    }
-    let snapshot = {
-        let capture = st.capture.lock().unwrap();
-        match capture.as_ref() {
-            Some(c) => c.buffer_snapshot(),
-            None => {
-                let _ = app.emit(EVENT_STT_ERROR, ERR_NO_CAPTURE_PERMISSION);
-                return;
-            }
-        }
-    };
-    let min_samples = (state::MIN_RECORDING_SECS * audio::TARGET_SAMPLE_RATE as f32) as usize;
-    if snapshot.len() < min_samples {
-        return;
-    }
-    if audio::is_silence(&snapshot) {
-        let _ = app.emit(EVENT_STT_ERROR, ERR_SILENCE);
-        return;
-    }
-    {
-        let mut rec = st.recorder.lock().unwrap();
-        if *rec != state::RecorderState::Idle {
-            let _ = app.emit(EVENT_STT_ERROR, ERR_BUSY_RECORDING);
-            return;
-        }
-        *rec = state::RecorderState::Transcribing;
-    }
-    emit_state(app, state::RecorderState::Transcribing);
-    *st.last_recording.lock().unwrap() = Some(snapshot.clone());
-    let app2 = app.clone();
-    tauri::async_runtime::spawn(async move { transcribe_and_emit(app2, snapshot).await });
-}
-
-#[tauri::command]
-fn grab_buffer(app: AppHandle) {
-    grab_buffer_now(&app);
 }
 
 fn finish_recording(app: &AppHandle, action: state::Action) {
@@ -1129,14 +1067,6 @@ fn reregister_changed_hotkeys(
     if old.teleprompter_hotkey != new.teleprompter_hotkey {
         hotkey::register_teleprompter(app, &new.teleprompter_hotkey)?;
         hotkey::unregister_teleprompter(app, &old.teleprompter_hotkey);
-    }
-    if old.buffer_enabled != new.buffer_enabled || old.buffer_hotkey != new.buffer_hotkey {
-        if new.buffer_enabled {
-            hotkey::register_buffer_grab(app, &new.buffer_hotkey)?;
-        }
-        if old.buffer_enabled && (!new.buffer_enabled || old.buffer_hotkey != new.buffer_hotkey) {
-            hotkey::unregister_buffer_grab(app, &old.buffer_hotkey);
-        }
     }
     Ok(())
 }

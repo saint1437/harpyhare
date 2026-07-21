@@ -16,7 +16,6 @@ const DEFAULT_TELEPROMPTER_SPEED: f64 = 40.0;
 const DEFAULT_TELEPROMPTER_FONT_SIZE: f64 = 28.0;
 const DEFAULT_WINDOW_WIDTH: f64 = 960.0;
 const DEFAULT_WINDOW_HEIGHT: f64 = 680.0;
-const DEFAULT_BUFFER_HOTKEY: &str = "F8";
 const DEFAULT_BUFFER_SECONDS: u64 = 4;
 
 const WINDOW_OPACITY_MIN: f64 = 0.2;
@@ -79,7 +78,6 @@ pub struct Settings {
     pub scroll_step: u32,
     pub buffer_enabled: bool,
     pub buffer_seconds: u64,
-    pub buffer_hotkey: String,
 }
 
 impl Default for Settings {
@@ -113,7 +111,6 @@ impl Default for Settings {
             scroll_step: DEFAULT_SCROLL_STEP,
             buffer_enabled: true,
             buffer_seconds: DEFAULT_BUFFER_SECONDS,
-            buffer_hotkey: DEFAULT_BUFFER_HOTKEY.into(),
         }
     }
 }
@@ -239,7 +236,6 @@ mod tests {
         assert_eq!(s.capture_device_uid, "");
         assert!(s.buffer_enabled);
         assert_eq!(s.buffer_seconds, 4);
-        assert_eq!(s.buffer_hotkey, "F8");
     }
 
     #[test]
@@ -250,7 +246,6 @@ mod tests {
         let s = Settings::load(&path).unwrap();
         assert!(s.buffer_enabled);
         assert_eq!(s.buffer_seconds, 4);
-        assert_eq!(s.buffer_hotkey, "F8");
     }
 
     #[test]

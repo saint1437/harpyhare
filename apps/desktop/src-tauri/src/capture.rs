@@ -434,14 +434,22 @@ fn take_pending_session(shared: &Shared) -> Option<BufferedSession> {
     let Session::Start(sink) = &mut *s else {
         return None;
     };
-    let sink = sink.take();
+    let mut sink = sink.take();
     *s = Session::Running;
+    drop(s);
     shared.produced.store(0, Ordering::Relaxed);
     shared.dropped.store(0, Ordering::Relaxed);
-    Some(BufferedSession {
-        out: Vec::with_capacity(audio::TARGET_SAMPLE_RATE as usize * OUT_PREALLOC_SECONDS),
-        sink,
-    })
+    let preroll = shared.rolling.lock().unwrap().snapshot();
+    let mut out = Vec::with_capacity(
+        preroll.len() + audio::TARGET_SAMPLE_RATE as usize * OUT_PREALLOC_SECONDS,
+    );
+    out.extend_from_slice(&preroll);
+    if !preroll.is_empty() {
+        if let Some(sink) = sink.as_mut() {
+            sink(&preroll);
+        }
+    }
+    Some(BufferedSession { out, sink })
 }
 
 fn finish_buffered_session(

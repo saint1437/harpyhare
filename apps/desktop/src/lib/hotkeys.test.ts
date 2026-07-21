@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { comboTokens, formatCombo, hotkeyGroups } from "./hotkeys";
 
-const CFG = { ptt: "F9", toggleWindow: "Cmd+Shift+H", teleprompter: "F10", bufferGrab: "F8" };
-const BUFFER_HINT = "расшифровать фоновый буфер";
-
-function labels(bufferGrab: string | null): string[] {
-  return hotkeyGroups({ ...CFG, bufferGrab }).flatMap((g) => g.hints.map((h) => h.label));
-}
+const CFG = { ptt: "F9", toggleWindow: "Cmd+Shift+H", teleprompter: "F10" };
 
 describe("formatCombo", () => {
   it("сворачивает модификаторы в mac-символы", () => {
@@ -61,13 +56,5 @@ describe("hotkeyGroups", () => {
       expect(hint.combo).not.toBe("");
       expect(hint.label).not.toBe("");
     }
-  });
-
-  it("показывает подсказку забора буфера, когда хоткей задан", () => {
-    expect(labels("F8")).toContain(BUFFER_HINT);
-  });
-
-  it("прячет подсказку забора буфера, когда буфер выключен", () => {
-    expect(labels(null)).not.toContain(BUFFER_HINT);
   });
 });

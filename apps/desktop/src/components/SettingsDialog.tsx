@@ -88,7 +88,6 @@ const STT_LANGUAGES = [
 const FALLBACK_PTT_HOTKEY = "V";
 const FALLBACK_TOGGLE_HOTKEY = "Cmd+Shift+H";
 const FALLBACK_TELEPROMPTER_HOTKEY = "F10";
-const FALLBACK_BUFFER_HOTKEY = "F8";
 
 const CHAT_FONT_SIZE_MIN = 11;
 const CHAT_FONT_SIZE_MAX = 18;
@@ -201,7 +200,6 @@ export function SettingsDialog({
       hotkey: draft.hotkey.trim() || FALLBACK_PTT_HOTKEY,
       toggle_hotkey: draft.toggle_hotkey.trim() || FALLBACK_TOGGLE_HOTKEY,
       teleprompter_hotkey: draft.teleprompter_hotkey.trim() || FALLBACK_TELEPROMPTER_HOTKEY,
-      buffer_hotkey: draft.buffer_hotkey.trim() || FALLBACK_BUFFER_HOTKEY,
       prompt_presets: draft.prompt_presets.filter(isPresetFilled),
     });
   };
@@ -518,7 +516,7 @@ function SttSection({ draft, set }: SectionProps) {
           set("buffer_enabled", v);
         }}
       >
-        Фоновый буфер: постоянно держать последние секунды звука
+        Фоновый буфер: подхватывать последние секунды до нажатия записи
       </SwitchRow>
       <Field label="Глубина буфера, секунд">
         <Input
@@ -630,14 +628,6 @@ function HotkeysSection({ draft, set }: SectionProps) {
           value={draft.teleprompter_hotkey}
           onChange={(hk) => {
             set("teleprompter_hotkey", hk);
-          }}
-        />
-      </Field>
-      <Field label="Расшифровать фоновый буфер">
-        <HotkeyCapture
-          value={draft.buffer_hotkey}
-          onChange={(hk) => {
-            set("buffer_hotkey", hk);
           }}
         />
       </Field>
