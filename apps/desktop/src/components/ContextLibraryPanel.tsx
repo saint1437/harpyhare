@@ -1,5 +1,12 @@
 import { FileText, Folder, FolderPlus, Pencil, Plus, Trash2, Upload } from "lucide-react";
-import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type ReactNode,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -26,12 +33,19 @@ const ROOT_FOLDER_ID = "";
 const ROOT_SELECT_VALUE = "root";
 const DROP_FOLDER_ATTR = "data-drop-folder";
 const IMPORT_ACCEPT = ".md,.markdown,.txt";
+const THOUSAND = 1000;
 
 interface DocDraft {
   id: string | null;
   name: string;
   text: string;
   folderId: string;
+}
+
+function formatChars(count: number): string {
+  if (count < THOUSAND) return `${String(count)} симв.`;
+  const thousands = (count / THOUSAND).toLocaleString("ru-RU", { maximumFractionDigits: 1 });
+  return `${thousands} тыс. симв.`;
 }
 
 function dropTargetAt(x: number, y: number): string | null {
@@ -85,6 +99,45 @@ async function importBrowserFiles(
   }
 }
 
+function RowIconBadge({ children }: { children: ReactNode }) {
+  return (
+    <span className="grid size-6 shrink-0 place-items-center rounded-md bg-white/5">
+      {children}
+    </span>
+  );
+}
+
+function RowActions({
+  onEdit,
+  onRemove,
+  editTitle,
+  removeTitle,
+}: {
+  onEdit?: () => void;
+  onRemove: () => void;
+  editTitle?: string;
+  removeTitle: string;
+}) {
+  return (
+    <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+      {onEdit && (
+        <Button variant="ghost" size="sm" className="size-6 p-0" title={editTitle} onClick={onEdit}>
+          <Pencil className="size-3.5" />
+        </Button>
+      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="size-6 p-0"
+        title={removeTitle}
+        onClick={onRemove}
+      >
+        <Trash2 className="size-3.5" />
+      </Button>
+    </div>
+  );
+}
+
 function DocRow({
   doc,
   onEdit,
@@ -95,44 +148,42 @@ function DocRow({
   onRemove: () => void;
 }) {
   return (
-    <div className="group flex items-center gap-2 rounded-md px-2 py-1 hover:bg-white/5">
-      <FileText className="size-4 shrink-0 text-muted-foreground" />
+    <div className="group flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-white/5">
+      <RowIconBadge>
+        <FileText className="size-3.5 text-muted-foreground" />
+      </RowIconBadge>
       <span className="min-w-0 flex-1 truncate text-[12px]">{doc.name}</span>
-      <span className="shrink-0 text-[10.5px] text-muted-foreground/70">
-        {doc.text.length.toLocaleString("ru-RU")} симв.
+      <span className="shrink-0 text-[10px] text-muted-foreground/60">
+        {formatChars(doc.text.length)}
       </span>
-      <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="size-6 p-0"
-          title="Редактировать"
-          onClick={onEdit}
-        >
-          <Pencil className="size-3.5" />
-        </Button>
-        <Button variant="ghost" size="sm" className="size-6 p-0" title="Удалить" onClick={onRemove}>
-          <Trash2 className="size-3.5" />
-        </Button>
-      </div>
+      <RowActions
+        onEdit={onEdit}
+        editTitle="Редактировать"
+        onRemove={onRemove}
+        removeTitle="Удалить материал"
+      />
     </div>
   );
 }
 
 function FolderHeader({
   name,
+  docCount,
   onRename,
   onRemove,
 }: {
   name: string;
+  docCount: number;
   onRename: (name: string) => void;
   onRemove: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   return (
-    <div className="group flex items-center gap-2 px-2 py-1">
-      <Folder className="size-4 shrink-0 text-muted-foreground" />
+    <div className="group flex items-center gap-2 px-1.5 py-1">
+      <RowIconBadge>
+        <Folder className="size-3.5 text-muted-foreground" />
+      </RowIconBadge>
       {editing ? (
         <Input
           autoFocus
@@ -154,32 +205,24 @@ function FolderHeader({
           }}
         />
       ) : (
-        <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{name}</span>
+        <>
+          <span className="min-w-0 truncate text-[12.5px] font-medium">{name}</span>
+          <span className="shrink-0 rounded-full bg-white/5 px-1.5 py-px text-[10px] text-muted-foreground">
+            {docCount}
+          </span>
+          <span className="flex-1" />
+        </>
       )}
       {!editing && (
-        <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="size-6 p-0"
-            title="Переименовать папку"
-            onClick={() => {
-              setDraft(name);
-              setEditing(true);
-            }}
-          >
-            <Pencil className="size-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="size-6 p-0"
-            title="Удалить папку (материалы переедут в корень)"
-            onClick={onRemove}
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
-        </div>
+        <RowActions
+          onEdit={() => {
+            setDraft(name);
+            setEditing(true);
+          }}
+          editTitle="Переименовать папку"
+          onRemove={onRemove}
+          removeTitle="Удалить папку (материалы переедут в корень)"
+        />
       )}
     </div>
   );
@@ -199,7 +242,10 @@ function DocEditor({
   onCancel: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-md bg-white/5 p-2.5">
+    <div className="flex flex-col gap-2 rounded-lg bg-card/60 p-3 ring-1 ring-border ring-inset">
+      <span className="text-[10.5px] font-medium text-foreground/55">
+        {draft.id === null ? "Новый материал" : "Материал"}
+      </span>
       <div className="flex gap-2">
         <Input
           autoFocus
@@ -237,16 +283,48 @@ function DocEditor({
         }}
         className="field-sizing-fixed max-h-56 overflow-y-auto"
       />
-      <div className="flex justify-end gap-2">
-        <Button variant="ghost" size="sm" onClick={onCancel}>
-          Отмена
-        </Button>
-        <Button size="sm" onClick={onSave}>
-          Сохранить
-        </Button>
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-muted-foreground/60">
+          {formatChars(draft.text.length)}
+        </span>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="sm" onClick={onCancel}>
+            Отмена
+          </Button>
+          <Button size="sm" onClick={onSave}>
+            Сохранить
+          </Button>
+        </div>
       </div>
     </div>
   );
+}
+
+function EmptyDropZone({ onPick }: { onPick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      {...{ [DROP_FOLDER_ATTR]: ROOT_FOLDER_ID }}
+      className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-white/15 px-4 py-8 text-center transition-colors hover:border-white/30 hover:bg-white/[0.03]"
+    >
+      <span className="grid size-9 place-items-center rounded-full bg-white/5">
+        <Upload className="size-4 text-muted-foreground" />
+      </span>
+      <span className="text-[12px] text-foreground/80">
+        Перетащи .md или .txt из Finder — или нажми, чтобы выбрать файлы
+      </span>
+      <span className="text-[10.5px] text-muted-foreground">
+        Материалы можно добавлять и текстом — кнопка «Материал»
+      </span>
+    </button>
+  );
+}
+
+function librarySummary(docCount: number, folderCount: number): string {
+  if (docCount === 0 && folderCount === 0) return "Библиотека пуста";
+  const docs = `матер.: ${String(docCount)}`;
+  return folderCount > 0 ? `${docs} · папок: ${String(folderCount)}` : docs;
 }
 
 export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
@@ -283,6 +361,8 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
     setDropTarget(null);
   };
 
+  const empty = library.docs.length === 0 && library.folders.length === 0;
+  const roots = rootDocs(library);
   const folderBlocks = library.folders.map((f) => ({
     folder: f,
     docs: docsInFolder(library, f.id),
@@ -290,40 +370,48 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
 
   return (
     <div
-      className="flex flex-col gap-2"
+      className="flex flex-col gap-2.5"
       onDragOver={(e) => {
         if (!isTauri()) e.preventDefault();
       }}
       onDrop={onBrowserDrop}
     >
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            setDocDraft({ id: null, name: "", text: "", folderId: ROOT_FOLDER_ID });
-          }}
-        >
-          <Plus className="size-4" /> Материал
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            api.addFolder(`Папка ${String(library.folders.length + 1)}`);
-          }}
-        >
-          <FolderPlus className="size-4" /> Папка
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            fileInputRef.current?.click();
-          }}
-        >
-          <Upload className="size-4" /> Импорт .md
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[11px] text-muted-foreground">
+          {librarySummary(library.docs.length, library.folders.length)}
+        </span>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-[11.5px]"
+            onClick={() => {
+              setDocDraft({ id: null, name: "", text: "", folderId: ROOT_FOLDER_ID });
+            }}
+          >
+            <Plus className="size-4" /> Материал
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-[11.5px]"
+            onClick={() => {
+              api.addFolder(`Папка ${String(library.folders.length + 1)}`);
+            }}
+          >
+            <FolderPlus className="size-4" /> Папка
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-[11.5px]"
+            onClick={() => {
+              fileInputRef.current?.click();
+            }}
+          >
+            <Upload className="size-4" /> Импорт
+          </Button>
+        </div>
         <input
           ref={fileInputRef}
           type="file"
@@ -333,9 +421,7 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
           onChange={onPickFiles}
         />
       </div>
-      <p className="text-[11px] text-muted-foreground">
-        Перетащи .md или .txt из Finder на папку или в список — файл станет материалом.
-      </p>
+
       {importError !== null && <p className="text-[11px] text-destructive">{importError}</p>}
 
       {docDraft && (
@@ -350,58 +436,34 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
         />
       )}
 
-      <div
-        {...{ [DROP_FOLDER_ATTR]: ROOT_FOLDER_ID }}
-        className={cn(
-          "flex min-h-16 flex-col gap-0.5 rounded-md p-1 transition-colors",
-          dropTarget === ROOT_FOLDER_ID && "bg-white/5 ring-1 ring-primary/50",
-        )}
-      >
-        {library.docs.length === 0 && library.folders.length === 0 && (
-          <p className="px-2 py-3 text-center text-[11.5px] text-muted-foreground">
-            Пока пусто. Добавь материал текстом или перетащи .md-файлы сюда.
-          </p>
-        )}
-        {rootDocs(library).map((doc) => (
-          <DocRow
-            key={doc.id}
-            doc={doc}
-            onEdit={() => {
-              setDocDraft({ id: doc.id, name: doc.name, text: doc.text, folderId: doc.folderId });
-            }}
-            onRemove={() => {
-              api.removeDoc(doc.id);
-            }}
-          />
-        ))}
-      </div>
-
-      {folderBlocks.map(({ folder, docs }) => (
-        <div
-          key={folder.id}
-          {...{ [DROP_FOLDER_ATTR]: folder.id }}
-          className={cn(
-            "flex flex-col gap-0.5 rounded-md border border-white/5 p-1",
-            dropTarget === folder.id && "bg-white/5 ring-1 ring-primary/50",
-          )}
-        >
-          <FolderHeader
-            name={folder.name}
-            onRename={(name) => {
-              api.renameFolder(folder.id, name);
-            }}
-            onRemove={() => {
-              api.removeFolder(folder.id);
-            }}
-          />
-          {docs.length === 0 && (
-            <p className="px-8 pb-1 text-[11px] text-muted-foreground/70">
-              Пусто — перетащи файлы сюда
-            </p>
-          )}
-          {docs.map((doc) => (
-            <div key={doc.id} className="pl-4">
+      {empty && !docDraft ? (
+        <EmptyDropZone
+          onPick={() => {
+            fileInputRef.current?.click();
+          }}
+        />
+      ) : (
+        <>
+          <div
+            {...{ [DROP_FOLDER_ATTR]: ROOT_FOLDER_ID }}
+            className={cn(
+              "flex flex-col gap-0.5 rounded-lg p-1 transition-colors",
+              dropTarget === ROOT_FOLDER_ID && "bg-primary/5 ring-1 ring-primary/40",
+            )}
+          >
+            {library.folders.length > 0 && (
+              <span className="px-1.5 pt-0.5 pb-1 text-[10.5px] font-medium text-foreground/55">
+                Без папки
+              </span>
+            )}
+            {roots.length === 0 && (
+              <p className="px-1.5 pb-1 text-[10.5px] text-muted-foreground/60">
+                Перетащи файлы сюда, чтобы добавить без папки
+              </p>
+            )}
+            {roots.map((doc) => (
               <DocRow
+                key={doc.id}
                 doc={doc}
                 onEdit={() => {
                   setDocDraft({
@@ -415,10 +477,56 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
                   api.removeDoc(doc.id);
                 }}
               />
+            ))}
+          </div>
+
+          {folderBlocks.map(({ folder, docs }) => (
+            <div
+              key={folder.id}
+              {...{ [DROP_FOLDER_ATTR]: folder.id }}
+              className={cn(
+                "flex flex-col gap-0.5 rounded-lg bg-white/[0.03] p-1.5 ring-1 ring-white/5 transition-colors",
+                dropTarget === folder.id && "bg-primary/5 ring-primary/40",
+              )}
+            >
+              <FolderHeader
+                name={folder.name}
+                docCount={docs.length}
+                onRename={(name) => {
+                  api.renameFolder(folder.id, name);
+                }}
+                onRemove={() => {
+                  api.removeFolder(folder.id);
+                }}
+              />
+              <div className="ml-4 flex flex-col gap-0.5 border-l border-white/10 pl-2">
+                {docs.length === 0 && (
+                  <p className="px-1.5 py-1 text-[10.5px] text-muted-foreground/60">
+                    Пусто — перетащи файлы сюда
+                  </p>
+                )}
+                {docs.map((doc) => (
+                  <DocRow
+                    key={doc.id}
+                    doc={doc}
+                    onEdit={() => {
+                      setDocDraft({
+                        id: doc.id,
+                        name: doc.name,
+                        text: doc.text,
+                        folderId: doc.folderId,
+                      });
+                    }}
+                    onRemove={() => {
+                      api.removeDoc(doc.id);
+                    }}
+                  />
+                ))}
+              </div>
             </div>
           ))}
-        </div>
-      ))}
+        </>
+      )}
     </div>
   );
 }
