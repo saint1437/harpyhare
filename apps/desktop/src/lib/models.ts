@@ -6,7 +6,7 @@ export interface ModelInfo {
   maxInputTokens?: number;
 }
 
-export const DEFAULT_MODEL = "claude-haiku-4-5";
+export const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
 
 export const FALLBACK_MODELS: ModelInfo[] = [
   { id: "claude-opus-4-8", displayName: "Claude Opus 4.8", adaptive: true, alwaysThinks: false },

@@ -37,7 +37,7 @@ describe("createChat", () => {
     const c = createChat(1);
     expect(c.presetId).toBe("");
     expect(c.thinkingEnabled).toBe(false);
-    expect(c.model).toBe("claude-haiku-4-5");
+    expect(c.model).toBe("claude-haiku-4-5-20251001");
     expect(c.webSearch).toBe(false);
   });
 });
@@ -128,7 +128,7 @@ describe("serialize/deserialize", () => {
     const chats = [chatWith([], { model: "claude-opus-4-8" })];
     expect(deserializeChats(serializeChats(chats))?.[0]?.model).toBe("claude-opus-4-8");
     const old = deserializeChats('[{"id":"a","title":"Чат 1","messages":[],"draft":""}]');
-    expect(old?.[0]?.model).toBe("claude-haiku-4-5");
+    expect(old?.[0]?.model).toBe("claude-haiku-4-5-20251001");
   });
 
   it("сохраняет webSearch при round-trip; старый json без него → false", () => {

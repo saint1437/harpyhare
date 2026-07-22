@@ -123,7 +123,7 @@ describe("useChats", () => {
     await waitFor(() => {
       expect(result.current.chats.length).toBe(1);
     });
-    expect(result.current.active.model).toBe("claude-haiku-4-5");
+    expect(result.current.active.model).toBe("claude-haiku-4-5-20251001");
     const id = result.current.activeId;
     act(() => {
       result.current.setChatModel(id, "claude-opus-4-8");

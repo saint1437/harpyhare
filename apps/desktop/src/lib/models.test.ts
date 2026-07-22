@@ -9,7 +9,7 @@ import {
 
 describe("models", () => {
   it("дефолт — haiku 4.5, он есть в фолбэк-списке", () => {
-    expect(DEFAULT_MODEL).toBe("claude-haiku-4-5");
+    expect(DEFAULT_MODEL).toBe("claude-haiku-4-5-20251001");
     expect(FALLBACK_MODELS.some((m) => m.id === DEFAULT_MODEL)).toBe(true);
     expect(FALLBACK_MODELS.some((m) => m.id === "claude-opus-4-8")).toBe(true);
   });
@@ -27,7 +27,7 @@ describe("models", () => {
   });
 
   it("thinkingLocked: без adaptive или «думает всегда»", () => {
-    expect(thinkingLocked(FALLBACK_MODELS, "claude-haiku-4-5")).toBe(true);
+    expect(thinkingLocked(FALLBACK_MODELS, "claude-haiku-4-5-20251001")).toBe(true);
     expect(thinkingLocked(FALLBACK_MODELS, "claude-opus-4-8")).toBe(false);
     const withFable = [
       ...FALLBACK_MODELS,

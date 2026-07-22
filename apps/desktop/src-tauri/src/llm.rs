@@ -121,7 +121,7 @@ pub fn fallback_models() -> Vec<ModelInfo> {
     [
         ("claude-opus-4-8", "Claude Opus 4.8", true),
         ("claude-sonnet-4-6", "Claude Sonnet 4.6", true),
-        ("claude-haiku-4-5", "Claude Haiku 4.5", false),
+        ("claude-haiku-4-5-20251001", "Claude Haiku 4.5", false),
     ]
     .into_iter()
     .map(|(id, name, caps)| ModelInfo {
