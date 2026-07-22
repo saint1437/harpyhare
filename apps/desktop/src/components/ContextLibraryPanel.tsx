@@ -31,12 +31,14 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { ContextLibraryApi } from "@/hooks/useContextLibrary";
-import { readContextImportFile } from "@/ipc/commands";
+import { readContextImportFile, readContextPdfBytes } from "@/ipc/commands";
 import { isTauri } from "@/ipc/env";
 import { onFileDrop } from "@/ipc/events";
+import { arrayBufferToBase64 } from "@/lib/base64";
 import {
   docNameFromFileName,
   docsInFolder,
+  isPdfFileName,
   rootDocs,
   type ContextDoc,
 } from "@/lib/context-library";
@@ -45,7 +47,8 @@ import { cn } from "@/lib/utils";
 const ROOT_FOLDER_ID = "";
 const ROOT_SELECT_VALUE = "root";
 const DROP_FOLDER_ATTR = "data-drop-folder";
-const IMPORT_ACCEPT = ".md,.markdown,.txt";
+const IMPORT_ACCEPT = ".md,.markdown,.txt,.pdf";
+const ERR_PDF_BROWSER = "PDF можно импортировать только в приложении";
 const THOUSAND = 1000;
 
 interface DocDraft {
@@ -140,14 +143,30 @@ function useDocDrag(
   return { dragDocId, startDrag };
 }
 
-async function importBrowserFiles(
+function errorText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+async function extractPickedFile(file: File): Promise<string> {
+  if (!isPdfFileName(file.name)) return file.text();
+  if (!isTauri()) throw new Error(ERR_PDF_BROWSER);
+  return readContextPdfBytes(arrayBufferToBase64(await file.arrayBuffer()));
+}
+
+async function importPickedFiles(
   api: ContextLibraryApi,
   files: FileList,
   folderId: string,
+  setImportError: (e: string | null) => void,
 ): Promise<void> {
+  setImportError(null);
   for (const file of Array.from(files)) {
-    const text = await file.text();
-    api.addDoc({ name: docNameFromFileName(file.name), text, folderId });
+    try {
+      const text = await extractPickedFile(file);
+      api.addDoc({ name: docNameFromFileName(file.name), text, folderId });
+    } catch (e: unknown) {
+      setImportError(errorText(e));
+    }
   }
 }
 
@@ -372,7 +391,7 @@ function EmptyDropZone({ onPick }: { onPick: () => void }) {
         <Upload className="size-4 text-muted-foreground" />
       </span>
       <span className="text-body text-foreground/80">
-        Перетащи .md или .txt из Finder — или нажми, чтобы выбрать файлы
+        Перетащи .md, .txt или .pdf из Finder — или нажми, чтобы выбрать файлы
       </span>
       <span className="text-caption text-muted-foreground">
         Материалы можно добавлять и текстом — кнопка «Материал»
@@ -410,7 +429,8 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
 
   const onPickFiles = (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files && files.length > 0) void importBrowserFiles(api, files, ROOT_FOLDER_ID);
+    if (files && files.length > 0)
+      void importPickedFiles(api, files, ROOT_FOLDER_ID, setImportError);
     e.target.value = "";
   };
 
@@ -418,7 +438,7 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
     if (isTauri()) return;
     e.preventDefault();
     const target = dropTargetAt(e.clientX, e.clientY) ?? ROOT_FOLDER_ID;
-    void importBrowserFiles(api, e.dataTransfer.files, target);
+    void importPickedFiles(api, e.dataTransfer.files, target, setImportError);
     setDropTarget(null);
   };
 

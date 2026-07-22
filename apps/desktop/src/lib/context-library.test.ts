@@ -4,6 +4,7 @@ import {
   addFolder,
   deserializeLibrary,
   docNameFromFileName,
+  isPdfFileName,
   EMPTY_LIBRARY,
   libraryContextBlocks,
   moveDoc,
@@ -64,7 +65,15 @@ describe("библиотека контекстов", () => {
   it("docNameFromFileName снимает расширение и путь", () => {
     expect(docNameFromFileName("/tmp/interview.md")).toBe("interview");
     expect(docNameFromFileName("Заметки.TXT")).toBe("Заметки");
+    expect(docNameFromFileName("/Users/me/Отчёт.PDF")).toBe("Отчёт");
     expect(docNameFromFileName(".md")).toBe("Без имени");
+  });
+
+  it("isPdfFileName распознаёт только pdf по расширению", () => {
+    expect(isPdfFileName("Отчёт.pdf")).toBe(true);
+    expect(isPdfFileName("/tmp/scan.PDF")).toBe(true);
+    expect(isPdfFileName("notes.txt")).toBe(false);
+    expect(isPdfFileName("pdf")).toBe(false);
   });
 
   it("libraryContextBlocks форматирует выбранные, пропуская пустые и незнакомые id", () => {

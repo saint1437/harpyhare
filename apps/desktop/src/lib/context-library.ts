@@ -105,8 +105,12 @@ export function rootDocs(lib: ContextLibrary): ContextDoc[] {
 
 export function docNameFromFileName(fileName: string): string {
   const base = fileName.split("/").pop() ?? fileName;
-  const withoutExt = base.replace(/\.(md|markdown|txt)$/i, "");
+  const withoutExt = base.replace(/\.(md|markdown|txt|pdf)$/i, "");
   return withoutExt.trim() || UNNAMED_DOC;
+}
+
+export function isPdfFileName(fileName: string): boolean {
+  return /\.pdf$/i.test(fileName.trim());
 }
 
 export function libraryContextBlocks(lib: ContextLibrary, selectedIds: string[]): string[] {

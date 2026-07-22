@@ -170,6 +170,7 @@ pub fn run() {
             load_context_library,
             save_context_library,
             read_context_import_file,
+            read_context_pdf_bytes,
             retry_transcription,
             get_settings,
             set_settings,
@@ -1025,8 +1026,19 @@ fn save_context_library(app: AppHandle, json: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn read_context_import_file(path: String) -> Result<String, String> {
-    context_import::read_import_file(std::path::Path::new(&path))
+async fn read_context_import_file(path: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        context_import::read_import_file(std::path::Path::new(&path))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn read_context_pdf_bytes(data_base64: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || context_import::read_pdf_base64(&data_base64))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

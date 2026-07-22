@@ -174,6 +174,10 @@ export async function readContextImportFile(path: string): Promise<string> {
   return invokeOrFallbackInBrowser("read_context_import_file", "", { path });
 }
 
+export async function readContextPdfBytes(dataBase64: string): Promise<string> {
+  return invokeOrFallbackInBrowser("read_context_pdf_bytes", "", { dataBase64 });
+}
+
 export async function setPreviewHtml(html: string): Promise<void> {
   await invokeOrNoopInBrowser("set_preview_html", { html });
 }

@@ -39,6 +39,7 @@ objc2 = "0.6"
 objc2-app-kit = { version = "0.3.2", features = ["NSEvent", "block2"] }
 block2 = "0.6"
 tauri-plugin-updater = "2.10.1"
+pdf-extract = "0.12"
 
 [dev-dependencies]
 tempfile = "3.27.0"
