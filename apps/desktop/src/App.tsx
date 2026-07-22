@@ -12,6 +12,7 @@ import {
 import { AnswerPanel } from "@/components/AnswerPanel";
 import { ChatTabs } from "@/components/ChatTabs";
 import { Composer } from "@/components/Composer";
+import { ConnectivityOverlay } from "@/components/ConnectivityOverlay";
 import { HotkeysPopover } from "@/components/HotkeysPopover";
 import { IconButton } from "@/components/IconButton";
 import { MissingKeysDialog } from "@/components/MissingKeysDialog";
@@ -23,6 +24,7 @@ import { UpdateDialog } from "@/components/UpdateDialog";
 import { WarningBanner } from "@/components/WarningBanner";
 import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
+import { useConnectivity } from "@/hooks/useConnectivity";
 import { useContextLibrary, type ContextLibraryApi } from "@/hooks/useContextLibrary";
 import { useModels } from "@/hooks/useModels";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
@@ -44,7 +46,6 @@ import {
   setWindowSize,
   startWindowDrag,
 } from "@/ipc/commands";
-import { isTauri } from "@/ipc/env";
 import { onEvent, onWindowResized, type LogicalWindowSize } from "@/ipc/events";
 import type {
   ChatMessageDto,
@@ -64,6 +65,7 @@ import { queryKeys } from "@/lib/query-client";
 import { toReadingText } from "@/lib/teleprompter";
 
 const RETRYABLE_STT_ERROR = /перегружен|соединение|VPN|интернет|оборван/i;
+const NO_CONNECTION_TEXT = "Нет соединения";
 
 const SHELL_COLUMN_GAP_PX = 10;
 const SHELL_PADDING_PX = 12;
@@ -71,24 +73,6 @@ const PREVIEW_EXTRA_WIDTH_PX = PREVIEW_PANEL_WIDTH_PX + SHELL_COLUMN_GAP_PX;
 
 const USER_CONTEXT_SYSTEM_HEADER = "Контекст от пользователя (справочные материалы):\n";
 const SYSTEM_BLOCKS_SEPARATOR = "\n\n";
-
-const DEMO_SEED_USER_MESSAGE = "Покажи пример хвостовой рекурсии на JS.";
-const DEMO_SEED_ASSISTANT_MESSAGE =
-  "Хвостовая рекурсия — рекурсивный вызов **последним действием**:\n\n" +
-  "```js\n" +
-  "// обычная: после вызова ещё умножение\n" +
-  "function fact(n) {\n" +
-  "  if (n <= 1) return 1;\n" +
-  "  return n * fact(n - 1);\n" +
-  "}\n\n" +
-  "// хвостовая: аккумулятор несёт результат\n" +
-  "function factTail(n, acc = 1) {\n" +
-  "  if (n <= 1) return acc;\n" +
-  "  return factTail(n - 1, n * acc);\n" +
-  "}\n" +
-  "```\n\n" +
-  "Движок может заменить кадр стека, а не наращивать его.";
-const DEMO_SEED_DRAFT = "Объясни, чем хвостовая рекурсия отличается от обычной.";
 
 const settingsSaveErrorText = (err: string) => `Ошибка сохранения настроек: ${err}`;
 
@@ -161,12 +145,6 @@ function useCapturePermission(): CapturePermission {
   return { permissionOk, requestPermission };
 }
 
-const BROWSER_DEMO_MISSING_KEYS_PARAM = "nokeys";
-
-function browserDemoMissingKeysRequested(): boolean {
-  return new URLSearchParams(window.location.search).has(BROWSER_DEMO_MISSING_KEYS_PARAM);
-}
-
 interface MissingKeysGate {
   missingKeys: ApiKeyInfo[];
   keysMissing: boolean;
@@ -181,9 +159,7 @@ function useMissingKeysGate(
   permissionMissing: boolean,
 ): MissingKeysGate {
   const missingKeys = useMemo(() => missingApiKeys(settings), [settings]);
-  const keysMissing = isTauri()
-    ? !settingsLoading && missingKeys.length > 0
-    : browserDemoMissingKeysRequested();
+  const keysMissing = !settingsLoading && missingKeys.length > 0;
   const [dialogOpen, setDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -333,17 +309,6 @@ function useNativeResizeSync(
       }),
     [nativeSizeRef, guardUntilRef, previewOpenRef, readyRef, applyRef],
   );
-}
-
-function useBrowserDemoSeed(activeId: string, chatsRef: RefObject<ChatsApi>): void {
-  const seeded = useRef(false);
-  useEffect(() => {
-    if (isTauri() || seeded.current || activeId === "") return;
-    seeded.current = true;
-    chatsRef.current.appendUserMessage(activeId, DEMO_SEED_USER_MESSAGE, []);
-    chatsRef.current.appendAssistantMessage(activeId, DEMO_SEED_ASSISTANT_MESSAGE);
-    chatsRef.current.setDraft(activeId, DEMO_SEED_DRAFT, []);
-  }, [activeId, chatsRef]);
 }
 
 const TOKEN_COUNT_PLACEHOLDER_MESSAGE: ChatMessageDto = { role: "user", text: ".", images: [] };
@@ -761,7 +726,7 @@ export default function App() {
 
   useWindowControls(settings.move_step, doSend, bumpOpacity, bumpWindowSize);
   usePttSuspend(settings.hotkey);
-  useBrowserDemoSeed(chats.activeId, chatsRef);
+  const connectivity = useConnectivity();
 
   useEffect(
     () =>
@@ -784,6 +749,10 @@ export default function App() {
   const activeStreaming = !!stream.streaming[activeId];
   const error = sttError ?? stream.error[activeId] ?? null;
   const partial = activeStreaming ? (stream.partial[activeId] ?? "") : null;
+  const reportNetworkError = connectivity.reportNetworkError;
+  useEffect(() => {
+    if (error?.includes(NO_CONNECTION_TEXT)) reportNetworkError();
+  }, [error, reportNetworkError]);
   const teleprompterText = toReadingText(
     partial !== null && partial !== "" ? partial : lastAssistantText(active.messages),
   );
@@ -936,6 +905,8 @@ export default function App() {
           }}
         />
       )}
+
+      {connectivity.offline && <ConnectivityOverlay />}
 
       <MissingKeysDialog
         open={keysGate.dialogOpen}

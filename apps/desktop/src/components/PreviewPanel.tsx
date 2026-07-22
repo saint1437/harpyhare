@@ -4,7 +4,6 @@ import { IconButton } from "@/components/IconButton";
 import { SectionLabel } from "@/components/SectionLabel";
 import { Button } from "@/components/ui/button";
 import { setPreviewHtml } from "@/ipc/commands";
-import { isTauri } from "@/ipc/env";
 
 export interface PreviewPanelProps {
   html: string;
@@ -16,8 +15,7 @@ export const PREVIEW_PANEL_WIDTH_PX = 570;
 const PREVIEW_ORIGIN = "preview://localhost";
 const PREVIEW_IFRAME_TITLE = "HTML превью";
 const PREVIEW_IFRAME_CLASS = "min-h-0 flex-1 rounded-xl border-0 bg-white";
-const TAURI_SANDBOX = "allow-scripts allow-same-origin";
-const SRCDOC_SANDBOX = "allow-scripts";
+const PREVIEW_SANDBOX = "allow-scripts allow-same-origin";
 
 const previewSrcUrl = (version: number) => `${PREVIEW_ORIGIN}/?v=${version}`;
 
@@ -26,7 +24,7 @@ function usePreviewSrc(html: string) {
   const nonce = useRef(0);
 
   useEffect(() => {
-    if (html === "" || !isTauri()) {
+    if (html === "") {
       setSrc("");
       return;
     }
@@ -68,20 +66,10 @@ function PreviewBody({ html, src }: { html: string; src: string }) {
       </div>
     );
   }
-  if (isTauri()) {
-    return (
-      <iframe
-        sandbox={TAURI_SANDBOX}
-        src={src}
-        title={PREVIEW_IFRAME_TITLE}
-        className={PREVIEW_IFRAME_CLASS}
-      />
-    );
-  }
   return (
     <iframe
-      sandbox={SRCDOC_SANDBOX}
-      srcDoc={html}
+      sandbox={PREVIEW_SANDBOX}
+      src={src}
       title={PREVIEW_IFRAME_TITLE}
       className={PREVIEW_IFRAME_CLASS}
     />

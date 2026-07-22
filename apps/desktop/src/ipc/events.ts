@@ -1,7 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { isTauri } from "./env";
 import type { EventMap } from "./types";
 
 export type Unlisten = () => void;
@@ -19,7 +18,6 @@ export type FileDropEvent =
   | { type: "leave" };
 
 export function onFileDrop(handler: (event: FileDropEvent) => void): Unlisten {
-  if (!isTauri()) return noopUnlisten;
   let live = true;
   let off: Unlisten = noopUnlisten;
   const scale = window.devicePixelRatio || 1;
@@ -51,7 +49,6 @@ export function onFileDrop(handler: (event: FileDropEvent) => void): Unlisten {
 }
 
 export function onWindowResized(handler: (size: LogicalWindowSize) => void): Unlisten {
-  if (!isTauri()) return noopUnlisten;
   let live = true;
   let off: Unlisten = noopUnlisten;
   const win = getCurrentWindow();
@@ -76,7 +73,6 @@ export function onEvent<K extends keyof EventMap>(
   name: K,
   handler: (payload: EventMap[K]) => void,
 ): Unlisten {
-  if (!isTauri()) return noopUnlisten;
   let live = true;
   let off: Unlisten = noopUnlisten;
   void listen<EventMap[K]>(name, (e) => {

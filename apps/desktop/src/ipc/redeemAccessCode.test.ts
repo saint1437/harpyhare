@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./env", () => ({ isTauri: () => true }));
-
 const invoke = vi.fn<(command: string, args: unknown) => Promise<unknown>>();
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (command: string, args: unknown) => invoke(command, args),

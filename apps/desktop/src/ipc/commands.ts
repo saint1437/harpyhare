@@ -1,11 +1,9 @@
-import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { normalizeAccessCode } from "@/lib/access-code";
-import { FALLBACK_MODELS, type ModelInfo } from "@/lib/models";
-import { OFFICIAL_PRESETS_FALLBACK, type PromptPreset } from "@/lib/presets";
-import { isTauri } from "./env";
+import { type ModelInfo } from "@/lib/models";
+import { type PromptPreset } from "@/lib/presets";
 import {
-  DEFAULT_SETTINGS,
   type AudioOutputDevice,
   type ChatMessageDto,
   type Settings,
@@ -14,23 +12,8 @@ import {
 
 const IDEMPOTENCY_STORAGE_PREFIX = "redeem-idem:";
 
-async function invokeOrNoopInBrowser(command: string, args?: InvokeArgs): Promise<void> {
-  if (!isTauri()) return;
-  await invoke(command, args);
-}
-
 export async function startWindowDrag(): Promise<void> {
-  if (!isTauri()) return;
   await getCurrentWindow().startDragging();
-}
-
-async function invokeOrFallbackInBrowser<T>(
-  command: string,
-  browserFallback: T,
-  args?: InvokeArgs,
-): Promise<T> {
-  if (!isTauri()) return browserFallback;
-  return invoke<T>(command, args);
 }
 
 export async function sendToClaude(
@@ -41,7 +24,7 @@ export async function sendToClaude(
   model: string,
   webSearch: boolean,
 ): Promise<void> {
-  await invokeOrNoopInBrowser("send_to_claude", {
+  await invoke("send_to_claude", {
     messages,
     chatId,
     system,
@@ -52,11 +35,11 @@ export async function sendToClaude(
 }
 
 export async function listModels(): Promise<ModelInfo[]> {
-  return invokeOrFallbackInBrowser("list_models", FALLBACK_MODELS);
+  return invoke<ModelInfo[]>("list_models");
 }
 
 export async function cancelStream(chatId: string): Promise<void> {
-  await invokeOrNoopInBrowser("cancel_stream", { chatId });
+  await invoke("cancel_stream", { chatId });
 }
 
 export async function countChatTokens(
@@ -66,7 +49,7 @@ export async function countChatTokens(
   model: string,
   webSearch: boolean,
 ): Promise<number> {
-  return invokeOrFallbackInBrowser("count_chat_tokens", 0, {
+  return invoke<number>("count_chat_tokens", {
     messages,
     system,
     thinking,
@@ -75,20 +58,24 @@ export async function countChatTokens(
   });
 }
 
+export async function probeConnectivity(): Promise<boolean> {
+  return invoke<boolean>("probe_connectivity");
+}
+
 export async function retryTranscription(): Promise<void> {
-  await invokeOrNoopInBrowser("retry_transcription");
+  await invoke("retry_transcription");
 }
 
 export async function getSettings(): Promise<Settings> {
-  return invokeOrFallbackInBrowser("get_settings", DEFAULT_SETTINGS);
+  return invoke<Settings>("get_settings");
 }
 
 export async function setSettings(newSettings: Settings): Promise<void> {
-  await invokeOrNoopInBrowser("set_settings", { newSettings });
+  await invoke("set_settings", { newSettings });
 }
 
 export async function listAudioOutputDevices(): Promise<AudioOutputDevice[]> {
-  return invokeOrFallbackInBrowser("list_audio_output_devices", []);
+  return invoke<AudioOutputDevice[]>("list_audio_output_devices");
 }
 
 async function idempotencyStorageKey(normalizedCode: string): Promise<string> {
@@ -100,7 +87,6 @@ async function idempotencyStorageKey(normalizedCode: string): Promise<string> {
 }
 
 export async function redeemAccessCode(code: string): Promise<string | null> {
-  if (!isTauri()) return null;
   const normalized = normalizeAccessCode(code);
   const storageKey = await idempotencyStorageKey(normalized);
   const idempotencyKey = localStorage.getItem(storageKey) ?? crypto.randomUUID();
@@ -115,81 +101,81 @@ export async function redeemAccessCode(code: string): Promise<string | null> {
 }
 
 export async function getOfficialPresets(): Promise<PromptPreset[]> {
-  return invokeOrFallbackInBrowser("get_official_presets", OFFICIAL_PRESETS_FALLBACK);
+  return invoke<PromptPreset[]>("get_official_presets");
 }
 
 export async function moveWindowBy(dx: number, dy: number): Promise<void> {
-  await invokeOrNoopInBrowser("move_window_by", { dx, dy });
+  await invoke("move_window_by", { dx, dy });
 }
 
 export async function setPttSuspended(suspended: boolean): Promise<void> {
-  await invokeOrNoopInBrowser("set_ptt_suspended", { suspended });
+  await invoke("set_ptt_suspended", { suspended });
 }
 
 export async function closeApp(): Promise<void> {
-  await invokeOrNoopInBrowser("close_app");
+  await invoke("close_app");
 }
 
 export async function hideMainWindow(): Promise<void> {
-  await invokeOrNoopInBrowser("hide_main_window");
+  await invoke("hide_main_window");
 }
 
 export async function openAudioPermissionSettings(): Promise<void> {
-  await invokeOrNoopInBrowser("open_audio_permission_settings");
+  await invoke("open_audio_permission_settings");
 }
 
 export async function captureAvailable(): Promise<boolean> {
-  return invokeOrFallbackInBrowser("capture_available", true);
+  return invoke<boolean>("capture_available");
 }
 
 export async function requestAudioCapturePermission(): Promise<boolean> {
-  return invokeOrFallbackInBrowser("request_audio_capture_permission", true);
+  return invoke<boolean>("request_audio_capture_permission");
 }
 
 export async function openExternal(url: string): Promise<void> {
-  await invokeOrNoopInBrowser("open_external", { url });
+  await invoke("open_external", { url });
 }
 
 export async function setWindowSize(width: number, height: number): Promise<void> {
-  await invokeOrNoopInBrowser("set_window_size", { width, height });
+  await invoke("set_window_size", { width, height });
 }
 
 export async function loadChats(): Promise<string> {
-  return invokeOrFallbackInBrowser("load_chats", "");
+  return invoke<string>("load_chats");
 }
 
 export async function saveChats(json: string): Promise<void> {
-  await invokeOrNoopInBrowser("save_chats", { json });
+  await invoke("save_chats", { json });
 }
 
 export async function loadContextLibrary(): Promise<string> {
-  return invokeOrFallbackInBrowser("load_context_library", "");
+  return invoke<string>("load_context_library");
 }
 
 export async function saveContextLibrary(json: string): Promise<void> {
-  await invokeOrNoopInBrowser("save_context_library", { json });
+  await invoke("save_context_library", { json });
 }
 
 export async function readContextImportFile(path: string): Promise<string> {
-  return invokeOrFallbackInBrowser("read_context_import_file", "", { path });
+  return invoke<string>("read_context_import_file", { path });
 }
 
 export async function readContextPdfBytes(dataBase64: string): Promise<string> {
-  return invokeOrFallbackInBrowser("read_context_pdf_bytes", "", { dataBase64 });
+  return invoke<string>("read_context_pdf_bytes", { dataBase64 });
 }
 
 export async function setPreviewHtml(html: string): Promise<void> {
-  await invokeOrNoopInBrowser("set_preview_html", { html });
+  await invoke("set_preview_html", { html });
 }
 
 export async function checkForUpdate(): Promise<UpdateInfo | null> {
-  return invokeOrFallbackInBrowser<UpdateInfo | null>("check_for_update", null);
+  return invoke<UpdateInfo | null>("check_for_update");
 }
 
 export async function installUpdate(): Promise<void> {
-  await invokeOrNoopInBrowser("install_update");
+  await invoke("install_update");
 }
 
 export async function getAppVersion(): Promise<string> {
-  return invokeOrFallbackInBrowser("get_app_version", "");
+  return invoke<string>("get_app_version");
 }

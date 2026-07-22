@@ -14,7 +14,6 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type DragEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
@@ -32,7 +31,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import type { ContextLibraryApi } from "@/hooks/useContextLibrary";
 import { readContextImportFile, readContextPdfBytes } from "@/ipc/commands";
-import { isTauri } from "@/ipc/env";
 import { onFileDrop } from "@/ipc/events";
 import { arrayBufferToBase64 } from "@/lib/base64";
 import {
@@ -48,7 +46,6 @@ const ROOT_FOLDER_ID = "";
 const ROOT_SELECT_VALUE = "root";
 const DROP_FOLDER_ATTR = "data-drop-folder";
 const IMPORT_ACCEPT = ".md,.markdown,.txt,.pdf";
-const ERR_PDF_BROWSER = "PDF можно импортировать только в приложении";
 const THOUSAND = 1000;
 
 interface DocDraft {
@@ -149,7 +146,6 @@ function errorText(e: unknown): string {
 
 async function extractPickedFile(file: File): Promise<string> {
   if (!isPdfFileName(file.name)) return file.text();
-  if (!isTauri()) throw new Error(ERR_PDF_BROWSER);
   return readContextPdfBytes(arrayBufferToBase64(await file.arrayBuffer()));
 }
 
@@ -434,14 +430,6 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
     e.target.value = "";
   };
 
-  const onBrowserDrop = (e: DragEvent<HTMLDivElement>) => {
-    if (isTauri()) return;
-    e.preventDefault();
-    const target = dropTargetAt(e.clientX, e.clientY) ?? ROOT_FOLDER_ID;
-    void importPickedFiles(api, e.dataTransfer.files, target, setImportError);
-    setDropTarget(null);
-  };
-
   const empty = library.docs.length === 0 && library.folders.length === 0;
   const roots = rootDocs(library);
   const folderBlocks = library.folders.map((f) => ({
@@ -450,13 +438,7 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
   }));
 
   return (
-    <div
-      className="flex flex-col gap-2.5"
-      onDragOver={(e) => {
-        if (!isTauri()) e.preventDefault();
-      }}
-      onDrop={onBrowserDrop}
-    >
+    <div className="flex flex-col gap-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-caption text-muted-foreground">
           {librarySummary(library.docs.length, library.folders.length)}

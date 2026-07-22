@@ -5,7 +5,6 @@ const setPreviewHtml = vi.fn<(_h: string) => Promise<void>>(() => Promise.resolv
 vi.mock("@/ipc/commands", () => ({
   setPreviewHtml: (h: string) => setPreviewHtml(h),
 }));
-vi.mock("@/ipc/env", () => ({ isTauri: () => true }));
 
 import { PreviewPanel } from "./PreviewPanel";
 

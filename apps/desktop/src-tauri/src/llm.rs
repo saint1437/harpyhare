@@ -275,6 +275,15 @@ impl AnthropicClient {
             .await;
     }
 
+    pub async fn reachable(&self) -> bool {
+        let req = self
+            .client
+            .get(format!("{}{MODELS_PATH}", self.base_url))
+            .header(VERSION_HEADER, ANTHROPIC_VERSION)
+            .timeout(WARM_UP_TIMEOUT);
+        self.authorize(req).send().await.is_ok()
+    }
+
     pub async fn list_models(&self) -> Result<Vec<ModelInfo>, LlmError> {
         let req = self
             .client

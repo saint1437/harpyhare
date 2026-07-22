@@ -164,6 +164,7 @@ pub fn run() {
             send_to_claude,
             cancel_stream,
             count_chat_tokens,
+            probe_connectivity,
             list_models,
             load_chats,
             save_chats,
@@ -930,6 +931,12 @@ fn cancel_stream(app: AppHandle, chat_id: String) {
     if let Some(c) = app.state::<App>().llm_cancel.lock().unwrap().remove(&chat_id) {
         c.cancel();
     }
+}
+
+#[tauri::command]
+async fn probe_connectivity(app: AppHandle) -> bool {
+    let client = app.state::<App>().llm.lock().unwrap().clone();
+    client.reachable().await
 }
 
 #[tauri::command]
