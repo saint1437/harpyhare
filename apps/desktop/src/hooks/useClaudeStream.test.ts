@@ -27,10 +27,27 @@ function emit(name: string, payload: unknown) {
   act(() => handlers.get(name)?.(payload));
 }
 
+let frameCallbacks: FrameRequestCallback[] = [];
+let frameNow = 0;
+const FRAME_DT_MS = 400;
+
+function runFrames(count: number, dtMs = FRAME_DT_MS) {
+  for (let i = 0; i < count; i += 1) {
+    const callbacks = frameCallbacks;
+    frameCallbacks = [];
+    frameNow += dtMs;
+    act(() => {
+      for (const cb of callbacks) cb(frameNow);
+    });
+  }
+}
+
 beforeEach(() => {
+  frameCallbacks = [];
+  frameNow = 0;
   vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
-    cb(0);
-    return 0;
+    frameCallbacks.push(cb);
+    return frameCallbacks.length;
   });
   vi.stubGlobal("cancelAnimationFrame", () => undefined);
 });
@@ -57,8 +74,29 @@ describe("useClaudeStream (per-chat)", () => {
     );
     emit("llm-delta", { chatId: "A", delta: "при" });
     emit("llm-delta", { chatId: "A", delta: "вет" });
+    runFrames(2);
     expect(result.current.partial["A"]).toBe("привет");
     expect(result.current.streaming["A"]).toBe(true);
+  });
+
+  it("раскрывает буфер постепенно, а не разом", () => {
+    const { result } = renderHook(() => useClaudeStream(vi.fn()));
+    act(
+      () =>
+        void result.current.send(
+          "A",
+          [{ role: "user", text: "q", images: [] }],
+          "",
+          true,
+          "claude-opus-4-8",
+          false,
+        ),
+    );
+    emit("llm-delta", { chatId: "A", delta: "x".repeat(100000) });
+    runFrames(2, 50);
+    const shown = result.current.partial["A"] ?? "";
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown.length).toBeLessThan(100000);
   });
 
   it("два параллельных стрима не смешиваются", () => {
@@ -87,6 +125,7 @@ describe("useClaudeStream (per-chat)", () => {
     );
     emit("llm-delta", { chatId: "A", delta: "AAA" });
     emit("llm-delta", { chatId: "B", delta: "BBB" });
+    runFrames(2);
     expect(result.current.partial["A"]).toBe("AAA");
     expect(result.current.partial["B"]).toBe("BBB");
   });

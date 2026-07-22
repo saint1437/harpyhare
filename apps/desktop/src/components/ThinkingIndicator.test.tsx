@@ -24,4 +24,9 @@ describe("ThinkingIndicator", () => {
     const { getByText } = render(<ThinkingIndicator startedAt={Date.now() - 5000} />);
     expect(getByText("5с")).toBeTruthy();
   });
+
+  it("после минуты показывает минуты и секунды", () => {
+    const { getByText } = render(<ThinkingIndicator startedAt={Date.now() - 65000} />);
+    expect(getByText("1м 5с")).toBeTruthy();
+  });
 });

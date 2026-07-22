@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { cancelStream, sendToClaude } from "@/ipc/commands";
 import { onEvent } from "@/ipc/events";
 import type { ChatMessageDto } from "@/ipc/types";
+import { advanceReveal, sliceRevealed } from "@/lib/stream-reveal";
 
 export interface ClaudeStreams {
   partial: Record<string, string>;
@@ -28,30 +29,54 @@ export function useClaudeStream(
   const [error, setError] = useState<Record<string, string | null>>({});
 
   const buffers = useRef<Map<string, string>>(new Map());
+  const revealed = useRef<Map<string, number>>(new Map());
   const active = useRef<Set<string>>(new Set());
   const raf = useRef(0);
-  const pending = useRef(false);
+  const running = useRef(false);
+  const lastFrameTs = useRef(0);
 
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
 
-  const flush = useCallback(() => {
-    pending.current = false;
+  const frame = useCallback<FrameRequestCallback>((frameTs) => {
+    if (active.current.size === 0) {
+      running.current = false;
+      lastFrameTs.current = 0;
+      return;
+    }
+    const dtMs = lastFrameTs.current === 0 ? 0 : frameTs - lastFrameTs.current;
+    lastFrameTs.current = frameTs;
+    const updates: Record<string, string> = {};
+    for (const id of active.current) {
+      const full = buffers.current.get(id) ?? "";
+      const shown = advanceReveal(revealed.current.get(id) ?? 0, full.length, dtMs);
+      revealed.current.set(id, shown);
+      updates[id] = sliceRevealed(full, shown);
+    }
     setPartial((prev) => {
+      let changed = false;
       const next = { ...prev };
-      for (const id of active.current) next[id] = buffers.current.get(id) ?? "";
-      return next;
+      for (const [id, text] of Object.entries(updates)) {
+        if (next[id] !== text) {
+          next[id] = text;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
     });
+    raf.current = requestAnimationFrame(frame);
   }, []);
 
-  const scheduleFlush = useCallback(() => {
-    if (pending.current) return;
-    pending.current = true;
-    raf.current = requestAnimationFrame(flush);
-  }, [flush]);
+  const ensureRevealLoop = useCallback(() => {
+    if (running.current) return;
+    running.current = true;
+    lastFrameTs.current = 0;
+    raf.current = requestAnimationFrame(frame);
+  }, [frame]);
 
   const dropPartial = useCallback((chatId: string) => {
     buffers.current.delete(chatId);
+    revealed.current.delete(chatId);
     setPartial((prev) => {
       if (!(chatId in prev)) return prev;
       const { [chatId]: _omit, ...rest } = prev;
@@ -73,7 +98,7 @@ export function useClaudeStream(
     const offDelta = onEvent("llm-delta", ({ chatId, delta }) => {
       if (!active.current.has(chatId)) return;
       buffers.current.set(chatId, (buffers.current.get(chatId) ?? "") + delta);
-      scheduleFlush();
+      ensureRevealLoop();
     });
     const offDone = onEvent("llm-done", ({ chatId }) => {
       if (!active.current.has(chatId)) return;
@@ -91,18 +116,24 @@ export function useClaudeStream(
       offDone();
       offError();
       cancelAnimationFrame(raf.current);
-      pending.current = false;
+      running.current = false;
+      lastFrameTs.current = 0;
     };
-  }, [scheduleFlush, commitBufferAndFinish]);
+  }, [ensureRevealLoop, commitBufferAndFinish]);
 
-  const beginStream = useCallback((chatId: string) => {
-    buffers.current.set(chatId, "");
-    active.current.add(chatId);
-    setPartial((p) => ({ ...p, [chatId]: "" }));
-    setStreaming((s) => ({ ...s, [chatId]: true }));
-    setStartedAt((s) => ({ ...s, [chatId]: Date.now() }));
-    setError((e) => ({ ...e, [chatId]: null }));
-  }, []);
+  const beginStream = useCallback(
+    (chatId: string) => {
+      buffers.current.set(chatId, "");
+      revealed.current.set(chatId, 0);
+      active.current.add(chatId);
+      setPartial((p) => ({ ...p, [chatId]: "" }));
+      setStreaming((s) => ({ ...s, [chatId]: true }));
+      setStartedAt((s) => ({ ...s, [chatId]: Date.now() }));
+      setError((e) => ({ ...e, [chatId]: null }));
+      ensureRevealLoop();
+    },
+    [ensureRevealLoop],
+  );
 
   const failStream = useCallback(
     (chatId: string, message: string) => {
