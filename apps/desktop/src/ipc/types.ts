@@ -14,7 +14,6 @@ export interface Settings {
   move_step: number;
   auto_preview_html: boolean;
   toggle_hotkey: string;
-  fast_mode: boolean;
   chat_font_size: number;
   skipped_version: string;
   stt_language: string;
@@ -46,7 +45,6 @@ export const DEFAULT_SETTINGS: Settings = {
   move_step: 20,
   auto_preview_html: true,
   toggle_hotkey: "Cmd+Shift+H",
-  fast_mode: false,
   chat_font_size: 13.5,
   skipped_version: "",
   stt_language: "ru",

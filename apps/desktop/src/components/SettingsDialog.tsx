@@ -662,14 +662,6 @@ function SwitchesSection({ draft, set }: SectionProps) {
         Автопревью HTML из ответа
       </SwitchRow>
       <SwitchRow
-        checked={draft.fast_mode}
-        onCheckedChange={(v) => {
-          set("fast_mode", v);
-        }}
-      >
-        Fast mode (Opus 4.8) — до 2.5x быстрее, дороже
-      </SwitchRow>
-      <SwitchRow
         checked={draft.screen_share_visible}
         onCheckedChange={(v) => {
           set("screen_share_visible", v);
