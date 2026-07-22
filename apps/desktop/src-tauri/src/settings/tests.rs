@@ -1,0 +1,359 @@
+use super::*;
+
+#[test]
+fn defaults_match_spec() {
+    let s = Settings::default();
+    assert_eq!(s.hotkey, "F9");
+    assert!(!s.auto_send);
+    assert_eq!(s.window_opacity, 0.9);
+    assert_eq!(s.move_step, 20);
+    assert!(s.prompt_presets.is_empty());
+    assert!(s.auto_preview_html);
+    assert_eq!(s.toggle_hotkey, "Cmd+Shift+H");
+    assert_eq!(s.chat_font_size, 13.5);
+    assert_eq!(s.stt_language, "ru");
+    assert!(!s.stt_translate);
+    assert!(!s.screen_share_visible);
+    assert_eq!(s.teleprompter_speed, 40.0);
+    assert_eq!(s.teleprompter_font_size, 28.0);
+    assert_eq!(s.teleprompter_hotkey, "F10");
+    assert!(s.teleprompter_resume);
+    assert_eq!(s.window_width, 960.0);
+    assert_eq!(s.window_height, 680.0);
+    assert_eq!(s.resize_step, 20);
+    assert_eq!(s.capture_device_uid, "");
+    assert!(s.buffer_enabled);
+    assert_eq!(s.buffer_seconds, 4);
+    assert_eq!(s.identity_id, "");
+}
+
+#[test]
+fn clamp_resets_unknown_identity_id() {
+    let mut s = Settings::default();
+    s.identity_id = "not-a-real-identity".into();
+    s.clamp();
+    assert_eq!(s.identity_id, "");
+    s.identity_id = "obsidian".into();
+    s.clamp();
+    assert_eq!(s.identity_id, "obsidian");
+}
+
+#[test]
+fn load_missing_identity_id_defaults_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("s.json");
+    std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+    let s = Settings::load(&path).unwrap();
+    assert_eq!(s.identity_id, "");
+}
+
+#[test]
+fn load_missing_buffer_fields_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("s.json");
+    std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+    let s = Settings::load(&path).unwrap();
+    assert!(s.buffer_enabled);
+    assert_eq!(s.buffer_seconds, 4);
+}
+
+#[test]
+fn clamp_limits_buffer_seconds() {
+    let mut s = Settings::default();
+    s.buffer_seconds = 1;
+    s.clamp();
+    assert_eq!(s.buffer_seconds, 4);
+    s.buffer_seconds = 120;
+    s.clamp();
+    assert_eq!(s.buffer_seconds, 10);
+}
+
+#[test]
+fn clamp_limits_teleprompter_speed_and_font() {
+    let mut s = Settings::default();
+    s.teleprompter_speed = 5.0;
+    s.teleprompter_font_size = 4.0;
+    s.clamp();
+    assert_eq!(s.teleprompter_speed, 10.0);
+    assert_eq!(s.teleprompter_font_size, 20.0);
+    s.teleprompter_speed = 999.0;
+    s.teleprompter_font_size = 999.0;
+    s.clamp();
+    assert_eq!(s.teleprompter_speed, 150.0);
+    assert_eq!(s.teleprompter_font_size, 48.0);
+    s.teleprompter_speed = f64::NAN;
+    s.clamp();
+    assert_eq!(s.teleprompter_speed, 40.0);
+}
+
+#[test]
+fn load_missing_teleprompter_fields_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("s.json");
+    std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+    let s = Settings::load(&path).unwrap();
+    assert_eq!(s.teleprompter_speed, 40.0);
+    assert_eq!(s.teleprompter_font_size, 28.0);
+}
+
+#[test]
+fn clamp_limits_chat_font_size() {
+    let mut s = Settings::default();
+    s.chat_font_size = 5.0;
+    s.clamp();
+    assert_eq!(s.chat_font_size, 10.0);
+    s.chat_font_size = 99.0;
+    s.clamp();
+    assert_eq!(s.chat_font_size, 20.0);
+    s.chat_font_size = f64::NAN;
+    s.clamp();
+    assert_eq!(s.chat_font_size, 13.5);
+}
+
+#[test]
+fn clamp_limits_window_size() {
+    let mut s = Settings::default();
+    s.window_width = 100.0;
+    s.window_height = 100.0;
+    s.clamp();
+    assert_eq!(s.window_width, 300.0);
+    assert_eq!(s.window_height, 520.0);
+    s.window_width = 5000.0;
+    s.window_height = 5000.0;
+    s.clamp();
+    assert_eq!(s.window_width, 1600.0);
+    assert_eq!(s.window_height, 1100.0);
+    s.window_width = f64::NAN;
+    s.window_height = f64::NAN;
+    s.clamp();
+    assert_eq!(s.window_width, 960.0);
+    assert_eq!(s.window_height, 680.0);
+}
+
+#[test]
+fn load_missing_window_size_defaults() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("s.json");
+    std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+    let s = Settings::load(&path).unwrap();
+    assert_eq!(s.window_width, 960.0);
+    assert_eq!(s.window_height, 680.0);
+    assert_eq!(s.resize_step, 20);
+    assert_eq!(s.capture_device_uid, "");
+    assert_eq!(s.theme, "gray");
+    assert_eq!(s.scroll_step, 120);
+}
+
+#[test]
+fn clamp_limits_scroll_step() {
+    let mut s = Settings::default();
+    s.scroll_step = 1;
+    s.clamp();
+    assert_eq!(s.scroll_step, 10);
+    s.scroll_step = 100_000;
+    s.clamp();
+    assert_eq!(s.scroll_step, 1000);
+}
+
+#[test]
+fn clamp_limits_resize_step() {
+    let mut s = Settings::default();
+    s.resize_step = 1000;
+    s.clamp();
+    assert_eq!(s.resize_step, 200);
+    s.resize_step = 0;
+    s.clamp();
+    assert_eq!(s.resize_step, 1);
+}
+
+#[test]
+fn clamp_resets_unknown_theme() {
+    let mut s = Settings::default();
+    s.theme = "neon".into();
+    s.clamp();
+    assert_eq!(s.theme, "gray");
+    s.theme = "black".into();
+    s.clamp();
+    assert_eq!(s.theme, "black");
+}
+
+#[test]
+fn load_old_model_field_is_ignored() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("s.json");
+    std::fs::write(&path, r#"{"model":"claude-haiku-4-5","auto_send":true}"#).unwrap();
+    let s = Settings::load(&path).unwrap();
+    assert!(s.auto_send);
+}
+
+#[test]
+fn load_missing_skipped_version_defaults_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("s.json");
+    std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+    let s = Settings::load(&path).unwrap();
+    assert_eq!(s.skipped_version, "");
+}
+
+#[test]
+fn load_missing_stt_and_screen_share_fields_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("s.json");
+    std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+    let s = Settings::load(&path).unwrap();
+    assert_eq!(s.stt_language, "ru");
+    assert!(!s.stt_translate);
+    assert!(!s.screen_share_visible);
+}
+
+#[test]
+fn env_fallback_fills_only_empty_keys() {
+    let mut s = Settings::default();
+    s.apply_key_fallback(Some("env-ant".into()), Some("env-groq".into()));
+    assert_eq!(s.anthropic_api_key, "env-ant");
+    assert_eq!(s.groq_api_key, "env-groq");
+}
+
+#[test]
+fn env_fallback_skipped_entirely_when_access_token_set() {
+    let mut s = Settings::default();
+    s.access_token = "itk_x".into();
+    s.apply_key_fallback(Some("env-ant".into()), Some("env-groq".into()));
+    assert_eq!(s.anthropic_api_key, "");
+    assert_eq!(s.groq_api_key, "");
+}
+
+#[test]
+fn load_missing_access_token_defaults_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("s.json");
+    std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+    let s = Settings::load(&path).unwrap();
+    assert_eq!(s.access_token, "");
+}
+
+#[test]
+fn env_fallback_does_not_override_saved_keys() {
+    let mut s = Settings::default();
+    s.anthropic_api_key = "saved".into();
+    s.apply_key_fallback(Some("env-ant".into()), Some("env-groq".into()));
+    assert_eq!(s.anthropic_api_key, "saved");
+    assert_eq!(s.groq_api_key, "env-groq");
+}
+
+#[test]
+fn env_fallback_ignores_none_and_blank() {
+    let mut s = Settings::default();
+    s.apply_key_fallback(None, Some("   ".into()));
+    assert_eq!(s.anthropic_api_key, "");
+    assert_eq!(s.groq_api_key, "");
+}
+
+#[test]
+fn clamp_limits_opacity_and_step() {
+    let mut s = Settings::default();
+    s.window_opacity = 0.05;
+    s.move_step = 1000;
+    s.clamp();
+    assert_eq!(s.window_opacity, 0.2);
+    assert_eq!(s.move_step, 200);
+    s.window_opacity = 1.5;
+    s.move_step = 0;
+    s.clamp();
+    assert_eq!(s.window_opacity, 1.0);
+    assert_eq!(s.move_step, 1);
+}
+
+#[test]
+fn save_load_roundtrip_with_600_perms() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    let mut s = Settings::default();
+    s.groq_api_key = "gsk_test".into();
+    s.chat_font_size = 15.0;
+    s.window_opacity = 0.5;
+    s.auto_send = true;
+    s.auto_preview_html = false;
+    s.toggle_hotkey = "F10".into();
+    s.prompt_presets = vec![test_preset()];
+    s.save(&path).unwrap();
+    let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o600);
+    let loaded = Settings::load(&path).unwrap();
+    assert_eq!(loaded.groq_api_key, "gsk_test");
+    assert_eq!(loaded.chat_font_size, 15.0);
+    assert_eq!(loaded.window_opacity, 0.5);
+    assert!(loaded.auto_send);
+    assert!(!loaded.auto_preview_html);
+    assert_eq!(loaded.toggle_hotkey, "F10");
+    assert_eq!(loaded.prompt_presets.len(), 1);
+    assert_eq!(loaded.prompt_presets[0].name, "Тест");
+}
+
+#[test]
+fn load_missing_auto_preview_html_defaults_true() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("s.json");
+    std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+    let s = Settings::load(&path).unwrap();
+    assert!(s.auto_preview_html);
+}
+
+#[test]
+fn load_missing_toggle_hotkey_defaults() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("s.json");
+    std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+    let s = Settings::load(&path).unwrap();
+    assert_eq!(s.toggle_hotkey, "Cmd+Shift+H");
+}
+
+#[test]
+fn load_missing_file_gives_defaults() {
+    let s = Settings::load(std::path::Path::new("/nonexistent/x.json")).unwrap();
+    assert_eq!(s.hotkey, "F9");
+    assert!(!s.auto_send);
+    assert_eq!(s.move_step, 20);
+}
+
+#[test]
+fn load_clamps_out_of_range_values() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("s.json");
+    std::fs::write(&path, r#"{"window_opacity":0.05,"move_step":999}"#).unwrap();
+    let s = Settings::load(&path).unwrap();
+    assert_eq!(s.window_opacity, 0.2);
+    assert_eq!(s.move_step, 200);
+}
+
+#[test]
+fn save_creates_parent_directories() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("nested/deeper/settings.json");
+    Settings::default().save(&path).unwrap();
+    assert!(path.exists());
+    assert!(!path.with_extension("tmp").exists());
+}
+
+fn test_preset() -> PromptPreset {
+    PromptPreset { id: "p1".into(), name: "Тест".into(), text: "текст".into() }
+}
+
+#[test]
+fn load_missing_prompt_presets_defaults_to_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("s.json");
+    std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+    let s = Settings::load(&path).unwrap();
+    assert!(s.prompt_presets.is_empty());
+}
+
+#[test]
+fn load_old_system_prompt_is_ignored() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("s.json");
+    std::fs::write(&path, r#"{"system_prompt":"старое","auto_send":false}"#).unwrap();
+    let s = Settings::load(&path).unwrap();
+    assert!(s.prompt_presets.is_empty());
+}

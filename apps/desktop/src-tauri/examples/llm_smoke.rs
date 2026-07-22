@@ -4,14 +4,11 @@ const ANTHROPIC_MESSAGES_URL: &str = "https://api.anthropic.com/v1/messages";
 const API_KEY_HEADER: &str = "x-api-key";
 const ANTHROPIC_VERSION_HEADER: &str = "anthropic-version";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
-const ANTHROPIC_BETA_HEADER: &str = "anthropic-beta";
-const FAST_MODE_BETA: &str = "fast-mode-2026-02-01";
 const OPUS_MODEL: &str = "claude-opus-4-8";
 const BRIEF_SYSTEM: &str = "Кратко.";
 const ROLE_USER: &str = "user";
 const ROLE_ASSISTANT: &str = "assistant";
 const MAX_TOKENS_FIELD: &str = "max_tokens";
-const SPEED_FIELD: &str = "speed";
 const PROBE_MAX_TOKENS: u32 = 16;
 const ERROR_BODY_PREVIEW_CHARS: usize = 400;
 const HTTP_STATUS_OK: u16 = 200;
@@ -37,14 +34,12 @@ fn probe_body(
     system: &str,
     messages: &[harpyhare_lib::llm::ChatMessage],
     thinking: bool,
-    fast: bool,
 ) -> serde_json::Value {
     harpyhare_lib::llm::build_request_body(
         OPUS_MODEL,
         system,
         messages,
         harpyhare_lib::llm::thinking_value(None, OPUS_MODEL, thinking),
-        fast,
         NO_WEB_SEARCH,
     )
 }
@@ -58,33 +53,23 @@ fn build_cases() -> Vec<(&'static str, serde_json::Value)> {
     let with_empty_assistant = arithmetic_dialog("");
 
     vec![
-        (
-            "opus thinking=on fast=off (база)",
-            probe_body(BRIEF_SYSTEM, &single, true, false),
-        ),
-        ("opus thinking=off", probe_body(BRIEF_SYSTEM, &single, false, false)),
-        ("opus fast=on", probe_body(BRIEF_SYSTEM, &single, true, true)),
-        ("opus мультитёрн с кэшем", probe_body(BRIEF_SYSTEM, &multi, true, false)),
+        ("opus thinking=on (база)", probe_body(BRIEF_SYSTEM, &single, true)),
+        ("opus thinking=off", probe_body(BRIEF_SYSTEM, &single, false)),
+        ("opus мультитёрн с кэшем", probe_body(BRIEF_SYSTEM, &multi, true)),
         (
             "opus пустой assistant в истории",
-            probe_body(BRIEF_SYSTEM, &with_empty_assistant, true, false),
+            probe_body(BRIEF_SYSTEM, &with_empty_assistant, true),
         ),
-        (
-            "opus без препромпта (system=\"\")",
-            probe_body("", &single, true, false),
-        ),
+        ("opus без препромпта (system=\"\")", probe_body("", &single, true)),
     ]
 }
 
 async fn run_case(client: &reqwest::Client, key: &str, name: &str, mut body: serde_json::Value) {
     body[MAX_TOKENS_FIELD] = serde_json::json!(PROBE_MAX_TOKENS);
-    let mut req = client
+    let req = client
         .post(ANTHROPIC_MESSAGES_URL)
         .header(API_KEY_HEADER, key)
         .header(ANTHROPIC_VERSION_HEADER, ANTHROPIC_VERSION);
-    if body.get(SPEED_FIELD).is_some() {
-        req = req.header(ANTHROPIC_BETA_HEADER, FAST_MODE_BETA);
-    }
     match req.json(&body).send().await {
         Ok(resp) => {
             let status = resp.status().as_u16();

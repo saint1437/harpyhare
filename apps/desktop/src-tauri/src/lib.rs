@@ -898,14 +898,12 @@ async fn send_to_claude(
     model: String,
     web_search: bool,
 ) {
-    let fast = app.state::<App>().settings.lock().unwrap().fast_mode;
     let model_info = find_cached_model(&app, &model);
     let thinking_field = llm::thinking_value(model_info.as_ref(), &model, thinking);
     let web_search_field = llm::web_search_value(model_info.as_ref(), &model, web_search);
     let client = app.state::<App>().llm.lock().unwrap().clone();
     let cancel = register_llm_cancel(&app, &chat_id);
-    let body =
-        llm::build_request_body(&model, &system, &messages, thinking_field, fast, web_search_field);
+    let body = llm::build_request_body(&model, &system, &messages, thinking_field, web_search_field);
 
     let flusher = spawn_llm_delta_flusher(app.clone(), chat_id.clone());
     let started = std::time::Instant::now();
