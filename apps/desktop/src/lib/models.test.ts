@@ -8,9 +8,10 @@ import {
 } from "./models";
 
 describe("models", () => {
-  it("дефолт — opus, он есть в фолбэк-списке", () => {
-    expect(DEFAULT_MODEL).toBe("claude-opus-4-8");
+  it("дефолт — haiku 4.5, он есть в фолбэк-списке", () => {
+    expect(DEFAULT_MODEL).toBe("claude-haiku-4-5");
     expect(FALLBACK_MODELS.some((m) => m.id === DEFAULT_MODEL)).toBe(true);
+    expect(FALLBACK_MODELS.some((m) => m.id === "claude-opus-4-8")).toBe(true);
   });
 
   it("modelLabel срезает бренд из display_name, иначе реконструирует из id", () => {

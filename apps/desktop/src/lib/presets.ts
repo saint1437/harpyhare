@@ -1,7 +1,5 @@
 import pool from "../../../../config/presets.json";
 
-export const DEFAULT_PRESET_ID = "golang";
-
 export interface PromptPreset {
   id: string;
   name: string;

@@ -1,6 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_PRESET_ID } from "@/lib/presets";
 
 const loadChats = vi.fn<() => Promise<string>>();
 const saveChats = vi.fn<(json: string) => Promise<void>>();
@@ -106,12 +105,12 @@ describe("useChats", () => {
     expect(result.current.active.messages[1]?.text).toBe("ответ");
   });
 
-  it("новый чат ссылается на дефолтный пресет; setChatPreset меняет ссылку", async () => {
+  it("новый чат без пресета; setChatPreset задаёт ссылку", async () => {
     const { result } = renderHook(() => useChats());
     await waitFor(() => {
       expect(result.current.chats.length).toBe(1);
     });
-    expect(result.current.active.presetId).toBe(DEFAULT_PRESET_ID);
+    expect(result.current.active.presetId).toBe("");
     const id = result.current.activeId;
     act(() => {
       result.current.setChatPreset(id, "mypreset");
@@ -124,25 +123,25 @@ describe("useChats", () => {
     await waitFor(() => {
       expect(result.current.chats.length).toBe(1);
     });
-    expect(result.current.active.model).toBe("claude-opus-4-8");
+    expect(result.current.active.model).toBe("claude-haiku-4-5");
     const id = result.current.activeId;
     act(() => {
-      result.current.setChatModel(id, "claude-haiku-4-5");
+      result.current.setChatModel(id, "claude-opus-4-8");
     });
-    expect(result.current.active.model).toBe("claude-haiku-4-5");
+    expect(result.current.active.model).toBe("claude-opus-4-8");
   });
 
-  it("новый чат — с thinking; setChatThinking выключает его по чату", async () => {
+  it("новый чат — без thinking; setChatThinking включает его по чату", async () => {
     const { result } = renderHook(() => useChats());
     await waitFor(() => {
       expect(result.current.chats.length).toBe(1);
     });
-    expect(result.current.active.thinkingEnabled).toBe(true);
+    expect(result.current.active.thinkingEnabled).toBe(false);
     const id = result.current.activeId;
     act(() => {
-      result.current.setChatThinking(id, false);
+      result.current.setChatThinking(id, true);
     });
-    expect(result.current.active.thinkingEnabled).toBe(false);
+    expect(result.current.active.thinkingEnabled).toBe(true);
   });
 
   it("новый чат — без веб-поиска; setChatWebSearch включает по чату", async () => {

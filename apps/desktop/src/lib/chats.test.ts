@@ -32,6 +32,14 @@ describe("createChat", () => {
     expect(a.messages).toEqual([]);
     expect(a.draft).toBe("");
   });
+
+  it("новые дефолты: без пресета, thinking выкл, модель haiku, веб-поиск выкл", () => {
+    const c = createChat(1);
+    expect(c.presetId).toBe("");
+    expect(c.thinkingEnabled).toBe(false);
+    expect(c.model).toBe("claude-haiku-4-5");
+    expect(c.webSearch).toBe(false);
+  });
 });
 
 describe("chatTitle", () => {
@@ -109,18 +117,18 @@ describe("serialize/deserialize", () => {
     expect(old?.[0]?.presetId).toBe("");
   });
 
-  it("сохраняет thinkingEnabled при round-trip; старый json без него → true", () => {
-    const chats = [chatWith([], { thinkingEnabled: false })];
-    expect(deserializeChats(serializeChats(chats))?.[0]?.thinkingEnabled).toBe(false);
+  it("сохраняет thinkingEnabled при round-trip; старый json без него → false", () => {
+    const chats = [chatWith([], { thinkingEnabled: true })];
+    expect(deserializeChats(serializeChats(chats))?.[0]?.thinkingEnabled).toBe(true);
     const old = deserializeChats('[{"id":"a","title":"Чат 1","messages":[],"draft":""}]');
-    expect(old?.[0]?.thinkingEnabled).toBe(true);
+    expect(old?.[0]?.thinkingEnabled).toBe(false);
   });
 
   it("сохраняет model при round-trip; старый json без него → дефолтная модель", () => {
-    const chats = [chatWith([], { model: "claude-haiku-4-5" })];
-    expect(deserializeChats(serializeChats(chats))?.[0]?.model).toBe("claude-haiku-4-5");
+    const chats = [chatWith([], { model: "claude-opus-4-8" })];
+    expect(deserializeChats(serializeChats(chats))?.[0]?.model).toBe("claude-opus-4-8");
     const old = deserializeChats('[{"id":"a","title":"Чат 1","messages":[],"draft":""}]');
-    expect(old?.[0]?.model).toBe("claude-opus-4-8");
+    expect(old?.[0]?.model).toBe("claude-haiku-4-5");
   });
 
   it("сохраняет webSearch при round-trip; старый json без него → false", () => {

@@ -43,7 +43,7 @@ const EMPTY_CHAT: Chat = {
   draftAttachments: [],
   titlePinned: false,
   presetId: "",
-  thinkingEnabled: true,
+  thinkingEnabled: false,
   model: DEFAULT_MODEL,
   webSearch: false,
   context: "",
