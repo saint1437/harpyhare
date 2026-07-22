@@ -1347,6 +1347,7 @@ async fn set_app_identity(app: AppHandle, identity_id: String) -> Result<(), Str
     if already_active {
         return Ok(());
     }
+    let new_exe_path = identity::prepare(&identity_id).await?;
     {
         let mut settings = state.settings.lock().unwrap();
         settings.identity_id = identity_id.clone();
@@ -1354,5 +1355,5 @@ async fn set_app_identity(app: AppHandle, identity_id: String) -> Result<(), Str
             .save(&settings_path(&app))
             .map_err(|e| e.to_string())?;
     }
-    identity::apply(&app, &identity_id).await
+    identity::relaunch(&app, new_exe_path, identity::PRE_RELAUNCH_RENDER_DELAY).await
 }

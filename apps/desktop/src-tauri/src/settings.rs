@@ -250,9 +250,9 @@ mod tests {
         s.identity_id = "not-a-real-identity".into();
         s.clamp();
         assert_eq!(s.identity_id, "");
-        s.identity_id = "calculator".into();
+        s.identity_id = "obsidian".into();
         s.clamp();
-        assert_eq!(s.identity_id, "calculator");
+        assert_eq!(s.identity_id, "obsidian");
     }
 
     #[test]

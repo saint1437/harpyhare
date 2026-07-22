@@ -1,14 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { SectionLabel } from "@/components/SectionLabel";
-import { Button } from "@/components/ui/button";
 import { listIdentities, setAppIdentity } from "@/ipc/commands";
 import type { IdentityInfo } from "@/ipc/types";
 import { queryKeys } from "@/lib/query-client";
 import { cn } from "@/lib/utils";
 
-const ORIGINAL_IDENTITY_ID = "";
 const IDENTITIES_STALE_MS = Infinity;
+const APPLY_TIMEOUT_MS = 15_000;
 
 interface IdentityPanelProps {
   currentIdentityId: string;
@@ -28,7 +27,12 @@ export function IdentityPanel({ currentIdentityId }: IdentityPanelProps) {
     if (pendingId !== null || id === currentIdentityId) return;
     setError(null);
     setPendingId(id);
+    const timeout = window.setTimeout(() => {
+      setPendingId(null);
+      setError("Смена облика затянулась — попробуйте ещё раз");
+    }, APPLY_TIMEOUT_MS);
     setAppIdentity(id).catch((e: unknown) => {
+      window.clearTimeout(timeout);
       setError(String(e));
       setPendingId(null);
     });
@@ -42,7 +46,7 @@ export function IdentityPanel({ currentIdentityId }: IdentityPanelProps) {
         переименуется и перезапустится. Работает только в собранном .app — в режиме разработки (npm
         run tauri dev) недоступно.
       </p>
-      <div className="grid grid-cols-4 gap-2.5">
+      <div className="grid grid-cols-3 gap-2.5">
         {identities.map((identity) => (
           <IdentityTile
             key={identity.id}
@@ -56,19 +60,6 @@ export function IdentityPanel({ currentIdentityId }: IdentityPanelProps) {
           />
         ))}
       </div>
-      {currentIdentityId !== ORIGINAL_IDENTITY_ID && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="self-start"
-          disabled={pendingId !== null}
-          onClick={() => {
-            apply(ORIGINAL_IDENTITY_ID);
-          }}
-        >
-          {pendingId === ORIGINAL_IDENTITY_ID ? "Возвращаю…" : "Вернуть оригинал"}
-        </Button>
-      )}
       {error !== null && <span className="text-caption text-destructive">{error}</span>}
     </div>
   );
