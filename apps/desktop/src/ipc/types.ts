@@ -32,6 +32,7 @@ export interface Settings {
   scroll_step: number;
   buffer_enabled: boolean;
   buffer_seconds: number;
+  identity_id: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -63,11 +64,18 @@ export const DEFAULT_SETTINGS: Settings = {
   scroll_step: 120,
   buffer_enabled: true,
   buffer_seconds: 4,
+  identity_id: "",
 };
 
 export interface AudioOutputDevice {
   uid: string;
   name: string;
+}
+
+export interface IdentityInfo {
+  id: string;
+  displayName: string;
+  iconPngBase64: string;
 }
 
 export type RecorderState = "idle" | "recording" | "transcribing";

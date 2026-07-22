@@ -4,6 +4,7 @@ pub mod capture;
 pub mod chats;
 pub mod context_import;
 pub mod hotkey;
+pub mod identity;
 pub mod llm;
 pub mod preview_protocol;
 pub mod remote_presets;
@@ -191,6 +192,8 @@ pub fn run() {
             check_for_update,
             install_update,
             get_app_version,
+            list_identities,
+            set_app_identity,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -206,6 +209,7 @@ fn setup_app(handle: &AppHandle) {
     apply_screen_share_visibility_at_startup(handle, &settings);
     apply_window_size_at_startup(handle, &settings);
     clip_native_window_corners(handle);
+    reapply_identity_if_needed(handle, &settings);
     let startup_hotkeys = settings.clone();
     spawn_startup_warm_up_and_model_fetch(handle.clone(), stt.clone(), llm.clone());
     handle.manage(build_app_state(settings, official_presets, capture, stt, llm));
@@ -363,6 +367,32 @@ fn apply_window_size_at_startup(app: &AppHandle, settings: &settings::Settings) 
             settings.window_height,
         ));
     }
+}
+
+fn reapply_identity_if_needed(app: &AppHandle, settings: &settings::Settings) {
+    if settings.identity_id.is_empty() {
+        return;
+    }
+    let Some(def) = identity::find(&settings.identity_id) else {
+        return;
+    };
+    if let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        let _ = w.set_title(def.display_name);
+    }
+    let running_as_expected = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_os_string()))
+        .is_some_and(|n| n == def.display_name);
+    if running_as_expected {
+        return;
+    }
+    let app = app.clone();
+    let identity_id = settings.identity_id.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = identity::apply(&app, &identity_id).await {
+            eprintln!("[identity] авто-переприменение после обновления не удалось: {e}");
+        }
+    });
 }
 
 fn clip_native_window_corners(app: &AppHandle) {
@@ -1300,4 +1330,29 @@ async fn install_update(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").into()
+}
+
+#[tauri::command]
+fn list_identities() -> Vec<identity::IdentityInfo> {
+    identity::list()
+}
+
+#[tauri::command]
+async fn set_app_identity(app: AppHandle, identity_id: String) -> Result<(), String> {
+    if !identity::is_known_id(&identity_id) {
+        return Err(format!("Неизвестный облик: {identity_id}"));
+    }
+    let state = app.state::<App>();
+    let already_active = state.settings.lock().unwrap().identity_id == identity_id;
+    if already_active {
+        return Ok(());
+    }
+    {
+        let mut settings = state.settings.lock().unwrap();
+        settings.identity_id = identity_id.clone();
+        settings
+            .save(&settings_path(&app))
+            .map_err(|e| e.to_string())?;
+    }
+    identity::apply(&app, &identity_id).await
 }

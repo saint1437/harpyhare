@@ -78,6 +78,7 @@ pub struct Settings {
     pub scroll_step: u32,
     pub buffer_enabled: bool,
     pub buffer_seconds: u64,
+    pub identity_id: String,
 }
 
 impl Default for Settings {
@@ -111,6 +112,7 @@ impl Default for Settings {
             scroll_step: DEFAULT_SCROLL_STEP,
             buffer_enabled: true,
             buffer_seconds: DEFAULT_BUFFER_SECONDS,
+            identity_id: String::new(),
         }
     }
 }
@@ -149,6 +151,9 @@ impl Settings {
         }
         self.scroll_step = self.scroll_step.clamp(SCROLL_STEP_MIN, SCROLL_STEP_MAX);
         self.buffer_seconds = self.buffer_seconds.clamp(BUFFER_SECONDS_MIN, BUFFER_SECONDS_MAX);
+        if !crate::identity::is_known_id(&self.identity_id) {
+            self.identity_id = String::new();
+        }
     }
 
     pub fn load(path: &Path) -> std::io::Result<Self> {
@@ -236,6 +241,27 @@ mod tests {
         assert_eq!(s.capture_device_uid, "");
         assert!(s.buffer_enabled);
         assert_eq!(s.buffer_seconds, 4);
+        assert_eq!(s.identity_id, "");
+    }
+
+    #[test]
+    fn clamp_resets_unknown_identity_id() {
+        let mut s = Settings::default();
+        s.identity_id = "not-a-real-identity".into();
+        s.clamp();
+        assert_eq!(s.identity_id, "");
+        s.identity_id = "calculator".into();
+        s.clamp();
+        assert_eq!(s.identity_id, "calculator");
+    }
+
+    #[test]
+    fn load_missing_identity_id_defaults_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.json");
+        std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+        let s = Settings::load(&path).unwrap();
+        assert_eq!(s.identity_id, "");
     }
 
     #[test]

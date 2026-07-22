@@ -6,6 +6,7 @@ import { type PromptPreset } from "@/lib/presets";
 import {
   type AudioOutputDevice,
   type ChatMessageDto,
+  type IdentityInfo,
   type Settings,
   type UpdateInfo,
 } from "./types";
@@ -178,4 +179,12 @@ export async function installUpdate(): Promise<void> {
 
 export async function getAppVersion(): Promise<string> {
   return invoke<string>("get_app_version");
+}
+
+export async function listIdentities(): Promise<IdentityInfo[]> {
+  return invoke<IdentityInfo[]>("list_identities");
+}
+
+export async function setAppIdentity(identityId: string): Promise<void> {
+  await invoke("set_app_identity", { identityId });
 }

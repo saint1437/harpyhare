@@ -21,6 +21,7 @@ export const queryKeys = {
   models: ["models"] as const,
   officialPresets: ["official-presets"] as const,
   audioDevices: ["audio-devices"] as const,
+  identities: ["identities"] as const,
   countTokens: (
     model: string,
     thinking: boolean,

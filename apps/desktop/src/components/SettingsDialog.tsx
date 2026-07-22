@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { AccessCodeForm } from "@/components/AccessCodeForm";
 import { ContextLibraryPanel } from "@/components/ContextLibraryPanel";
 import { HotkeyCapture } from "@/components/HotkeyCapture";
+import { IdentityPanel } from "@/components/IdentityPanel";
 import { LabeledDivider } from "@/components/LabeledDivider";
 import { SectionLabel } from "@/components/SectionLabel";
 import { Button } from "@/components/ui/button";
@@ -55,7 +56,7 @@ export interface SettingsDialogProps {
 
 type CheckState = "idle" | "checking" | "latest" | "error";
 
-type TabId = "main" | "contexts" | "hotkeys" | "behavior" | "appearance" | "presets";
+type TabId = "main" | "contexts" | "hotkeys" | "behavior" | "appearance" | "identity" | "presets";
 
 const SETTINGS_TABS: { id: TabId; label: string }[] = [
   { id: "main", label: "Основное" },
@@ -63,6 +64,7 @@ const SETTINGS_TABS: { id: TabId; label: string }[] = [
   { id: "hotkeys", label: "Горячие клавиши" },
   { id: "behavior", label: "Поведение" },
   { id: "appearance", label: "Вид" },
+  { id: "identity", label: "Маскировка" },
   { id: "presets", label: "Пресеты" },
 ];
 
@@ -224,6 +226,7 @@ export function SettingsDialog({
             draft={draft}
             set={set}
             contextLibrary={contextLibrary}
+            currentIdentityId={settings.identity_id}
             onRedeem={onRedeem}
             onUpdatePreset={updatePreset}
             onAddPreset={addPreset}
@@ -290,6 +293,7 @@ function TabContent({
   draft,
   set,
   contextLibrary,
+  currentIdentityId,
   onRedeem,
   onUpdatePreset,
   onAddPreset,
@@ -299,6 +303,7 @@ function TabContent({
   draft: Settings;
   set: SetSetting;
   contextLibrary: ContextLibraryApi;
+  currentIdentityId: string;
   onRedeem: (code: string) => Promise<string | null>;
   onUpdatePreset: (index: number, patch: Partial<PromptPreset>) => void;
   onAddPreset: () => void;
@@ -336,6 +341,8 @@ function TabContent({
           <SlidersSection draft={draft} set={set} />
         </div>
       );
+    case "identity":
+      return <IdentityPanel currentIdentityId={currentIdentityId} />;
     case "presets":
       return (
         <PresetsSection
