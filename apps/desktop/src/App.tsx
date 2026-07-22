@@ -527,8 +527,8 @@ function AppComposer({
       onPaste={(items) => void chats.addDraftAttachments(activeId, items)}
       onSend={onSend}
       onStop={onStop}
-      onClear={() => {
-        chats.setDraft(activeId, "", []);
+      onClearHistory={() => {
+        chats.clearMessages(activeId);
       }}
       onRetry={onRetry}
       streaming={streaming}

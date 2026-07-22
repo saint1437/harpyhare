@@ -154,6 +154,7 @@ export interface ChatsApi {
   appendAssistantMessage: (id: string, text: string) => void;
   removeMessage: (id: string, index: number) => void;
   truncateMessages: (id: string, count: number) => void;
+  clearMessages: (id: string) => void;
   setChatUsage: (id: string, lastInputTokens: number) => void;
 }
 
@@ -330,6 +331,13 @@ export function useChats(): ChatsApi {
     [patch],
   );
 
+  const clearMessages = useCallback(
+    (id: string) => {
+      patch(id, (c) => ({ ...c, messages: [], lastInputTokens: 0 }));
+    },
+    [patch],
+  );
+
   const setChatUsage = useCallback(
     (id: string, lastInputTokens: number) => {
       patch(id, (c) => ({ ...c, lastInputTokens }));
@@ -359,6 +367,7 @@ export function useChats(): ChatsApi {
     appendAssistantMessage,
     removeMessage,
     truncateMessages,
+    clearMessages,
     setChatUsage,
   };
 }

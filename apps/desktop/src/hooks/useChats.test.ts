@@ -89,6 +89,32 @@ describe("useChats", () => {
     expect(result.current.active.messages).toEqual([]);
   });
 
+  it("clearMessages стирает историю и сбрасывает lastInputTokens, не трогая черновик", async () => {
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(1);
+    });
+    const id = result.current.activeId;
+    act(() => {
+      result.current.appendUserMessage(id, "вопрос", []);
+    });
+    act(() => {
+      result.current.appendAssistantMessage(id, "ответ");
+    });
+    act(() => {
+      result.current.setChatUsage(id, 1234);
+    });
+    act(() => {
+      result.current.setDraft(id, "недописанный промпт", []);
+    });
+    act(() => {
+      result.current.clearMessages(id);
+    });
+    expect(result.current.active.messages).toEqual([]);
+    expect(result.current.active.lastInputTokens).toBe(0);
+    expect(result.current.active.draft).toBe("недописанный промпт");
+  });
+
   it("appendAssistantMessage дописывает ответ", async () => {
     const { result } = renderHook(() => useChats());
     await waitFor(() => {

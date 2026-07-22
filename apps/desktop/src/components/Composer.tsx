@@ -55,7 +55,7 @@ export interface ComposerProps {
   onPaste: (items: DataTransferItemList) => void;
   onSend: () => void;
   onStop: () => void;
-  onClear: () => void;
+  onClearHistory: () => void;
   onRetry: () => void;
   streaming: boolean;
   showRetry: boolean;
@@ -325,7 +325,10 @@ function RequestParamsPopover(props: RequestParamsProps) {
 }
 
 type ComposerToolbarProps = RequestParamsProps &
-  Pick<ComposerProps, "onClear" | "showRetry" | "onRetry" | "streaming" | "onStop" | "onSend"> & {
+  Pick<
+    ComposerProps,
+    "onClearHistory" | "showRetry" | "onRetry" | "streaming" | "onStop" | "onSend"
+  > & {
     hasContext: boolean;
     onOpenContext: () => void;
   };
@@ -336,10 +339,10 @@ function ComposerToolbar(props: ComposerToolbarProps) {
       <Button
         variant="ghost"
         size="icon-compact"
-        disabled={props.disabled}
-        onClick={props.onClear}
-        title="Очистить черновик"
-        aria-label="Очистить черновик"
+        disabled={props.disabled || props.streaming}
+        onClick={props.onClearHistory}
+        title="Очистить историю чата"
+        aria-label="Очистить историю чата"
       >
         <Eraser />
       </Button>
@@ -570,7 +573,7 @@ export function Composer(props: ComposerProps) {
         <AttachmentList attachments={props.attachments} onRemove={props.onRemoveAttachment} />
         <ComposerToolbar
           disabled={props.disabled}
-          onClear={props.onClear}
+          onClearHistory={props.onClearHistory}
           hasContext={props.context.trim() !== "" || props.libraryDocIds.length > 0}
           onOpenContext={openContextDialog}
           showRetry={props.showRetry}
