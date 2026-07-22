@@ -135,6 +135,30 @@ function MessageActionButton({
   );
 }
 
+function MessageActions({
+  onRemove,
+  onResend,
+}: {
+  onRemove: () => void;
+  onResend: (() => void) | null;
+}) {
+  return (
+    <div className="pointer-events-none flex shrink-0 gap-0.5 opacity-0 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
+      {onResend && (
+        <MessageActionButton
+          title="Переотправить (всё, что ниже, будет заменено новым ответом)"
+          onClick={onResend}
+        >
+          <RotateCw className="size-3.5" />
+        </MessageActionButton>
+      )}
+      <MessageActionButton title="Удалить сообщение" onClick={onRemove}>
+        <Trash2 className="size-3.5" />
+      </MessageActionButton>
+    </div>
+  );
+}
+
 function MessageShell({
   align,
   onRemove,
@@ -146,27 +170,19 @@ function MessageShell({
   onResend: (() => void) | null;
   children: ReactNode;
 }) {
-  return (
-    <div className={cn("group/msg relative", align === "end" && "flex justify-end")}>
-      {children}
-      <div
-        className={cn(
-          FLOATING_CHIP_CLASS,
-          "absolute top-0 right-0 z-10 flex gap-0.5 rounded-md p-0.5 opacity-0 transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100",
-        )}
-      >
-        {onResend && (
-          <MessageActionButton
-            title="Переотправить (всё, что ниже, будет заменено новым ответом)"
-            onClick={onResend}
-          >
-            <RotateCw className="size-3.5" />
-          </MessageActionButton>
-        )}
-        <MessageActionButton title="Удалить сообщение" onClick={onRemove}>
-          <Trash2 className="size-3.5" />
-        </MessageActionButton>
+  const actions = <MessageActions onRemove={onRemove} onResend={onResend} />;
+  if (align === "end") {
+    return (
+      <div className="group/msg flex items-start justify-end gap-1">
+        {actions}
+        {children}
       </div>
+    );
+  }
+  return (
+    <div className="group/msg flex items-start gap-1">
+      <div className="min-w-0 flex-1">{children}</div>
+      {actions}
     </div>
   );
 }
@@ -182,7 +198,7 @@ function Assistant({ text, components }: { text: string; components: Components 
 function StreamingAssistant({ text, components }: { text: string; components: Components }) {
   const [stable, tail] = splitStableTail(text);
   return (
-    <div className={ASSISTANT_PROSE_CLASS}>
+    <div className={cn(ASSISTANT_PROSE_CLASS, "pr-7")}>
       {stable !== "" && <MarkdownChunk text={stable} components={components} />}
       {tail !== "" && <MarkdownChunk text={tail} components={components} />}
     </div>
@@ -207,7 +223,6 @@ function useHotkeyScroll(scrollRef: RefObject<HTMLDivElement | null>, stepPx: nu
 
 function useStickToBottom() {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const nearBottomRef = useRef(true);
   const [showJump, setShowJump] = useState(false);
 
   const scrollToBottom = useCallback(() => {
@@ -219,23 +234,17 @@ function useStickToBottom() {
     const el = scrollRef.current;
     if (!el) return;
     const near = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
-    nearBottomRef.current = near;
     setShowJump(!near && el.scrollHeight > el.clientHeight);
   }, []);
 
-  const scrollIfNearBottom = useCallback(() => {
-    if (nearBottomRef.current) scrollToBottom();
-  }, [scrollToBottom]);
-
   const resetToBottom = useCallback(() => {
-    nearBottomRef.current = true;
     scrollToBottom();
     setShowJump(false);
   }, [scrollToBottom]);
 
   const onScroll = syncJump;
 
-  return { scrollRef, showJump, onScroll, scrollIfNearBottom, resetToBottom, syncJump };
+  return { scrollRef, showJump, onScroll, resetToBottom, syncJump };
 }
 
 function EmptyState() {
@@ -331,18 +340,24 @@ export function AnswerPanel({
   onRemoveMessage,
   onResendMessage,
 }: AnswerPanelProps) {
-  const { scrollRef, showJump, onScroll, scrollIfNearBottom, resetToBottom, syncJump } =
-    useStickToBottom();
+  const { scrollRef, showJump, onScroll, resetToBottom, syncJump } = useStickToBottom();
   useHotkeyScroll(scrollRef, scrollStep ?? FALLBACK_SCROLL_STEP_PX);
 
   useLayoutEffect(() => {
     resetToBottom();
   }, [chatId, resetToBottom]);
 
+  const prevMessageCount = useRef(0);
   useEffect(() => {
-    scrollIfNearBottom();
+    const grew = messages.length > prevMessageCount.current;
+    prevMessageCount.current = messages.length;
+    if (grew && messages[messages.length - 1]?.role === "user") resetToBottom();
+    else syncJump();
+  }, [messages, resetToBottom, syncJump]);
+
+  useEffect(() => {
     syncJump();
-  }, [messages, partial, scrollIfNearBottom, syncJump]);
+  }, [partial, syncJump]);
 
   const components = useMemo<Components>(
     () => ({ ...markdownComponents, pre: makePre(onTogglePreview) }),

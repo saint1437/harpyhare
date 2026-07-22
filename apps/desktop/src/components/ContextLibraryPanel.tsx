@@ -186,7 +186,7 @@ function RowActions({
   removeTitle: string;
 }) {
   return (
-    <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+    <div className="flex shrink-0 gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
       {onEdit && (
         <IconButton title={editTitle ?? ""} className="size-6 rounded-md" onClick={onEdit}>
           <Pencil className="size-3.5" />
