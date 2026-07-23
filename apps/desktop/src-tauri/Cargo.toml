@@ -1,6 +1,6 @@
 [package]
 name = "harpyhare"
-version = "0.8.7"
+version = "0.9.0"
 description = "Системный звук → STT → Claude (macOS push-to-talk ассистент)"
 authors = ["mark"]
 edition = "2021"
