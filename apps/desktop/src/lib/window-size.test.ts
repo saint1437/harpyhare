@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { SETTINGS_LIMITS } from "@/ipc/bindings";
 import {
   clampWindowSize,
-  resizeKeyFromCode,
   stepWindowSize,
   WINDOW_HEIGHT_MAX_PX,
+  WINDOW_HEIGHT_MIN_PX,
+  WINDOW_WIDTH_MAX_PX,
   WINDOW_WIDTH_MIN_PX,
 } from "./window-size";
 
@@ -48,17 +50,11 @@ describe("clampWindowSize", () => {
   });
 });
 
-describe("resizeKeyFromCode", () => {
-  it.each([
-    ["ArrowLeft", { dim: "width", dir: -1 }],
-    ["ArrowRight", { dim: "width", dir: 1 }],
-    ["ArrowUp", { dim: "height", dir: -1 }],
-    ["ArrowDown", { dim: "height", dir: 1 }],
-  ])("%s → %j", (code, expected) => {
-    expect(resizeKeyFromCode(code)).toEqual(expected);
-  });
-
-  it("прочие коды → null", () => {
-    expect(resizeKeyFromCode("Equal")).toBeNull();
+describe("границы окна", () => {
+  it("совпадают с реестром лимитов в Rust", () => {
+    expect(WINDOW_WIDTH_MIN_PX).toBe(SETTINGS_LIMITS.windowWidth.min);
+    expect(WINDOW_WIDTH_MAX_PX).toBe(SETTINGS_LIMITS.windowWidth.max);
+    expect(WINDOW_HEIGHT_MIN_PX).toBe(SETTINGS_LIMITS.windowHeight.min);
+    expect(WINDOW_HEIGHT_MAX_PX).toBe(SETTINGS_LIMITS.windowHeight.max);
   });
 });

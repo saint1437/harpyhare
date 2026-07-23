@@ -33,9 +33,31 @@ pub enum SttError {
     Other(String),
 }
 
+impl crate::error::CodedError for SttError {
+    fn code(&self) -> crate::error::ErrorCode {
+        use crate::error::ErrorCode;
+        match self {
+            SttError::BadApiKey => ErrorCode::BadApiKey,
+            SttError::BadAccessCode(_) => ErrorCode::BadAccessCode,
+            SttError::Retryable(_) => ErrorCode::Retryable,
+            SttError::Network(_) => ErrorCode::Network,
+            SttError::Other(_) => ErrorCode::Api,
+        }
+    }
+}
+
+pub type AudioChunkStream =
+    std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<Vec<u8>, std::io::Error>> + Send>>;
+
 #[async_trait::async_trait]
 pub trait SttEngine: Send + Sync {
     async fn transcribe(&self, samples_16k_mono: &[f32]) -> Result<String, SttError>;
+    async fn transcribe_stream(
+        &self,
+        chunks: AudioChunkStream,
+        cancel: tokio_util::sync::CancellationToken,
+    ) -> Result<String, SttError>;
+    async fn warm_up(&self);
 }
 
 #[derive(Clone)]
@@ -73,14 +95,6 @@ impl GroqStt {
         }
     }
 
-    pub async fn warm_up(&self) {
-        let _ = self
-            .client
-            .get(format!("{}{}", self.base_url, WARM_UP_ENDPOINT))
-            .timeout(WARM_UP_TIMEOUT)
-            .send()
-            .await;
-    }
     pub fn with_base_url(mut self, url: String) -> Self {
         self.base_url = url;
         self
@@ -166,12 +180,16 @@ impl GroqStt {
             .unwrap_or_else(|| format!("Groq HTTP {code}"))
     }
 
-    pub async fn transcribe_stream(
+}
+
+#[async_trait::async_trait]
+impl SttEngine for GroqStt {
+    async fn transcribe_stream(
         &self,
-        body: reqwest::Body,
+        chunks: AudioChunkStream,
         cancel: tokio_util::sync::CancellationToken,
     ) -> Result<String, SttError> {
-        let part = reqwest::multipart::Part::stream(body)
+        let part = reqwest::multipart::Part::stream(reqwest::Body::wrap_stream(chunks))
             .mime_str(WAV_MIME)
             .map_err(|e| SttError::Other(e.to_string()))?;
         let send = self.request_with(part, STREAM_REQUEST_TIMEOUT).send();
@@ -181,10 +199,16 @@ impl GroqStt {
         };
         self.parse_response(resp).await
     }
-}
 
-#[async_trait::async_trait]
-impl SttEngine for GroqStt {
+    async fn warm_up(&self) {
+        let _ = self
+            .client
+            .get(format!("{}{}", self.base_url, WARM_UP_ENDPOINT))
+            .timeout(WARM_UP_TIMEOUT)
+            .send()
+            .await;
+    }
+
     async fn transcribe(&self, samples: &[f32]) -> Result<String, SttError> {
         let wav = audio::encode_wav_16k_mono(samples).map_err(|e| SttError::Other(e.to_string()))?;
         let part = reqwest::multipart::Part::bytes(wav)

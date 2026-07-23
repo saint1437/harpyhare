@@ -81,6 +81,7 @@
   --text-caption: 11.5px;
   --text-body: 12.5px;
   --text-chat: var(--chat-font-size);
+  --window-radius: 22px;
 }
 
 html,
@@ -93,6 +94,27 @@ body {
 body {
   color: var(--foreground);
   color-scheme: dark;
+}
+
+body.launcher {
+  background: var(--background) !important;
+  overflow: hidden;
+  --window-radius: 0px;
+}
+
+@keyframes launcher-rise {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.launcher-rise {
+  animation: launcher-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 #root {

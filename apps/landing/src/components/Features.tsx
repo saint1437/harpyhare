@@ -7,9 +7,10 @@ import {
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
+import { FEATURES_STARS } from "@/lib/stars";
 import { Hare } from "./Hare";
 import { Bush } from "./Scenery";
-import { FEATURES_STARS, StarField } from "./Sky";
+import { StarField } from "./Sky";
 
 interface Feature {
   icon: LucideIcon;

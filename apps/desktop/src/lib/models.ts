@@ -3,15 +3,39 @@ export interface ModelInfo {
   displayName: string;
   adaptive: boolean;
   alwaysThinks: boolean;
-  maxInputTokens?: number;
+  codeExec: boolean;
+  maxInputTokens: number;
 }
 
 export const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
 
+const UNKNOWN_MAX_INPUT_TOKENS = 0;
+
 export const FALLBACK_MODELS: ModelInfo[] = [
-  { id: "claude-opus-4-8", displayName: "Claude Opus 4.8", adaptive: true, alwaysThinks: false },
-  { id: "claude-sonnet-5", displayName: "Claude Sonnet 5", adaptive: true, alwaysThinks: false },
-  { id: DEFAULT_MODEL, displayName: "Claude Haiku 4.5", adaptive: false, alwaysThinks: false },
+  {
+    id: "claude-opus-4-8",
+    displayName: "Claude Opus 4.8",
+    adaptive: true,
+    alwaysThinks: false,
+    codeExec: true,
+    maxInputTokens: UNKNOWN_MAX_INPUT_TOKENS,
+  },
+  {
+    id: "claude-sonnet-5",
+    displayName: "Claude Sonnet 5",
+    adaptive: true,
+    alwaysThinks: false,
+    codeExec: true,
+    maxInputTokens: UNKNOWN_MAX_INPUT_TOKENS,
+  },
+  {
+    id: DEFAULT_MODEL,
+    displayName: "Claude Haiku 4.5",
+    adaptive: false,
+    alwaysThinks: false,
+    codeExec: false,
+    maxInputTokens: UNKNOWN_MAX_INPUT_TOKENS,
+  },
 ];
 
 const CURATED_FAMILIES = ["opus", "sonnet", "haiku"];
@@ -46,7 +70,14 @@ export function modelLabel(m: Pick<ModelInfo, "id" | "displayName">): string {
 }
 
 function unlistedModel(id: string): ModelInfo {
-  return { id, displayName: id, adaptive: true, alwaysThinks: false };
+  return {
+    id,
+    displayName: id,
+    adaptive: true,
+    alwaysThinks: false,
+    codeExec: true,
+    maxInputTokens: UNKNOWN_MAX_INPUT_TOKENS,
+  };
 }
 
 export function selectableModels(models: ModelInfo[], currentId: string): ModelInfo[] {

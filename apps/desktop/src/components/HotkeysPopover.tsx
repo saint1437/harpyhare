@@ -17,13 +17,17 @@ import { Fragment } from "react";
 import { IconButton } from "@/components/IconButton";
 import { SectionLabel } from "@/components/SectionLabel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { comboTokens, hotkeyGroups, type ComboIconName, type ComboToken } from "@/lib/hotkeys";
+import {
+  comboTokens,
+  hotkeyGroups,
+  type ComboIconName,
+  type ComboToken,
+  type HotkeyConfig,
+} from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 
 export interface HotkeysPopoverProps {
-  hotkey: string;
-  toggleHotkey: string;
-  teleprompterHotkey: string;
+  hotkeys: HotkeyConfig;
 }
 
 const COMBO_ICONS: Record<ComboIconName, LucideIcon> = {
@@ -58,12 +62,8 @@ function ComboChip({ combo }: { combo: string }) {
   );
 }
 
-export function HotkeysPopover(props: HotkeysPopoverProps) {
-  const groups = hotkeyGroups({
-    ptt: props.hotkey,
-    toggleWindow: props.toggleHotkey,
-    teleprompter: props.teleprompterHotkey,
-  });
+export function HotkeysPopover({ hotkeys }: HotkeysPopoverProps) {
+  const groups = hotkeyGroups(hotkeys);
   return (
     <Popover>
       <PopoverTrigger asChild>

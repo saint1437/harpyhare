@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_SETTINGS, type Settings } from "@/ipc/types";
 
 const getSettings = vi.fn(() => Promise.resolve(DEFAULT_SETTINGS));
-const setSettings = vi.fn((_s: Settings) => Promise.resolve());
+const setSettings = vi.fn((s: Settings) => Promise.resolve(s));
 const applyOpacity = vi.fn<(...a: unknown[]) => void>();
 
 vi.mock("@/ipc/commands", () => ({
@@ -39,17 +39,18 @@ describe("useSettings", () => {
     expect(applyOpacity).toHaveBeenCalledWith(document.documentElement, 0.6);
   });
 
-  it("save шлёт set_settings, перечитывает и реприменяет прозрачность", async () => {
+  it("save принимает настройки, применённые Rust'ом, без второго чтения", async () => {
     getSettings.mockResolvedValue(DEFAULT_SETTINGS);
     const { result } = renderHook(() => useSettings());
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
-    getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, window_opacity: 0.4 });
+    getSettings.mockClear();
     await act(async () => {
       await result.current.save({ ...DEFAULT_SETTINGS, window_opacity: 0.4 });
     });
     expect(setSettings).toHaveBeenCalled();
+    expect(getSettings).not.toHaveBeenCalled();
     expect(result.current.settings.window_opacity).toBe(0.4);
   });
 

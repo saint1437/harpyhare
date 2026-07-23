@@ -1,53 +1,116 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-const DEFAULT_HOTKEY: &str = "F9";
-const DEFAULT_TOGGLE_HOTKEY: &str = "Cmd+Shift+H";
-const DEFAULT_TELEPROMPTER_HOTKEY: &str = "F10";
-const DEFAULT_WINDOW_OPACITY: f64 = 0.9;
-const DEFAULT_MOVE_STEP: u32 = 20;
-const DEFAULT_RESIZE_STEP: u32 = 20;
-const DEFAULT_SCROLL_STEP: u32 = 120;
-const DEFAULT_CHAT_FONT_SIZE: f64 = 13.5;
-const DEFAULT_STT_LANGUAGE: &str = "ru";
-const THEME_GRAY: &str = "gray";
-const THEME_BLACK: &str = "black";
-const DEFAULT_TELEPROMPTER_SPEED: f64 = 40.0;
-const DEFAULT_TELEPROMPTER_FONT_SIZE: f64 = 28.0;
-const DEFAULT_WINDOW_WIDTH: f64 = 960.0;
-const DEFAULT_WINDOW_HEIGHT: f64 = 680.0;
-const DEFAULT_BUFFER_SECONDS: u64 = 4;
-
-const WINDOW_OPACITY_MIN: f64 = 0.2;
-const WINDOW_OPACITY_MAX: f64 = 1.0;
-const MOVE_STEP_MIN: u32 = 1;
-const MOVE_STEP_MAX: u32 = 200;
-const SCROLL_STEP_MIN: u32 = 10;
-const SCROLL_STEP_MAX: u32 = 1000;
-const CHAT_FONT_SIZE_MIN: f64 = 10.0;
-const CHAT_FONT_SIZE_MAX: f64 = 20.0;
-const TELEPROMPTER_SPEED_MIN: f64 = 10.0;
-const TELEPROMPTER_SPEED_MAX: f64 = 150.0;
-const TELEPROMPTER_FONT_SIZE_MIN: f64 = 20.0;
-const TELEPROMPTER_FONT_SIZE_MAX: f64 = 48.0;
-const WINDOW_WIDTH_MIN: f64 = 300.0;
-const WINDOW_WIDTH_MAX: f64 = 1600.0;
-const WINDOW_HEIGHT_MIN: f64 = 520.0;
-const WINDOW_HEIGHT_MAX: f64 = 1100.0;
-const BUFFER_SECONDS_MIN: u64 = 4;
-const BUFFER_SECONDS_MAX: u64 = 10;
-
 const OWNER_ONLY_FILE_MODE: u32 = 0o600;
 const TMP_FILE_EXTENSION: &str = "tmp";
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub const THEME_GRAY: &str = "gray";
+pub const THEME_BLACK: &str = "black";
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, specta::Type)]
+pub struct Bounds<T> {
+    pub default: T,
+    pub min: T,
+    pub max: T,
+}
+
+impl Bounds<f64> {
+    pub fn clamp(&self, value: f64) -> f64 {
+        if value.is_finite() {
+            value.clamp(self.min, self.max)
+        } else {
+            self.default
+        }
+    }
+}
+
+impl Bounds<u32> {
+    pub fn clamp(&self, value: u32) -> u32 {
+        value.clamp(self.min, self.max)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsLimits {
+    pub window_width: Bounds<f64>,
+    pub window_height: Bounds<f64>,
+    pub window_opacity: Bounds<f64>,
+    pub move_step: Bounds<u32>,
+    pub resize_step: Bounds<u32>,
+    pub chat_font_size: Bounds<f64>,
+    pub scroll_step: Bounds<u32>,
+    pub teleprompter_speed: Bounds<f64>,
+    pub teleprompter_font_size: Bounds<f64>,
+    pub buffer_seconds: Bounds<u32>,
+}
+
+impl SettingsLimits {
+    pub fn current() -> Self {
+        Self {
+            window_width: limits::window::WIDTH,
+            window_height: limits::window::HEIGHT,
+            window_opacity: limits::window::OPACITY,
+            move_step: limits::window::MOVE_STEP,
+            resize_step: limits::window::RESIZE_STEP,
+            chat_font_size: limits::chat::FONT_SIZE,
+            scroll_step: limits::chat::SCROLL_STEP,
+            teleprompter_speed: limits::teleprompter::SPEED,
+            teleprompter_font_size: limits::teleprompter::FONT_SIZE,
+            buffer_seconds: limits::capture::BUFFER_SECONDS,
+        }
+    }
+}
+
+pub mod defaults {
+    pub const PTT_HOTKEY: &str = "F9";
+    pub const TOGGLE_HOTKEY: &str = "Cmd+Shift+H";
+    pub const TELEPROMPTER_HOTKEY: &str = "F10";
+    pub const STT_LANGUAGE: &str = "ru";
+    pub const THEME: &str = super::THEME_GRAY;
+    pub const MOVE_MODIFIER: &str = "Cmd";
+    pub const RESIZE_MODIFIER: &str = "Cmd+Shift";
+    pub const SCROLL_MODIFIER: &str = "Alt";
+}
+
+pub mod limits {
+    use super::Bounds;
+
+    pub mod window {
+        use super::Bounds;
+        pub const WIDTH: Bounds<f64> = Bounds { default: 960.0, min: 300.0, max: 1600.0 };
+        pub const HEIGHT: Bounds<f64> = Bounds { default: 680.0, min: 520.0, max: 1100.0 };
+        pub const OPACITY: Bounds<f64> = Bounds { default: 0.9, min: 0.2, max: 1.0 };
+        pub const MOVE_STEP: Bounds<u32> = Bounds { default: 20, min: 1, max: 200 };
+        pub const RESIZE_STEP: Bounds<u32> = Bounds { default: 20, min: 1, max: 200 };
+    }
+
+    pub mod chat {
+        use super::Bounds;
+        pub const FONT_SIZE: Bounds<f64> = Bounds { default: 13.5, min: 10.0, max: 20.0 };
+        pub const SCROLL_STEP: Bounds<u32> = Bounds { default: 120, min: 10, max: 1000 };
+    }
+
+    pub mod teleprompter {
+        use super::Bounds;
+        pub const SPEED: Bounds<f64> = Bounds { default: 40.0, min: 10.0, max: 150.0 };
+        pub const FONT_SIZE: Bounds<f64> = Bounds { default: 28.0, min: 20.0, max: 48.0 };
+    }
+
+    pub mod capture {
+        use super::Bounds;
+        pub const BUFFER_SECONDS: Bounds<u32> = Bounds { default: 4, min: 4, max: 10 };
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct PromptPreset {
     pub id: String,
     pub name: String,
     pub text: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(default)]
 pub struct Settings {
     pub anthropic_api_key: String,
@@ -76,8 +139,11 @@ pub struct Settings {
     pub theme: String,
     pub scroll_step: u32,
     pub buffer_enabled: bool,
-    pub buffer_seconds: u64,
+    pub buffer_seconds: u32,
     pub identity_id: String,
+    pub move_modifier: String,
+    pub resize_modifier: String,
+    pub scroll_modifier: String,
 }
 
 impl Default for Settings {
@@ -87,71 +153,68 @@ impl Default for Settings {
             groq_api_key: String::new(),
             access_token: String::new(),
             prompt_presets: Vec::new(),
-            hotkey: DEFAULT_HOTKEY.into(),
+            hotkey: defaults::PTT_HOTKEY.into(),
             auto_send: false,
-            window_opacity: DEFAULT_WINDOW_OPACITY,
-            move_step: DEFAULT_MOVE_STEP,
+            window_opacity: limits::window::OPACITY.default,
+            move_step: limits::window::MOVE_STEP.default,
             auto_preview_html: true,
-            toggle_hotkey: DEFAULT_TOGGLE_HOTKEY.into(),
-            chat_font_size: DEFAULT_CHAT_FONT_SIZE,
+            toggle_hotkey: defaults::TOGGLE_HOTKEY.into(),
+            chat_font_size: limits::chat::FONT_SIZE.default,
             skipped_version: String::new(),
-            stt_language: DEFAULT_STT_LANGUAGE.into(),
+            stt_language: defaults::STT_LANGUAGE.into(),
             stt_translate: false,
             screen_share_visible: false,
-            teleprompter_speed: DEFAULT_TELEPROMPTER_SPEED,
-            teleprompter_font_size: DEFAULT_TELEPROMPTER_FONT_SIZE,
-            teleprompter_hotkey: DEFAULT_TELEPROMPTER_HOTKEY.into(),
+            teleprompter_speed: limits::teleprompter::SPEED.default,
+            teleprompter_font_size: limits::teleprompter::FONT_SIZE.default,
+            teleprompter_hotkey: defaults::TELEPROMPTER_HOTKEY.into(),
             teleprompter_resume: true,
-            window_width: DEFAULT_WINDOW_WIDTH,
-            window_height: DEFAULT_WINDOW_HEIGHT,
-            resize_step: DEFAULT_RESIZE_STEP,
+            window_width: limits::window::WIDTH.default,
+            window_height: limits::window::HEIGHT.default,
+            resize_step: limits::window::RESIZE_STEP.default,
             capture_device_uid: String::new(),
-            theme: THEME_GRAY.into(),
-            scroll_step: DEFAULT_SCROLL_STEP,
+            theme: defaults::THEME.into(),
+            scroll_step: limits::chat::SCROLL_STEP.default,
             buffer_enabled: true,
-            buffer_seconds: DEFAULT_BUFFER_SECONDS,
+            buffer_seconds: limits::capture::BUFFER_SECONDS.default,
             identity_id: String::new(),
+            move_modifier: defaults::MOVE_MODIFIER.into(),
+            resize_modifier: defaults::RESIZE_MODIFIER.into(),
+            scroll_modifier: defaults::SCROLL_MODIFIER.into(),
         }
+    }
+}
+
+pub const MODIFIER_COMBOS: [&str; 6] =
+    ["Cmd", "Ctrl", "Alt", "Cmd+Shift", "Ctrl+Shift", "Alt+Shift"];
+
+fn normalize_modifier(value: &mut String, fallback: &str) {
+    if !MODIFIER_COMBOS.contains(&value.trim()) {
+        *value = fallback.to_string();
     }
 }
 
 impl Settings {
     pub fn clamp(&mut self) {
-        self.window_opacity = self.window_opacity.clamp(WINDOW_OPACITY_MIN, WINDOW_OPACITY_MAX);
-        self.move_step = self.move_step.clamp(MOVE_STEP_MIN, MOVE_STEP_MAX);
-        if !self.chat_font_size.is_finite() {
-            self.chat_font_size = DEFAULT_CHAT_FONT_SIZE;
-        }
-        self.chat_font_size = self.chat_font_size.clamp(CHAT_FONT_SIZE_MIN, CHAT_FONT_SIZE_MAX);
-        if !self.teleprompter_speed.is_finite() {
-            self.teleprompter_speed = DEFAULT_TELEPROMPTER_SPEED;
-        }
-        self.teleprompter_speed = self
-            .teleprompter_speed
-            .clamp(TELEPROMPTER_SPEED_MIN, TELEPROMPTER_SPEED_MAX);
-        if !self.teleprompter_font_size.is_finite() {
-            self.teleprompter_font_size = DEFAULT_TELEPROMPTER_FONT_SIZE;
-        }
-        self.teleprompter_font_size = self
-            .teleprompter_font_size
-            .clamp(TELEPROMPTER_FONT_SIZE_MIN, TELEPROMPTER_FONT_SIZE_MAX);
-        if !self.window_width.is_finite() {
-            self.window_width = DEFAULT_WINDOW_WIDTH;
-        }
-        self.window_width = self.window_width.clamp(WINDOW_WIDTH_MIN, WINDOW_WIDTH_MAX);
-        if !self.window_height.is_finite() {
-            self.window_height = DEFAULT_WINDOW_HEIGHT;
-        }
-        self.window_height = self.window_height.clamp(WINDOW_HEIGHT_MIN, WINDOW_HEIGHT_MAX);
-        self.resize_step = self.resize_step.clamp(MOVE_STEP_MIN, MOVE_STEP_MAX);
+        self.window_opacity = limits::window::OPACITY.clamp(self.window_opacity);
+        self.window_width = limits::window::WIDTH.clamp(self.window_width);
+        self.window_height = limits::window::HEIGHT.clamp(self.window_height);
+        self.move_step = limits::window::MOVE_STEP.clamp(self.move_step);
+        self.resize_step = limits::window::RESIZE_STEP.clamp(self.resize_step);
+        self.chat_font_size = limits::chat::FONT_SIZE.clamp(self.chat_font_size);
+        self.scroll_step = limits::chat::SCROLL_STEP.clamp(self.scroll_step);
+        self.teleprompter_speed = limits::teleprompter::SPEED.clamp(self.teleprompter_speed);
+        self.teleprompter_font_size =
+            limits::teleprompter::FONT_SIZE.clamp(self.teleprompter_font_size);
+        self.buffer_seconds = limits::capture::BUFFER_SECONDS.clamp(self.buffer_seconds);
         if self.theme != THEME_GRAY && self.theme != THEME_BLACK {
-            self.theme = THEME_GRAY.into();
+            self.theme = defaults::THEME.into();
         }
-        self.scroll_step = self.scroll_step.clamp(SCROLL_STEP_MIN, SCROLL_STEP_MAX);
-        self.buffer_seconds = self.buffer_seconds.clamp(BUFFER_SECONDS_MIN, BUFFER_SECONDS_MAX);
         if !crate::identity::is_known_id(&self.identity_id) {
             self.identity_id = String::new();
         }
+        normalize_modifier(&mut self.move_modifier, defaults::MOVE_MODIFIER);
+        normalize_modifier(&mut self.resize_modifier, defaults::RESIZE_MODIFIER);
+        normalize_modifier(&mut self.scroll_modifier, defaults::SCROLL_MODIFIER);
     }
 
     pub fn load(path: &Path) -> std::io::Result<Self> {

@@ -56,7 +56,7 @@ describe("useChats", () => {
     });
     const id = result.current.activeId;
     act(() => {
-      result.current.setDraft(id, "длинный вопрос про рекурсию и стек", []);
+      result.current.patchChat(id, { draft: "длинный вопрос про рекурсию и стек" });
     });
     act(() => {
       result.current.appendUserMessage(id, "длинный вопрос про рекурсию и стек", []);
@@ -102,10 +102,10 @@ describe("useChats", () => {
       result.current.appendAssistantMessage(id, "ответ");
     });
     act(() => {
-      result.current.setChatUsage(id, 1234);
+      result.current.patchChat(id, { lastInputTokens: 1234 });
     });
     act(() => {
-      result.current.setDraft(id, "недописанный промпт", []);
+      result.current.patchChat(id, { draft: "недописанный промпт" });
     });
     act(() => {
       result.current.clearMessages(id);
@@ -131,69 +131,41 @@ describe("useChats", () => {
     expect(result.current.active.messages[1]?.text).toBe("ответ");
   });
 
-  it("новый чат без пресета; setChatPreset задаёт ссылку", async () => {
+  it.each([
+    { field: "presetId", initial: "", next: "mypreset" },
+    { field: "model", initial: "claude-haiku-4-5-20251001", next: "claude-opus-4-8" },
+    { field: "thinkingEnabled", initial: false, next: true },
+    { field: "webSearch", initial: false, next: true },
+    { field: "context", initial: "", next: "резюме кандидата" },
+    { field: "libraryDocIds", initial: [], next: ["doc-1"] },
+  ] as const)("patchChat меняет $field только в своём чате", async ({ field, initial, next }) => {
     const { result } = renderHook(() => useChats());
     await waitFor(() => {
       expect(result.current.chats.length).toBe(1);
     });
-    expect(result.current.active.presetId).toBe("");
+    expect(result.current.active[field]).toEqual(initial);
     const id = result.current.activeId;
     act(() => {
-      result.current.setChatPreset(id, "mypreset");
+      result.current.newChat();
     });
-    expect(result.current.active.presetId).toBe("mypreset");
+    act(() => {
+      result.current.patchChat(id, { [field]: next });
+    });
+    expect(result.current.chats.find((c) => c.id === id)?.[field]).toEqual(next);
+    expect(result.current.active[field]).toEqual(initial);
   });
 
-  it("новый чат — с дефолтной моделью; setChatModel меняет по чату", async () => {
+  it("patchChat пишет несколько полей за один вызов", async () => {
     const { result } = renderHook(() => useChats());
     await waitFor(() => {
       expect(result.current.chats.length).toBe(1);
     });
-    expect(result.current.active.model).toBe("claude-haiku-4-5-20251001");
     const id = result.current.activeId;
     act(() => {
-      result.current.setChatModel(id, "claude-opus-4-8");
+      result.current.patchChat(id, { context: "контекст", libraryDocIds: ["a", "b"] });
     });
-    expect(result.current.active.model).toBe("claude-opus-4-8");
-  });
-
-  it("новый чат — без thinking; setChatThinking включает его по чату", async () => {
-    const { result } = renderHook(() => useChats());
-    await waitFor(() => {
-      expect(result.current.chats.length).toBe(1);
-    });
-    expect(result.current.active.thinkingEnabled).toBe(false);
-    const id = result.current.activeId;
-    act(() => {
-      result.current.setChatThinking(id, true);
-    });
-    expect(result.current.active.thinkingEnabled).toBe(true);
-  });
-
-  it("новый чат — без веб-поиска; setChatWebSearch включает по чату", async () => {
-    const { result } = renderHook(() => useChats());
-    await waitFor(() => {
-      expect(result.current.chats.length).toBe(1);
-    });
-    expect(result.current.active.webSearch).toBe(false);
-    const id = result.current.activeId;
-    act(() => {
-      result.current.setChatWebSearch(id, true);
-    });
-    expect(result.current.active.webSearch).toBe(true);
-  });
-
-  it("новый чат — без контекста; setChatContext задаёт его по чату", async () => {
-    const { result } = renderHook(() => useChats());
-    await waitFor(() => {
-      expect(result.current.chats.length).toBe(1);
-    });
-    expect(result.current.active.context).toBe("");
-    const id = result.current.activeId;
-    act(() => {
-      result.current.setChatContext(id, "резюме кандидата");
-    });
-    expect(result.current.active.context).toBe("резюме кандидата");
+    expect(result.current.active.context).toBe("контекст");
+    expect(result.current.active.libraryDocIds).toEqual(["a", "b"]);
   });
 
   it("removeChat не даёт удалить последний и переключает активный", async () => {

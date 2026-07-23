@@ -29,6 +29,7 @@ describe("AnswerPanel — подсветка кода", () => {
         messages={[assistant]}
         partial={null}
         streaming={false}
+        scrollModifier="Alt"
         onTogglePreview={() => undefined}
         onRemoveMessage={() => undefined}
         onResendMessage={() => undefined}
@@ -51,6 +52,7 @@ describe("AnswerPanel — подсветка кода", () => {
         messages={[assistant]}
         partial={null}
         streaming={false}
+        scrollModifier="Alt"
         onTogglePreview={() => undefined}
         onRemoveMessage={() => undefined}
         onResendMessage={() => undefined}
@@ -70,6 +72,7 @@ describe("AnswerPanel — подсветка кода", () => {
         messages={[assistant]}
         partial={null}
         streaming={false}
+        scrollModifier="Alt"
         onTogglePreview={() => undefined}
         onRemoveMessage={() => undefined}
         onResendMessage={() => undefined}
@@ -87,6 +90,7 @@ describe("AnswerPanel — индикатор ожидания", () => {
         messages={[userMsg]}
         partial=""
         streaming={true}
+        scrollModifier="Alt"
         onTogglePreview={() => undefined}
         onRemoveMessage={() => undefined}
         onResendMessage={() => undefined}
@@ -101,6 +105,7 @@ describe("AnswerPanel — индикатор ожидания", () => {
         messages={[userMsg]}
         partial="Привет"
         streaming={true}
+        scrollModifier="Alt"
         onTogglePreview={() => undefined}
         onRemoveMessage={() => undefined}
         onResendMessage={() => undefined}
@@ -115,6 +120,7 @@ describe("AnswerPanel — индикатор ожидания", () => {
         messages={[userMsg]}
         partial={null}
         streaming={false}
+        scrollModifier="Alt"
         onTogglePreview={() => undefined}
         onRemoveMessage={() => undefined}
         onResendMessage={() => undefined}

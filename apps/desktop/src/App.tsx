@@ -15,17 +15,16 @@ import { Composer } from "@/components/Composer";
 import { ConnectivityOverlay } from "@/components/ConnectivityOverlay";
 import { HotkeysPopover } from "@/components/HotkeysPopover";
 import { IconButton } from "@/components/IconButton";
-import { MissingKeysDialog } from "@/components/MissingKeysDialog";
 import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
-import { SettingsDialog } from "@/components/SettingsDialog";
 import { StatusBar, type ContextUsage, type StatusBarProps } from "@/components/StatusBar";
 import { Teleprompter } from "@/components/Teleprompter";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { WarningBanner } from "@/components/WarningBanner";
+import { useCapturePermission } from "@/hooks/useCapturePermission";
 import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
 import { useConnectivity } from "@/hooks/useConnectivity";
-import { useContextLibrary, type ContextLibraryApi } from "@/hooks/useContextLibrary";
+import { useContextLibrary } from "@/hooks/useContextLibrary";
 import { useModels } from "@/hooks/useModels";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
 import { usePttSuspend } from "@/hooks/usePttSuspend";
@@ -35,37 +34,27 @@ import { useTranscription } from "@/hooks/useTranscription";
 import { useUpdater, type UpdaterApi } from "@/hooks/useUpdater";
 import { useWindowControls } from "@/hooks/useWindowControls";
 import {
-  captureAvailable,
   closeApp,
   hideMainWindow,
   openAudioPermissionSettings,
   countChatTokens,
-  redeemAccessCode,
-  requestAudioCapturePermission,
   retryTranscription,
   setWindowSize,
   startWindowDrag,
+  stopMainWindow,
 } from "@/ipc/commands";
 import { onEvent, onWindowResized, type LogicalWindowSize } from "@/ipc/events";
-import type {
-  ChatMessageDto,
-  ImagePayload,
-  RecorderState,
-  Settings,
-  UpdateInfo,
-} from "@/ipc/types";
-import { missingApiKeys, missingKeysNotice, type ApiKeyInfo } from "@/lib/api-keys";
-import type { Chat, ChatMessage } from "@/lib/chats";
+import type { ChatMessageDto, ImagePayload, RecorderState, Settings } from "@/ipc/types";
+import { chatRequestOptions, type Chat, type ChatMessage } from "@/lib/chats";
 import { appendTranscript } from "@/lib/composer";
 import { libraryContextBlocks, type ContextLibrary } from "@/lib/context-library";
+import { internalError, isNetworkError, isRetryable, type AppError } from "@/lib/errors";
+import type { HotkeyConfig } from "@/lib/hotkeys";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
 import type { ModelInfo } from "@/lib/models";
 import { mergePresets, presetText, type PromptPreset } from "@/lib/presets";
 import { queryKeys } from "@/lib/query-client";
 import { toReadingText } from "@/lib/teleprompter";
-
-const RETRYABLE_STT_ERROR = /перегружен|соединение|VPN|интернет|оборван/i;
-const NO_CONNECTION_TEXT = "Нет соединения";
 
 const SHELL_COLUMN_GAP_PX = 10;
 const SHELL_PADDING_PX = 12;
@@ -127,73 +116,24 @@ function useLatestRef<T>(value: T): RefObject<T> {
   return ref;
 }
 
-interface CapturePermission {
-  permissionOk: boolean;
-  requestPermission: () => Promise<void>;
-}
-
-function useCapturePermission(): CapturePermission {
-  const [permissionOk, setPermissionOk] = useState(true);
-  useEffect(() => {
-    void captureAvailable().then((ok) => {
-      setPermissionOk(ok);
-    });
-  }, []);
-  const requestPermission = useCallback(async () => {
-    setPermissionOk(await requestAudioCapturePermission());
-  }, []);
-  return { permissionOk, requestPermission };
-}
-
-interface MissingKeysGate {
-  missingKeys: ApiKeyInfo[];
-  keysMissing: boolean;
-  dialogOpen: boolean;
-  openDialog: () => void;
-  closeDialog: () => void;
-}
-
-function useMissingKeysGate(
-  settings: Settings,
-  settingsLoading: boolean,
-  permissionMissing: boolean,
-): MissingKeysGate {
-  const missingKeys = useMemo(() => missingApiKeys(settings), [settings]);
-  const keysMissing = !settingsLoading && missingKeys.length > 0;
-  const [dialogOpen, setDialogOpen] = useState(false);
-
-  useEffect(() => {
-    setDialogOpen(keysMissing || permissionMissing);
-  }, [keysMissing, permissionMissing]);
-
-  const openDialog = useCallback(() => {
-    setDialogOpen(true);
-  }, []);
-  const closeDialog = useCallback(() => {
-    setDialogOpen(false);
-  }, []);
-
-  return { missingKeys, keysMissing, dialogOpen, openDialog, closeDialog };
-}
-
 interface SttFeedback {
-  sttError: string | null;
+  sttError: AppError | null;
   showRetry: boolean;
-  setSttError: (msg: string | null) => void;
+  setSttError: (err: AppError | null) => void;
   clearError: () => void;
   clearFeedback: () => void;
   retry: () => void;
 }
 
 function useSttFeedback(state: RecorderState): SttFeedback {
-  const [sttError, setSttError] = useState<string | null>(null);
+  const [sttError, setSttError] = useState<AppError | null>(null);
   const [showRetry, setShowRetry] = useState(false);
 
   useEffect(
     () =>
-      onEvent("stt-error", (msg) => {
-        setSttError(msg);
-        setShowRetry(RETRYABLE_STT_ERROR.test(msg));
+      onEvent("stt-error", (err) => {
+        setSttError(err);
+        setShowRetry(isRetryable(err));
       }),
     [],
   );
@@ -317,19 +257,13 @@ const PROJECTED_TOKENS_STALE_MS = 10 * 60 * 1000;
 function useProjectedContextTokens(chat: Chat, system: string, streaming: boolean): number {
   const messagesKey = chat.messages.map((m) => `${m.role}:${String(m.text.length)}`).join("|");
   const { data } = useQuery({
-    queryKey: queryKeys.countTokens(
-      chat.model,
-      chat.thinkingEnabled,
-      chat.webSearch,
-      system,
-      messagesKey,
-    ),
+    queryKey: queryKeys.countTokens(chat.model, chatRequestOptions(chat), system, messagesKey),
     queryFn: () => {
       const history: ChatMessageDto[] =
         chat.messages.length > 0
           ? chat.messages.map((m) => ({ role: m.role, text: m.text, images: m.images }))
           : [TOKEN_COUNT_PLACEHOLDER_MESSAGE];
-      return countChatTokens(history, system, chat.thinkingEnabled, chat.model, chat.webSearch);
+      return countChatTokens(history, system, chat.model, chatRequestOptions(chat));
     },
     enabled: !streaming,
     staleTime: PROJECTED_TOKENS_STALE_MS,
@@ -350,12 +284,9 @@ function useSendPipeline(
   presetsRef: RefObject<PromptPreset[]>,
   libraryRef: RefObject<ContextLibrary>,
   clearSttError: () => void,
-  sendBlocked: boolean,
 ): SendPipeline {
-  const sendBlockedRef = useLatestRef(sendBlocked);
   const dispatchSend = useCallback(
     (rawText: string) => {
-      if (sendBlockedRef.current) return;
       const chat = chatsRef.current.active;
       if (streamRef.current.streaming[chat.id]) return;
       const trimmed = rawText.trim();
@@ -365,16 +296,9 @@ function useSendPipeline(
       chatsRef.current.appendUserMessage(chat.id, trimmed, images);
       const history = historyWithNewUserMessage(chat, trimmed, images);
       const system = chatSystemPrompt(presetsRef.current, chat, libraryRef.current);
-      void streamRef.current.send(
-        chat.id,
-        history,
-        system,
-        chat.thinkingEnabled,
-        chat.model,
-        chat.webSearch,
-      );
+      void streamRef.current.send(chat.id, history, system, chat.model, chatRequestOptions(chat));
     },
-    [chatsRef, streamRef, presetsRef, libraryRef, clearSttError, sendBlockedRef],
+    [chatsRef, streamRef, presetsRef, libraryRef, clearSttError],
   );
 
   const doSend = useCallback(() => {
@@ -383,7 +307,6 @@ function useSendPipeline(
 
   const resendFromMessage = useCallback(
     (index: number) => {
-      if (sendBlockedRef.current) return;
       const chat = chatsRef.current.active;
       if (streamRef.current.streaming[chat.id]) return;
       if (chat.messages[index]?.role !== "user") return;
@@ -392,16 +315,9 @@ function useSendPipeline(
       chatsRef.current.truncateMessages(chat.id, kept.length);
       const history = kept.map((m) => ({ role: m.role, text: m.text, images: m.images }));
       const system = chatSystemPrompt(presetsRef.current, chat, libraryRef.current);
-      void streamRef.current.send(
-        chat.id,
-        history,
-        system,
-        chat.thinkingEnabled,
-        chat.model,
-        chat.webSearch,
-      );
+      void streamRef.current.send(chat.id, history, system, chat.model, chatRequestOptions(chat));
     },
-    [chatsRef, streamRef, presetsRef, libraryRef, clearSttError, sendBlockedRef],
+    [chatsRef, streamRef, presetsRef, libraryRef, clearSttError],
   );
 
   return { dispatchSend, doSend, resendFromMessage };
@@ -409,10 +325,8 @@ function useSendPipeline(
 
 interface AppHeaderProps {
   state: RecorderState;
-  error: string | null;
-  hotkey: string;
-  toggleHotkey: string;
-  teleprompterHotkey: string;
+  error: AppError | null;
+  hotkeys: HotkeyConfig;
   updater: UpdaterApi;
   chats: ChatsApi;
   stream: ClaudeStreams;
@@ -421,16 +335,14 @@ interface AppHeaderProps {
   contextUsage: ContextUsage | null;
   onCopy: () => void;
   onOpenTeleprompter: () => void;
-  onOpenSettings: () => void;
+  onStop: () => void;
   onOpenUpdate: () => void;
 }
 
 function AppHeader({
   state,
   error,
-  hotkey,
-  toggleHotkey,
-  teleprompterHotkey,
+  hotkeys,
   updater,
   chats,
   stream,
@@ -439,17 +351,17 @@ function AppHeader({
   contextUsage,
   onCopy,
   onOpenTeleprompter,
-  onOpenSettings,
+  onStop,
   onOpenUpdate,
 }: AppHeaderProps) {
   return (
     <StatusBar
       state={state}
-      error={error}
-      toggleHotkey={toggleHotkey}
+      error={error?.message ?? null}
+      toggleHotkey={hotkeys.toggleWindow}
       contextUsage={contextUsage}
       update={updateBadge(updater, onOpenUpdate)}
-      onOpenSettings={onOpenSettings}
+      onStop={onStop}
       onClose={() => void closeApp()}
       onHide={() => void hideMainWindow()}
       tabs={
@@ -477,11 +389,7 @@ function AppHeader({
               <Copy />
             </IconButton>
           )}
-          <HotkeysPopover
-            hotkey={hotkey}
-            toggleHotkey={toggleHotkey}
-            teleprompterHotkey={teleprompterHotkey}
-          />
+          <HotkeysPopover hotkeys={hotkeys} />
         </>
       }
     />
@@ -495,7 +403,6 @@ interface AppComposerProps {
   library: ContextLibrary;
   streaming: boolean;
   showRetry: boolean;
-  disabled: boolean;
   onSend: () => void;
   onStop: () => void;
   onRetry: () => void;
@@ -508,7 +415,6 @@ function AppComposer({
   library,
   streaming,
   showRetry,
-  disabled,
   onSend,
   onStop,
   onRetry,
@@ -516,11 +422,10 @@ function AppComposer({
   const { active, activeId } = chats;
   return (
     <Composer
-      value={active.draft}
-      onChange={(v) => {
-        chats.setDraft(activeId, v, active.draftAttachments);
+      chat={active}
+      onPatch={(patch) => {
+        chats.patchChat(activeId, patch);
       }}
-      attachments={active.draftAttachments}
       onRemoveAttachment={(i) => {
         chats.removeDraftAttachment(activeId, i);
       }}
@@ -534,91 +439,9 @@ function AppComposer({
       streaming={streaming}
       showRetry={showRetry}
       presets={presets}
-      presetId={active.presetId}
-      onPresetChange={(id) => {
-        chats.setChatPreset(activeId, id);
-      }}
-      thinkingEnabled={active.thinkingEnabled}
-      onThinkingChange={(enabled) => {
-        chats.setChatThinking(activeId, enabled);
-      }}
-      model={active.model}
-      onModelChange={(model) => {
-        chats.setChatModel(activeId, model);
-      }}
-      webSearch={active.webSearch}
-      onWebSearchChange={(enabled) => {
-        chats.setChatWebSearch(activeId, enabled);
-      }}
-      context={active.context}
-      onContextChange={(context) => {
-        chats.setChatContext(activeId, context);
-      }}
       library={library}
-      libraryDocIds={active.libraryDocIds}
-      onLibraryDocsChange={(ids) => {
-        chats.setChatLibraryDocs(activeId, ids);
-      }}
       models={models}
-      disabled={disabled}
     />
-  );
-}
-
-interface AppDialogsProps {
-  settings: Settings;
-  updater: UpdaterApi;
-  contextLibrary: ContextLibraryApi;
-  settingsOpen: boolean;
-  updateOpen: boolean;
-  onCheckUpdates: () => Promise<UpdateInfo | null>;
-  onRedeem: (code: string) => Promise<string | null>;
-  onCloseSettings: () => void;
-  onSaveSettings: (next: Settings) => void;
-  onCloseUpdate: () => void;
-  onSkipUpdate: () => void;
-}
-
-function AppDialogs({
-  settings,
-  updater,
-  contextLibrary,
-  settingsOpen,
-  updateOpen,
-  onCheckUpdates,
-  onRedeem,
-  onCloseSettings,
-  onSaveSettings,
-  onCloseUpdate,
-  onSkipUpdate,
-}: AppDialogsProps) {
-  return (
-    <>
-      <SettingsDialog
-        open={settingsOpen}
-        settings={settings}
-        appVersion={updater.currentVersion}
-        contextLibrary={contextLibrary}
-        onCheckUpdates={onCheckUpdates}
-        onRedeem={onRedeem}
-        onClose={onCloseSettings}
-        onSave={onSaveSettings}
-      />
-
-      {updater.info && (
-        <UpdateDialog
-          open={updateOpen}
-          info={updater.info}
-          status={updater.status}
-          progress={updater.progress}
-          error={updater.error}
-          currentVersion={updater.currentVersion}
-          onClose={onCloseUpdate}
-          onInstall={updater.install}
-          onSkip={onSkipUpdate}
-        />
-      )}
-    </>
   );
 }
 
@@ -627,7 +450,6 @@ export default function App() {
     settings,
     loading: settingsLoading,
     save,
-    reload,
     bumpOpacity,
     bumpWindowSize,
     applyNativeWindowSize,
@@ -637,21 +459,11 @@ export default function App() {
   const models = useModels();
   const updater = useUpdater();
 
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
   const [teleprompterOpen, setTeleprompterOpen] = useState(false);
   const teleprompterResumeRef = useRef({ text: "", offset: 0 });
 
-  const { permissionOk, requestPermission } = useCapturePermission();
-  const keysGate = useMissingKeysGate(settings, settingsLoading, !permissionOk);
-  const handleRedeem = useCallback(
-    async (code: string): Promise<string | null> => {
-      const error = await redeemAccessCode(code);
-      if (error === null) await reload();
-      return error;
-    },
-    [reload],
-  );
+  const { permissionOk } = useCapturePermission();
   const { sttError, showRetry, setSttError, clearError, clearFeedback, retry } =
     useSttFeedback(state);
   const { previewHtml, previewOpen, openPreview, togglePreview, closePreview } = usePreviewPanel();
@@ -708,7 +520,6 @@ export default function App() {
     presetsRef,
     libraryRef,
     clearError,
-    keysGate.keysMissing,
   );
 
   useTranscription(
@@ -716,7 +527,7 @@ export default function App() {
       (incoming: string) => {
         const chat = chatsRef.current.active;
         const merged = appendTranscript(chat.draft, incoming);
-        chatsRef.current.setDraft(chat.id, merged, chat.draftAttachments);
+        chatsRef.current.patchChat(chat.id, { draft: merged });
         clearFeedback();
         if (settingsRef.current.auto_send) dispatchSend(merged);
       },
@@ -724,7 +535,7 @@ export default function App() {
     ),
   );
 
-  useWindowControls(settings.move_step, doSend, bumpOpacity, bumpWindowSize);
+  useWindowControls(doSend, bumpOpacity, bumpWindowSize);
   usePttSuspend(settings.hotkey);
   const connectivity = useConnectivity();
 
@@ -739,7 +550,7 @@ export default function App() {
   useEffect(
     () =>
       onEvent("llm-usage", ({ chatId, inputTokens }) => {
-        chatsRef.current.setChatUsage(chatId, inputTokens);
+        chatsRef.current.patchChat(chatId, { lastInputTokens: inputTokens });
       }),
     [chatsRef],
   );
@@ -747,11 +558,11 @@ export default function App() {
   const active = chats.active;
   const activeId = chats.activeId;
   const activeStreaming = !!stream.streaming[activeId];
-  const error = sttError ?? stream.error[activeId] ?? null;
+  const error: AppError | null = sttError ?? stream.error[activeId] ?? null;
   const partial = activeStreaming ? (stream.partial[activeId] ?? "") : null;
   const reportNetworkError = connectivity.reportNetworkError;
   useEffect(() => {
-    if (error?.includes(NO_CONNECTION_TEXT)) reportNetworkError();
+    if (isNetworkError(error)) reportNetworkError();
   }, [error, reportNetworkError]);
   const teleprompterText = toReadingText(
     partial !== null && partial !== "" ? partial : lastAssistantText(active.messages),
@@ -773,22 +584,8 @@ export default function App() {
 
   const saveSettingsReportingError = (next: Settings) => {
     void save(next).then((err) => {
-      if (err) setSttError(settingsSaveErrorText(err));
+      if (err) setSttError(internalError(settingsSaveErrorText(err)));
     });
-  };
-
-  const checkUpdatesFromSettings = async (): Promise<UpdateInfo | null> => {
-    const found = await updater.checkNow();
-    if (found) {
-      setSettingsOpen(false);
-      setUpdateOpen(true);
-    }
-    return found;
-  };
-
-  const saveSettingsAndCloseDialog = (next: Settings) => {
-    saveSettingsReportingError(next);
-    setSettingsOpen(false);
   };
 
   const skipUpdate = () => {
@@ -802,9 +599,18 @@ export default function App() {
     if (event.button === 0 && event.target === event.currentTarget) void startWindowDrag();
   }, []);
 
+  const hotkeys: HotkeyConfig = {
+    ptt: settings.hotkey,
+    toggleWindow: settings.toggle_hotkey,
+    teleprompter: settings.teleprompter_hotkey,
+    moveWindow: settings.move_modifier,
+    resizeWindow: settings.resize_modifier,
+    scrollChat: settings.scroll_modifier,
+  };
+
   return (
     <div
-      className="app-shell relative flex h-screen overflow-hidden rounded-[22px]"
+      className="app-shell relative flex h-screen overflow-hidden rounded-[var(--window-radius)]"
       style={{ gap: SHELL_COLUMN_GAP_PX, padding: SHELL_PADDING_PX }}
       onMouseDown={onShellDragStart}
     >
@@ -812,9 +618,7 @@ export default function App() {
         <AppHeader
           state={state}
           error={error}
-          hotkey={settings.hotkey}
-          toggleHotkey={settings.toggle_hotkey}
-          teleprompterHotkey={settings.teleprompter_hotkey}
+          hotkeys={hotkeys}
           updater={updater}
           chats={chats}
           stream={stream}
@@ -827,9 +631,7 @@ export default function App() {
           onOpenTeleprompter={() => {
             setTeleprompterOpen(true);
           }}
-          onOpenSettings={() => {
-            setSettingsOpen(true);
-          }}
+          onStop={() => void stopMainWindow()}
           onOpenUpdate={() => {
             setUpdateOpen(true);
           }}
@@ -844,12 +646,6 @@ export default function App() {
           </WarningBanner>
         )}
 
-        {keysGate.keysMissing && (
-          <WarningBanner tone="info" actionLabel="Ввести" onAction={keysGate.openDialog}>
-            {missingKeysNotice(keysGate.missingKeys)}
-          </WarningBanner>
-        )}
-
         <AnswerPanel
           messages={active.messages}
           chatId={activeId}
@@ -857,6 +653,7 @@ export default function App() {
           streaming={activeStreaming}
           streamStartedAt={stream.startedAt[activeId]}
           scrollStep={settings.scroll_step}
+          scrollModifier={settings.scroll_modifier}
           onTogglePreview={togglePreview}
           onRemoveMessage={(index) => {
             chats.removeMessage(activeId, index);
@@ -871,7 +668,6 @@ export default function App() {
           library={contextLibrary.library}
           streaming={activeStreaming}
           showRetry={showRetry}
-          disabled={keysGate.keysMissing}
           onSend={doSend}
           onStop={() => {
             stream.stop(activeId);
@@ -908,37 +704,21 @@ export default function App() {
 
       {connectivity.offline && <ConnectivityOverlay />}
 
-      <MissingKeysDialog
-        open={keysGate.dialogOpen}
-        missing={keysGate.keysMissing ? keysGate.missingKeys : []}
-        permissionMissing={!permissionOk}
-        onRequestPermission={requestPermission}
-        onOpenAudioSettings={() => void openAudioPermissionSettings()}
-        onRedeem={handleRedeem}
-        onOpenSettings={() => {
-          keysGate.closeDialog();
-          setSettingsOpen(true);
-        }}
-        onClose={keysGate.closeDialog}
-      />
-
-      <AppDialogs
-        settings={settings}
-        updater={updater}
-        contextLibrary={contextLibrary}
-        settingsOpen={settingsOpen}
-        updateOpen={updateOpen}
-        onCheckUpdates={checkUpdatesFromSettings}
-        onRedeem={handleRedeem}
-        onCloseSettings={() => {
-          setSettingsOpen(false);
-        }}
-        onSaveSettings={saveSettingsAndCloseDialog}
-        onCloseUpdate={() => {
-          setUpdateOpen(false);
-        }}
-        onSkipUpdate={skipUpdate}
-      />
+      {updater.info && (
+        <UpdateDialog
+          open={updateOpen}
+          info={updater.info}
+          status={updater.status}
+          progress={updater.progress}
+          error={updater.error}
+          currentVersion={updater.currentVersion}
+          onClose={() => {
+            setUpdateOpen(false);
+          }}
+          onInstall={updater.install}
+          onSkip={skipUpdate}
+        />
+      )}
     </div>
   );
 }

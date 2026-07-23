@@ -1,7 +1,9 @@
 import type { ImagePayload } from "@/lib/composer";
+import type { AppError } from "@/lib/errors";
 import type { PromptPreset } from "@/lib/presets";
+import { SETTINGS_DEFAULTS } from "./bindings";
 
-export type { ImagePayload };
+export type { AppError, ImagePayload };
 
 export interface Settings {
   anthropic_api_key: string;
@@ -32,37 +34,14 @@ export interface Settings {
   buffer_enabled: boolean;
   buffer_seconds: number;
   identity_id: string;
+  move_modifier: string;
+  resize_modifier: string;
+  scroll_modifier: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  anthropic_api_key: "",
-  groq_api_key: "",
-  access_token: "",
-  prompt_presets: [],
-  hotkey: "F9",
-  auto_send: false,
-  window_opacity: 0.9,
-  move_step: 20,
-  auto_preview_html: true,
-  toggle_hotkey: "Cmd+Shift+H",
-  chat_font_size: 13.5,
-  skipped_version: "",
-  stt_language: "ru",
-  stt_translate: false,
-  screen_share_visible: false,
-  teleprompter_speed: 40,
-  teleprompter_font_size: 28,
-  teleprompter_hotkey: "F10",
-  teleprompter_resume: true,
-  window_width: 960,
-  window_height: 680,
-  resize_step: 20,
-  capture_device_uid: "",
-  theme: "gray",
-  scroll_step: 120,
-  buffer_enabled: true,
-  buffer_seconds: 4,
-  identity_id: "",
+  ...SETTINGS_DEFAULTS,
+  prompt_presets: [...SETTINGS_DEFAULTS.prompt_presets],
 };
 
 export interface AudioOutputDevice {
@@ -98,10 +77,10 @@ export interface UpdateProgress {
 export interface EventMap {
   "state-changed": RecorderState;
   "transcript-ready": string;
-  "stt-error": string;
+  "stt-error": AppError;
   "llm-delta": { chatId: string; delta: string };
   "llm-done": { chatId: string };
-  "llm-error": { chatId: string; message: string };
+  "llm-error": AppError & { chatId: string };
   "llm-usage": { chatId: string; inputTokens: number };
   "update-available": UpdateInfo;
   "update-progress": UpdateProgress;

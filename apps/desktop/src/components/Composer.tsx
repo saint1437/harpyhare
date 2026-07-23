@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import type { Chat, ChatPatch } from "@/lib/chats";
 import { extractImageItems } from "@/lib/composer";
 import type { Attachment } from "@/lib/composer";
 import {
@@ -48,9 +49,8 @@ import { cn } from "@/lib/utils";
 import { AttachmentChip } from "./AttachmentChip";
 
 export interface ComposerProps {
-  value: string;
-  onChange: (v: string) => void;
-  attachments: Attachment[];
+  chat: Chat;
+  onPatch: (patch: ChatPatch) => void;
   onRemoveAttachment: (index: number) => void;
   onPaste: (items: DataTransferItemList) => void;
   onSend: () => void;
@@ -60,21 +60,8 @@ export interface ComposerProps {
   streaming: boolean;
   showRetry: boolean;
   presets: { id: string; name: string }[];
-  presetId: string;
-  onPresetChange: (id: string) => void;
-  thinkingEnabled: boolean;
-  onThinkingChange: (enabled: boolean) => void;
-  model: string;
-  onModelChange: (model: string) => void;
-  webSearch: boolean;
-  onWebSearchChange: (enabled: boolean) => void;
-  context: string;
-  onContextChange: (context: string) => void;
   library: ContextLibrary;
-  libraryDocIds: string[];
-  onLibraryDocsChange: (ids: string[]) => void;
   models: ModelInfo[];
-  disabled: boolean;
 }
 
 const SELECT_TRIGGER_CLASS = "h-7 w-full text-caption";
@@ -87,7 +74,10 @@ function pasteHasImages(items: DataTransferItemList) {
   return extractImageItems(items).length > 0;
 }
 
-type PromptTextareaProps = Pick<ComposerProps, "value" | "onChange" | "onPaste" | "onSend">;
+type PromptTextareaProps = Pick<ComposerProps, "onPaste" | "onSend"> & {
+  value: string;
+  onChange: (value: string) => void;
+};
 
 const PROMPT_MAX_HEIGHT_PX = 160;
 
@@ -193,12 +183,11 @@ interface ModelSelectProps {
   value: string;
   models: ModelInfo[];
   onChange: (model: string) => void;
-  disabled: boolean;
 }
 
 function ModelSelect(props: ModelSelectProps) {
   return (
-    <Select value={props.value} disabled={props.disabled} onValueChange={props.onChange}>
+    <Select value={props.value} onValueChange={props.onChange}>
       <SelectTrigger className={SELECT_TRIGGER_CLASS}>
         <SelectValue />
       </SelectTrigger>
@@ -217,16 +206,14 @@ interface PresetSelectProps {
   presets: { id: string; name: string }[];
   presetId: string;
   onChange: (id: string) => void;
-  disabled: boolean;
 }
 
-function PresetSelect({ presets, presetId, onChange, disabled }: PresetSelectProps) {
+function PresetSelect({ presets, presetId, onChange }: PresetSelectProps) {
   const selectedValue =
     presetId !== "" && presets.some((p) => p.id === presetId) ? presetId : NO_PRESET_VALUE;
   return (
     <Select
       value={selectedValue}
-      disabled={disabled}
       onValueChange={(v) => {
         onChange(v === NO_PRESET_VALUE ? "" : v);
       }}
@@ -255,19 +242,7 @@ function ParamRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-type RequestParamsProps = Pick<
-  ComposerProps,
-  | "webSearch"
-  | "onWebSearchChange"
-  | "model"
-  | "onModelChange"
-  | "thinkingEnabled"
-  | "onThinkingChange"
-  | "presets"
-  | "presetId"
-  | "onPresetChange"
-  | "disabled"
-> & {
+type RequestParamsProps = Pick<ComposerProps, "chat" | "onPatch" | "presets"> & {
   modelOptions: ModelInfo[];
   thinkingDisabled: boolean;
 };
@@ -279,7 +254,6 @@ function RequestParamsPopover(props: RequestParamsProps) {
         <Button
           variant="ghost"
           size="icon-compact"
-          disabled={props.disabled}
           title="Параметры запроса"
           aria-label="Параметры запроса"
         >
@@ -291,31 +265,36 @@ function RequestParamsPopover(props: RequestParamsProps) {
           <ParamRow label="Модель">
             <ModelSelect
               models={props.modelOptions}
-              value={props.model}
-              disabled={props.disabled}
-              onChange={props.onModelChange}
+              value={props.chat.model}
+              onChange={(model) => {
+                props.onPatch({ model });
+              }}
             />
           </ParamRow>
           <ParamRow label="Thinking">
             <ToggleSelect
-              value={props.thinkingEnabled}
-              disabled={props.disabled || props.thinkingDisabled}
-              onChange={props.onThinkingChange}
+              value={props.chat.thinkingEnabled}
+              disabled={props.thinkingDisabled}
+              onChange={(thinkingEnabled) => {
+                props.onPatch({ thinkingEnabled });
+              }}
             />
           </ParamRow>
           <ParamRow label="Веб-поиск">
             <ToggleSelect
-              value={props.webSearch}
-              disabled={props.disabled}
-              onChange={props.onWebSearchChange}
+              value={props.chat.webSearch}
+              onChange={(webSearch) => {
+                props.onPatch({ webSearch });
+              }}
             />
           </ParamRow>
           <ParamRow label="Препромпт">
             <PresetSelect
               presets={props.presets}
-              presetId={props.presetId}
-              disabled={props.disabled}
-              onChange={props.onPresetChange}
+              presetId={props.chat.presetId}
+              onChange={(presetId) => {
+                props.onPatch({ presetId });
+              }}
             />
           </ParamRow>
         </div>
@@ -339,7 +318,7 @@ function ComposerToolbar(props: ComposerToolbarProps) {
       <Button
         variant="ghost"
         size="icon-compact"
-        disabled={props.disabled || props.streaming}
+        disabled={props.streaming}
         onClick={props.onClearHistory}
         title="Очистить историю чата"
         aria-label="Очистить историю чата"
@@ -350,7 +329,6 @@ function ComposerToolbar(props: ComposerToolbarProps) {
         variant="ghost"
         size="icon-compact"
         className="relative"
-        disabled={props.disabled}
         onClick={props.onOpenContext}
         title="Контекст чата"
         aria-label="Контекст чата"
@@ -364,25 +342,17 @@ function ComposerToolbar(props: ComposerToolbarProps) {
         )}
       </Button>
       <RequestParamsPopover
-        webSearch={props.webSearch}
-        onWebSearchChange={props.onWebSearchChange}
-        model={props.model}
+        chat={props.chat}
+        onPatch={props.onPatch}
         modelOptions={props.modelOptions}
-        onModelChange={props.onModelChange}
-        thinkingEnabled={props.thinkingEnabled}
         thinkingDisabled={props.thinkingDisabled}
-        onThinkingChange={props.onThinkingChange}
         presets={props.presets}
-        presetId={props.presetId}
-        onPresetChange={props.onPresetChange}
-        disabled={props.disabled}
       />
       <div className="flex-1" />
       {props.showRetry && (
         <Button
           variant="ghost"
           size="icon-compact"
-          disabled={props.disabled}
           onClick={props.onRetry}
           title="Повторить распознавание"
           aria-label="Повторить распознавание"
@@ -404,7 +374,6 @@ function ComposerToolbar(props: ComposerToolbarProps) {
         <Button
           size="icon-compact"
           onClick={props.onSend}
-          disabled={props.disabled}
           title="Отправить (⏎)"
           aria-label="Отправить"
         >
@@ -540,14 +509,15 @@ function ChatContextDialog(props: ChatContextDialogProps) {
 }
 
 export function Composer(props: ComposerProps) {
-  const modelOptions = selectableModels(props.models, props.model);
-  const thinkingDisabled = thinkingLocked(modelOptions, props.model);
+  const { chat, onPatch } = props;
+  const modelOptions = selectableModels(props.models, chat.model);
+  const thinkingDisabled = thinkingLocked(modelOptions, chat.model);
   const [contextOpen, setContextOpen] = useState(false);
   const [contextDraft, setContextDraft] = useState("");
   const [selectedDraft, setSelectedDraft] = useState<string[]>([]);
   const openContextDialog = () => {
-    setContextDraft(props.context);
-    setSelectedDraft(props.libraryDocIds);
+    setContextDraft(chat.context);
+    setSelectedDraft(chat.libraryDocIds);
     setContextOpen(true);
   };
   const closeContextDialog = () => {
@@ -557,38 +527,32 @@ export function Composer(props: ComposerProps) {
     setSelectedDraft((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
   const saveContext = () => {
-    props.onContextChange(contextDraft);
-    props.onLibraryDocsChange(selectedDraft);
+    onPatch({ context: contextDraft, libraryDocIds: selectedDraft });
     setContextOpen(false);
   };
   return (
     <section>
       <div className="rounded-xl bg-card/60 ring-1 ring-border transition-[box-shadow] ring-inset focus-within:ring-ring/50">
         <PromptTextarea
-          value={props.value}
-          onChange={props.onChange}
+          value={chat.draft}
+          onChange={(draft) => {
+            onPatch({ draft });
+          }}
           onPaste={props.onPaste}
           onSend={props.onSend}
         />
-        <AttachmentList attachments={props.attachments} onRemove={props.onRemoveAttachment} />
+        <AttachmentList attachments={chat.draftAttachments} onRemove={props.onRemoveAttachment} />
         <ComposerToolbar
-          disabled={props.disabled}
+          chat={chat}
+          onPatch={onPatch}
           onClearHistory={props.onClearHistory}
-          hasContext={props.context.trim() !== "" || props.libraryDocIds.length > 0}
+          hasContext={chat.context.trim() !== "" || chat.libraryDocIds.length > 0}
           onOpenContext={openContextDialog}
           showRetry={props.showRetry}
           onRetry={props.onRetry}
-          webSearch={props.webSearch}
-          onWebSearchChange={props.onWebSearchChange}
-          model={props.model}
           modelOptions={modelOptions}
-          onModelChange={props.onModelChange}
-          thinkingEnabled={props.thinkingEnabled}
           thinkingDisabled={thinkingDisabled}
-          onThinkingChange={props.onThinkingChange}
           presets={props.presets}
-          presetId={props.presetId}
-          onPresetChange={props.onPresetChange}
           streaming={props.streaming}
           onStop={props.onStop}
           onSend={props.onSend}

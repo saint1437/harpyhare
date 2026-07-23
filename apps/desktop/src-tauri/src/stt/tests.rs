@@ -96,7 +96,7 @@ async fn transcribe_stream_sends_chunked_body_and_parses_text() {
         Ok(crate::audio::f32_to_i16le_bytes(&vec![0.1f32; 8000])),
         Ok(crate::audio::f32_to_i16le_bytes(&vec![0.2f32; 8000])),
     ];
-    let body = reqwest::Body::wrap_stream(futures_util::stream::iter(chunks));
+    let body: AudioChunkStream = Box::pin(futures_util::stream::iter(chunks));
     let text = stt
         .transcribe_stream(body, tokio_util::sync::CancellationToken::new())
         .await
@@ -126,7 +126,7 @@ async fn transcribe_stream_cancel_aborts() {
         c2.cancel();
     });
     let err = stt
-        .transcribe_stream(reqwest::Body::wrap_stream(endless), cancel)
+        .transcribe_stream(Box::pin(endless), cancel)
         .await
         .unwrap_err();
     assert!(matches!(err, SttError::Other(m) if m.contains(CANCELLED_MESSAGE)));

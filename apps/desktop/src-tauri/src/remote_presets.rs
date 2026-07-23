@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 
+use crate::events;
 use crate::settings::{write_atomic_owner_only, PromptPreset};
 
 const PRESETS_URL: &str =
@@ -10,7 +11,6 @@ const PRESETS_URL: &str =
 const CACHE_FILE_NAME: &str = "presets.cache.json";
 const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 const REFRESH_INTERVAL: Duration = Duration::from_secs(30 * 60);
-const EVENT_OFFICIAL_PRESETS_UPDATED: &str = "official-presets-updated";
 const LOG_TAG: &str = "[presets]";
 
 const BUNDLED_PRESETS_JSON: &str = include_str!("../../../../config/presets.json");
@@ -36,7 +36,7 @@ impl PresetPool {
 }
 
 fn cache_path(app: &AppHandle) -> PathBuf {
-    crate::app_data_file(app, CACHE_FILE_NAME)
+    crate::app_state::app_data_file(app, CACHE_FILE_NAME)
 }
 
 pub fn load_initial(app: &AppHandle) -> Vec<PromptPreset> {
@@ -76,7 +76,7 @@ async fn fetch_raw() -> reqwest::Result<String> {
 }
 
 fn apply(app: &AppHandle, pool: PresetPool) {
-    let st = app.state::<crate::App>();
+    let st = app.state::<crate::app_state::App>();
     {
         let mut current = st.official_presets.lock().unwrap();
         if *current == pool.presets {
@@ -88,7 +88,7 @@ fn apply(app: &AppHandle, pool: PresetPool) {
         let _ = write_atomic_owner_only(&cache_path(app), &json);
     }
     eprintln!("{LOG_TAG} пул обновлён (version {})", pool.version);
-    let _ = app.emit(EVENT_OFFICIAL_PRESETS_UPDATED, pool.presets);
+    events::official_presets_updated(app, pool.presets);
 }
 
 #[cfg(test)]

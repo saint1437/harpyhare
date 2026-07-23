@@ -15,6 +15,11 @@ export interface ChatMessage {
   images: ImagePayload[];
 }
 
+export interface RequestOptions {
+  thinking: boolean;
+  webSearch: boolean;
+}
+
 export interface Chat {
   id: string;
   title: string;
@@ -59,6 +64,25 @@ export function createChat(index: number, id: string = uid()): Chat {
     draftAttachments: [],
     ...NEW_CHAT_DEFAULTS,
   };
+}
+
+export type ChatPatch = Partial<
+  Pick<
+    Chat,
+    | "draft"
+    | "draftAttachments"
+    | "presetId"
+    | "thinkingEnabled"
+    | "model"
+    | "webSearch"
+    | "context"
+    | "libraryDocIds"
+    | "lastInputTokens"
+  >
+>;
+
+export function chatRequestOptions(chat: Chat): RequestOptions {
+  return { thinking: chat.thinkingEnabled, webSearch: chat.webSearch };
 }
 
 export function chatTitle(firstUserText: string, index: number): string {

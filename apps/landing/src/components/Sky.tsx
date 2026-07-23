@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn";
+import type { StarSpec } from "@/lib/stars";
 
 type CloudVariant = "wide" | "puffy" | "small";
 
@@ -68,38 +69,6 @@ export function Cloud({ variant = "wide", width, drift = 46, className }: CloudP
 
 const STAR_PATH =
   "M0 -10 C1.6 -3.2 3.2 -1.6 10 0 C3.2 1.6 1.6 3.2 0 10 C-1.6 3.2 -3.2 1.6 -10 0 C-3.2 -1.6 -1.6 -3.2 0 -10 Z";
-
-export interface StarSpec {
-  left: number;
-  top: number;
-  size: number;
-  delay: number;
-  duration: number;
-}
-
-export const FEATURES_STARS: StarSpec[] = [
-  { left: 8, top: 10, size: 12, delay: 0, duration: 3.6 },
-  { left: 22, top: 28, size: 8, delay: 1.4, duration: 4.4 },
-  { left: 37, top: 7, size: 10, delay: 0.7, duration: 3.1 },
-  { left: 55, top: 20, size: 7, delay: 2.2, duration: 4.8 },
-  { left: 69, top: 9, size: 13, delay: 1.1, duration: 3.9 },
-  { left: 86, top: 24, size: 9, delay: 0.4, duration: 3.4 },
-  { left: 14, top: 56, size: 7, delay: 2.8, duration: 4.2 },
-  { left: 93, top: 58, size: 11, delay: 1.8, duration: 3.2 },
-  { left: 48, top: 72, size: 8, delay: 0.9, duration: 4.6 },
-  { left: 77, top: 80, size: 7, delay: 2.5, duration: 3.7 },
-];
-
-export const CTA_STARS: StarSpec[] = [
-  { left: 11, top: 14, size: 10, delay: 0.5, duration: 3.8 },
-  { left: 27, top: 34, size: 7, delay: 1.9, duration: 3.2 },
-  { left: 42, top: 10, size: 12, delay: 0, duration: 4.3 },
-  { left: 61, top: 26, size: 8, delay: 2.4, duration: 3.5 },
-  { left: 78, top: 12, size: 10, delay: 1.2, duration: 4 },
-  { left: 91, top: 38, size: 7, delay: 0.8, duration: 3.3 },
-  { left: 7, top: 62, size: 8, delay: 2.1, duration: 4.5 },
-  { left: 88, top: 70, size: 9, delay: 1.5, duration: 3.6 },
-];
 
 export function StarField({ stars, className }: { stars: StarSpec[]; className?: string }) {
   return (

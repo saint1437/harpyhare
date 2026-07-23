@@ -13,21 +13,7 @@
   "app": {
     "withGlobalTauri": true,
     "macOSPrivateApi": true,
-    "windows": [
-      {
-        "label": "main",
-        "title": "Audio System",
-        "width": 960,
-        "height": 680,
-        "transparent": true,
-        "decorations": false,
-        "alwaysOnTop": true,
-        "visibleOnAllWorkspaces": true,
-        "contentProtected": true,
-        "minWidth": 300,
-        "minHeight": 520
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }

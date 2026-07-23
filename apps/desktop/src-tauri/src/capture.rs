@@ -34,6 +34,16 @@ pub enum CaptureError {
     Audio(String),
 }
 
+impl crate::error::CodedError for CaptureError {
+    fn code(&self) -> crate::error::ErrorCode {
+        use crate::error::ErrorCode;
+        match self {
+            CaptureError::PermissionDenied => ErrorCode::Permission,
+            CaptureError::CoreAudio(_) | CaptureError::Audio(_) => ErrorCode::Internal,
+        }
+    }
+}
+
 impl CaptureError {
     fn from_os(err: os::Error) -> Self {
         if err.0.get() == OS_STATUS_ILLEGAL_OPERATION {
@@ -80,7 +90,7 @@ pub struct SystemAudioCapture {
 
 unsafe impl Send for SystemAudioCapture {}
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct OutputDeviceInfo {
     pub uid: String,
     pub name: String,

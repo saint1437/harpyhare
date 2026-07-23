@@ -13,7 +13,6 @@ vi.mock("@tauri-apps/api/window", () => ({
 import {
   captureAvailable,
   getSettings,
-  moveWindowBy,
   probeConnectivity,
   sendToClaude,
   startWindowDrag,
@@ -50,24 +49,16 @@ describe("commands (Tauri IPC)", () => {
       [{ role: "user", text: "hi", images: [] }],
       "chat-1",
       "sys",
-      true,
       "claude-opus-4-8",
-      false,
+      { thinking: true, webSearch: false },
     );
     expect(invoke).toHaveBeenCalledWith("send_to_claude", {
       messages: [{ role: "user", text: "hi", images: [] }],
       chatId: "chat-1",
       system: "sys",
-      thinking: true,
       model: "claude-opus-4-8",
-      webSearch: false,
+      options: { thinking: true, webSearch: false },
     });
-  });
-
-  it("moveWindowBy → move_window_by {dx,dy}", async () => {
-    invoke.mockResolvedValue(undefined);
-    await moveWindowBy(10, -5);
-    expect(invoke).toHaveBeenCalledWith("move_window_by", { dx: 10, dy: -5 });
   });
 
   it("startWindowDrag дёргает getCurrentWindow().startDragging()", async () => {

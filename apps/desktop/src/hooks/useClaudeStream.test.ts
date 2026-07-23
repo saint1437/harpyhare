@@ -67,9 +67,8 @@ describe("useClaudeStream (per-chat)", () => {
           "A",
           [{ role: "user", text: "q", images: [] }],
           "",
-          true,
           "claude-opus-4-8",
-          false,
+          { thinking: true, webSearch: false },
         ),
     );
     emit("llm-delta", { chatId: "A", delta: "при" });
@@ -87,9 +86,8 @@ describe("useClaudeStream (per-chat)", () => {
           "A",
           [{ role: "user", text: "q", images: [] }],
           "",
-          true,
           "claude-opus-4-8",
-          false,
+          { thinking: true, webSearch: false },
         ),
     );
     emit("llm-delta", { chatId: "A", delta: "x".repeat(100000) });
@@ -107,9 +105,8 @@ describe("useClaudeStream (per-chat)", () => {
           "A",
           [{ role: "user", text: "q", images: [] }],
           "",
-          true,
           "claude-opus-4-8",
-          false,
+          { thinking: true, webSearch: false },
         ),
     );
     act(
@@ -118,9 +115,8 @@ describe("useClaudeStream (per-chat)", () => {
           "B",
           [{ role: "user", text: "q", images: [] }],
           "",
-          true,
           "claude-opus-4-8",
-          false,
+          { thinking: true, webSearch: false },
         ),
     );
     emit("llm-delta", { chatId: "A", delta: "AAA" });
@@ -139,9 +135,8 @@ describe("useClaudeStream (per-chat)", () => {
           "A",
           [{ role: "user", text: "q", images: [] }],
           "",
-          true,
           "claude-opus-4-8",
-          false,
+          { thinking: true, webSearch: false },
         ),
     );
     emit("llm-delta", { chatId: "A", delta: "итог" });
@@ -159,9 +154,8 @@ describe("useClaudeStream (per-chat)", () => {
           "A",
           [{ role: "user", text: "q", images: [] }],
           "",
-          true,
           "claude-opus-4-8",
-          false,
+          { thinking: true, webSearch: false },
         ),
     );
     act(() => {
@@ -181,9 +175,8 @@ describe("useClaudeStream (per-chat)", () => {
           "A",
           [{ role: "user", text: "q", images: [] }],
           "",
-          true,
           "claude-opus-4-8",
-          false,
+          { thinking: true, webSearch: false },
         ),
     );
     emit("llm-delta", { chatId: "A", delta: "почти готовый ответ" });
@@ -205,9 +198,8 @@ describe("useClaudeStream (per-chat)", () => {
           "A",
           [{ role: "user", text: "q", images: [] }],
           "",
-          true,
           "claude-opus-4-8",
-          false,
+          { thinking: true, webSearch: false },
         ),
     );
     act(() => {
@@ -225,15 +217,14 @@ describe("useClaudeStream (per-chat)", () => {
           "A",
           [{ role: "user", text: "q", images: [] }],
           "",
-          true,
           "claude-opus-4-8",
-          false,
+          { thinking: true, webSearch: false },
         ),
     );
     emit("llm-delta", { chatId: "A", delta: "начало ответа" });
-    emit("llm-error", { chatId: "A", message: "оборвалось" });
+    emit("llm-error", { chatId: "A", code: "network", message: "оборвалось" });
     expect(onComplete).toHaveBeenCalledWith("A", "начало ответа");
-    expect(result.current.error["A"]).toBe("оборвалось");
+    expect(result.current.error["A"]).toEqual({ code: "network", message: "оборвалось" });
     expect(result.current.streaming["A"]).toBeFalsy();
   });
 
@@ -245,13 +236,12 @@ describe("useClaudeStream (per-chat)", () => {
           "A",
           [{ role: "user", text: "q", images: [] }],
           "",
-          true,
           "claude-opus-4-8",
-          false,
+          { thinking: true, webSearch: false },
         ),
     );
-    emit("llm-error", { chatId: "A", message: "сломалось" });
-    expect(result.current.error["A"]).toBe("сломалось");
+    emit("llm-error", { chatId: "A", code: "api", message: "сломалось" });
+    expect(result.current.error["A"]).toEqual({ code: "api", message: "сломалось" });
     expect(result.current.streaming["A"]).toBeFalsy();
   });
 });

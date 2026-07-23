@@ -5,6 +5,21 @@ fn adaptive() -> Option<Value> {
     Some(json!({"type": "adaptive"}))
 }
 
+#[derive(Default)]
+struct TestSink {
+    text: String,
+    input_tokens: Vec<u32>,
+}
+
+impl LlmStreamSink for TestSink {
+    fn text_delta(&mut self, delta: &str) {
+        self.text.push_str(delta);
+    }
+    fn input_tokens(&mut self, total: u32) {
+        self.input_tokens.push(total);
+    }
+}
+
 #[test]
 fn thinking_value_semantics() {
     assert_eq!(
@@ -337,20 +352,18 @@ async fn stream_collects_deltas_via_callback() {
         .await;
 
     let client = AnthropicClient::new("sk-test".into()).with_base_url(server.uri());
-    let collected = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
-    let c2 = collected.clone();
     let cancel = tokio_util::sync::CancellationToken::new();
     let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
+    let mut sink = TestSink::default();
     client
         .stream_message(
             build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None),
             cancel,
-            move |delta| c2.lock().unwrap().push_str(delta),
-            |_| {},
+            &mut sink,
         )
         .await
         .unwrap();
-    assert_eq!(*collected.lock().unwrap(), "Привет!");
+    assert_eq!(sink.text, "Привет!");
 }
 
 #[tokio::test]
@@ -375,8 +388,7 @@ async fn stream_times_out_on_silent_server() {
         .stream_message(
             build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None),
             tokio_util::sync::CancellationToken::new(),
-            |_| {},
-            |_| {},
+            &mut TestSink::default(),
         )
         .await
         .unwrap_err();
@@ -398,20 +410,18 @@ async fn stream_eof_without_message_stop_is_error() {
         .mount(&server)
         .await;
     let client = AnthropicClient::new("k".into()).with_base_url(server.uri());
-    let collected = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
-    let c2 = collected.clone();
     let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
+    let mut sink = TestSink::default();
     let err = client
         .stream_message(
             build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None),
             tokio_util::sync::CancellationToken::new(),
-            move |d| c2.lock().unwrap().push_str(d),
-            |_| {},
+            &mut sink,
         )
         .await
         .unwrap_err();
     assert!(matches!(err, LlmError::Network(_)));
-    assert_eq!(*collected.lock().unwrap(), "При");
+    assert_eq!(sink.text, "При");
 }
 
 #[tokio::test]
@@ -432,8 +442,7 @@ async fn stream_surfaces_api_error_message_from_body() {
         .stream_message(
             build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None),
             tokio_util::sync::CancellationToken::new(),
-            |_| {},
-            |_| {},
+            &mut TestSink::default(),
         )
         .await
         .unwrap_err();
@@ -458,8 +467,7 @@ async fn stream_maps_401() {
         .stream_message(
             build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None),
             tokio_util::sync::CancellationToken::new(),
-            |_| {},
-            |_| {},
+            &mut TestSink::default(),
         )
         .await
         .unwrap_err();
@@ -492,8 +500,7 @@ async fn proxy_mode_authorizes_with_bearer_not_api_key() {
         .stream_message(
             build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None),
             tokio_util::sync::CancellationToken::new(),
-            |_| {},
-            |_| {},
+            &mut TestSink::default(),
         )
         .await
         .unwrap();
@@ -516,8 +523,7 @@ async fn proxy_mode_401_surfaces_body_message_not_bad_key() {
         .stream_message(
             build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None),
             tokio_util::sync::CancellationToken::new(),
-            |_| {},
-            |_| {},
+            &mut TestSink::default(),
         )
         .await
         .unwrap_err();
@@ -553,8 +559,7 @@ async fn stream_cancellation_stops_early() {
         .stream_message(
             build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None),
             cancel,
-            |_| {},
-            |_| {},
+            &mut TestSink::default(),
         )
         .await
         .unwrap_err();

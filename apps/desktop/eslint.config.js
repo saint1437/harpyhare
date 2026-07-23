@@ -8,7 +8,15 @@ import prettier from "eslint-config-prettier";
 import globals from "globals";
 
 const buildArtifactAndConfigIgnores = {
-  ignores: ["dist", "src-tauri", "*.config.js", "*.config.ts", "!vite.config.ts", "*.config.d.ts"],
+  ignores: [
+    "dist",
+    "src-tauri",
+    "src/ipc/bindings.ts",
+    "*.config.js",
+    "*.config.ts",
+    "!vite.config.ts",
+    "*.config.d.ts",
+  ],
 };
 
 const srcTypeAwareRules = {

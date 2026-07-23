@@ -9,11 +9,14 @@ import {
   type ModelInfo,
 } from "./models";
 
-const model = (id: string): ModelInfo => ({
+const model = (id: string, extra: Partial<ModelInfo> = {}): ModelInfo => ({
   id,
   displayName: id,
   adaptive: true,
   alwaysThinks: false,
+  codeExec: true,
+  maxInputTokens: 0,
+  ...extra,
 });
 
 describe("models", () => {
@@ -65,7 +68,7 @@ describe("models", () => {
     expect(thinkingLocked(FALLBACK_MODELS, "claude-opus-4-8")).toBe(false);
     const withFable = [
       ...FALLBACK_MODELS,
-      { id: "claude-fable-5", displayName: "Claude Fable 5", adaptive: true, alwaysThinks: true },
+      model("claude-fable-5", { displayName: "Claude Fable 5", alwaysThinks: true }),
     ];
     expect(thinkingLocked(withFable, "claude-fable-5")).toBe(true);
     expect(thinkingLocked(FALLBACK_MODELS, "claude-unknown")).toBe(false);

@@ -1,13 +1,7 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type Dispatch,
-  type SetStateAction,
-} from "react";
-import { getSettings, setSettings as ipcSet } from "@/ipc/commands";
-import { DEFAULT_SETTINGS, type Settings } from "@/ipc/types";
+import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import { useSettingsStore } from "@/hooks/useSettingsStore";
+import { setSettings as ipcSet } from "@/ipc/commands";
+import type { Settings } from "@/ipc/types";
 import { applyChatFontSize, applyOpacity, applyTheme, stepOpacity } from "@/lib/window-controls";
 import { clampWindowSize, stepWindowSize, type WindowDimension } from "@/lib/window-size";
 
@@ -19,16 +13,15 @@ export interface SettingsApi {
   settings: Settings;
   loading: boolean;
   save: (next: Settings) => Promise<string | null>;
-  reload: () => Promise<void>;
   bumpOpacity: (dir: 1 | -1) => void;
   bumpWindowSize: (dim: WindowDimension, dir: 1 | -1) => void;
   applyNativeWindowSize: (width: number, height: number) => void;
 }
 
-function applyVisualSettings(windowOpacity: number, chatFontSize: number, theme: string): void {
-  applyOpacity(document.documentElement, windowOpacity);
-  applyChatFontSize(document.documentElement, chatFontSize);
-  applyTheme(document.documentElement, theme);
+function applyVisualSettings(settings: Settings): void {
+  applyOpacity(document.documentElement, settings.window_opacity);
+  applyChatFontSize(document.documentElement, settings.chat_font_size);
+  applyTheme(document.documentElement, settings.theme);
 }
 
 function useBumpOpacity(setSettings: Dispatch<SetStateAction<Settings>>): (dir: 1 | -1) => void {
@@ -121,50 +114,11 @@ function useApplyNativeWindowSize(
 }
 
 export function useSettings(): SettingsApi {
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let live = true;
-    void getSettings()
-      .then((s) => {
-        if (!live) return;
-        setSettings(s);
-        applyVisualSettings(s.window_opacity, s.chat_font_size, s.theme);
-      })
-      .finally(() => {
-        if (live) setLoading(false);
-      });
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  const save = useCallback(
-    async (next: Settings): Promise<string | null> => {
-      try {
-        await ipcSet(next);
-        const fresh = await getSettings();
-        setSettings(fresh);
-        applyVisualSettings(fresh.window_opacity, fresh.chat_font_size, fresh.theme);
-        return null;
-      } catch (e) {
-        applyVisualSettings(settings.window_opacity, settings.chat_font_size, settings.theme);
-        return String(e);
-      }
-    },
-    [settings.window_opacity, settings.chat_font_size, settings.theme],
-  );
-
-  const reload = useCallback(async (): Promise<void> => {
-    const fresh = await getSettings();
-    setSettings(fresh);
-    applyVisualSettings(fresh.window_opacity, fresh.chat_font_size, fresh.theme);
-  }, []);
+  const { settings, setSettings, loading, save } = useSettingsStore(applyVisualSettings);
 
   const bumpOpacity = useBumpOpacity(setSettings);
   const bumpWindowSize = useBumpWindowSize(setSettings);
   const applyNativeWindowSize = useApplyNativeWindowSize(setSettings);
 
-  return { settings, loading, save, reload, bumpOpacity, bumpWindowSize, applyNativeWindowSize };
+  return { settings, loading, save, bumpOpacity, bumpWindowSize, applyNativeWindowSize };
 }

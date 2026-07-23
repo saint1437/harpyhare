@@ -7,8 +7,9 @@
       "project": ["scripts/*.mjs"]
     },
     "apps/desktop": {
+      "entry": ["src/launcher.tsx", "src/index.css"],
       "project": ["src/**/*.{ts,tsx}"],
-      "ignore": ["src/components/ui/**"],
+      "ignore": ["src/components/ui/**", "src/ipc/bindings.ts"],
       "ignoreBinaries": ["gh"]
     }
   }

@@ -140,7 +140,7 @@ function useDocDrag(
   return { dragDocId, startDrag };
 }
 
-function errorText(e: unknown): string {
+function importErrorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
@@ -161,7 +161,7 @@ async function importPickedFiles(
       const text = await extractPickedFile(file);
       api.addDoc({ name: docNameFromFileName(file.name), text, folderId });
     } catch (e: unknown) {
-      setImportError(errorText(e));
+      setImportError(importErrorText(e));
     }
   }
 }

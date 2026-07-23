@@ -18,6 +18,7 @@ import { IconButton } from "@/components/IconButton";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { openExternal } from "@/ipc/commands";
 import type { ChatMessage } from "@/lib/chats";
+import { matchesModifier, parseModifier } from "@/lib/hotkey-modifier";
 import { splitStableTail } from "@/lib/stream-markdown";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +29,7 @@ export interface AnswerPanelProps {
   streaming: boolean;
   streamStartedAt?: number;
   scrollStep?: number;
+  scrollModifier: string;
   onTogglePreview: (code: string) => void;
   onRemoveMessage: (index: number) => void;
   onResendMessage: (index: number) => void;
@@ -205,12 +207,17 @@ function StreamingAssistant({ text, components }: { text: string; components: Co
   );
 }
 
-function useHotkeyScroll(scrollRef: RefObject<HTMLDivElement | null>, stepPx: number): void {
+function useHotkeyScroll(
+  scrollRef: RefObject<HTMLDivElement | null>,
+  stepPx: number,
+  modifier: string,
+): void {
   useEffect(() => {
+    const expected = parseModifier(modifier);
     const onKey = (e: KeyboardEvent) => {
-      if (!e.altKey || e.metaKey || e.ctrlKey) return;
       const dir = e.code === "ArrowDown" ? 1 : e.code === "ArrowUp" ? -1 : 0;
       if (dir === 0) return;
+      if (!matchesModifier(e, expected)) return;
       e.preventDefault();
       scrollRef.current?.scrollBy({ top: dir * stepPx, behavior: "smooth" });
     };
@@ -218,7 +225,7 @@ function useHotkeyScroll(scrollRef: RefObject<HTMLDivElement | null>, stepPx: nu
     return () => {
       document.removeEventListener("keydown", onKey);
     };
-  }, [scrollRef, stepPx]);
+  }, [scrollRef, stepPx, modifier]);
 }
 
 function useStickToBottom() {
@@ -336,12 +343,13 @@ export function AnswerPanel({
   streaming,
   streamStartedAt,
   scrollStep,
+  scrollModifier,
   onTogglePreview,
   onRemoveMessage,
   onResendMessage,
 }: AnswerPanelProps) {
   const { scrollRef, showJump, onScroll, resetToBottom, syncJump } = useStickToBottom();
-  useHotkeyScroll(scrollRef, scrollStep ?? FALLBACK_SCROLL_STEP_PX);
+  useHotkeyScroll(scrollRef, scrollStep ?? FALLBACK_SCROLL_STEP_PX, scrollModifier);
 
   useLayoutEffect(() => {
     resetToBottom();

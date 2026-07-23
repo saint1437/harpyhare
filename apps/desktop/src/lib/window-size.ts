@@ -38,18 +38,3 @@ export function stepWindowSize(
     height: clamp(size.height + dir * step, WINDOW_HEIGHT_MIN_PX, WINDOW_HEIGHT_MAX_PX),
   };
 }
-
-export function resizeKeyFromCode(code: string): { dim: WindowDimension; dir: 1 | -1 } | null {
-  switch (code) {
-    case "ArrowLeft":
-      return { dim: "width", dir: -1 };
-    case "ArrowRight":
-      return { dim: "width", dir: 1 };
-    case "ArrowUp":
-      return { dim: "height", dir: -1 };
-    case "ArrowDown":
-      return { dim: "height", dir: 1 };
-    default:
-      return null;
-  }
-}

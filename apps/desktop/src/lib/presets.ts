@@ -8,6 +8,10 @@ export interface PromptPreset {
 
 export const OFFICIAL_PRESETS_FALLBACK: PromptPreset[] = pool.presets;
 
+export function isPresetFilled(preset: PromptPreset): boolean {
+  return preset.name.trim() !== "" || preset.text.trim() !== "";
+}
+
 export function presetText(presets: PromptPreset[], presetId: string): string {
   return presets.find((p) => p.id === presetId)?.text ?? "";
 }

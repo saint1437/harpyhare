@@ -1,4 +1,4 @@
-import { ArrowDownCircle, Minus, Settings as SettingsIcon, X } from "lucide-react";
+import { ArrowDownCircle, Minus, Square, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { IconButton } from "@/components/IconButton";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ export interface StatusBarProps {
   actions: ReactNode;
   contextUsage: ContextUsage | null;
   update: { version: string; busy: boolean; onOpen: () => void } | null;
-  onOpenSettings: () => void;
+  onStop: () => void;
   onClose: () => void;
   onHide: () => void;
 }
@@ -65,7 +65,7 @@ export function StatusBar({
   actions,
   contextUsage,
   update,
-  onOpenSettings,
+  onStop,
   onClose,
   onHide,
 }: StatusBarProps) {
@@ -87,8 +87,8 @@ export function StatusBar({
         {contextUsage && <ContextUsageGauge usage={contextUsage} />}
         {actions}
         {update && <UpdateBadge update={update} />}
-        <IconButton title="Настройки" onClick={onOpenSettings} className="hover:rotate-45">
-          <SettingsIcon />
+        <IconButton title="Стоп — вернуться в лаунчер" onClick={onStop}>
+          <Square />
         </IconButton>
       </div>
     </header>

@@ -1,39 +1,25 @@
 use serde::Serialize;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_updater::UpdaterExt;
+
+use crate::events;
 
 const ENDPOINT_OVERRIDE_ENV: &str = "ITECH_UPDATE_ENDPOINT";
 const LOG_TAG: &str = "[update]";
-const EVENT_UPDATE_AVAILABLE: &str = "update-available";
-const EVENT_UPDATE_PROGRESS: &str = "update-progress";
-const EVENT_UPDATE_DONE: &str = "update-done";
 const AUTO_CHECK_INITIAL_DELAY: Duration = Duration::from_secs(5);
 const AUTO_CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 const PRE_RESTART_RENDER_DELAY: Duration = Duration::from_millis(300);
 const PERCENT_SCALE: u64 = 100;
 const BYTES_PER_MIB: u64 = 1024 * 1024;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateInfo {
     pub version: String,
     pub notes: String,
     pub date: Option<String>,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct UpdateProgress {
-    downloaded: u64,
-    total: Option<u64>,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct UpdateDone {
-    version: String,
 }
 
 pub async fn check(app: &AppHandle) -> Result<Option<UpdateInfo>, String> {
@@ -43,7 +29,7 @@ pub async fn check(app: &AppHandle) -> Result<Option<UpdateInfo>, String> {
     if let Some(i) = &info {
         eprintln!("{LOG_TAG} найдена версия {}", i.version);
     }
-    *app.state::<crate::App>().pending_update.lock().unwrap() = update;
+    *app.state::<crate::app_state::App>().pending_update.lock().unwrap() = update;
     Ok(info)
 }
 
@@ -74,7 +60,7 @@ pub async fn install(app: AppHandle) -> Result<(), String> {
         .await;
     match result {
         Ok(()) => {
-            let _ = app.emit(EVENT_UPDATE_DONE, UpdateDone { version });
+            events::update_done(&app, version);
             tokio::time::sleep(PRE_RESTART_RENDER_DELAY).await;
             app.restart()
         }
@@ -86,7 +72,7 @@ pub async fn install(app: AppHandle) -> Result<(), String> {
 }
 
 fn claim_pending_update(app: &AppHandle) -> Result<tauri_plugin_updater::Update, String> {
-    let st = app.state::<crate::App>();
+    let st = app.state::<crate::app_state::App>();
     if st.update_installing.swap(true, Ordering::SeqCst) {
         return Err("Обновление уже устанавливается".into());
     }
@@ -98,7 +84,7 @@ fn claim_pending_update(app: &AppHandle) -> Result<tauri_plugin_updater::Update,
 }
 
 fn release_install_lock(app: &AppHandle) {
-    app.state::<crate::App>()
+    app.state::<crate::app_state::App>()
         .update_installing
         .store(false, Ordering::SeqCst);
 }
@@ -110,7 +96,7 @@ fn throttled_progress_emitter(app: AppHandle) -> impl FnMut(usize, Option<u64>) 
         downloaded += chunk as u64;
         if let Some(mark) = progress_step(downloaded, total, last_mark) {
             last_mark = mark;
-            let _ = app.emit(EVENT_UPDATE_PROGRESS, UpdateProgress { downloaded, total });
+            events::update_progress(&app, downloaded, total);
         }
     }
 }
@@ -136,7 +122,7 @@ async fn notify_if_update_found(app: &AppHandle) {
     match check(app).await {
         Ok(Some(info)) => {
             if should_notify(&info.version, &skipped_version(app)) {
-                let _ = app.emit(EVENT_UPDATE_AVAILABLE, info);
+                events::update_available(app, info);
             }
         }
         Ok(None) => {}
@@ -145,7 +131,7 @@ async fn notify_if_update_found(app: &AppHandle) {
 }
 
 fn skipped_version(app: &AppHandle) -> String {
-    app.state::<crate::App>()
+    app.state::<crate::app_state::App>()
         .settings
         .lock()
         .unwrap()

@@ -2,20 +2,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { cancelStream, sendToClaude } from "@/ipc/commands";
 import { onEvent } from "@/ipc/events";
 import type { ChatMessageDto } from "@/ipc/types";
+import type { RequestOptions } from "@/lib/chats";
+import { internalError, type AppError } from "@/lib/errors";
 import { advanceReveal, sliceRevealed } from "@/lib/stream-reveal";
 
 export interface ClaudeStreams {
   partial: Record<string, string>;
   streaming: Record<string, boolean>;
   startedAt: Record<string, number>;
-  error: Record<string, string | null>;
+  error: Record<string, AppError | null>;
   send: (
     chatId: string,
     messages: ChatMessageDto[],
     system: string,
-    thinking: boolean,
     model: string,
-    webSearch: boolean,
+    options: RequestOptions,
   ) => Promise<void>;
   stop: (chatId: string) => void;
 }
@@ -26,7 +27,7 @@ export function useClaudeStream(
   const [partial, setPartial] = useState<Record<string, string>>({});
   const [streaming, setStreaming] = useState<Record<string, boolean>>({});
   const [startedAt, setStartedAt] = useState<Record<string, number>>({});
-  const [error, setError] = useState<Record<string, string | null>>({});
+  const [error, setError] = useState<Record<string, AppError | null>>({});
 
   const buffers = useRef<Map<string, string>>(new Map());
   const revealed = useRef<Map<string, number>>(new Map());
@@ -105,11 +106,11 @@ export function useClaudeStream(
       active.current.delete(chatId);
       commitBufferAndFinish(chatId, true);
     });
-    const offError = onEvent("llm-error", ({ chatId, message }) => {
+    const offError = onEvent("llm-error", ({ chatId, code, message }) => {
       if (!active.current.has(chatId)) return;
       active.current.delete(chatId);
       commitBufferAndFinish(chatId, false);
-      setError((e) => ({ ...e, [chatId]: message }));
+      setError((e) => ({ ...e, [chatId]: { code, message } }));
     });
     return () => {
       offDelta();
@@ -136,7 +137,7 @@ export function useClaudeStream(
   );
 
   const failStream = useCallback(
-    (chatId: string, message: string) => {
+    (chatId: string, message: AppError) => {
       active.current.delete(chatId);
       dropPartial(chatId);
       setStreaming((s) => ({ ...s, [chatId]: false }));
@@ -150,15 +151,14 @@ export function useClaudeStream(
       chatId: string,
       messages: ChatMessageDto[],
       system: string,
-      thinking: boolean,
       model: string,
-      webSearch: boolean,
+      options: RequestOptions,
     ) => {
       beginStream(chatId);
       try {
-        await sendToClaude(messages, chatId, system, thinking, model, webSearch);
+        await sendToClaude(messages, chatId, system, model, options);
       } catch (e) {
-        failStream(chatId, String(e));
+        failStream(chatId, internalError(String(e)));
       }
     },
     [beginStream, failStream],

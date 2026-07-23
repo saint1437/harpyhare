@@ -1,8 +1,9 @@
 import type { LatestReleaseState } from "@/hooks/useLatestRelease";
+import { CTA_STARS } from "@/lib/stars";
 import { DownloadButton } from "./DownloadButton";
 import { HareScene } from "./HareScene";
 import { Bush } from "./Scenery";
-import { CTA_STARS, StarField } from "./Sky";
+import { StarField } from "./Sky";
 import { VersionNote } from "./VersionNote";
 
 export function CtaSection({ state }: { state: LatestReleaseState }) {

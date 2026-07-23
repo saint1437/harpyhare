@@ -15,6 +15,7 @@ import {
   deserializeChats,
   serializeChats,
   type Chat,
+  type ChatPatch,
 } from "@/lib/chats";
 import {
   acceptedNewAttachments,
@@ -140,14 +141,8 @@ export interface ChatsApi {
   active: Chat;
   newChat: () => void;
   removeChat: (id: string) => void;
-  setChatPreset: (id: string, presetId: string) => void;
-  setChatThinking: (id: string, enabled: boolean) => void;
-  setChatModel: (id: string, model: string) => void;
-  setChatWebSearch: (id: string, enabled: boolean) => void;
-  setChatContext: (id: string, context: string) => void;
-  setChatLibraryDocs: (id: string, libraryDocIds: string[]) => void;
+  patchChat: (id: string, patch: ChatPatch) => void;
   selectChat: (id: string) => void;
-  setDraft: (id: string, draft: string, draftAttachments: Attachment[]) => void;
   addDraftAttachments: (id: string, items: DataTransferItemList) => Promise<void>;
   removeDraftAttachment: (id: string, index: number) => void;
   appendUserMessage: (id: string, text: string, images: ImagePayload[]) => void;
@@ -155,7 +150,6 @@ export interface ChatsApi {
   removeMessage: (id: string, index: number) => void;
   truncateMessages: (id: string, count: number) => void;
   clearMessages: (id: string) => void;
-  setChatUsage: (id: string, lastInputTokens: number) => void;
 }
 
 export function useChats(): ChatsApi {
@@ -195,44 +189,9 @@ export function useChats(): ChatsApi {
     });
   }, []);
 
-  const setChatPreset = useCallback(
-    (id: string, presetId: string) => {
-      patch(id, (c) => ({ ...c, presetId }));
-    },
-    [patch],
-  );
-
-  const setChatThinking = useCallback(
-    (id: string, enabled: boolean) => {
-      patch(id, (c) => ({ ...c, thinkingEnabled: enabled }));
-    },
-    [patch],
-  );
-
-  const setChatModel = useCallback(
-    (id: string, model: string) => {
-      patch(id, (c) => ({ ...c, model }));
-    },
-    [patch],
-  );
-
-  const setChatWebSearch = useCallback(
-    (id: string, enabled: boolean) => {
-      patch(id, (c) => ({ ...c, webSearch: enabled }));
-    },
-    [patch],
-  );
-
-  const setChatContext = useCallback(
-    (id: string, context: string) => {
-      patch(id, (c) => ({ ...c, context }));
-    },
-    [patch],
-  );
-
-  const setChatLibraryDocs = useCallback(
-    (id: string, libraryDocIds: string[]) => {
-      patch(id, (c) => ({ ...c, libraryDocIds }));
+  const patchChat = useCallback(
+    (id: string, fields: ChatPatch) => {
+      patch(id, (c) => ({ ...c, ...fields }));
     },
     [patch],
   );
@@ -240,13 +199,6 @@ export function useChats(): ChatsApi {
   const selectChat = useCallback((id: string) => {
     setActiveId(id);
   }, []);
-
-  const setDraft = useCallback(
-    (id: string, draft: string, draftAttachments: Attachment[]) => {
-      patch(id, (c) => ({ ...c, draft, draftAttachments }));
-    },
-    [patch],
-  );
 
   const draftAttachmentCount = useCallback((id: string): number => {
     let count = 0;
@@ -338,13 +290,6 @@ export function useChats(): ChatsApi {
     [patch],
   );
 
-  const setChatUsage = useCallback(
-    (id: string, lastInputTokens: number) => {
-      patch(id, (c) => ({ ...c, lastInputTokens }));
-    },
-    [patch],
-  );
-
   const active = chats.find((c) => c.id === effectiveActiveId) ?? chats[0] ?? EMPTY_CHAT;
 
   return {
@@ -353,14 +298,8 @@ export function useChats(): ChatsApi {
     active,
     newChat,
     removeChat,
-    setChatPreset,
-    setChatThinking,
-    setChatModel,
-    setChatWebSearch,
-    setChatContext,
-    setChatLibraryDocs,
+    patchChat,
     selectChat,
-    setDraft,
     addDraftAttachments,
     removeDraftAttachment,
     appendUserMessage,
@@ -368,6 +307,5 @@ export function useChats(): ChatsApi {
     removeMessage,
     truncateMessages,
     clearMessages,
-    setChatUsage,
   };
 }

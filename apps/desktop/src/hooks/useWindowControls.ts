@@ -1,8 +1,8 @@
 import { useEffect } from "react";
-import { moveWindowBy } from "@/ipc/commands";
 import { onEvent } from "@/ipc/events";
-import { moveDelta } from "@/lib/window-controls";
-import { resizeKeyFromCode, type WindowDimension } from "@/lib/window-size";
+import { matchesModifier, parseModifier } from "@/lib/hotkey-modifier";
+import { OPACITY_MODIFIER } from "@/lib/hotkeys";
+import { type WindowDimension } from "@/lib/window-size";
 
 const KEYDOWN_EVENT = "keydown";
 const OPACITY_UP_CODE = "Equal";
@@ -11,20 +11,16 @@ const SEND_CODE = "Enter";
 
 type ResizeKeyHandler = (dim: WindowDimension, dir: 1 | -1) => void;
 
+const OPACITY_MODIFIER_STATE = parseModifier(OPACITY_MODIFIER);
+
 function opacityStepFromEvent(e: KeyboardEvent): 1 | -1 | null {
-  if (!(e.metaKey && e.shiftKey)) return null;
+  if (!matchesModifier(e, OPACITY_MODIFIER_STATE)) return null;
   if (e.code === OPACITY_UP_CODE) return 1;
   if (e.code === OPACITY_DOWN_CODE) return -1;
   return null;
 }
 
-function resizeKeyFromEvent(e: KeyboardEvent): { dim: WindowDimension; dir: 1 | -1 } | null {
-  if (!((e.metaKey || e.ctrlKey) && e.shiftKey)) return null;
-  return resizeKeyFromCode(e.code);
-}
-
 export function useWindowControls(
-  moveStep: number,
   onSend: () => void,
   onOpacityStep: (dir: 1 | -1) => void,
   onResizeKey: ResizeKeyHandler,
@@ -45,27 +41,14 @@ export function useWindowControls(
         onOpacityStep(opacityDir);
         return;
       }
-      const resizeKey = resizeKeyFromEvent(e);
-      if (resizeKey) {
-        e.preventDefault();
-        onResizeKey(resizeKey.dim, resizeKey.dir);
-        return;
-      }
-      if (!(e.metaKey || e.ctrlKey)) return;
-      if (e.code === SEND_CODE) {
+      if ((e.metaKey || e.ctrlKey) && e.code === SEND_CODE) {
         e.preventDefault();
         onSend();
-        return;
-      }
-      const delta = moveDelta(e.code, moveStep);
-      if (delta) {
-        e.preventDefault();
-        void moveWindowBy(delta.dx, delta.dy);
       }
     };
     document.addEventListener(KEYDOWN_EVENT, onKey);
     return () => {
       document.removeEventListener(KEYDOWN_EVENT, onKey);
     };
-  }, [moveStep, onSend, onOpacityStep, onResizeKey]);
+  }, [onSend, onOpacityStep]);
 }

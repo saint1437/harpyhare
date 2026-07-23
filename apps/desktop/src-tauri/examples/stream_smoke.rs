@@ -1,4 +1,5 @@
 use futures_util::StreamExt;
+use harpyhare_lib::stt::SttEngine;
 
 const DOTENV_RELATIVE_PATH: &str = "../.env";
 const GROQ_KEY_ENV: &str = "GROQ_API_KEY";
@@ -38,9 +39,11 @@ fn spawn_realtime_tone_producer(tx: tokio::sync::mpsc::Sender<ChunkResult>) {
     });
 }
 
-fn streaming_wav_body(rx: tokio::sync::mpsc::Receiver<ChunkResult>) -> reqwest::Body {
+fn streaming_wav_body(
+    rx: tokio::sync::mpsc::Receiver<ChunkResult>,
+) -> harpyhare_lib::stt::AudioChunkStream {
     let header = harpyhare_lib::audio::wav_header_streaming().to_vec();
-    reqwest::Body::wrap_stream(
+    Box::pin(
         futures_util::stream::iter([Ok::<Vec<u8>, std::io::Error>(header)]).chain(
             futures_util::stream::unfold(rx, |mut rx| async move {
                 rx.recv().await.map(|item| (item, rx))

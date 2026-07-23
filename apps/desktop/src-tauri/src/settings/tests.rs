@@ -29,8 +29,7 @@ fn defaults_match_spec() {
 
 #[test]
 fn clamp_resets_unknown_identity_id() {
-    let mut s = Settings::default();
-    s.identity_id = "not-a-real-identity".into();
+    let mut s = Settings { identity_id: "not-a-real-identity".into(), ..Default::default() };
     s.clamp();
     assert_eq!(s.identity_id, "");
     s.identity_id = "obsidian".into();
@@ -59,8 +58,7 @@ fn load_missing_buffer_fields_default() {
 
 #[test]
 fn clamp_limits_buffer_seconds() {
-    let mut s = Settings::default();
-    s.buffer_seconds = 1;
+    let mut s = Settings { buffer_seconds: 1, ..Default::default() };
     s.clamp();
     assert_eq!(s.buffer_seconds, 4);
     s.buffer_seconds = 120;
@@ -70,9 +68,8 @@ fn clamp_limits_buffer_seconds() {
 
 #[test]
 fn clamp_limits_teleprompter_speed_and_font() {
-    let mut s = Settings::default();
-    s.teleprompter_speed = 5.0;
-    s.teleprompter_font_size = 4.0;
+    let mut s =
+        Settings { teleprompter_speed: 5.0, teleprompter_font_size: 4.0, ..Default::default() };
     s.clamp();
     assert_eq!(s.teleprompter_speed, 10.0);
     assert_eq!(s.teleprompter_font_size, 20.0);
@@ -98,8 +95,7 @@ fn load_missing_teleprompter_fields_default() {
 
 #[test]
 fn clamp_limits_chat_font_size() {
-    let mut s = Settings::default();
-    s.chat_font_size = 5.0;
+    let mut s = Settings { chat_font_size: 5.0, ..Default::default() };
     s.clamp();
     assert_eq!(s.chat_font_size, 10.0);
     s.chat_font_size = 99.0;
@@ -112,9 +108,7 @@ fn clamp_limits_chat_font_size() {
 
 #[test]
 fn clamp_limits_window_size() {
-    let mut s = Settings::default();
-    s.window_width = 100.0;
-    s.window_height = 100.0;
+    let mut s = Settings { window_width: 100.0, window_height: 100.0, ..Default::default() };
     s.clamp();
     assert_eq!(s.window_width, 300.0);
     assert_eq!(s.window_height, 520.0);
@@ -146,8 +140,7 @@ fn load_missing_window_size_defaults() {
 
 #[test]
 fn clamp_limits_scroll_step() {
-    let mut s = Settings::default();
-    s.scroll_step = 1;
+    let mut s = Settings { scroll_step: 1, ..Default::default() };
     s.clamp();
     assert_eq!(s.scroll_step, 10);
     s.scroll_step = 100_000;
@@ -157,8 +150,7 @@ fn clamp_limits_scroll_step() {
 
 #[test]
 fn clamp_limits_resize_step() {
-    let mut s = Settings::default();
-    s.resize_step = 1000;
+    let mut s = Settings { resize_step: 1000, ..Default::default() };
     s.clamp();
     assert_eq!(s.resize_step, 200);
     s.resize_step = 0;
@@ -167,9 +159,22 @@ fn clamp_limits_resize_step() {
 }
 
 #[test]
+fn clamp_keeps_offered_modifier_combos_and_resets_the_rest() {
+    let mut s = Settings {
+        move_modifier: "Alt+Shift".into(),
+        resize_modifier: "Cmd+Ctrl".into(),
+        scroll_modifier: String::new(),
+        ..Default::default()
+    };
+    s.clamp();
+    assert_eq!(s.move_modifier, "Alt+Shift");
+    assert_eq!(s.resize_modifier, defaults::RESIZE_MODIFIER);
+    assert_eq!(s.scroll_modifier, defaults::SCROLL_MODIFIER);
+}
+
+#[test]
 fn clamp_resets_unknown_theme() {
-    let mut s = Settings::default();
-    s.theme = "neon".into();
+    let mut s = Settings { theme: "neon".into(), ..Default::default() };
     s.clamp();
     assert_eq!(s.theme, "gray");
     s.theme = "black".into();
@@ -216,8 +221,7 @@ fn env_fallback_fills_only_empty_keys() {
 
 #[test]
 fn env_fallback_skipped_entirely_when_access_token_set() {
-    let mut s = Settings::default();
-    s.access_token = "itk_x".into();
+    let mut s = Settings { access_token: "itk_x".into(), ..Default::default() };
     s.apply_key_fallback(Some("env-ant".into()), Some("env-groq".into()));
     assert_eq!(s.anthropic_api_key, "");
     assert_eq!(s.groq_api_key, "");
@@ -234,8 +238,7 @@ fn load_missing_access_token_defaults_empty() {
 
 #[test]
 fn env_fallback_does_not_override_saved_keys() {
-    let mut s = Settings::default();
-    s.anthropic_api_key = "saved".into();
+    let mut s = Settings { anthropic_api_key: "saved".into(), ..Default::default() };
     s.apply_key_fallback(Some("env-ant".into()), Some("env-groq".into()));
     assert_eq!(s.anthropic_api_key, "saved");
     assert_eq!(s.groq_api_key, "env-groq");
@@ -251,9 +254,7 @@ fn env_fallback_ignores_none_and_blank() {
 
 #[test]
 fn clamp_limits_opacity_and_step() {
-    let mut s = Settings::default();
-    s.window_opacity = 0.05;
-    s.move_step = 1000;
+    let mut s = Settings { window_opacity: 0.05, move_step: 1000, ..Default::default() };
     s.clamp();
     assert_eq!(s.window_opacity, 0.2);
     assert_eq!(s.move_step, 200);
@@ -269,14 +270,16 @@ fn save_load_roundtrip_with_600_perms() {
     use std::os::unix::fs::PermissionsExt;
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("settings.json");
-    let mut s = Settings::default();
-    s.groq_api_key = "gsk_test".into();
-    s.chat_font_size = 15.0;
-    s.window_opacity = 0.5;
-    s.auto_send = true;
-    s.auto_preview_html = false;
-    s.toggle_hotkey = "F10".into();
-    s.prompt_presets = vec![test_preset()];
+    let s = Settings {
+        groq_api_key: "gsk_test".into(),
+        chat_font_size: 15.0,
+        window_opacity: 0.5,
+        auto_send: true,
+        auto_preview_html: false,
+        toggle_hotkey: "F10".into(),
+        prompt_presets: vec![test_preset()],
+        ..Default::default()
+    };
     s.save(&path).unwrap();
     let mode = std::fs::metadata(&path).unwrap().permissions().mode();
     assert_eq!(mode & 0o777, 0o600);
@@ -356,4 +359,56 @@ fn load_old_system_prompt_is_ignored() {
     std::fs::write(&path, r#"{"system_prompt":"старое","auto_send":false}"#).unwrap();
     let s = Settings::load(&path).unwrap();
     assert!(s.prompt_presets.is_empty());
+}
+
+#[test]
+fn bounds_clamp_keeps_value_inside_range() {
+    let b = Bounds { default: 5.0, min: 1.0, max: 10.0 };
+    assert_eq!(b.clamp(7.0), 7.0);
+    assert_eq!(b.clamp(0.5), 1.0);
+    assert_eq!(b.clamp(99.0), 10.0);
+}
+
+#[test]
+fn bounds_clamp_falls_back_to_default_on_non_finite() {
+    let b = Bounds { default: 5.0, min: 1.0, max: 10.0 };
+    assert_eq!(b.clamp(f64::NAN), 5.0);
+    assert_eq!(b.clamp(f64::INFINITY), 5.0);
+    assert_eq!(b.clamp(f64::NEG_INFINITY), 5.0);
+}
+
+#[test]
+fn every_bound_default_sits_inside_its_own_range() {
+    let checked_f64 = [
+        limits::window::WIDTH,
+        limits::window::HEIGHT,
+        limits::window::OPACITY,
+        limits::chat::FONT_SIZE,
+        limits::teleprompter::SPEED,
+        limits::teleprompter::FONT_SIZE,
+    ];
+    for b in checked_f64 {
+        assert!(b.min <= b.default && b.default <= b.max, "нарушен диапазон: {b:?}");
+    }
+    let checked_u32 = [
+        limits::window::MOVE_STEP,
+        limits::window::RESIZE_STEP,
+        limits::chat::SCROLL_STEP,
+        limits::capture::BUFFER_SECONDS,
+    ];
+    for b in checked_u32 {
+        assert!(b.min <= b.default && b.default <= b.max, "нарушен диапазон: {b:?}");
+    }
+}
+
+#[test]
+fn defaults_struct_uses_the_registry_values() {
+    let s = Settings::default();
+    assert_eq!(s.window_width, limits::window::WIDTH.default);
+    assert_eq!(s.window_height, limits::window::HEIGHT.default);
+    assert_eq!(s.window_opacity, limits::window::OPACITY.default);
+    assert_eq!(s.chat_font_size, limits::chat::FONT_SIZE.default);
+    assert_eq!(s.scroll_step, limits::chat::SCROLL_STEP.default);
+    assert_eq!(s.teleprompter_speed, limits::teleprompter::SPEED.default);
+    assert_eq!(s.buffer_seconds, limits::capture::BUFFER_SECONDS.default);
 }

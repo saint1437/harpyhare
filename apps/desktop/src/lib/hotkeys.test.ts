@@ -1,12 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { comboTokens, formatCombo, hotkeyGroups } from "./hotkeys";
 
-const CFG = { ptt: "F9", toggleWindow: "Cmd+Shift+H", teleprompter: "F10" };
+const CFG = {
+  ptt: "F9",
+  toggleWindow: "Cmd+Shift+H",
+  teleprompter: "F10",
+  moveWindow: "Cmd",
+  resizeWindow: "Cmd+Shift",
+  scrollChat: "Alt",
+};
 
 describe("formatCombo", () => {
   it("сворачивает модификаторы в mac-символы", () => {
     expect(formatCombo("Cmd+Shift+H")).toBe("⌘⇧H");
     expect(formatCombo("Ctrl+Alt+P")).toBe("⌃⌥P");
+  });
+
+  it("сворачивает спеку из одних модификаторов, без клавиши на конце", () => {
+    expect(formatCombo("Cmd")).toBe("⌘");
+    expect(formatCombo("Cmd+Shift")).toBe("⌘⇧");
+    expect(formatCombo("Alt")).toBe("⌥");
+    expect(formatCombo("Ctrl+Shift")).toBe("⌃⇧");
   });
 
   it("не трогает одиночные клавиши", () => {
@@ -42,6 +56,9 @@ describe("hotkeyGroups", () => {
     expect(combos).toContain("F9");
     expect(combos).toContain("⌘⇧H");
     expect(combos).toContain("F10");
+    expect(combos).toContain("⌘ ←→↑↓");
+    expect(combos).toContain("⌘⇧ ←→↑↓");
+    expect(combos).toContain("⌥ ↑↓");
   });
 
   it("каждая группа названа и непуста", () => {

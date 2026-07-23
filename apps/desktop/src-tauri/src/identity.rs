@@ -19,6 +19,7 @@ const CFBUNDLE_ICON_FILE_KEY: &str = "CFBundleIconFile";
 const TMP_FILE_SUFFIX: &str = "identity-tmp";
 const CODESIGN_COMMAND: &str = "codesign";
 const TOUCH_COMMAND: &str = "/usr/bin/touch";
+const LSREGISTER_COMMAND: &str = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
 pub const PRE_RELAUNCH_RENDER_DELAY: Duration = Duration::from_millis(300);
 const ERR_DEV_MODE: &str =
     "Смена облика работает только в собранном .app (npm run tauri build), не в dev-режиме";
@@ -62,7 +63,7 @@ const ORIGINAL: IdentityDef = IdentityDef {
     png: include_bytes!("../icons/icon.png"),
 };
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct IdentityInfo {
     pub id: String,
@@ -186,6 +187,23 @@ fn bump_bundle_mtime(bundle_dir: &Path) {
         .output();
 }
 
+fn reregister_with_launch_services(bundle_dir: &Path) {
+    let result = std::process::Command::new(LSREGISTER_COMMAND)
+        .arg("-f")
+        .arg(bundle_dir)
+        .output();
+    match result {
+        Ok(out) if !out.status.success() => {
+            eprintln!(
+                "{LOG_TAG} lsregister: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        Err(e) => eprintln!("{LOG_TAG} lsregister недоступен: {e}"),
+        _ => {}
+    }
+}
+
 fn apply_sync(id: &str) -> Result<PathBuf, String> {
     let def = find(id).ok_or_else(|| format!("Неизвестный облик: {id}"))?;
     let (bundle_dir, contents_dir, macos_dir) = bundle_dirs()?;
@@ -214,6 +232,7 @@ fn apply_sync(id: &str) -> Result<PathBuf, String> {
 
     resign_ad_hoc(&bundle_dir);
     bump_bundle_mtime(&bundle_dir);
+    reregister_with_launch_services(&bundle_dir);
     Ok(new_exe_path)
 }
 

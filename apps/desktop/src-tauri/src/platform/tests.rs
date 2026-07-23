@@ -1,0 +1,46 @@
+use super::*;
+use crate::settings::{self, MODIFIER_COMBOS};
+
+#[test]
+fn every_offered_combo_parses_to_a_distinct_mask() {
+    let mut seen = Vec::new();
+    for combo in MODIFIER_COMBOS {
+        let mask = modifier_mask(combo);
+        assert!(!mask.is_empty(), "комбо {combo:?} не разобрано в флаги");
+        assert!(!seen.contains(&mask), "комбо {combo:?} дублирует уже занятые флаги");
+        seen.push(mask);
+    }
+}
+
+#[test]
+fn unknown_token_yields_empty_mask() {
+    assert!(modifier_mask("Fn").is_empty());
+    assert!(modifier_mask("").is_empty());
+}
+
+#[test]
+fn combo_spec_merges_flags_of_its_parts() {
+    assert_eq!(
+        modifier_mask("Cmd+Shift"),
+        modifier_mask("Cmd") | modifier_mask("Shift")
+    );
+}
+
+#[test]
+fn every_modifier_default_is_offered_by_the_ui() {
+    for spec in [
+        settings::defaults::MOVE_MODIFIER,
+        settings::defaults::RESIZE_MODIFIER,
+        settings::defaults::SCROLL_MODIFIER,
+    ] {
+        assert!(MODIFIER_COMBOS.contains(&spec), "дефолт {spec:?} не предлагается в UI");
+    }
+}
+
+#[test]
+fn only_web_urls_are_openable() {
+    assert!(is_web_url("https://example.com"));
+    assert!(is_web_url("http://example.com"));
+    assert!(!is_web_url("file:///etc/passwd"));
+    assert!(!is_web_url("smb://server/share"));
+}

@@ -13,7 +13,14 @@ export default defineConfig(async () => ({
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
   },
-  build: {},
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+        launcher: path.resolve(__dirname, "launcher.html"),
+      },
+    },
+  },
   clearScreen: false,
   server: {
     port: DEV_SERVER_PORT,

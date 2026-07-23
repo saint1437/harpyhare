@@ -4,7 +4,6 @@ import {
   applyOpacity,
   applyTheme,
   isDraggableChromeTarget,
-  moveDelta,
   stepOpacity,
 } from "./window-controls";
 
@@ -30,18 +29,6 @@ describe("isDraggableChromeTarget", () => {
   });
   it("null или не-HTMLElement → не тащим", () => {
     expect(isDraggableChromeTarget(null)).toBe(false);
-  });
-});
-
-describe("moveDelta", () => {
-  it("стрелки → сдвиг на шаг по нужной оси", () => {
-    expect(moveDelta("ArrowLeft", 20)).toEqual({ dx: -20, dy: 0 });
-    expect(moveDelta("ArrowRight", 20)).toEqual({ dx: 20, dy: 0 });
-    expect(moveDelta("ArrowUp", 35)).toEqual({ dx: 0, dy: -35 });
-    expect(moveDelta("ArrowDown", 35)).toEqual({ dx: 0, dy: 35 });
-  });
-  it("не-стрелка → null", () => {
-    expect(moveDelta("KeyV", 20)).toBeNull();
   });
 });
 

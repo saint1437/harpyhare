@@ -8,17 +8,22 @@ export interface HotkeyGroup {
   hints: HotkeyHint[];
 }
 
+export const OPACITY_MODIFIER = "Cmd+Shift";
+
 export interface HotkeyConfig {
   ptt: string;
   toggleWindow: string;
   teleprompter: string;
+  moveWindow: string;
+  resizeWindow: string;
+  scrollChat: string;
 }
 
 const COMBO_REPLACEMENTS: [RegExp, string][] = [
-  [/Cmd\+|Command\+|Super\+/gi, "⌘"],
-  [/Shift\+/gi, "⇧"],
-  [/Alt\+|Option\+/gi, "⌥"],
-  [/Ctrl\+|Control\+/gi, "⌃"],
+  [/(?:Command|Cmd|Super)\+?/gi, "⌘"],
+  [/Shift\+?/gi, "⇧"],
+  [/(?:Option|Alt)\+?/gi, "⌥"],
+  [/(?:Control|Ctrl)\+?/gi, "⌃"],
 ];
 
 export function formatCombo(combo: string): string {
@@ -91,15 +96,15 @@ export function hotkeyGroups(cfg: HotkeyConfig): HotkeyGroup[] {
       title: "Окно",
       hints: [
         { combo: formatCombo(cfg.toggleWindow), label: "скрыть / показать" },
-        { combo: "⌘ ←→↑↓", label: "передвинуть" },
-        { combo: "⌘⇧ ←→↑↓", label: "изменить размер" },
-        { combo: "⌘⇧ + −", label: "прозрачность" },
+        { combo: `${formatCombo(cfg.moveWindow)} ←→↑↓`, label: "передвинуть" },
+        { combo: `${formatCombo(cfg.resizeWindow)} ←→↑↓`, label: "изменить размер" },
+        { combo: `${formatCombo(OPACITY_MODIFIER)} + −`, label: "прозрачность" },
       ],
     },
     {
       title: "Чат",
       hints: [
-        { combo: "⌥ ↑↓", label: "скролл" },
+        { combo: `${formatCombo(cfg.scrollChat)} ↑↓`, label: "скролл" },
         { combo: formatCombo(cfg.teleprompter), label: "суфлёр" },
       ],
     },
