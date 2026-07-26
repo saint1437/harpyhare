@@ -9,6 +9,7 @@ pub mod context_import;
 pub mod error;
 pub mod events;
 pub mod hotkey;
+pub mod hotkeys;
 pub mod identity;
 pub mod llm;
 pub mod platform;

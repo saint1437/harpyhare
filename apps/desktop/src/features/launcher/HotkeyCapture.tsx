@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { hotkeyFromEvent } from "@/lib/hotkey-capture";
+import { hotkeyFromEvent, isModifierOnlyCode } from "@/lib/hotkey-capture";
+import { formatCombo } from "@/lib/hotkeys";
 
 export interface HotkeyCaptureProps {
   value: string;
@@ -22,6 +23,7 @@ export function HotkeyCapture({ value, onChange }: HotkeyCaptureProps) {
         setCapturing(false);
         return;
       }
+      if (isModifierOnlyCode(e.code)) return;
       const hotkey = hotkeyFromEvent(e);
       if (hotkey !== null) {
         onChange(hotkey);
@@ -38,12 +40,13 @@ export function HotkeyCapture({ value, onChange }: HotkeyCaptureProps) {
     <Button
       type="button"
       variant="outline"
+      size="sm"
       onClick={() => {
         setCapturing((c) => !c);
       }}
       className="w-full justify-start font-mono"
     >
-      {capturing ? "Нажмите клавиши…" : value || "Не задано"}
+      {capturing ? "Жду сочетание · Esc отменит" : formatCombo(value) || "Не назначен"}
     </Button>
   );
 }

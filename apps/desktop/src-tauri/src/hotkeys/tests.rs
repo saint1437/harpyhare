@@ -1,0 +1,160 @@
+use super::*;
+
+fn binding(action: &str, combo: &str) -> HotkeyBinding {
+    HotkeyBinding { action: action.to_string(), combo: combo.to_string() }
+}
+
+#[test]
+fn registry_ids_unique_and_defaults_parseable() {
+    let mut ids: Vec<&str> = HOTKEY_ACTIONS.iter().map(|a| a.id).collect();
+    let count = ids.len();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), count, "id действий должны быть уникальны");
+
+    for a in HOTKEY_ACTIONS {
+        match a.kind {
+            HotkeyKind::Combo => assert!(
+                crate::hotkey::parse_hotkey(a.default_combo).is_some(),
+                "дефолт {} не разбирается: {}",
+                a.id,
+                a.default_combo
+            ),
+            _ => assert!(
+                crate::settings::MODIFIER_COMBOS.contains(&a.default_combo),
+                "модификатор {} не из реестра: {}",
+                a.id,
+                a.default_combo
+            ),
+        }
+    }
+}
+
+#[test]
+fn registry_defaults_do_not_conflict() {
+    for a in HOTKEY_ACTIONS {
+        for b in HOTKEY_ACTIONS {
+            assert!(
+                !conflict(a.id, a.default_combo, b.id, b.default_combo),
+                "дефолты конфликтуют: {} и {}",
+                a.id,
+                b.id
+            );
+        }
+    }
+}
+
+#[test]
+fn effective_falls_back_to_default_and_prefers_last_binding() {
+    assert_eq!(effective(&[], ACTION_RECORD), "F9");
+    assert_eq!(effective(&[binding(ACTION_RECORD, "Cmd+Shift+X")], ACTION_RECORD), "Cmd+Shift+X");
+    let twice = vec![binding(ACTION_RECORD, "F8"), binding(ACTION_RECORD, "F7")];
+    assert_eq!(effective(&twice, ACTION_RECORD), "F7");
+}
+
+#[test]
+fn combo_conflict_ignores_modifier_order_and_case() {
+    assert!(conflict(ACTION_RECORD, "Cmd+Shift+X", ACTION_SEND, "Shift+Cmd+X"));
+    assert!(conflict(ACTION_RECORD, "cmd+x", ACTION_SEND, "Cmd+X"));
+    assert!(conflict(ACTION_RECORD, "Cmd+KeyX", ACTION_SEND, "Cmd+X"));
+    assert!(!conflict(ACTION_RECORD, "Cmd+X", ACTION_SEND, "Cmd+Y"));
+}
+
+#[test]
+fn arrow_and_plus_minus_families_share_modifier_without_conflict() {
+    assert!(!conflict(ACTION_RESIZE_WINDOW, "Cmd+Shift", ACTION_OPACITY, "Cmd+Shift"));
+    assert!(conflict(ACTION_RESIZE_WINDOW, "Cmd+Shift", ACTION_SCROLL_CHAT, "Cmd+Shift"));
+}
+
+#[test]
+fn combo_conflicts_with_family_it_falls_into() {
+    assert!(conflict(ACTION_SEND, "Cmd+ArrowUp", ACTION_MOVE_WINDOW, "Cmd"));
+    assert!(conflict(ACTION_SEND, "Cmd+Shift+Minus", ACTION_OPACITY, "Cmd+Shift"));
+    assert!(!conflict(ACTION_SEND, "Cmd+Enter", ACTION_MOVE_WINDOW, "Cmd"));
+}
+
+#[test]
+fn transient_scopes_of_recording_and_teleprompter_may_share_a_combo() {
+    assert!(!conflict(ACTION_CANCEL_RECORDING, "Escape", ACTION_TELEPROMPTER_CLOSE, "Escape"));
+    assert!(conflict(ACTION_CANCEL_RECORDING, "Escape", ACTION_TOGGLE_WINDOW, "Escape"));
+    assert!(conflict(ACTION_TELEPROMPTER_CLOSE, "Space", ACTION_SEND, "Space"));
+}
+
+#[test]
+fn empty_combo_means_unassigned_and_never_conflicts() {
+    assert!(!conflict(ACTION_RECORD, "", ACTION_SEND, ""));
+    assert!(!conflict(ACTION_RECORD, "", ACTION_SEND, "Cmd+Enter"));
+}
+
+#[test]
+fn normalize_drops_unknown_actions_and_duplicate_entries() {
+    let mut bindings = vec![
+        binding("нет такого", "Cmd+Q"),
+        binding(ACTION_RECORD, "F8"),
+        binding(ACTION_RECORD, "F7"),
+    ];
+    normalize(&mut bindings);
+    assert_eq!(bindings, vec![binding(ACTION_RECORD, "F7")]);
+}
+
+#[test]
+fn normalize_gives_a_combo_to_the_latest_claimant() {
+    let mut bindings =
+        vec![binding(ACTION_TOGGLE_WINDOW, "Cmd+Shift+X"), binding(ACTION_RECORD, "Cmd+Shift+X")];
+    normalize(&mut bindings);
+    assert_eq!(effective(&bindings, ACTION_RECORD), "Cmd+Shift+X");
+    assert_eq!(effective(&bindings, ACTION_TOGGLE_WINDOW), "", "прежний владелец остаётся без хоткея");
+}
+
+#[test]
+fn normalize_takes_a_combo_away_from_an_untouched_default() {
+    let mut bindings = vec![binding(ACTION_SEND, "F10")];
+    normalize(&mut bindings);
+    assert_eq!(effective(&bindings, ACTION_SEND), "F10");
+    assert_eq!(
+        effective(&bindings, ACTION_TELEPROMPTER),
+        "",
+        "дефолтный владелец F10 теряет сочетание"
+    );
+}
+
+#[test]
+fn normalize_leaves_untouched_defaults_out_of_the_list() {
+    let mut bindings = vec![binding(ACTION_RECORD, "F9")];
+    normalize(&mut bindings);
+    assert!(bindings.is_empty(), "совпадающее с дефолтом не хранится");
+}
+
+#[test]
+fn migration_moves_legacy_fields_and_skips_untouched_defaults() {
+    let mut raw = serde_json::json!({
+        "hotkey": "Cmd+Shift+X",
+        "toggle_hotkey": "Cmd+Shift+H",
+        "screenshot_hotkey": "Cmd+Shift+A",
+        "scroll_modifier": "Alt",
+        "theme": "black",
+    });
+    migrate_legacy_fields(&mut raw);
+    let object = raw.as_object().unwrap();
+    assert!(!object.contains_key("hotkey"), "старые поля убираются из json");
+    assert_eq!(object.get("theme").and_then(|v| v.as_str()), Some("black"));
+
+    let bindings: Vec<HotkeyBinding> =
+        serde_json::from_value(object.get("hotkeys").cloned().unwrap()).unwrap();
+    assert_eq!(
+        bindings,
+        vec![binding(ACTION_RECORD, "Cmd+Shift+X"), binding(ACTION_SCREENSHOT, "Cmd+Shift+A")]
+    );
+}
+
+#[test]
+fn migration_keeps_existing_bindings_untouched() {
+    let mut raw = serde_json::json!({
+        "hotkey": "F5",
+        "hotkeys": [{ "action": ACTION_RECORD, "combo": "F6" }],
+    });
+    migrate_legacy_fields(&mut raw);
+    let bindings: Vec<HotkeyBinding> =
+        serde_json::from_value(raw.get("hotkeys").cloned().unwrap()).unwrap();
+    assert_eq!(bindings, vec![binding(ACTION_RECORD, "F6")]);
+}

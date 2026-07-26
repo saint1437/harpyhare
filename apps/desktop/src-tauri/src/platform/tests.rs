@@ -1,5 +1,5 @@
 use super::*;
-use crate::settings::{self, MODIFIER_COMBOS};
+use crate::settings::MODIFIER_COMBOS;
 
 #[test]
 fn every_offered_combo_parses_to_a_distinct_mask() {
@@ -28,12 +28,15 @@ fn combo_spec_merges_flags_of_its_parts() {
 
 #[test]
 fn every_modifier_default_is_offered_by_the_ui() {
-    for spec in [
-        settings::defaults::MOVE_MODIFIER,
-        settings::defaults::RESIZE_MODIFIER,
-        settings::defaults::SCROLL_MODIFIER,
-    ] {
-        assert!(MODIFIER_COMBOS.contains(&spec), "дефолт {spec:?} не предлагается в UI");
+    let families = crate::hotkeys::HOTKEY_ACTIONS
+        .iter()
+        .filter(|a| a.kind != crate::hotkeys::HotkeyKind::Combo);
+    for action in families {
+        assert!(
+            MODIFIER_COMBOS.contains(&action.default_combo),
+            "дефолт {:?} не предлагается в UI",
+            action.default_combo
+        );
     }
 }
 

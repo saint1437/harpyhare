@@ -114,7 +114,7 @@ pub fn on_ptt_pressed(app: &AppHandle) {
         }
     }
     let gen = st.recording_gen.fetch_add(1, Ordering::SeqCst) + 1;
-    hotkey::register_esc(app);
+    hotkey::register_cancel(app, &hotkey::cancel_combo(app));
     events::state_changed(app, state::RecorderState::Recording);
     spawn_max_duration_watchdog(app.clone(), gen);
     warm_up_llm_for_upcoming_request(app);
@@ -184,7 +184,7 @@ pub fn on_ptt_released(app: &AppHandle) {
         .lock()
         .unwrap()
         .on(state::Event::PttReleased { duration_secs: secs });
-    hotkey::unregister_esc(app);
+    hotkey::unregister_cancel(app, &hotkey::cancel_combo(app));
     finish_recording(app, action);
 }
 
@@ -194,7 +194,7 @@ pub fn on_cancel(app: &AppHandle) {
     if action == state::Action::Discard {
         cancel_stt_stream(app);
         stop_capture_discarding(&st);
-        hotkey::unregister_esc(app);
+        hotkey::unregister_cancel(app, &hotkey::cancel_combo(app));
         events::state_changed(app, state::RecorderState::Idle);
     }
 }
@@ -325,7 +325,7 @@ fn spawn_max_duration_watchdog(app: AppHandle, my_gen: u64) {
                     .lock()
                     .unwrap()
                     .on(state::Event::MaxDurationReached);
-                hotkey::unregister_esc(&app);
+                hotkey::unregister_cancel(&app, &hotkey::cancel_combo(&app));
                 finish_recording(&app, action);
                 break;
             }

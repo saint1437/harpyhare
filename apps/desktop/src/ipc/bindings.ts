@@ -45,9 +45,11 @@ export const commands = {
 };
 
 /* Constants */
+export const HOTKEY_ACTIONS = [{"defaultCombo":"F9","group":"Запись","hint":"Удерживайте, пока говорит собеседник.","id":"record","kind":"combo","label":"Записать системный звук","scope":"global"},{"defaultCombo":"Escape","group":"Запись","hint":"Слушается только пока идёт запись.","id":"cancel_recording","kind":"combo","label":"Отменить запись","scope":"recording"},{"defaultCombo":"Cmd+Enter","group":"Отправка","hint":"Работает из любого места окна, не только из поля ввода.","id":"send","kind":"combo","label":"Отправить","scope":"hud"},{"defaultCombo":"Cmd+Shift+S","group":"Отправка","hint":"Выделенная область уходит вложением в чат.","id":"screenshot","kind":"combo","label":"Снимок области экрана","scope":"global"},{"defaultCombo":"Cmd+Shift+H","group":"Окно","hint":"Работает, даже когда окно спрятано.","id":"toggle_window","kind":"combo","label":"Скрыть или показать","scope":"global"},{"defaultCombo":"Cmd","group":"Окно","hint":"Модификатор со стрелками.","id":"move_window","kind":"modifier_arrows","label":"Передвинуть","scope":"hud"},{"defaultCombo":"Cmd+Shift","group":"Окно","hint":"Модификатор со стрелками.","id":"resize_window","kind":"modifier_arrows","label":"Изменить размер","scope":"hud"},{"defaultCombo":"Cmd+Shift","group":"Окно","hint":"Модификатор с плюсом и минусом.","id":"opacity","kind":"modifier_plus_minus","label":"Прозрачность","scope":"hud"},{"defaultCombo":"Alt","group":"Чат","hint":"Модификатор со стрелками вверх и вниз.","id":"scroll_chat","kind":"modifier_arrows","label":"Скролл переписки","scope":"hud"},{"defaultCombo":"F10","group":"Чат","hint":"Крупный текст ответа поверх экрана.","id":"teleprompter","kind":"combo","label":"Суфлёр","scope":"global"},{"defaultCombo":"Escape","group":"Суфлёр","hint":"Слушается только пока суфлёр открыт.","id":"teleprompter_close","kind":"combo","label":"Закрыть суфлёр","scope":"teleprompter"},{"defaultCombo":"Space","group":"Суфлёр","hint":"Останавливает автопрокрутку.","id":"teleprompter_pause","kind":"combo","label":"Пауза суфлёра","scope":"teleprompter"}] as const;
+
 export const MODIFIER_COMBOS = ["Cmd","Ctrl","Alt","Cmd+Shift","Ctrl+Shift","Alt+Shift"] as const;
 
-export const SETTINGS_DEFAULTS = {"access_token":"","anthropic_api_key":"","audio_permission_requested":false,"auto_preview_html":true,"auto_send":false,"buffer_enabled":true,"buffer_seconds":4,"capture_device_uid":"","chat_font_size":13.5,"groq_api_key":"","hotkey":"F9","identity_id":"","move_modifier":"Cmd","move_step":20,"prompt_presets":[],"resize_modifier":"Cmd+Shift","resize_step":20,"screen_permission_requested":false,"screen_share_visible":false,"screenshot_hotkey":"Cmd+Shift+S","scroll_modifier":"Alt","scroll_step":120,"skipped_version":"","stt_language":"ru","stt_translate":false,"teleprompter_font_size":28.0,"teleprompter_hotkey":"F10","teleprompter_resume":true,"teleprompter_speed":40.0,"theme":"gray","toggle_hotkey":"Cmd+Shift+H","window_height":680.0,"window_opacity":0.9,"window_width":960.0} as const;
+export const SETTINGS_DEFAULTS = {"access_token":"","anthropic_api_key":"","audio_permission_requested":false,"auto_preview_html":true,"auto_send":false,"buffer_enabled":true,"buffer_seconds":4,"capture_device_uid":"","chat_font_size":13.5,"groq_api_key":"","hotkeys":[],"identity_id":"","move_step":20,"prompt_presets":[],"resize_step":20,"screen_permission_requested":false,"screen_share_visible":false,"scroll_step":120,"skipped_version":"","stt_language":"ru","stt_translate":false,"teleprompter_font_size":28.0,"teleprompter_resume":true,"teleprompter_speed":40.0,"theme":"gray","window_height":680.0,"window_opacity":0.9,"window_width":960.0} as const;
 
 export const SETTINGS_LIMITS = {"bufferSeconds":{"default":4,"max":10,"min":4},"chatFontSize":{"default":13.5,"max":20.0,"min":10.0},"moveStep":{"default":20,"max":200,"min":1},"resizeStep":{"default":20,"max":200,"min":1},"scrollStep":{"default":120,"max":1000,"min":10},"teleprompterFontSize":{"default":28.0,"max":48.0,"min":20.0},"teleprompterSpeed":{"default":40.0,"max":150.0,"min":10.0},"windowHeight":{"default":680.0,"max":1100.0,"min":520.0},"windowOpacity":{"default":0.9,"max":1.0,"min":0.2},"windowWidth":{"default":960.0,"max":1600.0,"min":300.0}} as const;
 
@@ -64,6 +66,25 @@ export type ChatMessage = {
 };
 
 export type ErrorCode = "network" | "badApiKey" | "badAccessCode" | "retryable" | "api" | "cancelled" | "permission" | "silence" | "internal";
+
+export type HotkeyAction = {
+	id: string,
+	group: string,
+	label: string,
+	hint: string,
+	kind: HotkeyKind,
+	scope: HotkeyScope,
+	defaultCombo: string,
+};
+
+export type HotkeyBinding = {
+	action: string,
+	combo: string,
+};
+
+export type HotkeyKind = "combo" | "modifier_arrows" | "modifier_plus_minus";
+
+export type HotkeyScope = "global" | "recording" | "hud" | "teleprompter";
 
 export type IdentityInfo = {
 	id: string,
@@ -149,12 +170,11 @@ export type Settings = {
 	groq_api_key?: string,
 	access_token?: string,
 	prompt_presets?: PromptPreset[],
-	hotkey?: string,
+	hotkeys?: HotkeyBinding[],
 	auto_send?: boolean,
 	window_opacity?: number | null,
 	move_step?: number,
 	auto_preview_html?: boolean,
-	toggle_hotkey?: string,
 	chat_font_size?: number | null,
 	skipped_version?: string,
 	stt_language?: string,
@@ -162,9 +182,7 @@ export type Settings = {
 	screen_share_visible?: boolean,
 	teleprompter_speed?: number | null,
 	teleprompter_font_size?: number | null,
-	teleprompter_hotkey?: string,
 	teleprompter_resume?: boolean,
-	screenshot_hotkey?: string,
 	audio_permission_requested?: boolean,
 	screen_permission_requested?: boolean,
 	window_width?: number | null,
@@ -176,9 +194,6 @@ export type Settings = {
 	buffer_enabled?: boolean,
 	buffer_seconds?: number,
 	identity_id?: string,
-	move_modifier?: string,
-	resize_modifier?: string,
-	scroll_modifier?: string,
 };
 
 export type UpdateDone = {

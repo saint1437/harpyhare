@@ -1,6 +1,7 @@
 import { Minus, Pause, Play, Plus, RotateCcw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { IconButton } from "@/components/IconButton";
+import { matchesPrepared, prepareCombo } from "@/lib/hotkey-match";
 import {
   advanceOffset,
   clampFont,
@@ -16,6 +17,8 @@ export interface TeleprompterProps {
   initialOffset: number;
   onPersist: (speed: number, fontSize: number, offset: number) => void;
   onClose: () => void;
+  closeCombo: string;
+  pauseCombo: string;
 }
 
 const EDGE_FADE =
@@ -27,6 +30,8 @@ export function Teleprompter({
   initialSpeed,
   initialFontSize,
   initialOffset,
+  closeCombo,
+  pauseCombo,
   onPersist,
   onClose,
 }: TeleprompterProps) {
@@ -94,11 +99,13 @@ export function Teleprompter({
   }, []);
 
   useEffect(() => {
+    const close = prepareCombo(closeCombo);
+    const pause = prepareCombo(pauseCombo);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (matchesPrepared(e, close)) {
         e.preventDefault();
         onClose();
-      } else if (e.key === " ") {
+      } else if (matchesPrepared(e, pause)) {
         e.preventDefault();
         setPlaying((p) => !p);
       }
@@ -107,7 +114,7 @@ export function Teleprompter({
     return () => {
       window.removeEventListener("keydown", onKey);
     };
-  }, [onClose]);
+  }, [onClose, closeCombo, pauseCombo]);
 
   return (
     <div className="absolute inset-0 z-50 flex flex-col bg-black/85 backdrop-blur-sm">

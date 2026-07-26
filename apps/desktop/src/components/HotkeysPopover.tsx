@@ -17,17 +17,12 @@ import { Fragment } from "react";
 import { IconButton } from "@/components/IconButton";
 import { SectionLabel } from "@/components/SectionLabel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  comboTokens,
-  hotkeyGroups,
-  type ComboIconName,
-  type ComboToken,
-  type HotkeyConfig,
-} from "@/lib/hotkeys";
+import type { HotkeyBinding } from "@/ipc/types";
+import { comboTokens, hotkeyGroups, type ComboIconName, type ComboToken } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 
 export interface HotkeysPopoverProps {
-  hotkeys: HotkeyConfig;
+  hotkeys: HotkeyBinding[];
 }
 
 const COMBO_ICONS: Record<ComboIconName, LucideIcon> = {

@@ -5,17 +5,21 @@ import { SETTINGS_DEFAULTS } from "./bindings";
 
 export type { AppError, ImagePayload };
 
+export interface HotkeyBinding {
+  action: string;
+  combo: string;
+}
+
 export interface Settings {
   anthropic_api_key: string;
   groq_api_key: string;
   access_token: string;
   prompt_presets: PromptPreset[];
-  hotkey: string;
+  hotkeys: HotkeyBinding[];
   auto_send: boolean;
   window_opacity: number;
   move_step: number;
   auto_preview_html: boolean;
-  toggle_hotkey: string;
   chat_font_size: number;
   skipped_version: string;
   stt_language: string;
@@ -23,9 +27,7 @@ export interface Settings {
   screen_share_visible: boolean;
   teleprompter_speed: number;
   teleprompter_font_size: number;
-  teleprompter_hotkey: string;
   teleprompter_resume: boolean;
-  screenshot_hotkey: string;
   window_width: number;
   window_height: number;
   resize_step: number;
@@ -35,14 +37,12 @@ export interface Settings {
   buffer_enabled: boolean;
   buffer_seconds: number;
   identity_id: string;
-  move_modifier: string;
-  resize_modifier: string;
-  scroll_modifier: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   ...SETTINGS_DEFAULTS,
   prompt_presets: [...SETTINGS_DEFAULTS.prompt_presets],
+  hotkeys: [...SETTINGS_DEFAULTS.hotkeys],
 };
 
 export interface AudioOutputDevice {

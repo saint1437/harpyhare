@@ -104,8 +104,14 @@ pub fn install_move_keys_monitor(app: AppHandle) {
             let st = app.state::<App>();
             let s = st.settings.lock().unwrap();
             (
-                modifier_mask(&s.move_modifier),
-                modifier_mask(&s.resize_modifier),
+                modifier_mask(&crate::hotkeys::effective(
+                    &s.hotkeys,
+                    crate::hotkeys::ACTION_MOVE_WINDOW,
+                )),
+                modifier_mask(&crate::hotkeys::effective(
+                    &s.hotkeys,
+                    crate::hotkeys::ACTION_RESIZE_WINDOW,
+                )),
                 s.move_step as i32,
             )
         };

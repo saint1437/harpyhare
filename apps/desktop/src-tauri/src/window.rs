@@ -4,7 +4,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Manager, WebviewWindow};
 
 use crate::app_state::{current_settings, App};
-use crate::{events, hotkey, identity, platform, settings, window_geom};
+use crate::{events, hotkey, hotkeys, identity, platform, settings, window_geom};
 
 pub const MAIN_WINDOW_LABEL: &str = "main";
 pub const LAUNCHER_WINDOW_LABEL: &str = "launcher";
@@ -98,27 +98,36 @@ fn create_main_window(app: &AppHandle, settings: &settings::Settings) -> Result<
     Ok(())
 }
 
+type GlobalRegistrar = fn(&AppHandle, &str) -> Result<(), String>;
+type GlobalUnregistrar = fn(&AppHandle, &str);
+
+const GLOBAL_HOTKEYS: &[(&str, GlobalRegistrar, GlobalUnregistrar)] = &[
+    (hotkeys::ACTION_RECORD, hotkey::register_ptt, hotkey::unregister_ptt),
+    (hotkeys::ACTION_TOGGLE_WINDOW, hotkey::register_toggle, hotkey::unregister_toggle),
+    (hotkeys::ACTION_TELEPROMPTER, hotkey::register_teleprompter, hotkey::unregister_teleprompter),
+    (hotkeys::ACTION_SCREENSHOT, hotkey::register_screenshot, hotkey::unregister_screenshot),
+];
+
 pub fn register_main_window_hotkeys(app: &AppHandle, s: &settings::Settings) {
-    if let Err(e) = hotkey::register_ptt(app, &s.hotkey) {
-        eprintln!("не удалось зарегистрировать PTT-хоткей {:?}: {e}", s.hotkey);
-    }
-    if let Err(e) = hotkey::register_toggle(app, &s.toggle_hotkey) {
-        eprintln!("не удалось зарегистрировать toggle-хоткей {:?}: {e}", s.toggle_hotkey);
-    }
-    if let Err(e) = hotkey::register_teleprompter(app, &s.teleprompter_hotkey) {
-        eprintln!("не удалось зарегистрировать суфлёр-хоткей {:?}: {e}", s.teleprompter_hotkey);
-    }
-    if let Err(e) = hotkey::register_screenshot(app, &s.screenshot_hotkey) {
-        eprintln!("не удалось зарегистрировать хоткей снимка {:?}: {e}", s.screenshot_hotkey);
+    for (action, register, _) in GLOBAL_HOTKEYS {
+        let combo = hotkeys::effective(&s.hotkeys, action);
+        if combo.is_empty() {
+            continue;
+        }
+        if let Err(e) = register(app, &combo) {
+            eprintln!("не удалось зарегистрировать хоткей {action} ({combo:?}): {e}");
+        }
     }
 }
 
-fn unregister_main_window_hotkeys(app: &AppHandle, s: &settings::Settings) {
-    hotkey::unregister_ptt(app, &s.hotkey);
-    hotkey::unregister_toggle(app, &s.toggle_hotkey);
-    hotkey::unregister_teleprompter(app, &s.teleprompter_hotkey);
-    hotkey::unregister_screenshot(app, &s.screenshot_hotkey);
-    hotkey::unregister_esc(app);
+pub fn unregister_main_window_hotkeys_for(app: &AppHandle, s: &settings::Settings) {
+    for (action, _, unregister) in GLOBAL_HOTKEYS {
+        let combo = hotkeys::effective(&s.hotkeys, action);
+        if !combo.is_empty() {
+            unregister(app, &combo);
+        }
+    }
+    hotkey::unregister_cancel(app, &hotkeys::effective(&s.hotkeys, hotkeys::ACTION_CANCEL_RECORDING));
 }
 
 pub fn show_and_focus_main(app: &AppHandle) {
@@ -160,7 +169,7 @@ pub fn launch_main_window(app: AppHandle) -> Result<(), String> {
 #[specta::specta]
 pub fn stop_main_window(app: AppHandle) -> Result<(), String> {
     let settings = current_settings(&app);
-    unregister_main_window_hotkeys(&app, &settings);
+    unregister_main_window_hotkeys_for(&app, &settings);
     create_launcher_window(&app, &settings)?;
     if let Some(w) = main_window(&app) {
         let _ = w.destroy();

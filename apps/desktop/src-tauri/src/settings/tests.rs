@@ -3,20 +3,18 @@ use super::*;
 #[test]
 fn defaults_match_spec() {
     let s = Settings::default();
-    assert_eq!(s.hotkey, "F9");
+    assert!(s.hotkeys.is_empty());
     assert!(!s.auto_send);
     assert_eq!(s.window_opacity, 0.9);
     assert_eq!(s.move_step, 20);
     assert!(s.prompt_presets.is_empty());
     assert!(s.auto_preview_html);
-    assert_eq!(s.toggle_hotkey, "Cmd+Shift+H");
     assert_eq!(s.chat_font_size, 13.5);
     assert_eq!(s.stt_language, "ru");
     assert!(!s.stt_translate);
     assert!(!s.screen_share_visible);
     assert_eq!(s.teleprompter_speed, 40.0);
     assert_eq!(s.teleprompter_font_size, 28.0);
-    assert_eq!(s.teleprompter_hotkey, "F10");
     assert!(s.teleprompter_resume);
     assert_eq!(s.window_width, 960.0);
     assert_eq!(s.window_height, 680.0);
@@ -159,17 +157,18 @@ fn clamp_limits_resize_step() {
 }
 
 #[test]
-fn clamp_keeps_offered_modifier_combos_and_resets_the_rest() {
+fn clamp_resolves_hotkey_collisions_in_favour_of_the_latest_binding() {
+    use crate::hotkeys::{HotkeyBinding, ACTION_RECORD, ACTION_TOGGLE_WINDOW};
     let mut s = Settings {
-        move_modifier: "Alt+Shift".into(),
-        resize_modifier: "Cmd+Ctrl".into(),
-        scroll_modifier: String::new(),
+        hotkeys: vec![
+            HotkeyBinding { action: ACTION_TOGGLE_WINDOW.into(), combo: "Cmd+Shift+X".into() },
+            HotkeyBinding { action: ACTION_RECORD.into(), combo: "Cmd+Shift+X".into() },
+        ],
         ..Default::default()
     };
     s.clamp();
-    assert_eq!(s.move_modifier, "Alt+Shift");
-    assert_eq!(s.resize_modifier, defaults::RESIZE_MODIFIER);
-    assert_eq!(s.scroll_modifier, defaults::SCROLL_MODIFIER);
+    assert_eq!(crate::hotkeys::effective(&s.hotkeys, ACTION_RECORD), "Cmd+Shift+X");
+    assert_eq!(crate::hotkeys::effective(&s.hotkeys, ACTION_TOGGLE_WINDOW), "");
 }
 
 #[test]
@@ -276,7 +275,6 @@ fn save_load_roundtrip_with_600_perms() {
         window_opacity: 0.5,
         auto_send: true,
         auto_preview_html: false,
-        toggle_hotkey: "F10".into(),
         prompt_presets: vec![test_preset()],
         ..Default::default()
     };
@@ -289,7 +287,6 @@ fn save_load_roundtrip_with_600_perms() {
     assert_eq!(loaded.window_opacity, 0.5);
     assert!(loaded.auto_send);
     assert!(!loaded.auto_preview_html);
-    assert_eq!(loaded.toggle_hotkey, "F10");
     assert_eq!(loaded.prompt_presets.len(), 1);
     assert_eq!(loaded.prompt_presets[0].name, "Тест");
 }
@@ -304,18 +301,19 @@ fn load_missing_auto_preview_html_defaults_true() {
 }
 
 #[test]
-fn load_missing_toggle_hotkey_defaults() {
+fn load_migrates_legacy_hotkey_fields_into_bindings() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("s.json");
-    std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+    std::fs::write(&path, r#"{"hotkey":"Cmd+Shift+X","scroll_modifier":"Cmd"}"#).unwrap();
     let s = Settings::load(&path).unwrap();
-    assert_eq!(s.toggle_hotkey, "Cmd+Shift+H");
+    assert_eq!(crate::hotkeys::effective(&s.hotkeys, crate::hotkeys::ACTION_RECORD), "Cmd+Shift+X");
+    assert_eq!(crate::hotkeys::effective(&s.hotkeys, crate::hotkeys::ACTION_SCROLL_CHAT), "Cmd");
 }
 
 #[test]
 fn load_missing_file_gives_defaults() {
     let s = Settings::load(std::path::Path::new("/nonexistent/x.json")).unwrap();
-    assert_eq!(s.hotkey, "F9");
+    assert!(s.hotkeys.is_empty());
     assert!(!s.auto_send);
     assert_eq!(s.move_step, 20);
 }

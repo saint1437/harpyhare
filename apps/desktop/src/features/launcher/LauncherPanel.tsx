@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { DEFAULT_SETTINGS, type Settings } from "@/ipc/types";
+import type { Settings } from "@/ipc/types";
 import { isPresetFilled } from "@/lib/presets";
 import { ContextLibraryPanel } from "./ContextLibraryPanel";
 import type { LauncherPanelProps, SetSetting } from "./contract";
@@ -24,10 +24,6 @@ function riseDelay(order: number): CSSProperties {
 function normalizeDraft(draft: Settings): Settings {
   return {
     ...draft,
-    hotkey: draft.hotkey.trim() || DEFAULT_SETTINGS.hotkey,
-    toggle_hotkey: draft.toggle_hotkey.trim() || DEFAULT_SETTINGS.toggle_hotkey,
-    teleprompter_hotkey: draft.teleprompter_hotkey.trim() || DEFAULT_SETTINGS.teleprompter_hotkey,
-    screenshot_hotkey: draft.screenshot_hotkey.trim() || DEFAULT_SETTINGS.screenshot_hotkey,
     prompt_presets: draft.prompt_presets.filter(isPresetFilled),
   };
 }

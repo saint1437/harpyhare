@@ -2,9 +2,7 @@ use std::str::FromStr;
 use tauri::AppHandle;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-use crate::{recording, screenshot, window};
-
-const ESC_HOTKEY: &str = "Escape";
+use crate::{hotkeys, recording, screenshot, window};
 
 pub fn parse_hotkey(s: &str) -> Option<Shortcut> {
     Shortcut::from_str(s.trim()).ok()
@@ -86,8 +84,8 @@ pub fn unregister_screenshot(app: &AppHandle, hotkey: &str) {
     }
 }
 
-pub fn register_esc(app: &AppHandle) {
-    if let Some(shortcut) = parse_hotkey(ESC_HOTKEY) {
+pub fn register_cancel(app: &AppHandle, hotkey: &str) {
+    if let Some(shortcut) = parse_hotkey(hotkey) {
         let _ = app
             .global_shortcut()
             .on_shortcut(shortcut, |app, _shortcut, event| {
@@ -98,10 +96,17 @@ pub fn register_esc(app: &AppHandle) {
     }
 }
 
-pub fn unregister_esc(app: &AppHandle) {
-    if let Some(shortcut) = parse_hotkey(ESC_HOTKEY) {
+pub fn unregister_cancel(app: &AppHandle, hotkey: &str) {
+    if let Some(shortcut) = parse_hotkey(hotkey) {
         let _ = app.global_shortcut().unregister(shortcut);
     }
+}
+
+pub fn cancel_combo(app: &AppHandle) -> String {
+    hotkeys::effective(
+        &crate::app_state::current_settings(app).hotkeys,
+        hotkeys::ACTION_CANCEL_RECORDING,
+    )
 }
 
 #[cfg(test)]

@@ -63,15 +63,8 @@ impl SettingsLimits {
 }
 
 pub mod defaults {
-    pub const PTT_HOTKEY: &str = "F9";
-    pub const TOGGLE_HOTKEY: &str = "Cmd+Shift+H";
-    pub const TELEPROMPTER_HOTKEY: &str = "F10";
-    pub const SCREENSHOT_HOTKEY: &str = "Cmd+Shift+S";
     pub const STT_LANGUAGE: &str = "ru";
     pub const THEME: &str = super::THEME_GRAY;
-    pub const MOVE_MODIFIER: &str = "Cmd";
-    pub const RESIZE_MODIFIER: &str = "Cmd+Shift";
-    pub const SCROLL_MODIFIER: &str = "Alt";
 }
 
 pub mod limits {
@@ -118,12 +111,11 @@ pub struct Settings {
     pub groq_api_key: String,
     pub access_token: String,
     pub prompt_presets: Vec<PromptPreset>,
-    pub hotkey: String,
+    pub hotkeys: Vec<crate::hotkeys::HotkeyBinding>,
     pub auto_send: bool,
     pub window_opacity: f64,
     pub move_step: u32,
     pub auto_preview_html: bool,
-    pub toggle_hotkey: String,
     pub chat_font_size: f64,
     pub skipped_version: String,
     pub stt_language: String,
@@ -131,9 +123,7 @@ pub struct Settings {
     pub screen_share_visible: bool,
     pub teleprompter_speed: f64,
     pub teleprompter_font_size: f64,
-    pub teleprompter_hotkey: String,
     pub teleprompter_resume: bool,
-    pub screenshot_hotkey: String,
     pub audio_permission_requested: bool,
     pub screen_permission_requested: bool,
     pub window_width: f64,
@@ -145,9 +135,6 @@ pub struct Settings {
     pub buffer_enabled: bool,
     pub buffer_seconds: u32,
     pub identity_id: String,
-    pub move_modifier: String,
-    pub resize_modifier: String,
-    pub scroll_modifier: String,
 }
 
 impl Default for Settings {
@@ -157,12 +144,11 @@ impl Default for Settings {
             groq_api_key: String::new(),
             access_token: String::new(),
             prompt_presets: Vec::new(),
-            hotkey: defaults::PTT_HOTKEY.into(),
+            hotkeys: Vec::new(),
             auto_send: false,
             window_opacity: limits::window::OPACITY.default,
             move_step: limits::window::MOVE_STEP.default,
             auto_preview_html: true,
-            toggle_hotkey: defaults::TOGGLE_HOTKEY.into(),
             chat_font_size: limits::chat::FONT_SIZE.default,
             skipped_version: String::new(),
             stt_language: defaults::STT_LANGUAGE.into(),
@@ -170,9 +156,7 @@ impl Default for Settings {
             screen_share_visible: false,
             teleprompter_speed: limits::teleprompter::SPEED.default,
             teleprompter_font_size: limits::teleprompter::FONT_SIZE.default,
-            teleprompter_hotkey: defaults::TELEPROMPTER_HOTKEY.into(),
             teleprompter_resume: true,
-            screenshot_hotkey: defaults::SCREENSHOT_HOTKEY.into(),
             audio_permission_requested: false,
             screen_permission_requested: false,
             window_width: limits::window::WIDTH.default,
@@ -184,21 +168,12 @@ impl Default for Settings {
             buffer_enabled: true,
             buffer_seconds: limits::capture::BUFFER_SECONDS.default,
             identity_id: String::new(),
-            move_modifier: defaults::MOVE_MODIFIER.into(),
-            resize_modifier: defaults::RESIZE_MODIFIER.into(),
-            scroll_modifier: defaults::SCROLL_MODIFIER.into(),
         }
     }
 }
 
 pub const MODIFIER_COMBOS: [&str; 6] =
     ["Cmd", "Ctrl", "Alt", "Cmd+Shift", "Ctrl+Shift", "Alt+Shift"];
-
-fn normalize_modifier(value: &mut String, fallback: &str) {
-    if !MODIFIER_COMBOS.contains(&value.trim()) {
-        *value = fallback.to_string();
-    }
-}
 
 impl Settings {
     pub fn clamp(&mut self) {
@@ -219,15 +194,18 @@ impl Settings {
         if !crate::identity::is_known_id(&self.identity_id) {
             self.identity_id = String::new();
         }
-        normalize_modifier(&mut self.move_modifier, defaults::MOVE_MODIFIER);
-        normalize_modifier(&mut self.resize_modifier, defaults::RESIZE_MODIFIER);
-        normalize_modifier(&mut self.scroll_modifier, defaults::SCROLL_MODIFIER);
+        crate::hotkeys::normalize(&mut self.hotkeys);
     }
 
     pub fn load(path: &Path) -> std::io::Result<Self> {
         let mut settings = match std::fs::read_to_string(path) {
-            Ok(raw) => serde_json::from_str::<Settings>(&raw)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?,
+            Ok(raw) => {
+                let mut value: serde_json::Value = serde_json::from_str(&raw)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+                crate::hotkeys::migrate_legacy_fields(&mut value);
+                serde_json::from_value::<Settings>(value)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Settings::default(),
             Err(e) => return Err(e),
         };

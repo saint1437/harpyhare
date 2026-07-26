@@ -70,7 +70,10 @@ pub fn set_settings(
 #[tauri::command]
 #[specta::specta]
 pub fn set_ptt_suspended(app: AppHandle, suspended: bool) {
-    let hk = app.state::<App>().settings.lock().unwrap().hotkey.clone();
+    let hk = crate::hotkeys::effective(
+        &app.state::<App>().settings.lock().unwrap().hotkeys,
+        crate::hotkeys::ACTION_RECORD,
+    );
     if suspended {
         hotkey::unregister_ptt(&app, &hk);
     } else {
@@ -111,21 +114,9 @@ fn reregister_changed_hotkeys(
     if main_window(app).is_none() {
         return Ok(());
     }
-    if old.hotkey != new.hotkey {
-        hotkey::register_ptt(app, &new.hotkey)?;
-        hotkey::unregister_ptt(app, &old.hotkey);
-    }
-    if old.toggle_hotkey != new.toggle_hotkey {
-        hotkey::register_toggle(app, &new.toggle_hotkey)?;
-        hotkey::unregister_toggle(app, &old.toggle_hotkey);
-    }
-    if old.teleprompter_hotkey != new.teleprompter_hotkey {
-        hotkey::register_teleprompter(app, &new.teleprompter_hotkey)?;
-        hotkey::unregister_teleprompter(app, &old.teleprompter_hotkey);
-    }
-    if old.screenshot_hotkey != new.screenshot_hotkey {
-        hotkey::register_screenshot(app, &new.screenshot_hotkey)?;
-        hotkey::unregister_screenshot(app, &old.screenshot_hotkey);
+    if old.hotkeys != new.hotkeys {
+        crate::window::unregister_main_window_hotkeys_for(app, old);
+        crate::window::register_main_window_hotkeys(app, new);
     }
     Ok(())
 }

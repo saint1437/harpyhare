@@ -25,8 +25,17 @@ describe("hotkeyFromEvent", () => {
     expect(hotkeyFromEvent({ ...base, metaKey: true, code: "MetaLeft" })).toBeNull();
     expect(hotkeyFromEvent({ ...base, shiftKey: true, code: "ShiftLeft" })).toBeNull();
   });
+  it("именованные клавиши и стрелки теперь назначаются", () => {
+    expect(hotkeyFromEvent({ ...base, code: "Space" })).toBe("Space");
+    expect(hotkeyFromEvent({ ...base, metaKey: true, code: "ArrowUp" })).toBe("Cmd+ArrowUp");
+    expect(hotkeyFromEvent({ ...base, metaKey: true, shiftKey: true, code: "Minus" })).toBe(
+      "Cmd+Shift+Minus",
+    );
+    expect(hotkeyFromEvent({ ...base, code: "BracketLeft" })).toBe("BracketLeft");
+  });
+
   it("нераспознанный код → null", () => {
-    expect(hotkeyFromEvent({ ...base, code: "Space" })).toBeNull();
+    expect(hotkeyFromEvent({ ...base, code: "AudioVolumeUp" })).toBeNull();
   });
 });
 

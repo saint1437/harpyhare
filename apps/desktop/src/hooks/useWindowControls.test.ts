@@ -25,7 +25,7 @@ function keydown(init: KeyboardEventInit) {
 
 function renderControls(onResizeKey = vi.fn(), onOpacityStep = vi.fn(), onSend = vi.fn()) {
   renderHook(() => {
-    useWindowControls(onSend, onOpacityStep, onResizeKey);
+    useWindowControls([], onSend, onOpacityStep, onResizeKey);
   });
   return { onResizeKey, onOpacityStep, onSend };
 }

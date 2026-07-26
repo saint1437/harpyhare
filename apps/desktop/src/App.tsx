@@ -42,12 +42,18 @@ import {
   stopMainWindow,
 } from "@/ipc/commands";
 import { onEvent, onWindowResized, type LogicalWindowSize } from "@/ipc/events";
-import type { ChatMessageDto, ImagePayload, RecorderState, Settings } from "@/ipc/types";
+import type {
+  ChatMessageDto,
+  HotkeyBinding,
+  ImagePayload,
+  RecorderState,
+  Settings,
+} from "@/ipc/types";
 import { chatRequestOptions, type Chat, type ChatMessage } from "@/lib/chats";
 import { appendTranscript } from "@/lib/composer";
 import { libraryContextBlocks, type ContextLibrary } from "@/lib/context-library";
 import { internalError, isNetworkError, isRetryable, type AppError } from "@/lib/errors";
-import type { HotkeyConfig } from "@/lib/hotkeys";
+import { effectiveCombo } from "@/lib/hotkeys";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
 import type { ModelInfo } from "@/lib/models";
 import { mergePresets, presetText, type PromptPreset } from "@/lib/presets";
@@ -324,7 +330,7 @@ function useSendPipeline(
 interface AppHeaderProps {
   state: RecorderState;
   error: AppError | null;
-  hotkeys: HotkeyConfig;
+  hotkeys: HotkeyBinding[];
   updater: UpdaterApi;
   chats: ChatsApi;
   stream: ClaudeStreams;
@@ -356,7 +362,7 @@ function AppHeader({
     <StatusBar
       state={state}
       error={error?.message ?? null}
-      toggleHotkey={hotkeys.toggleWindow}
+      toggleHotkey={effectiveCombo(hotkeys, "toggle_window")}
       contextUsage={contextUsage}
       update={updateBadge(updater, onOpenUpdate)}
       onStop={onStop}
@@ -548,8 +554,8 @@ export default function App() {
     ),
   );
 
-  useWindowControls(doSend, bumpOpacity, bumpWindowSize);
-  usePttSuspend(settings.hotkey);
+  useWindowControls(settings.hotkeys, doSend, bumpOpacity, bumpWindowSize);
+  usePttSuspend(effectiveCombo(settings.hotkeys, "record"));
   const connectivity = useConnectivity();
 
   useEffect(
@@ -612,16 +618,6 @@ export default function App() {
     if (event.button === 0 && event.target === event.currentTarget) void startWindowDrag();
   }, []);
 
-  const hotkeys: HotkeyConfig = {
-    ptt: settings.hotkey,
-    toggleWindow: settings.toggle_hotkey,
-    teleprompter: settings.teleprompter_hotkey,
-    screenshot: settings.screenshot_hotkey,
-    moveWindow: settings.move_modifier,
-    resizeWindow: settings.resize_modifier,
-    scrollChat: settings.scroll_modifier,
-  };
-
   return (
     <div
       className="app-shell relative flex h-screen overflow-hidden rounded-[var(--window-radius)]"
@@ -632,7 +628,7 @@ export default function App() {
         <AppHeader
           state={state}
           error={error}
-          hotkeys={hotkeys}
+          hotkeys={settings.hotkeys}
           updater={updater}
           chats={chats}
           stream={stream}
@@ -658,7 +654,7 @@ export default function App() {
           streaming={activeStreaming}
           streamStartedAt={stream.startedAt[activeId]}
           scrollStep={settings.scroll_step}
-          scrollModifier={settings.scroll_modifier}
+          scrollModifier={effectiveCombo(settings.hotkeys, "scroll_chat")}
           onTogglePreview={togglePreview}
           onRemoveMessage={(index) => {
             chats.removeMessage(activeId, index);
@@ -694,6 +690,8 @@ export default function App() {
               ? teleprompterResumeRef.current.offset
               : 0
           }
+          closeCombo={effectiveCombo(settings.hotkeys, "teleprompter_close")}
+          pauseCombo={effectiveCombo(settings.hotkeys, "teleprompter_pause")}
           onPersist={(speed, fontSize, offset) => {
             teleprompterResumeRef.current = { text: teleprompterText, offset };
             saveSettingsReportingError({
