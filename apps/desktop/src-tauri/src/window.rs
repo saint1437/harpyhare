@@ -232,8 +232,8 @@ pub fn set_window_size(app: AppHandle, width: f64, height: f64) {
         return;
     };
     let scale = w.scale_factor().unwrap_or(1.0);
-    let from_width = w.outer_size().map(|s| s.width as f64 / scale).unwrap_or(width);
-    let from_height = w.outer_size().map(|s| s.height as f64 / scale).unwrap_or(height);
+    let from_width = w.inner_size().map(|s| s.width as f64 / scale).unwrap_or(width);
+    let from_height = w.inner_size().map(|s| s.height as f64 / scale).unwrap_or(height);
     let from_pos = w.outer_position().unwrap_or(tauri::PhysicalPosition::new(0, 0));
 
     if (from_width - width).abs() < RESIZE_EPSILON_LOGICAL_PX
