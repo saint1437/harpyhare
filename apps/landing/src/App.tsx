@@ -6,22 +6,21 @@ import { Hero } from "./components/Hero";
 import { HowItWorks } from "./components/HowItWorks";
 import { Moon } from "./components/Moon";
 import { useLatestRelease } from "./hooks/useLatestRelease";
-import { usePlatformSelection } from "./hooks/usePlatformSelection";
+import { PLATFORM } from "./lib/platform";
 
 export default function App() {
   const release = useLatestRelease();
-  const platformSelection = usePlatformSelection();
   return (
     <div className="isolate min-h-screen bg-bg">
       <Moon />
-      <Header state={release} platform={platformSelection.platform} />
+      <Header state={release} platform={PLATFORM} />
       <main>
-        <Hero state={release} {...platformSelection} />
+        <Hero state={release} platform={PLATFORM} />
         <HowItWorks />
         <Features />
-        <CtaSection state={release} {...platformSelection} />
+        <CtaSection state={release} platform={PLATFORM} />
       </main>
-      <Footer platform={platformSelection.platform} />
+      <Footer platform={PLATFORM} />
     </div>
   );
 }

@@ -25,3 +25,13 @@ const WINDOWS_USER_AGENT_MARKER = "windows";
 export function detectPlatform(userAgent: string): Platform {
   return userAgent.toLowerCase().includes(WINDOWS_USER_AGENT_MARKER) ? "windows" : DEFAULT_PLATFORM;
 }
+
+export function otherPlatform(platform: Platform): Platform {
+  return PLATFORMS.find((candidate) => candidate !== platform) ?? DEFAULT_PLATFORM;
+}
+
+function currentUserAgent(): string {
+  return navigator.userAgentData?.platform ?? navigator.userAgent;
+}
+
+export const PLATFORM: Platform = detectPlatform(currentUserAgent());

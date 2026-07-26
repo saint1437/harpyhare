@@ -1,18 +1,18 @@
 import type { LatestReleaseState } from "@/hooks/useLatestRelease";
-import type { PlatformSelection } from "@/hooks/usePlatformSelection";
+import type { Platform } from "@/lib/platform";
 import { CTA_STARS } from "@/lib/stars";
-import { DownloadButton } from "./DownloadButton";
+import { DownloadChoice } from "./DownloadChoice";
 import { HareScene } from "./HareScene";
-import { PlatformSwitch } from "./PlatformSwitch";
 import { Bush } from "./Scenery";
 import { StarField } from "./Sky";
 import { VersionNote } from "./VersionNote";
 
-interface CtaSectionProps extends PlatformSelection {
+interface CtaSectionProps {
   state: LatestReleaseState;
+  platform: Platform;
 }
 
-export function CtaSection({ state, platform, onSelectPlatform }: CtaSectionProps) {
+export function CtaSection({ state, platform }: CtaSectionProps) {
   return (
     <section className="relative border-t border-border px-6 pt-20 pb-48 sm:pt-28 sm:pb-52">
       <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
@@ -22,8 +22,7 @@ export function CtaSection({ state, platform, onSelectPlatform }: CtaSectionProp
         <p className="mt-4 max-w-md text-base leading-relaxed text-pretty text-fg-muted">
           Приложение бесплатное — понадобятся только ваши API-ключи Groq и Anthropic.
         </p>
-        <DownloadButton state={state} platform={platform} className="mt-8" />
-        <PlatformSwitch platform={platform} onSelectPlatform={onSelectPlatform} className="mt-5" />
+        <DownloadChoice state={state} platform={platform} className="mt-8" />
         <VersionNote state={state} platform={platform} className="mt-4" />
       </div>
       <StarField stars={CTA_STARS} />

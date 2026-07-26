@@ -1,20 +1,19 @@
 import type { LatestReleaseState } from "@/hooks/useLatestRelease";
-import type { PlatformSelection } from "@/hooks/usePlatformSelection";
-import { SUPPORTED_PLATFORMS_LABEL } from "@/lib/platform";
+import { SUPPORTED_PLATFORMS_LABEL, type Platform } from "@/lib/platform";
 import { RELEASES_PAGE } from "@/lib/release";
-import { DownloadButton } from "./DownloadButton";
+import { DownloadChoice } from "./DownloadChoice";
 import { EqBars } from "./EqBars";
 import { HudPreview } from "./HudPreview";
-import { PlatformSwitch } from "./PlatformSwitch";
 import { Bush } from "./Scenery";
 import { Cloud } from "./Sky";
 import { VersionNote } from "./VersionNote";
 
-interface HeroProps extends PlatformSelection {
+interface HeroProps {
   state: LatestReleaseState;
+  platform: Platform;
 }
 
-export function Hero({ state, platform, onSelectPlatform }: HeroProps) {
+export function Hero({ state, platform }: HeroProps) {
   return (
     <section className="relative overflow-hidden px-6 pt-32 pb-20 sm:pt-40 sm:pb-24">
       <div
@@ -40,7 +39,7 @@ export function Hero({ state, platform, onSelectPlatform }: HeroProps) {
         </p>
 
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-          <DownloadButton state={state} platform={platform} />
+          <DownloadChoice state={state} platform={platform} />
           <a
             href={RELEASES_PAGE}
             target="_blank"
@@ -50,8 +49,6 @@ export function Hero({ state, platform, onSelectPlatform }: HeroProps) {
             Все версии
           </a>
         </div>
-
-        <PlatformSwitch platform={platform} onSelectPlatform={onSelectPlatform} className="mt-6" />
 
         <VersionNote state={state} platform={platform} className="mt-4" />
       </div>

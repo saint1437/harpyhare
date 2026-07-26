@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { detectPlatform, PLATFORM_REQUIREMENTS, SUPPORTED_PLATFORMS_LABEL } from "./platform";
+import {
+  detectPlatform,
+  otherPlatform,
+  PLATFORM_REQUIREMENTS,
+  PLATFORMS,
+  SUPPORTED_PLATFORMS_LABEL,
+} from "./platform";
 
 const WINDOWS_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36";
@@ -33,5 +39,18 @@ describe("platform copy", () => {
   it("keeps one requirements line per platform", () => {
     expect(PLATFORM_REQUIREMENTS.macos).toContain("macOS");
     expect(PLATFORM_REQUIREMENTS.windows).toContain("Windows");
+  });
+});
+
+describe("otherPlatform", () => {
+  it("отдаёт вторую платформу пары", () => {
+    expect(otherPlatform("macos")).toBe("windows");
+    expect(otherPlatform("windows")).toBe("macos");
+  });
+
+  it("пара покрывает весь реестр платформ", () => {
+    for (const platform of PLATFORMS) {
+      expect([platform, otherPlatform(platform)].sort()).toEqual([...PLATFORMS].sort());
+    }
   });
 });

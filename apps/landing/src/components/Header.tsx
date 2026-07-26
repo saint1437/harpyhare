@@ -30,7 +30,7 @@ export function Header({ state, platform }: { state: LatestReleaseState; platfor
               {link.label}
             </a>
           ))}
-          <DownloadButton state={state} platform={platform} size="sm" />
+          <DownloadButton state={state} platform={platform} />
         </nav>
       </div>
     </header>

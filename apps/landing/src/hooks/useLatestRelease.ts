@@ -1,8 +1,19 @@
 import { useEffect, useState } from "react";
-import { LATEST_RELEASE_API, parseRelease, toReleaseInfo, type ReleaseInfo } from "@/lib/release";
+import type { Platform } from "@/lib/platform";
+import {
+  LATEST_RELEASE_API,
+  parseRelease,
+  RELEASES_PAGE,
+  toReleaseInfo,
+  type ReleaseInfo,
+} from "@/lib/release";
 
 export type LatestReleaseState =
   { status: "loading" } | { status: "ready"; release: ReleaseInfo } | { status: "error" };
+
+export function downloadHref(state: LatestReleaseState, platform: Platform): string {
+  return state.status === "ready" ? state.release.downloads[platform] : RELEASES_PAGE;
+}
 
 export function useLatestRelease(): LatestReleaseState {
   const [state, setState] = useState<LatestReleaseState>({ status: "loading" });
