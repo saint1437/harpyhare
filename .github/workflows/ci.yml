@@ -20,6 +20,27 @@ jobs:
       - run: npx nx run-many -t typecheck lint test
       - run: npx knip
 
+  macos:
+    name: тесты Rust и контракт
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - name: Тесты Rust
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+      - name: Контракт не разъехался с закоммиченным
+        run: git diff --exit-code src/ipc/bindings.ts
+      - name: Clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
   windows:
     name: сборка под Windows
     runs-on: windows-latest
@@ -41,12 +62,7 @@ jobs:
       - name: Установить зависимости
         run: npm ci
         working-directory: .
-      - name: Тесты Rust и сверка контракта
-        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
-      - name: Контракт не разъехался с закоммиченным
-        shell: bash
-        run: git diff --exit-code src/ipc/bindings.ts
-      - name: Clippy
+      - name: Clippy, он же компиляция тестов
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - name: Собрать установщик
         shell: bash

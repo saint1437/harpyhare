@@ -36,7 +36,7 @@ npm run presets:publish                           # config/presets.json → пу
 
 **Pre-commit (husky)** прогоняет три шага: `lint-staged` (prettier по застейдженным) → `nx affected -t typecheck lint --uncommitted` → `knip`. То есть коммит падает и от мёртвого экспорта, а не только от типов.
 
-**CI — `.github/workflows/ci.yml`** (push в main, PR, ручной запуск): job на ubuntu гоняет `nx run-many -t typecheck lint test` + `knip`, job на windows-latest — `cargo test`, `git diff --exit-code apps/desktop/src/ipc/bindings.ts`, `clippy -D warnings` и сборку NSIS-установщика. **Windows-половину проверяет только CI**: установщик под Windows на macOS не собирается, а сгенерированный `bindings.ts` обязан совпадать с закоммиченным на обеих платформах (инвариант описан в `apps/desktop/CLAUDE.md`). Подпись апдейтера в CI включается, только если задан секрет `TAURI_SIGNING_PRIVATE_KEY`.
+**CI — `.github/workflows/ci.yml`** (push в main, PR, ручной запуск): job на ubuntu гоняет `nx run-many -t typecheck lint test` + `knip`, job на macos-latest — `cargo test`, `git diff --exit-code apps/desktop/src/ipc/bindings.ts` и `clippy -D warnings`, job на windows-latest — `clippy --all-targets -D warnings` и сборку NSIS-установщика. **Windows-половину проверяет только CI**: установщик под Windows на macOS не собирается. **Тесты на windows-раннере не гоняются**: тестовый бинарь не стартует (`STATUS_ENTRYPOINT_NOT_FOUND` ещё до первого теста) — похоже на известную граблю крейта с `crate-type = ["cdylib", …]`; компиляцию тестов там держит `clippy --all-targets`, а прогон и сверку контракта — macos-job. Подпись апдейтера в CI включается, только если задан секрет `TAURI_SIGNING_PRIVATE_KEY`.
 
 ## Что связывает проекты
 
