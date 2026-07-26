@@ -1,11 +1,13 @@
+export type ApiKeyId = "anthropic" | "groq";
+
 export interface ApiKeyInfo {
-  id: "anthropic" | "groq";
+  id: ApiKeyId;
   name: string;
   purpose: string;
   consoleUrl: string;
 }
 
-const API_KEYS: ApiKeyInfo[] = [
+const API_KEYS = [
   {
     id: "anthropic",
     name: "Anthropic",
@@ -18,7 +20,11 @@ const API_KEYS: ApiKeyInfo[] = [
     purpose: "распознавание речи",
     consoleUrl: "https://console.groq.com/keys",
   },
-];
+] as const satisfies readonly ApiKeyInfo[];
+
+export function apiKeyInfo(id: ApiKeyId): ApiKeyInfo {
+  return API_KEYS.find((k) => k.id === id) ?? API_KEYS[0];
+}
 
 export interface ApiKeySettings {
   anthropic_api_key: string;

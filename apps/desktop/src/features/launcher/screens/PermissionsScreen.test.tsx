@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PermissionsApi } from "@/hooks/usePermissions";
 import type { PermissionsStatus } from "@/ipc/bindings";
-import { PermissionsDialog } from "./PermissionsDialog";
+import { PermissionsScreen } from "./PermissionsScreen";
 
 function api(status: PermissionsStatus, overrides: Partial<PermissionsApi> = {}): PermissionsApi {
   return {
@@ -25,15 +25,9 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("PermissionsDialog", () => {
+describe("PermissionsScreen", () => {
   it("собирает все доступы в одном месте со статусами", () => {
-    render(
-      <PermissionsDialog
-        permissions={api({ audio: "granted", screen: "unknown" })}
-        open
-        onOpenChange={vi.fn()}
-      />,
-    );
+    render(<PermissionsScreen permissions={api({ audio: "granted", screen: "unknown" })} />);
     expect(screen.getByText("Запись системного звука")).not.toBeNull();
     expect(screen.getByText("Запись экрана")).not.toBeNull();
     expect(screen.getByText("выдан")).not.toBeNull();
@@ -42,7 +36,7 @@ describe("PermissionsDialog", () => {
 
   it("«Выдать» запрашивает именно тот доступ, у строки которого нажали", () => {
     const permissions = api({ audio: "unknown", screen: "unknown" });
-    render(<PermissionsDialog permissions={permissions} open onOpenChange={vi.fn()} />);
+    render(<PermissionsScreen permissions={permissions} />);
     const [, screenGrant] = screen.getAllByText("Выдать");
     if (!screenGrant) throw new Error("нет кнопки «Выдать» у строки записи экрана");
     fireEvent.click(screenGrant);
@@ -50,20 +44,14 @@ describe("PermissionsDialog", () => {
   });
 
   it("у выданного доступа кнопок запроса нет", () => {
-    render(
-      <PermissionsDialog
-        permissions={api({ audio: "granted", screen: "granted" })}
-        open
-        onOpenChange={vi.fn()}
-      />,
-    );
+    render(<PermissionsScreen permissions={api({ audio: "granted", screen: "granted" })} />);
     expect(screen.queryByText("Выдать")).toBeNull();
     expect(screen.queryByText("Настройки")).toBeNull();
   });
 
   it("у отклонённого доступа остаются обе кнопки: повтор и системные настройки", () => {
     const permissions = api({ audio: "denied", screen: "granted" });
-    render(<PermissionsDialog permissions={permissions} open onOpenChange={vi.fn()} />);
+    render(<PermissionsScreen permissions={permissions} />);
     fireEvent.click(screen.getByText("Настройки"));
     expect(permissions.openSettings).toHaveBeenCalledWith("audio");
     fireEvent.click(screen.getByText("Выдать"));
@@ -72,9 +60,16 @@ describe("PermissionsDialog", () => {
 
   it("набор кнопок не зависит от того, идёт ли запрос — меняется только их доступность", () => {
     const permissions = api({ audio: "unknown", screen: "unknown" }, { pending: "audio" });
-    render(<PermissionsDialog permissions={permissions} open onOpenChange={vi.fn()} />);
+    render(<PermissionsScreen permissions={permissions} />);
     const grants = screen.getAllByText<HTMLButtonElement>("Выдать");
     expect(grants).toHaveLength(2);
     expect(grants.every((b) => b.disabled)).toBe(true);
+  });
+
+  it("«Проверить заново» перечитывает статусы", () => {
+    const permissions = api({ audio: "denied", screen: "denied" });
+    render(<PermissionsScreen permissions={permissions} />);
+    fireEvent.click(screen.getByText("Проверить заново"));
+    expect(permissions.refresh).toHaveBeenCalledTimes(1);
   });
 });

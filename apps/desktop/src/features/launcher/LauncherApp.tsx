@@ -61,7 +61,7 @@ export function LauncherApp() {
   return (
     <LauncherPanel
       settings={settings}
-      appVersion={updater.currentVersion}
+      updater={updater}
       contextLibrary={contextLibrary}
       readiness={readiness}
       launching={launching}

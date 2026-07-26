@@ -1,73 +1,144 @@
 import type { ReactNode } from "react";
-import { SectionLabel } from "@/components/SectionLabel";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 
-export function Field({ label, children }: { label: string; children: ReactNode }) {
+export function SettingGroup({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+}) {
   return (
-    <div className="grid min-w-0 gap-1.5">
-      <Label>{label}</Label>
+    <section className="overflow-hidden rounded-xl bg-card ring-1 ring-border ring-inset">
+      <header className="px-4 pt-3 pb-2.5">
+        <h3 className="text-body font-medium text-foreground">{title}</h3>
+        {description !== undefined && (
+          <p className="mt-0.5 text-caption text-muted-foreground">{description}</p>
+        )}
+      </header>
+      <div className="divide-y divide-border border-t border-border">{children}</div>
+    </section>
+  );
+}
+
+export function SettingRow({
+  label,
+  hint,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  htmlFor?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_14rem] items-center gap-x-5 px-4 py-2.5">
+      <div className="min-w-0">
+        <Label htmlFor={htmlFor} className="text-body font-normal text-foreground">
+          {label}
+        </Label>
+        {hint !== undefined && <p className="mt-0.5 text-caption text-muted-foreground">{hint}</p>}
+      </div>
+      <div className="flex min-w-0 items-center justify-end">{children}</div>
+    </div>
+  );
+}
+
+export function SettingBlock({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-2 px-4 py-3">
+      <div className="min-w-0">
+        <span className="text-body text-foreground">{label}</span>
+        {hint !== undefined && <p className="mt-0.5 text-caption text-muted-foreground">{hint}</p>}
+      </div>
       {children}
     </div>
   );
 }
 
-export function SelectField({
-  label,
+export function SettingSelect({
   value,
+  ariaLabel,
   disabled,
   onValueChange,
   children,
 }: {
-  label: string;
   value: string;
+  ariaLabel: string;
   disabled?: boolean;
   onValueChange: (value: string) => void;
   children: ReactNode;
 }) {
   return (
-    <Field label={label}>
-      <Select value={value} disabled={disabled} onValueChange={onValueChange}>
-        <SelectTrigger className="w-full min-w-0">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent position="popper">{children}</SelectContent>
-      </Select>
-    </Field>
+    <Select value={value} disabled={disabled} onValueChange={onValueChange}>
+      <SelectTrigger size="sm" aria-label={ariaLabel} className="w-full min-w-0">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent position="popper">{children}</SelectContent>
+    </Select>
   );
 }
 
-export function SectionGroup({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-3 rounded-xl bg-card/60 p-4 ring-1 ring-border ring-inset">
-      <SectionLabel>{title}</SectionLabel>
-      <div className="flex flex-col gap-3">{children}</div>
-    </section>
-  );
-}
-
-export function SectionColumns({ children }: { children: ReactNode }) {
-  return (
-    <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 md:grid-cols-3 [&>*]:row-span-2 [&>*]:grid [&>*]:min-w-0 [&>*]:grid-rows-subgrid [&>*]:content-start">
-      {children}
-    </div>
-  );
-}
-
-export function SwitchRow({
+export function SettingSwitch({
   checked,
+  ariaLabel,
   onCheckedChange,
-  children,
 }: {
   checked: boolean;
+  ariaLabel: string;
   onCheckedChange: (value: boolean) => void;
-  children: ReactNode;
+}) {
+  return <Switch checked={checked} aria-label={ariaLabel} onCheckedChange={onCheckedChange} />;
+}
+
+export function SettingSlider({
+  value,
+  min,
+  max,
+  step,
+  ariaLabel,
+  readout,
+  onChange,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  ariaLabel: string;
+  readout: string;
+  onChange: (value: number) => void;
 }) {
   return (
-    <label className="flex items-center gap-2.5 text-body">
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
-      {children}
-    </label>
+    <div className="flex w-full items-center gap-3">
+      <Slider
+        className="min-w-0 flex-1"
+        min={min}
+        max={max}
+        step={step}
+        value={[value]}
+        aria-label={ariaLabel}
+        onValueChange={([next]) => {
+          if (next === undefined) return;
+          onChange(next);
+        }}
+      />
+      <span className="w-12 shrink-0 text-right font-mono text-caption text-muted-foreground tabular-nums">
+        {readout}
+      </span>
+    </div>
   );
 }

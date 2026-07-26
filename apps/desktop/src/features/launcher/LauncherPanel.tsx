@@ -1,24 +1,20 @@
-import { Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { EqBars } from "@/components/EqBars";
-import { Button } from "@/components/ui/button";
-import { WarningBanner } from "@/components/WarningBanner";
 import { DEFAULT_SETTINGS, type Settings } from "@/ipc/types";
-import { missingKeysNotice } from "@/lib/api-keys";
-import { BRAND_NAME } from "@/lib/brand";
 import { isPresetFilled } from "@/lib/presets";
+import { ContextLibraryPanel } from "./ContextLibraryPanel";
 import type { LauncherPanelProps, SetSetting } from "./contract";
-import { PermissionsDialog } from "./PermissionsDialog";
-import type { PresetsUpdate } from "./sections/PresetsSection";
-import { TabContent } from "./TabContent";
-import { TabRail } from "./TabRail";
-import type { TabId } from "./tabs";
-import type { CheckState } from "./VersionRow";
-import { VersionRow } from "./VersionRow";
+import { IdentityPanel } from "./IdentityPanel";
+import { LaunchBar } from "./LaunchBar";
+import { DEFAULT_SCREEN, type ScreenId } from "./screens";
+import { PermissionsScreen } from "./screens/PermissionsScreen";
+import { SettingsScreen } from "./screens/SettingsScreen";
+import { UpdatesScreen, type CheckState } from "./screens/UpdatesScreen";
+import { ScreenShell } from "./ScreenShell";
+import { PresetsSection, type PresetsUpdate } from "./sections/PresetsSection";
+import { Sidebar } from "./Sidebar";
 
 const RISE_STEP_MS = 70;
-
 const AUTOSAVE_DEBOUNCE_MS = 600;
 
 function riseDelay(order: number): CSSProperties {
@@ -38,9 +34,9 @@ function normalizeDraft(draft: Settings): Settings {
 
 export function LauncherPanel({
   settings,
-  appVersion,
   contextLibrary,
   readiness,
+  updater,
   launching,
   error,
   onRedeem,
@@ -50,17 +46,15 @@ export function LauncherPanel({
 }: LauncherPanelProps) {
   const [draft, setDraft] = useState<Settings>(settings);
   const [checkState, setCheckState] = useState<CheckState>("idle");
-  const [tab, setTab] = useState<TabId>("main");
+  const [screen, setScreen] = useState<ScreenId>(DEFAULT_SCREEN);
 
-  const { ready, missingKeys, permissions } = readiness;
-  const [permissionsOpen, setPermissionsOpen] = useState(false);
-  const permissionsPrompted = useRef(false);
-
+  const landed = useRef(false);
   useEffect(() => {
-    if (permissionsPrompted.current || !permissions.loaded) return;
-    permissionsPrompted.current = true;
-    if (permissions.needsAttention) setPermissionsOpen(true);
-  }, [permissions.loaded, permissions.needsAttention]);
+    if (landed.current || readiness.checking) return;
+    landed.current = true;
+    const blocker = readiness.blockers[0];
+    if (blocker) setScreen(blocker.screen);
+  }, [readiness.checking, readiness.blockers]);
 
   useEffect(() => {
     setDraft((d) =>
@@ -105,103 +99,50 @@ export function LauncherPanel({
   };
 
   return (
-    <div className="flex h-screen flex-col gap-4 p-4 sm:p-6">
-      <header className="launcher-rise flex items-center gap-3 border-b pb-3" style={riseDelay(0)}>
-        <EqBars animated={launching} barClass="bg-primary" />
-        <h1 className="font-mono text-body font-semibold tracking-[0.18em] uppercase">
-          {BRAND_NAME}
-        </h1>
-        <span className="hidden text-caption text-muted-foreground sm:inline">
-          Настройте параметры и запустите приложение
-        </span>
-      </header>
-
-      <div className="flex min-h-0 min-w-0 flex-1 gap-3 md:gap-5">
-        <div className="launcher-rise flex min-h-0" style={riseDelay(1)}>
-          <TabRail active={tab} onSelect={setTab} />
-        </div>
-        <div
-          className="launcher-rise min-h-0 min-w-0 flex-1 overflow-y-auto py-1 pr-1.5"
-          style={riseDelay(2)}
-        >
-          <TabContent
-            tab={tab}
-            draft={draft}
-            set={set}
-            contextLibrary={contextLibrary}
-            currentIdentityId={settings.identity_id}
-            onRedeem={onRedeem}
-            onPresetsChange={changePresets}
-          />
-        </div>
+    <div className="flex h-screen flex-col gap-3 px-4 pt-3 pb-4 sm:px-5">
+      <div className="launcher-rise" style={riseDelay(0)}>
+        <LaunchBar
+          readiness={readiness}
+          launching={launching}
+          error={error}
+          onGoToBlocker={setScreen}
+          onLaunch={() => {
+            onLaunch(normalizeDraft(draft));
+          }}
+        />
       </div>
 
-      {!ready && (
-        <div className="launcher-rise flex flex-col gap-2" style={riseDelay(3)}>
-          {missingKeys.length > 0 && (
-            <WarningBanner
-              tone="info"
-              actionLabel="Настроить"
-              onAction={() => {
-                setTab("main");
-              }}
-            >
-              {missingKeysNotice(missingKeys)}
-            </WarningBanner>
+      <div className="flex min-h-0 min-w-0 flex-1 gap-4 md:gap-6">
+        <div className="launcher-rise flex min-h-0" style={riseDelay(1)}>
+          <Sidebar
+            active={screen}
+            attention={readiness.blockers.map((b) => b.screen)}
+            onSelect={setScreen}
+          />
+        </div>
+        <div className="launcher-rise flex min-h-0 min-w-0 flex-1" style={riseDelay(2)}>
+          {screen === "settings" && <SettingsScreen draft={draft} set={set} onRedeem={onRedeem} />}
+          {screen === "permissions" && <PermissionsScreen permissions={readiness.permissions} />}
+          {screen === "updates" && (
+            <UpdatesScreen updater={updater} checkState={checkState} onCheck={checkUpdates} />
           )}
-          {!permissions.audioOk && (
-            <WarningBanner
-              actionLabel="Доступы"
-              onAction={() => {
-                setPermissionsOpen(true);
-              }}
-            >
-              Нет доступа к записи системного звука
-            </WarningBanner>
+          {screen === "contexts" && (
+            <ScreenShell screen="contexts">
+              <ContextLibraryPanel api={contextLibrary} />
+            </ScreenShell>
+          )}
+          {screen === "presets" && (
+            <ScreenShell screen="presets">
+              <PresetsSection presets={draft.prompt_presets} onChange={changePresets} />
+            </ScreenShell>
+          )}
+          {screen === "identity" && (
+            <ScreenShell screen="identity">
+              <IdentityPanel currentIdentityId={settings.identity_id} />
+            </ScreenShell>
           )}
         </div>
-      )}
-
-      <footer
-        className="launcher-rise flex flex-wrap items-center justify-between gap-3 border-t pt-3"
-        style={riseDelay(4)}
-      >
-        <div className="flex min-w-0 items-center gap-2">
-          <VersionRow appVersion={appVersion} checkState={checkState} onCheck={checkUpdates} />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setPermissionsOpen(true);
-            }}
-          >
-            Доступы
-          </Button>
-        </div>
-        <div className="flex min-w-0 items-center gap-2.5">
-          {error !== null && (
-            <span className="min-w-0 truncate text-caption text-destructive" title={error}>
-              {error}
-            </span>
-          )}
-          <Button
-            disabled={launching || !ready}
-            className="gap-2 px-5"
-            onClick={() => {
-              onLaunch(normalizeDraft(draft));
-            }}
-          >
-            <Play className="size-4" aria-hidden />
-            {launching ? "Запускаю…" : "Запустить"}
-          </Button>
-        </div>
-      </footer>
-
-      <PermissionsDialog
-        permissions={permissions}
-        open={permissionsOpen}
-        onOpenChange={setPermissionsOpen}
-      />
+      </div>
     </div>
   );
 }

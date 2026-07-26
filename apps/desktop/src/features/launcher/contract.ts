@@ -1,4 +1,5 @@
 import type { ContextLibraryApi } from "@/hooks/useContextLibrary";
+import type { UpdaterApi } from "@/hooks/useUpdater";
 import type { Settings, UpdateInfo } from "@/ipc/types";
 import type { LauncherReadiness } from "./useLauncherReadiness";
 
@@ -11,9 +12,9 @@ export interface SectionProps {
 
 export interface LauncherPanelProps {
   settings: Settings;
-  appVersion: string;
   contextLibrary: ContextLibraryApi;
   readiness: LauncherReadiness;
+  updater: UpdaterApi;
   launching: boolean;
   error: string | null;
   onRedeem: (code: string) => Promise<string | null>;

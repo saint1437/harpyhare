@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { SectionLabel } from "@/components/SectionLabel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -9,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { WarningBanner } from "@/components/WarningBanner";
 import { listIdentities, setAppIdentity } from "@/ipc/commands";
 import type { IdentityInfo } from "@/ipc/types";
 import { BRAND_NAME } from "@/lib/brand";
@@ -57,11 +57,10 @@ export function IdentityPanel({ currentIdentityId }: IdentityPanelProps) {
 
   return (
     <div className="flex flex-col gap-3">
-      <SectionLabel>Облик приложения</SectionLabel>
       <p className="max-w-prose text-caption text-muted-foreground">
         {BRAND_NAME} маскируется под обычную программу: в Dock, переключателе окон ⌘-Tab и мониторе
-        активности он показывается под выбранным именем и иконкой. Так приложение не бросается в
-        глаза тем, кто видит ваш экран или список процессов.
+        активности он показывается под выбранным именем и иконкой. Смена облика перезапускает
+        приложение.
       </p>
       <div className="grid grid-cols-3 gap-3">
         {identities.map((identity) => (
@@ -77,7 +76,16 @@ export function IdentityPanel({ currentIdentityId }: IdentityPanelProps) {
           />
         ))}
       </div>
-      {error !== null && <span className="text-caption text-destructive">{error}</span>}
+      {error !== null && (
+        <WarningBanner
+          actionLabel="Понятно"
+          onAction={() => {
+            setError(null);
+          }}
+        >
+          {error}
+        </WarningBanner>
+      )}
 
       <ConfirmIdentityDialog
         target={confirmTarget}

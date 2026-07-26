@@ -1,35 +1,33 @@
 import { AudioLines, Monitor, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import type { PermissionsApi } from "@/hooks/usePermissions";
 import type { PermissionKind, PermissionState } from "@/ipc/bindings";
 import { cn } from "@/lib/utils";
+import { SettingGroup } from "../fields";
+import { ScreenShell } from "../ScreenShell";
 
 interface PermissionRow {
   kind: PermissionKind;
   title: string;
   purpose: string;
   icon: LucideIcon;
+  required: boolean;
 }
 
 const PERMISSION_ROWS: PermissionRow[] = [
   {
     kind: "audio",
     title: "Запись системного звука",
-    purpose: "Обязателен: без него нечего расшифровывать.",
+    purpose: "Приложение слышит собеседника и расшифровывает речь. Без него запускать нечего.",
     icon: AudioLines,
+    required: true,
   },
   {
     kind: "screen",
     title: "Запись экрана",
-    purpose: "Необязателен: нужен снимку области экрана.",
+    purpose: "Нужна снимку области экрана. Без неё работает всё остальное.",
     icon: Monitor,
+    required: false,
   },
 ];
 
@@ -64,7 +62,7 @@ function PermissionRowView({
   const state = permissions.status[row.kind];
   const granted = state === "granted";
   return (
-    <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_10.75rem] items-center gap-x-3 rounded-xl bg-surface px-3 py-2.5">
+    <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_10.75rem] items-center gap-x-4 px-4 py-3">
       <row.icon
         className={cn("size-5", granted ? "text-foreground" : "text-muted-foreground")}
         aria-hidden
@@ -74,6 +72,9 @@ function PermissionRowView({
         <div className="flex flex-wrap items-center gap-x-2">
           <span className="text-body">{row.title}</span>
           <StatusChip state={state} />
+          <span className="text-caption text-muted-foreground">
+            {row.required ? "обязателен" : "необязателен"}
+          </span>
         </div>
         <p className="min-h-9 text-caption text-muted-foreground">{row.purpose}</p>
       </div>
@@ -105,47 +106,24 @@ function PermissionRowView({
   );
 }
 
-export function PermissionsDialog({
-  permissions,
-  open,
-  onOpenChange,
-}: {
-  permissions: PermissionsApi;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
+export function PermissionsScreen({ permissions }: { permissions: PermissionsApi }) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[min(520px,95vw)] sm:max-w-[min(520px,95vw)]">
-        <DialogHeader>
-          <DialogTitle>Доступы</DialogTitle>
-        </DialogHeader>
-
-        <div className="grid gap-3 py-1">
-          <p className="text-body text-muted-foreground">
-            macOS выдаёт их только по запросу. Нажмите «Выдать» — система спросит подтверждение;
-            если окно не появилось, доступ уже решён и его меняют в системных настройках.
-          </p>
-          <div className="grid gap-2">
-            {PERMISSION_ROWS.map((row) => (
-              <PermissionRowView key={row.kind} row={row} permissions={permissions} />
-            ))}
-          </div>
-        </div>
-
-        <DialogFooter className="gap-2 sm:justify-end">
-          <Button variant="ghost" onClick={() => void permissions.refresh()}>
-            Проверить заново
-          </Button>
-          <Button
-            onClick={() => {
-              onOpenChange(false);
-            }}
-          >
-            Готово
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <ScreenShell
+      screen="permissions"
+      actions={
+        <Button variant="ghost" size="sm" onClick={() => void permissions.refresh()}>
+          Проверить заново
+        </Button>
+      }
+    >
+      <SettingGroup
+        title="Разрешения macOS"
+        description="Система выдаёт их только по запросу. Нажмите «Выдать» — macOS спросит подтверждение; если окно не появилось, доступ уже решён и меняется в системных настройках."
+      >
+        {PERMISSION_ROWS.map((row) => (
+          <PermissionRowView key={row.kind} row={row} permissions={permissions} />
+        ))}
+      </SettingGroup>
+    </ScreenShell>
   );
 }

@@ -1,87 +1,78 @@
 import { AccessCodeForm } from "@/components/AccessCodeForm";
-import { LabeledDivider } from "@/components/LabeledDivider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { openExternal } from "@/ipc/commands";
+import { apiKeyInfo, type ApiKeyId } from "@/lib/api-keys";
 import type { SectionProps } from "../contract";
-import { Field } from "../fields";
+import { SettingBlock, SettingGroup, SettingRow } from "../fields";
 
 type ApiKeysSectionProps = SectionProps & {
   onRedeem: (code: string) => Promise<string | null>;
 };
 
+const KEY_FIELDS: { id: ApiKeyId; placeholder: string }[] = [
+  { id: "anthropic", placeholder: "sk-ant-…" },
+  { id: "groq", placeholder: "gsk_…" },
+];
+
 export function ApiKeysSection({ draft, set, onRedeem }: ApiKeysSectionProps) {
   if (draft.access_token.trim() !== "") {
     return (
-      <ActiveAccessCode
-        onUnlink={() => {
-          set("access_token", "");
-        }}
-      />
+      <SettingGroup
+        title="Доступ"
+        description="Запросы идут через общий доступ по коду, свои ключи не используются."
+      >
+        <SettingRow label="Код доступа активен" hint="Отвязка вернёт запросы на ваши ключи API.">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              set("access_token", "");
+            }}
+          >
+            Отвязать
+          </Button>
+        </SettingRow>
+      </SettingGroup>
     );
   }
+
   return (
-    <div className="flex flex-col gap-4">
-      <Field label="Код доступа">
+    <SettingGroup
+      title="Доступ"
+      description="Нужен код доступа либо пара своих ключей API — иначе запускать нечего."
+    >
+      <SettingBlock label="Код доступа" hint="Быстрый путь: заводить ключи не нужно.">
         <AccessCodeForm onRedeem={onRedeem} />
-      </Field>
-      <LabeledDivider label="или свои ключи" />
-      <ApiKeyField
-        label="Ключ Anthropic"
-        placeholder="sk-ant-…"
-        value={draft.anthropic_api_key}
-        onChange={(v) => {
-          set("anthropic_api_key", v);
-        }}
-      />
-      <ApiKeyField
-        label="Ключ Groq"
-        placeholder="gsk_…"
-        value={draft.groq_api_key}
-        onChange={(v) => {
-          set("groq_api_key", v);
-        }}
-      />
-    </div>
-  );
-}
-
-function ActiveAccessCode({ onUnlink }: { onUnlink: () => void }) {
-  return (
-    <div className="flex flex-col gap-2 rounded-md bg-surface px-3 py-2.5">
-      <span className="text-body">Доступ по коду активен</span>
-      <span className="text-caption text-muted-foreground">
-        Запросы идут через бесплатный доступ, свои ключи не используются. Отвяжи код, чтобы
-        вернуться к собственным ключам — изменение применится сразу.
-      </span>
-      <Button variant="ghost" size="sm" className="self-start" onClick={onUnlink}>
-        Отвязать код
-      </Button>
-    </div>
-  );
-}
-
-function ApiKeyField({
-  label,
-  placeholder,
-  value,
-  onChange,
-}: {
-  label: string;
-  placeholder: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <Field label={label}>
-      <Input
-        type="password"
-        autoComplete="off"
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => {
-          onChange(e.target.value);
-        }}
-      />
-    </Field>
+      </SettingBlock>
+      {KEY_FIELDS.map(({ id, placeholder }) => {
+        const info = apiKeyInfo(id);
+        return (
+          <SettingBlock key={id} label={`Ключ ${info.name}`} hint={`Нужен на ${info.purpose}.`}>
+            <div className="flex items-center gap-2">
+              <Input
+                type="password"
+                autoComplete="off"
+                aria-label={`Ключ ${info.name}`}
+                placeholder={placeholder}
+                value={draft[`${id}_api_key`]}
+                onChange={(e) => {
+                  set(`${id}_api_key`, e.target.value);
+                }}
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  void openExternal(info.consoleUrl);
+                }}
+              >
+                Где взять
+              </Button>
+            </div>
+          </SettingBlock>
+        );
+      })}
+    </SettingGroup>
   );
 }
