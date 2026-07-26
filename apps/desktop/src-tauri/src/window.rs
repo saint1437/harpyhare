@@ -152,13 +152,24 @@ pub fn on_toggle_teleprompter(app: &AppHandle) {
     events::toggle_teleprompter(app);
 }
 
-#[tauri::command]
-#[specta::specta]
-pub fn launch_main_window(app: AppHandle) -> Result<(), String> {
-    let settings = current_settings(&app);
-    create_main_window(&app, &settings)?;
-    register_main_window_hotkeys(&app, &settings);
-    if let Some(w) = launcher_window(&app) {
+async fn on_main_thread<F>(app: &AppHandle, work: F) -> Result<(), String>
+where
+    F: FnOnce(&AppHandle) -> Result<(), String> + Send + 'static,
+{
+    let (done, wait) = tokio::sync::oneshot::channel();
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let _ = done.send(work(&handle));
+    })
+    .map_err(|e| e.to_string())?;
+    wait.await.map_err(|e| e.to_string())?
+}
+
+fn swap_to_main_window(app: &AppHandle) -> Result<(), String> {
+    let settings = current_settings(app);
+    create_main_window(app, &settings)?;
+    register_main_window_hotkeys(app, &settings);
+    if let Some(w) = launcher_window(app) {
         let _ = w.destroy();
     }
     let capture_app = app.clone();
@@ -168,16 +179,26 @@ pub fn launch_main_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-#[specta::specta]
-pub fn stop_main_window(app: AppHandle) -> Result<(), String> {
-    let settings = current_settings(&app);
-    unregister_main_window_hotkeys_for(&app, &settings);
-    create_launcher_window(&app, &settings)?;
-    if let Some(w) = main_window(&app) {
+fn swap_to_launcher_window(app: &AppHandle) -> Result<(), String> {
+    let settings = current_settings(app);
+    unregister_main_window_hotkeys_for(app, &settings);
+    create_launcher_window(app, &settings)?;
+    if let Some(w) = main_window(app) {
         let _ = w.destroy();
     }
     Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn launch_main_window(app: AppHandle) -> Result<(), String> {
+    on_main_thread(&app, swap_to_main_window).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn stop_main_window(app: AppHandle) -> Result<(), String> {
+    on_main_thread(&app, swap_to_launcher_window).await
 }
 
 #[tauri::command]
