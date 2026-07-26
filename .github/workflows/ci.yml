@@ -40,6 +40,8 @@ jobs:
         run: git diff --exit-code src/ipc/bindings.ts
       - name: Clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      - name: Clippy в релизном профиле
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --release -- -D warnings
 
   windows:
     name: сборка под Windows

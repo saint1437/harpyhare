@@ -2,7 +2,9 @@ use serde_json::Value;
 use std::time::Duration;
 
 const PROXY_BASE_URL: &str = "https://itech-relay.itech-edge.workers.dev";
+#[cfg(debug_assertions)]
 const PROXY_ENDPOINT_OVERRIDE_ENV: &str = "ITECH_PROXY_ENDPOINT";
+#[cfg(debug_assertions)]
 const HTTPS_PREFIX: &str = "https://";
 
 const REDEEM_PATH: &str = "/v1/redeem";

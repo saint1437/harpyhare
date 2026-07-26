@@ -47,6 +47,10 @@ cargo test  --manifest-path src-tauri/Cargo.toml --lib <test_name>   # one test
 # ↑ этот же прогон ПЕРЕГЕНЕРИРУЕТ src/ipc/bindings.ts (тест bindings::tests)
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
 # --all-targets обязателен: --lib не собирает examples/ и молча пропускает их поломку
+cargo clippy --manifest-path src-tauri/Cargo.toml --release
+# релизный профиль обязателен отдельно: под --all-targets включён cfg(test), и код, живущий
+# только под #[cfg(debug_assertions)] (env-оверрайд прокси), в debug выглядит используемым —
+# dead_code по нему всплывает лишь в релизной сборке, то есть в самом релизе
 
 # Windows-половину проверяет CI (.github/workflows/ci.yml), а не локальная машина:
 # job на windows-latest гоняет clippy --all-targets -D warnings и собирает NSIS-установщик, а прогон
