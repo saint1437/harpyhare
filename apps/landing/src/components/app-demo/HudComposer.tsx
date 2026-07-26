@@ -1,13 +1,12 @@
 import { ArrowUp, Crop, Eraser, NotebookText, SlidersHorizontal, Square } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import { useCopy } from "./copy";
 import { AppIconButton, CycleSelect } from "./ui";
 
 const PROMPT_MAX_HEIGHT_PX = 160;
 
-const MODELS = ["Haiku 4.5", "Sonnet 5", "Opus 5"] as const;
-const TOGGLES = ["Выкл", "Вкл"] as const;
-const PRESETS = ["Без препромпта", "Расшифровка речи", "Собеседование"] as const;
+const MODELS = ["Haiku 4.5", "Sonnet 5", "Opus 5"];
 
 function ParamRow({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -19,17 +18,19 @@ function ParamRow({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function RequestParams() {
+  const copy = useCopy().hud.composer;
+  const toggles = [copy.toggles.off, copy.toggles.on];
   const [open, setOpen] = useState(false);
-  const [model, setModel] = useState<string>(MODELS[0]);
-  const [thinking, setThinking] = useState<string>(TOGGLES[0]);
-  const [webSearch, setWebSearch] = useState<string>(TOGGLES[0]);
-  const [preset, setPreset] = useState<string>(PRESETS[1]);
+  const [model, setModel] = useState<string>(MODELS[0] ?? "");
+  const [thinking, setThinking] = useState<string>(copy.toggles.off);
+  const [webSearch, setWebSearch] = useState<string>(copy.toggles.off);
+  const [preset, setPreset] = useState<string>(copy.presets[1] ?? "");
 
   return (
     <div className="relative">
       <AppIconButton
-        title="Параметры запроса"
-        aria-label="Параметры запроса"
+        title={copy.requestParams}
+        aria-label={copy.requestParams}
         aria-expanded={open}
         onClick={() => {
           setOpen((value) => !value);
@@ -42,7 +43,7 @@ function RequestParams() {
         <>
           <button
             type="button"
-            aria-label="Закрыть параметры запроса"
+            aria-label={copy.closeRequestParams}
             className="fixed inset-0 z-10 cursor-default"
             onClick={() => {
               setOpen(false);
@@ -50,35 +51,35 @@ function RequestParams() {
           />
           <div className="absolute bottom-full left-0 z-20 mb-1.5 w-60 rounded-lg border border-app-border bg-app-card p-3 shadow-xl">
             <div className="flex flex-col gap-1.5">
-              <ParamRow label="Модель">
+              <ParamRow label={copy.model}>
                 <CycleSelect
                   value={model}
                   options={MODELS}
-                  ariaLabel="Модель"
+                  ariaLabel={copy.model}
                   onChange={setModel}
                 />
               </ParamRow>
-              <ParamRow label="Thinking">
+              <ParamRow label={copy.thinking}>
                 <CycleSelect
                   value={thinking}
-                  options={TOGGLES}
-                  ariaLabel="Thinking"
+                  options={toggles}
+                  ariaLabel={copy.thinking}
                   onChange={setThinking}
                 />
               </ParamRow>
-              <ParamRow label="Веб-поиск">
+              <ParamRow label={copy.webSearch}>
                 <CycleSelect
                   value={webSearch}
-                  options={TOGGLES}
-                  ariaLabel="Веб-поиск"
+                  options={toggles}
+                  ariaLabel={copy.webSearch}
                   onChange={setWebSearch}
                 />
               </ParamRow>
-              <ParamRow label="Препромпт">
+              <ParamRow label={copy.preset}>
                 <CycleSelect
                   value={preset}
-                  options={PRESETS}
-                  ariaLabel="Препромпт"
+                  options={copy.presets}
+                  ariaLabel={copy.preset}
                   onChange={setPreset}
                 />
               </ParamRow>
@@ -99,6 +100,7 @@ function PromptTextarea({
   onChange: (value: string) => void;
   onSend: () => void;
 }) {
+  const copy = useCopy();
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useLayoutEffect(() => {
@@ -114,7 +116,7 @@ function PromptTextarea({
       rows={1}
       value={value}
       spellCheck={false}
-      placeholder="Расшифровка появится здесь — или напиши вопрос сам"
+      placeholder={copy.hud.composer.placeholder}
       onChange={(e) => {
         onChange(e.target.value);
       }}
@@ -144,6 +146,7 @@ export function HudComposer({
   onStop: () => void;
   onClearHistory: () => void;
 }) {
+  const copy = useCopy().hud.composer;
   const [hasContext, setHasContext] = useState(true);
 
   return (
@@ -152,8 +155,8 @@ export function HudComposer({
         <PromptTextarea value={draft} onChange={onDraftChange} onSend={onSend} />
         <div className="flex items-center gap-1 px-1.5 pb-1.5">
           <AppIconButton
-            title="Очистить историю чата"
-            aria-label="Очистить историю чата"
+            title={copy.clearHistory}
+            aria-label={copy.clearHistory}
             className="rounded-md"
             disabled={streaming}
             onClick={onClearHistory}
@@ -161,8 +164,8 @@ export function HudComposer({
             <Eraser />
           </AppIconButton>
           <AppIconButton
-            title="Контекст чата"
-            aria-label="Контекст чата"
+            title={copy.chatContext}
+            aria-label={copy.chatContext}
             className="relative rounded-md"
             onClick={() => {
               setHasContext((value) => !value);
@@ -177,8 +180,8 @@ export function HudComposer({
             )}
           </AppIconButton>
           <AppIconButton
-            title="Снимок области экрана"
-            aria-label="Снимок области экрана"
+            title={copy.screenshot}
+            aria-label={copy.screenshot}
             className="rounded-md"
           >
             <Crop />
@@ -188,8 +191,8 @@ export function HudComposer({
           {streaming ? (
             <button
               type="button"
-              title="Остановить ответ"
-              aria-label="Остановить ответ"
+              title={copy.stopAnswer}
+              aria-label={copy.stopAnswer}
               onClick={onStop}
               className="grid size-7 shrink-0 place-items-center rounded-md bg-app-destructive text-app-primary-fg transition-colors hover:bg-app-destructive/90"
             >
@@ -198,8 +201,8 @@ export function HudComposer({
           ) : (
             <button
               type="button"
-              title="Отправить (⏎)"
-              aria-label="Отправить"
+              title={copy.send}
+              aria-label={copy.send}
               onClick={onSend}
               className="grid size-7 shrink-0 place-items-center rounded-md bg-app-primary text-app-primary-fg transition-colors hover:bg-app-primary/90"
             >

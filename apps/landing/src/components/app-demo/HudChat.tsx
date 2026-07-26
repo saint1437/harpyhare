@@ -1,7 +1,8 @@
 import { Trash2 } from "lucide-react";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
-import type { DemoMessage } from "./demo-data";
+import { useCopy } from "./copy";
+import type { DemoMessage } from "./types";
 import { AppIconButton } from "./ui";
 
 const BULLET_PREFIX = "— ";
@@ -82,11 +83,15 @@ function useElapsedSeconds(startedAt: number) {
 }
 
 function ThinkingIndicator({ startedAt }: { startedAt: number }) {
+  const copy = useCopy();
   const seconds = useElapsedSeconds(startedAt);
   return (
     <div className="flex items-baseline gap-2">
-      <span className="app-shimmer text-app-body font-medium">Думает…</span>
-      <span className="font-mono text-app-caption text-app-muted/60 tabular-nums">{seconds}с</span>
+      <span className="app-shimmer text-app-body font-medium">{copy.hud.thinking}</span>
+      <span className="font-mono text-app-caption text-app-muted/60 tabular-nums">
+        {seconds}
+        {copy.hud.secondsSuffix}
+      </span>
     </div>
   );
 }
@@ -100,11 +105,12 @@ function MessageShell({
   onRemove: () => void;
   children: ReactNode;
 }) {
+  const copy = useCopy();
   const actions = (
     <div className="pointer-events-none flex shrink-0 gap-0.5 opacity-0 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100">
       <AppIconButton
-        title="Удалить сообщение"
-        aria-label="Удалить сообщение"
+        title={copy.hud.deleteMessage}
+        aria-label={copy.hud.deleteMessage}
         onClick={onRemove}
         className="size-6 rounded-md [&_svg]:size-3.5"
       >
@@ -141,6 +147,7 @@ export function HudChat({
   thinkingStartedAt: number;
   onRemoveMessage: (index: number) => void;
 }) {
+  const copy = useCopy();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -158,7 +165,7 @@ export function HudChat({
       >
         {empty ? (
           <div className="grid h-full place-items-center">
-            <span className="text-app-body text-app-muted">Чат появится здесь</span>
+            <span className="text-app-body text-app-muted">{copy.hud.emptyChat}</span>
           </div>
         ) : (
           messages.map((message, index) => (

@@ -1,3 +1,4 @@
+import { demoRu } from "./demo-ru";
 import type { Dictionary } from "./types";
 
 export const ru: Dictionary = {
@@ -43,12 +44,7 @@ export const ru: Dictionary = {
     primaryPrefix: "Скачать для",
     unavailable: "Все релизы на GitHub",
   },
-  demo: {
-    ask: "Спросить голосом:",
-    caption:
-      "Это работающий макет: ответы записаны заранее, запросы никуда не уходят. В приложении окно плавает поверх остальных, и при демонстрации экрана его видите только вы.",
-    interfaceLanguageNote: null,
-  },
+  app: demoRu,
   how: {
     eyebrow: "Как это работает",
     title: "Три шага до ответа",

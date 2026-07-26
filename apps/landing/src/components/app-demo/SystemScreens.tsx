@@ -1,42 +1,22 @@
 import { Check, Download } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import type { PermissionCopy } from "@/i18n/demo-types";
 import { cn } from "@/lib/cn";
-import { DEMO_VERSION } from "./demo-data";
+import { useCopy } from "./copy";
 import { AppGhostButton, AppPrimaryButton, SettingGroup } from "./ui";
 
 const CHECK_DELAY_MS = 900;
-
-interface PermissionMeta {
-  id: string;
-  label: string;
-  hint: string;
-  required: boolean;
-}
-
-const PERMISSIONS: PermissionMeta[] = [
-  {
-    id: "audio",
-    label: "Запись системного звука",
-    hint: "Без него приложение не слышит собеседника — запуск заблокирован.",
-    required: true,
-  },
-  {
-    id: "screen",
-    label: "Запись экрана",
-    hint: "Нужен только снимку области экрана.",
-    required: false,
-  },
-];
 
 function PermissionRow({
   permission,
   granted,
   onGrant,
 }: {
-  permission: PermissionMeta;
+  permission: PermissionCopy;
   granted: boolean;
   onGrant: () => void;
 }) {
+  const copy = useCopy().launcher.permissions;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_10.75rem] items-center gap-x-4 px-4 py-3">
       <div className="min-w-0">
@@ -51,7 +31,7 @@ function PermissionRow({
           <span className="text-app-body text-app-fg">{permission.label}</span>
           {!permission.required && (
             <span className="rounded border border-app-border px-1 text-app-hint text-app-muted">
-              необязательный
+              {copy.optionalBadge}
             </span>
           )}
         </div>
@@ -61,13 +41,13 @@ function PermissionRow({
         {granted ? (
           <span className="inline-flex items-center gap-1.5 text-app-caption text-app-muted">
             <Check className="size-3.5" />
-            Доступ выдан
+            {copy.granted}
           </span>
         ) : (
           <>
-            <AppGhostButton>Настройки</AppGhostButton>
+            <AppGhostButton>{copy.openSettings}</AppGhostButton>
             <AppPrimaryButton className="h-7 min-w-18" onClick={onGrant}>
-              Выдать
+              {copy.grant}
             </AppPrimaryButton>
           </>
         )}
@@ -77,13 +57,11 @@ function PermissionRow({
 }
 
 export function PermissionsScreen() {
+  const copy = useCopy().launcher.permissions;
   const [granted, setGranted] = useState<string[]>(["audio"]);
   return (
-    <SettingGroup
-      title="Системные разрешения"
-      description="Запрашиваются только по кнопке — сами по себе окна macOS не всплывают."
-    >
-      {PERMISSIONS.map((permission) => (
+    <SettingGroup {...copy.group}>
+      {copy.items.map((permission) => (
         <PermissionRow
           key={permission.id}
           permission={permission}
@@ -98,6 +76,8 @@ export function PermissionsScreen() {
 }
 
 export function UpdatesScreen() {
+  const demo = useCopy();
+  const copy = demo.launcher.updates;
   const [state, setState] = useState<"idle" | "checking" | "latest">("idle");
   const timerRef = useRef(0);
 
@@ -116,19 +96,19 @@ export function UpdatesScreen() {
   };
 
   return (
-    <SettingGroup title="Версия" description="Обновления приходят подписанным бандлом.">
+    <SettingGroup {...copy.group}>
       <div className="flex items-center justify-between gap-4 px-4 py-3">
         <div className="min-w-0">
-          <span className="font-mono text-app-body text-app-fg">{DEMO_VERSION}</span>
+          <span className="font-mono text-app-body text-app-fg">{demo.version}</span>
           <p className="mt-0.5 text-app-caption text-app-muted">
-            {state === "checking" && "Проверяю…"}
-            {state === "latest" && "Установлена последняя версия"}
-            {state === "idle" && "Проверка выполняется автоматически раз в шесть часов"}
+            {state === "checking" && copy.checking}
+            {state === "latest" && copy.latest}
+            {state === "idle" && copy.auto}
           </p>
         </div>
         <AppPrimaryButton onClick={check} disabled={state === "checking"}>
           <Download />
-          Проверить
+          {copy.check}
         </AppPrimaryButton>
       </div>
     </SettingGroup>

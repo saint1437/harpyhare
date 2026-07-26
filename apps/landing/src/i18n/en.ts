@@ -1,3 +1,4 @@
+import { demoEn } from "./demo-en";
 import type { Dictionary } from "./types";
 
 export const en: Dictionary = {
@@ -43,12 +44,7 @@ export const en: Dictionary = {
     primaryPrefix: "Download for",
     unavailable: "All releases on GitHub",
   },
-  demo: {
-    ask: "Ask by voice:",
-    caption:
-      "A working mock-up: the answers are pre-recorded and nothing leaves your browser. In the real app this window floats above everything else, and during a screen share only you can see it.",
-    interfaceLanguageNote: "The app interface is currently available in Russian only.",
-  },
+  app: demoEn,
   how: {
     eyebrow: "How it works",
     title: "Three steps to an answer",

@@ -1,3 +1,5 @@
+import type { DemoCopy } from "./demo-types";
+
 export const LOCALES = ["ru", "en"] as const;
 
 export type Locale = (typeof LOCALES)[number];
@@ -56,11 +58,7 @@ export interface Dictionary {
     primaryPrefix: string;
     unavailable: string;
   };
-  demo: {
-    ask: string;
-    caption: string;
-    interfaceLanguageNote: string | null;
-  };
+  app: DemoCopy;
   how: {
     eyebrow: string;
     title: string;

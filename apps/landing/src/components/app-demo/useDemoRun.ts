@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  FALLBACK_ANSWER,
-  INITIAL_CHATS,
-  VOICE_PROMPTS,
-  type DemoChat,
-  type DemoMessage,
-  type VoicePrompt,
-} from "./demo-data";
+import type { DemoCopy, VoicePrompt } from "@/i18n/demo-types";
+import type { DemoChat, DemoMessage } from "./types";
 
 export type DemoPhase = "idle" | "recording" | "transcribing" | "streaming";
 
@@ -18,12 +12,8 @@ const REVEAL_CHARS_PER_SECOND = 95;
 const MAX_FRAME_MS = 100;
 const CHAT_LIMIT = 6;
 
-function freshChats(): DemoChat[] {
-  return INITIAL_CHATS.map((chat) => ({ ...chat, messages: [...chat.messages] }));
-}
-
-function answerFor(question: string): string {
-  return VOICE_PROMPTS.find((p) => p.question === question)?.answer ?? FALLBACK_ANSWER;
+function freshChats(copy: DemoCopy): DemoChat[] {
+  return copy.chats.map((chat) => ({ ...chat, messages: [...chat.messages], draft: "" }));
 }
 
 export interface DemoRun {
@@ -44,9 +34,9 @@ export interface DemoRun {
   askByVoice: (prompt: VoicePrompt) => void;
 }
 
-export function useDemoRun(): DemoRun {
-  const [chats, setChats] = useState<DemoChat[]>(freshChats);
-  const [activeId, setActiveId] = useState(() => INITIAL_CHATS[0]?.id ?? "");
+export function useDemoRun(copy: DemoCopy): DemoRun {
+  const [chats, setChats] = useState<DemoChat[]>(() => freshChats(copy));
+  const [activeId, setActiveId] = useState(() => copy.chats[0]?.id ?? "");
   const [phase, setPhase] = useState<DemoPhase>("idle");
   const [partial, setPartial] = useState<string | null>(null);
   const [thinkingStartedAt, setThinkingStartedAt] = useState(0);
@@ -58,7 +48,9 @@ export function useDemoRun(): DemoRun {
   );
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
-  const chatSeqRef = useRef(INITIAL_CHATS.length);
+  const chatSeqRef = useRef(copy.chats.length);
+  const copyRef = useRef(copy);
+  copyRef.current = copy;
 
   const cancelPending = useCallback(() => {
     timersRef.current.forEach(clearTimeout);
@@ -116,6 +108,11 @@ export function useDemoRun(): DemoRun {
     [later, tick],
   );
 
+  const answerFor = useCallback((question: string): string => {
+    const current = copyRef.current;
+    return current.prompts.find((p) => p.question === question)?.answer ?? current.fallbackAnswer;
+  }, []);
+
   const dispatch = useCallback(
     (chatId: string, text: string) => {
       const trimmed = text.trim();
@@ -124,7 +121,7 @@ export function useDemoRun(): DemoRun {
       patchChat(chatId, (chat) => ({ ...chat, draft: "" }));
       beginStream(chatId, answerFor(trimmed));
     },
-    [appendMessage, patchChat, beginStream],
+    [appendMessage, patchChat, beginStream, answerFor],
   );
 
   const send = useCallback(() => {
@@ -182,7 +179,10 @@ export function useDemoRun(): DemoRun {
     if (chats.length >= CHAT_LIMIT) return;
     chatSeqRef.current += 1;
     const id = `chat-${chatSeqRef.current}`;
-    setChats((prev) => [...prev, { id, title: "Новый чат", messages: [], draft: "" }]);
+    setChats((prev) => [
+      ...prev,
+      { id, title: copyRef.current.newChatTitle, messages: [], draft: "" },
+    ]);
     setActiveId(id);
   }, [chats.length]);
 
@@ -226,7 +226,7 @@ export function useDemoRun(): DemoRun {
 
   useEffect(() => cancelPending, [cancelPending]);
 
-  const active = chats.find((chat) => chat.id === activeId) ?? chats[0] ?? INITIAL_CHATS[0];
+  const active = chats.find((chat) => chat.id === activeId) ?? chats[0];
 
   return {
     chats,

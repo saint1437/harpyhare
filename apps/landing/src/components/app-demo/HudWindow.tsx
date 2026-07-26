@@ -1,6 +1,7 @@
 import { Copy, Keyboard, Minus, Plus, ScrollText, Square, X } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/cn";
+import { useCopy } from "./copy";
 import { HudChat } from "./HudChat";
 import { HudComposer } from "./HudComposer";
 import { AppEqBars, AppIconButton, Kbd, SectionLabel } from "./ui";
@@ -11,44 +12,10 @@ const CONTEXT_CHARS_PER_PERCENT = 260;
 const CONTEXT_MAX_PERCENT = 96;
 const CONTEXT_WARN_PERCENT = 80;
 
-const HOTKEY_GROUPS = [
-  {
-    title: "Запись",
-    rows: [
-      { label: "Записать вопрос", combo: "F9" },
-      { label: "Отменить запись", combo: "Esc" },
-      { label: "Отправить", combo: "⌘ ⏎" },
-    ],
-  },
-  {
-    title: "Окно",
-    rows: [
-      { label: "Показать / скрыть", combo: "⌘⇧ H" },
-      { label: "Переместить", combo: "⌘ ←→↑↓" },
-      { label: "Размер", combo: "⌘⇧ ←→↑↓" },
-      { label: "Прозрачность", combo: "⌘⇧ + −" },
-    ],
-  },
-  {
-    title: "Чат",
-    rows: [
-      { label: "Суфлёр", combo: "F10" },
-      { label: "Снимок области", combo: "⌘⇧ S" },
-      { label: "Прокрутка", combo: "⌥ ↑↓" },
-    ],
-  },
-];
-
 function indicator(phase: DemoPhase): { animated: boolean; barClass: string } {
   if (phase === "recording") return { animated: true, barClass: "bg-app-recording" };
   if (phase === "transcribing") return { animated: true, barClass: "bg-app-primary" };
   return { animated: false, barClass: "bg-app-muted/50" };
-}
-
-function phaseText(phase: DemoPhase): string {
-  if (phase === "recording") return "Слушаю…";
-  if (phase === "transcribing") return "Расшифровываю…";
-  return "";
 }
 
 function ContextGauge({ percent }: { percent: number }) {
@@ -69,12 +36,13 @@ function ContextGauge({ percent }: { percent: number }) {
 }
 
 function HotkeysPopover() {
+  const copy = useCopy().hud;
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
       <AppIconButton
-        title="Горячие клавиши"
-        aria-label="Горячие клавиши"
+        title={copy.hotkeys}
+        aria-label={copy.hotkeys}
         aria-expanded={open}
         onClick={() => {
           setOpen((value) => !value);
@@ -87,7 +55,7 @@ function HotkeysPopover() {
         <>
           <button
             type="button"
-            aria-label="Закрыть справочник"
+            aria-label={copy.closeHotkeys}
             className="fixed inset-0 z-10 cursor-default"
             onClick={() => {
               setOpen(false);
@@ -95,7 +63,7 @@ function HotkeysPopover() {
           />
           <div className="absolute top-full right-0 z-20 mt-1.5 w-64 rounded-lg border border-app-border bg-app-card p-3 shadow-xl">
             <div className="flex flex-col gap-2.5">
-              {HOTKEY_GROUPS.map((group) => (
+              {copy.hotkeyGroups.map((group) => (
                 <div key={group.title} className="flex flex-col gap-1">
                   <SectionLabel>{group.title}</SectionLabel>
                   {group.rows.map((row) => (
@@ -117,9 +85,10 @@ function HotkeysPopover() {
 }
 
 function ChatTabs({ run }: { run: DemoRun }) {
+  const copy = useCopy().hud;
   return (
     <nav
-      aria-label="Чаты"
+      aria-label={copy.chatsNav}
       className="app-no-scrollbar flex min-w-0 shrink items-center gap-1 overflow-x-auto"
     >
       {run.chats.map((chat, index) => {
@@ -130,7 +99,7 @@ function ChatTabs({ run }: { run: DemoRun }) {
             key={chat.id}
             type="button"
             title={chat.title}
-            aria-label={closeOnClick ? `Закрыть чат ${index + 1}` : `Чат ${index + 1}`}
+            aria-label={`${closeOnClick ? copy.closeChat : copy.chat} ${index + 1}`}
             onClick={() => {
               if (closeOnClick) run.closeChat(chat.id);
               else run.selectChat(chat.id);
@@ -154,8 +123,8 @@ function ChatTabs({ run }: { run: DemoRun }) {
         );
       })}
       <AppIconButton
-        title="Новый чат"
-        aria-label="Новый чат"
+        title={copy.newChat}
+        aria-label={copy.newChat}
         className="rounded-md"
         disabled={run.chats.length >= CHAT_LIMIT}
         onClick={run.newChat}
@@ -175,6 +144,7 @@ export function HudWindow({
   onClose: () => void;
   onHide: () => void;
 }) {
+  const copy = useCopy().hud;
   const chars =
     run.active.messages.reduce((total, message) => total + message.text.length, 0) +
     (run.partial?.length ?? 0);
@@ -182,24 +152,26 @@ export function HudWindow({
     CONTEXT_MAX_PERCENT,
     Math.round(chars / CONTEXT_CHARS_PER_PERCENT) + (chars > 0 ? 4 : 0),
   );
+  const phaseText =
+    run.phase === "recording"
+      ? copy.listening
+      : run.phase === "transcribing"
+        ? copy.transcribing
+        : "";
 
   return (
     <div className="flex h-full flex-col gap-2.5 bg-app-bg p-3 text-app-fg">
       <header className="flex min-h-7 items-center gap-2">
         <div className="flex shrink-0 items-center gap-0.5 pr-1">
           <AppIconButton
-            title="Закрыть приложение"
-            aria-label="Закрыть приложение"
+            title={copy.closeApp}
+            aria-label={copy.closeApp}
             onClick={onClose}
             className="hover:bg-app-destructive/15 hover:text-app-destructive"
           >
             <X />
           </AppIconButton>
-          <AppIconButton
-            title="Скрыть окно — вернуть: ⌘⇧H"
-            aria-label="Скрыть окно"
-            onClick={onHide}
-          >
+          <AppIconButton title={copy.hideWindow} aria-label={copy.hideWindow} onClick={onHide}>
             <Minus />
           </AppIconButton>
         </div>
@@ -207,24 +179,18 @@ export function HudWindow({
         <AppEqBars {...indicator(run.phase)} />
         <ChatTabs run={run} />
 
-        <span className="min-w-0 flex-1 truncate text-app-caption text-app-muted">
-          {phaseText(run.phase)}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-app-caption text-app-muted">{phaseText}</span>
 
         <div className="flex shrink-0 items-center gap-0.5">
           {percent > 0 && <ContextGauge percent={percent} />}
-          <AppIconButton title="Суфлёр" aria-label="Суфлёр">
+          <AppIconButton title={copy.teleprompter} aria-label={copy.teleprompter}>
             <ScrollText />
           </AppIconButton>
-          <AppIconButton title="Копировать последний ответ" aria-label="Копировать последний ответ">
+          <AppIconButton title={copy.copyLast} aria-label={copy.copyLast}>
             <Copy />
           </AppIconButton>
           <HotkeysPopover />
-          <AppIconButton
-            title="Стоп — вернуться в лаунчер"
-            aria-label="Стоп — вернуться в лаунчер"
-            onClick={onClose}
-          >
+          <AppIconButton title={copy.stop} aria-label={copy.stop} onClick={onClose}>
             <Square />
           </AppIconButton>
         </div>
