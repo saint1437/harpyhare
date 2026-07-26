@@ -47,3 +47,18 @@ fn only_web_urls_are_openable() {
     assert!(!is_web_url("file:///etc/passwd"));
     assert!(!is_web_url("smb://server/share"));
 }
+
+#[test]
+fn named_bits_match_token_order() {
+    use crate::hotkeys::{MODIFIER_ALT, MODIFIER_CMD, MODIFIER_CTRL, MODIFIER_SHIFT};
+    assert_eq!(modifier_mask(MODIFIER_CMD), ModifierMask::CMD);
+    assert_eq!(modifier_mask(MODIFIER_CTRL), ModifierMask::CTRL);
+    assert_eq!(modifier_mask(MODIFIER_ALT), ModifierMask::ALT);
+    assert_eq!(modifier_mask(MODIFIER_SHIFT), ModifierMask::SHIFT);
+}
+
+#[test]
+fn mask_prints_its_tokens() {
+    assert_eq!(modifier_mask("Ctrl+Shift").to_string(), "Ctrl+Shift");
+    assert_eq!(ModifierMask::EMPTY.to_string(), "нет");
+}

@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use tauri::AppHandle;
 use windows::core::{w, PCWSTR};
-use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{HINSTANCE, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Dwm::{
     DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
     DWM_WINDOW_CORNER_PREFERENCE,
@@ -11,6 +11,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, VIRTUAL_KEY, VK_CONTROL, VK_DOWN, VK_LEFT, VK_LWIN, VK_MENU, VK_RIGHT,
     VK_RWIN, VK_SHIFT, VK_UP,
 };
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetForegroundWindow, SetWindowsHookExW, HC_ACTION, KBDLLHOOKSTRUCT,
@@ -98,7 +99,11 @@ unsafe extern "system" fn arrow_keys_hook(code: i32, wparam: WPARAM, lparam: LPA
     if code == HC_ACTION as i32 && is_key_down(wparam) {
         let event = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
         if let (Some((dx, dy)), Some(app)) = (arrow_delta(event.vkCode), HOOK_APP.get()) {
-            if hud_is_focused(app) && handle_arrow_key(app, pressed_modifiers(), dx, dy) {
+            let focused = hud_is_focused(app);
+            if cfg!(debug_assertions) && !focused {
+                eprintln!("[стрелки] окно HUD не активно — событие пропущено дальше");
+            }
+            if focused && handle_arrow_key(app, pressed_modifiers(), dx, dy) {
                 return SWALLOW_EVENT;
             }
         }
@@ -110,8 +115,12 @@ pub fn install_move_keys_monitor(app: AppHandle) {
     if HOOK_APP.set(app).is_err() {
         return;
     }
-    if let Err(e) = unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(arrow_keys_hook), None, 0) } {
-        eprintln!("не удалось поставить перехват стрелок: {e}");
+    let module = unsafe { GetModuleHandleW(None) }.map(|handle| HINSTANCE(handle.0));
+    let installed =
+        unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(arrow_keys_hook), module.ok(), 0) };
+    match installed {
+        Ok(_) => eprintln!("перехват стрелок установлен"),
+        Err(e) => eprintln!("не удалось поставить перехват стрелок: {e}"),
     }
 }
 

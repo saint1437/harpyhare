@@ -39,6 +39,21 @@ impl ModifierMask {
     }
 }
 
+impl std::fmt::Display for ModifierMask {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let names: Vec<&str> = hotkeys::MODIFIER_TOKENS
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| self.0 & modifier_bit(*index).0 != 0)
+            .map(|(_, token)| *token)
+            .collect();
+        if names.is_empty() {
+            return f.write_str("нет");
+        }
+        f.write_str(&names.join(&hotkeys::COMBO_SEPARATOR.to_string()))
+    }
+}
+
 impl std::ops::BitOr for ModifierMask {
     type Output = Self;
 
@@ -82,6 +97,9 @@ pub fn handle_arrow_key(app: &AppHandle, active: ModifierMask, dx: i32, dy: i32)
             s.move_step as i32,
         )
     };
+    if cfg!(debug_assertions) {
+        eprintln!("[стрелки] зажато {active}, сдвиг на {move_mask}, размер на {resize_mask}");
+    }
     let Some(w) = main_window(app) else {
         return false;
     };
