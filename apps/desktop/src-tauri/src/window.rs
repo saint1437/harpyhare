@@ -270,9 +270,31 @@ fn ease_out_cubic(t: f64) -> f64 {
     1.0 - (1.0 - t).powi(3)
 }
 
+fn frame_still_ours(w: &WebviewWindow, width: f64, height: f64) -> bool {
+    let scale = w.scale_factor().unwrap_or(1.0);
+    let Ok(size) = w.inner_size() else {
+        return true;
+    };
+    (f64::from(size.width) / scale - width).abs() < RESIZE_EPSILON_LOGICAL_PX
+        && (f64::from(size.height) / scale - height).abs() < RESIZE_EPSILON_LOGICAL_PX
+}
+
+fn tween_superseded(
+    app: &AppHandle,
+    w: &WebviewWindow,
+    my_gen: u64,
+    applied: Option<(f64, f64)>,
+) -> bool {
+    if app.state::<App>().resize_gen.load(Ordering::SeqCst) != my_gen {
+        return true;
+    }
+    applied.is_some_and(|(width, height)| !frame_still_ours(w, width, height))
+}
+
 fn run_resize_tween(app: AppHandle, w: WebviewWindow, tween: ResizeTween, my_gen: u64) {
+    let mut applied: Option<(f64, f64)> = None;
     for i in 1..=RESIZE_TWEEN_STEPS {
-        if app.state::<App>().resize_gen.load(Ordering::SeqCst) != my_gen {
+        if tween_superseded(&app, &w, my_gen, applied) {
             return;
         }
         let eased = ease_out_cubic(f64::from(i) / f64::from(RESIZE_TWEEN_STEPS));
@@ -281,24 +303,28 @@ fn run_resize_tween(app: AppHandle, w: WebviewWindow, tween: ResizeTween, my_gen
         let cur_x =
             (f64::from(tween.from_x) + f64::from(tween.to_x - tween.from_x) * eased).round() as i32;
         apply_window_frame(&app, &w, cur_x, tween.y, cur_w, cur_h);
+        applied = Some((cur_w, cur_h));
         std::thread::sleep(RESIZE_TWEEN_FRAME_INTERVAL);
     }
-    if app.state::<App>().resize_gen.load(Ordering::SeqCst) == my_gen {
-        apply_window_frame(
-            &app,
-            &w,
-            tween.to_x,
-            tween.y,
-            tween.to_width,
-            tween.to_height,
-        );
+    if tween_superseded(&app, &w, my_gen, applied) {
+        return;
     }
+    apply_window_frame(
+        &app,
+        &w,
+        tween.to_x,
+        tween.y,
+        tween.to_width,
+        tween.to_height,
+    );
 }
 
 fn apply_window_frame(app: &AppHandle, w: &WebviewWindow, x: i32, y: i32, width: f64, height: f64) {
     let win = w.clone();
     let _ = app.run_on_main_thread(move || {
-        let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+        if win.outer_position().is_ok_and(|p| p.x != x || p.y != y) {
+            let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+        }
         let _ = win.set_size(tauri::LogicalSize::new(width, height));
     });
 }

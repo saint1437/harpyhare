@@ -82,41 +82,62 @@ pub fn modifier_mask(spec: &str) -> ModifierMask {
     mask
 }
 
-pub fn handle_arrow_key(app: &AppHandle, active: ModifierMask, dx: i32, dy: i32) -> bool {
+#[derive(Clone, Copy)]
+enum ArrowAction {
+    Move(i32),
+    Resize,
+}
+
+fn arrow_action(app: &AppHandle, active: ModifierMask) -> Option<ArrowAction> {
     if active.is_empty() {
-        return false;
+        return None;
     }
-    let (move_mask, resize_mask, step) = {
-        let st = app.state::<App>();
-        let Ok(s) = st.settings.try_lock() else {
-            return false;
-        };
-        (
-            modifier_mask(&hotkeys::effective(&s.hotkeys, hotkeys::ACTION_MOVE_WINDOW)),
-            modifier_mask(&hotkeys::effective(&s.hotkeys, hotkeys::ACTION_RESIZE_WINDOW)),
-            s.move_step as i32,
-        )
-    };
+    let st = app.state::<App>();
+    let s = st.settings.try_lock().ok()?;
+    let move_mask = modifier_mask(&hotkeys::effective(&s.hotkeys, hotkeys::ACTION_MOVE_WINDOW));
+    let resize_mask = modifier_mask(&hotkeys::effective(&s.hotkeys, hotkeys::ACTION_RESIZE_WINDOW));
     if cfg!(debug_assertions) {
         eprintln!("[стрелки] зажато {active}, сдвиг на {move_mask}, размер на {resize_mask}");
     }
-    let Some(w) = main_window(app) else {
-        return false;
-    };
     if active == move_mask {
-        if let Ok(pos) = w.outer_position() {
-            let _ = w.set_position(tauri::PhysicalPosition::new(
-                pos.x + dx * step,
-                pos.y + dy * step,
-            ));
-        }
-        return true;
+        return Some(ArrowAction::Move(s.move_step as i32));
     }
     if active == resize_mask {
-        events::resize_key(app, dx, dy);
-        return true;
+        return Some(ArrowAction::Resize);
     }
-    false
+    None
+}
+
+fn apply_arrow_action(app: &AppHandle, action: ArrowAction, dx: i32, dy: i32) {
+    match action {
+        ArrowAction::Move(step) => {
+            let Some(w) = main_window(app) else {
+                return;
+            };
+            if let Ok(pos) = w.outer_position() {
+                let _ = w.set_position(tauri::PhysicalPosition::new(
+                    pos.x + dx * step,
+                    pos.y + dy * step,
+                ));
+            }
+        }
+        ArrowAction::Resize => events::resize_key(app, dx, dy),
+    }
+}
+
+pub fn handle_arrow_key(app: &AppHandle, active: ModifierMask, dx: i32, dy: i32) -> bool {
+    let Some(action) = arrow_action(app, active) else {
+        return false;
+    };
+    if main_window(app).is_none() {
+        return false;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || apply_arrow_action(&handle, action, dx, dy));
+    });
+    true
 }
 
 pub fn disable_cursor_autohide_on_typing() {

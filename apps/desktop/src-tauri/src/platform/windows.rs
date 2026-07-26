@@ -14,8 +14,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetForegroundWindow, SetWindowsHookExW, HC_ACTION, KBDLLHOOKSTRUCT,
-    SW_SHOWNORMAL, WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
+    CallNextHookEx, GetAncestor, GetForegroundWindow, SetWindowsHookExW, GA_ROOTOWNER, HC_ACTION,
+    KBDLLHOOKSTRUCT, SW_SHOWNORMAL, WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
 };
 
 use super::{handle_arrow_key, ModifierMask};
@@ -92,7 +92,8 @@ fn hud_is_focused(app: &AppHandle) -> bool {
         return false;
     };
     let foreground = unsafe { GetForegroundWindow() };
-    foreground == hwnd
+    let owner = unsafe { GetAncestor(foreground, GA_ROOTOWNER) };
+    foreground == hwnd || owner == hwnd
 }
 
 unsafe extern "system" fn arrow_keys_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {

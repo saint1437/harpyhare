@@ -59,6 +59,7 @@ import type { ModelInfo } from "@/lib/models";
 import { mergePresets, presetText, type PromptPreset } from "@/lib/presets";
 import { queryKeys } from "@/lib/query-client";
 import { toReadingText } from "@/lib/teleprompter";
+import { nativeSizeEcho, windowSizesEqual } from "@/lib/window-size";
 
 const SHELL_COLUMN_GAP_PX = 10;
 const SHELL_PADDING_PX = 12;
@@ -202,14 +203,6 @@ function usePreviewPanel(): PreviewPanelState {
 }
 
 const PROGRAMMATIC_RESIZE_GUARD_MS = 600;
-const NATIVE_SIZE_EPSILON_PX = 1.5;
-
-function sizesEqual(a: LogicalWindowSize, b: LogicalWindowSize): boolean {
-  return (
-    Math.abs(a.width - b.width) < NATIVE_SIZE_EPSILON_PX &&
-    Math.abs(a.height - b.height) < NATIVE_SIZE_EPSILON_PX
-  );
-}
 
 function useWindowFrameSync(
   windowWidth: number,
@@ -221,13 +214,10 @@ function useWindowFrameSync(
 ): void {
   useEffect(() => {
     if (!ready) return;
-    const target = {
-      width: windowWidth + (previewOpen ? PREVIEW_EXTRA_WIDTH_PX : 0),
-      height: windowHeight,
-    };
-    if (!sizesEqual(target, nativeSizeRef.current)) {
-      guardUntilRef.current = Date.now() + PROGRAMMATIC_RESIZE_GUARD_MS;
-    }
+    const extra = previewOpen ? PREVIEW_EXTRA_WIDTH_PX : 0;
+    const target = { width: windowWidth + extra, height: windowHeight };
+    if (windowSizesEqual(target, nativeSizeEcho(nativeSizeRef.current, extra))) return;
+    guardUntilRef.current = Date.now() + PROGRAMMATIC_RESIZE_GUARD_MS;
     void setWindowSize(target.width, target.height);
   }, [windowWidth, windowHeight, previewOpen, ready, nativeSizeRef, guardUntilRef]);
 }
@@ -242,17 +232,25 @@ function useNativeResizeSync(
   const previewOpenRef = useLatestRef(previewOpen);
   const readyRef = useLatestRef(ready);
   const applyRef = useLatestRef(applyNativeWindowSize);
-  useEffect(
-    () =>
-      onWindowResized((size) => {
-        nativeSizeRef.current = size;
-        if (!readyRef.current) return;
-        if (Date.now() < guardUntilRef.current) return;
-        const base = size.width - (previewOpenRef.current ? PREVIEW_EXTRA_WIDTH_PX : 0);
-        applyRef.current(base, size.height);
-      }),
-    [nativeSizeRef, guardUntilRef, previewOpenRef, readyRef, applyRef],
-  );
+  useEffect(() => {
+    let pending = 0;
+    const stop = onWindowResized((size) => {
+      nativeSizeRef.current = size;
+      if (!readyRef.current) return;
+      if (Date.now() < guardUntilRef.current) return;
+      if (pending !== 0) return;
+      pending = requestAnimationFrame(() => {
+        pending = 0;
+        const latest = nativeSizeRef.current;
+        const base = latest.width - (previewOpenRef.current ? PREVIEW_EXTRA_WIDTH_PX : 0);
+        applyRef.current(base, latest.height);
+      });
+    });
+    return () => {
+      stop();
+      cancelAnimationFrame(pending);
+    };
+  }, [nativeSizeRef, guardUntilRef, previewOpenRef, readyRef, applyRef]);
 }
 
 const TOKEN_COUNT_PLACEHOLDER_MESSAGE: ChatMessageDto = { role: "user", text: ".", images: [] };

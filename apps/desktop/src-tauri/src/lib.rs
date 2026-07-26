@@ -40,6 +40,7 @@ const PREVIEW_URI_SCHEME: &str = "preview";
 pub fn run() {
     let specta_builder = bindings::builder();
     tauri::Builder::default()
+        .device_event_filter(tauri::DeviceEventFilter::Always)
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
