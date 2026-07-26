@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import type { Dictionary } from "@/i18n/types";
-import { Cloud } from "./Sky";
+import { FAQ_STARS } from "@/lib/stars";
+import { StarField } from "./Sky";
 
 export function Faq({ dict }: { dict: Dictionary }) {
   return (
@@ -31,12 +32,7 @@ export function Faq({ dict }: { dict: Dictionary }) {
         </div>
       </div>
 
-      <Cloud
-        variant="puffy"
-        width={118}
-        drift={42}
-        className="top-[70px] left-[7%] hidden lg:block"
-      />
+      <StarField stars={FAQ_STARS} />
     </section>
   );
 }

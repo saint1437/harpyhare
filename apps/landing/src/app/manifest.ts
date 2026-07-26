@@ -3,8 +3,8 @@ import { dictionary } from "@/i18n";
 import { LOCALE_HTML_LANG } from "@/i18n/types";
 import { LOGO_PATH, SITE_NAME } from "@/lib/site";
 
-const BACKGROUND_COLOR = "#f7f5f0";
-const THEME_COLOR = "#f7f5f0";
+const BACKGROUND_COLOR = "#000000";
+const THEME_COLOR = "#000000";
 
 export default function manifest(): MetadataRoute.Manifest {
   const dict = dictionary("ru");

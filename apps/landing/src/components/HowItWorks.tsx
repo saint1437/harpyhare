@@ -1,6 +1,7 @@
 import type { Dictionary } from "@/i18n/types";
+import { HOW_STARS } from "@/lib/stars";
 import { BushWatcher } from "./Scenery";
-import { Cloud } from "./Sky";
+import { StarField } from "./Sky";
 
 export function HowItWorks({ dict }: { dict: Dictionary }) {
   return (
@@ -24,12 +25,7 @@ export function HowItWorks({ dict }: { dict: Dictionary }) {
         </ol>
       </div>
 
-      <Cloud
-        variant="small"
-        width={92}
-        drift={54}
-        className="top-[52px] right-[12%] hidden sm:block"
-      />
+      <StarField stars={HOW_STARS} />
       <BushWatcher className="right-[8%]" />
     </section>
   );

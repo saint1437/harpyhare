@@ -1,10 +1,11 @@
 import type { Dictionary } from "@/i18n/types";
 import { RELEASES_PAGE, type ReleaseInfo } from "@/lib/release";
+import { HERO_STARS } from "@/lib/stars";
 import { AppDemo } from "./app-demo/AppDemo";
 import { DownloadChoice } from "./DownloadChoice";
 import { EqBars } from "./EqBars";
 import { Bush } from "./Scenery";
-import { Cloud } from "./Sky";
+import { StarField } from "./Sky";
 import { VersionNote } from "./VersionNote";
 
 interface HeroProps {
@@ -53,19 +54,7 @@ export function Hero({ dict, release }: HeroProps) {
 
       <AppDemo dict={dict} />
 
-      <Cloud
-        variant="wide"
-        width={200}
-        drift={48}
-        className="top-[120px] left-[6%] hidden sm:block"
-      />
-      <Cloud variant="small" width={104} drift={60} className="top-[64px] left-[34%]" />
-      <Cloud
-        variant="puffy"
-        width={144}
-        drift={38}
-        className="top-[190px] right-[24%] hidden md:block"
-      />
+      <StarField stars={HERO_STARS} />
 
       <Bush variant="front" width={120} className="left-[5%] hidden sm:block" />
       <Bush variant="back" width={150} className="right-[7%]" />

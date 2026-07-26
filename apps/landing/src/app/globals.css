@@ -1,43 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --day: 1;
-  --dayness: calc(var(--day) * 100%);
-  --night: calc(1 - var(--day));
-
-  --night-bg: oklch(0 0 0);
-  --day-bg: oklch(0.972 0.005 85);
-  --night-bg-elevated: oklch(0.13 0.004 20);
-  --day-bg-elevated: oklch(0.995 0.002 85);
-  --night-surface: oklch(0.16 0.004 20);
-  --day-surface: oklch(0.93 0.006 85);
-  --night-fg: oklch(0.97 0 0);
-  --day-fg: oklch(0.2 0.012 50);
-  --night-fg-muted: oklch(0.7 0.005 20);
-  --day-fg-muted: oklch(0.44 0.012 50);
-  --night-fg-subtle: oklch(0.51 0.005 20);
-  --day-fg-subtle: oklch(0.56 0.01 50);
-  --night-border: oklch(1 0 0 / 8%);
-  --day-border: oklch(0 0 0 / 10%);
-  --night-border-strong: oklch(1 0 0 / 15%);
-  --day-border-strong: oklch(0 0 0 / 18%);
-
-  --bg: color-mix(in oklab, var(--night-bg), var(--day-bg) var(--dayness));
-  --bg-elevated: color-mix(
-    in oklab,
-    var(--night-bg-elevated),
-    var(--day-bg-elevated) var(--dayness)
-  );
-  --surface: color-mix(in oklab, var(--night-surface), var(--day-surface) var(--dayness));
-  --fg: color-mix(in oklab, var(--night-fg), var(--day-fg) var(--dayness));
-  --fg-muted: color-mix(in oklab, var(--night-fg-muted), var(--day-fg-muted) var(--dayness));
-  --fg-subtle: color-mix(in oklab, var(--night-fg-subtle), var(--day-fg-subtle) var(--dayness));
-  --border: color-mix(in oklab, var(--night-border), var(--day-border) var(--dayness));
-  --border-strong: color-mix(
-    in oklab,
-    var(--night-border-strong),
-    var(--day-border-strong) var(--dayness)
-  );
+  --bg: oklch(0 0 0);
+  --bg-elevated: oklch(0.13 0.004 20);
+  --surface: oklch(0.16 0.004 20);
+  --fg: oklch(0.97 0 0);
+  --fg-muted: oklch(0.7 0.005 20);
+  --fg-subtle: oklch(0.51 0.005 20);
+  --border: oklch(1 0 0 / 8%);
+  --border-strong: oklch(1 0 0 / 15%);
 
   --primary: oklch(0.54 0.19 22);
   --primary-hover: oklch(0.6 0.19 22);
@@ -56,28 +27,11 @@
   --app-surface-active: oklch(1 0 0 / 10%);
   --app-code: oklch(0 0 0 / 28%);
 
-  --hud-shadow: color-mix(in oklab, rgb(0 0 0 / 0.7), rgb(0 0 0 / 0.12) var(--dayness));
+  --hud-shadow: rgb(0 0 0 / 0.7);
 
-  --sky-glow: color-mix(
-    in oklab,
-    oklch(0.92 0.02 255 / 0.34),
-    oklch(0.88 0.1 85 / 0.42) var(--dayness)
-  );
-  --beam-core: color-mix(
-    in oklab,
-    oklch(0.96 0.02 255 / 0.17),
-    oklch(0.92 0.1 85 / 0.21) var(--dayness)
-  );
-  --beam-mid: color-mix(
-    in oklab,
-    oklch(0.93 0.02 255 / 0.12),
-    oklch(0.92 0.1 85 / 0.14) var(--dayness)
-  );
-  --beam-edge: color-mix(
-    in oklab,
-    oklch(0.9 0.025 255 / 0.06),
-    oklch(0.9 0.1 85 / 0.07) var(--dayness)
-  );
+  --beam-core: oklch(0.96 0.02 255 / 0.17);
+  --beam-mid: oklch(0.93 0.02 255 / 0.12);
+  --beam-edge: oklch(0.9 0.025 255 / 0.06);
 }
 
 @theme inline {
@@ -136,7 +90,6 @@ section[id] {
 
 .hero-tint {
   background: radial-gradient(64% 46% at 50% 0%, oklch(0.42 0.15 22 / 0.14) 0%, transparent 72%);
-  opacity: var(--night);
 }
 
 .moon {
@@ -160,7 +113,6 @@ section[id] {
   margin-left: -130vmax;
   transform: rotate(var(--beam-angle, 0deg));
   transform-origin: 50% 0;
-  opacity: var(--night);
   background: conic-gradient(
     from 143deg at 50% 0,
     transparent 0deg,
@@ -193,7 +145,6 @@ section[id] {
   height: 150vmax;
   margin: -75vmax 0 0 -75vmax;
   border-radius: 50%;
-  opacity: var(--night);
   background: radial-gradient(
     circle,
     oklch(0.9 0.02 255 / 0.08) 0%,
@@ -209,28 +160,9 @@ section[id] {
   inset: 0;
   width: 100%;
   height: 100%;
-  opacity: calc(0.92 * var(--night));
+  opacity: 0.92;
   filter: drop-shadow(0 0 9px oklch(0.9 0.02 255 / 0.4));
   animation: moon-float 14s ease-in-out infinite both;
-}
-
-.sun-disc {
-  position: absolute;
-  inset: 5%;
-  border-radius: 50%;
-  background: oklch(0.85 0.09 85);
-  opacity: var(--day);
-  filter: drop-shadow(0 0 12px oklch(0.85 0.09 85 / 0.5));
-  animation: moon-float 14s ease-in-out infinite both;
-}
-
-.sun-rays {
-  position: absolute;
-  inset: -34%;
-  width: 168%;
-  height: 168%;
-  opacity: var(--day);
-  animation: sun-spin 90s linear infinite;
 }
 
 @media (min-width: 640px) {
@@ -250,42 +182,16 @@ section[id] {
   }
 }
 
-@keyframes sun-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.cloud {
-  z-index: -1;
-  opacity: calc(var(--day) * 0.9);
-  animation: cloud-drift 46s ease-in-out infinite both;
-}
-
 .stars {
   position: absolute;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  opacity: var(--night);
 }
 
 .star {
   position: absolute;
   animation: star-twinkle 3.6s ease-in-out infinite both;
-}
-
-@keyframes cloud-drift {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  50% {
-    transform: translateX(28px);
-  }
 }
 
 @keyframes star-twinkle {
@@ -335,7 +241,7 @@ section[id] {
   animation: caret-blink 1.1s step-end infinite;
 }
 
-/* the app replica keeps its own dark palette regardless of the page's day/night */
+/* the app replica keeps its own palette, a shade lighter than the page's black */
 .app-launcher {
   --app-bg: oklch(0.19 0.004 285);
   --app-card: oklch(0.235 0.004 285);
@@ -934,9 +840,6 @@ section[id] {
   .fade-rise,
   .moon-disc,
   .moon-mist,
-  .sun-disc,
-  .sun-rays,
-  .cloud,
   .star,
   .hare-bush-front {
     animation: none;
