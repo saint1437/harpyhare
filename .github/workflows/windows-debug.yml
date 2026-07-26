@@ -1,0 +1,32 @@
+name: windows-debug
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: отладочный установщик под Windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - name: Установить зависимости
+        run: npm ci
+        working-directory: .
+      - name: Собрать отладочный бандл
+        run: npx tauri build --debug --config '{"bundle":{"createUpdaterArtifacts":false}}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer-debug
+          path: apps/desktop/src-tauri/target/debug/bundle/nsis/*-setup.exe
+          if-no-files-found: error
