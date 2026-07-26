@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { screenGroup, type ScreenId } from "./screens";
+import { screenGroup, SCREEN_GROUPS, type ScreenId } from "./screens";
 
 interface SidebarProps {
   active: ScreenId;
@@ -57,7 +57,7 @@ export function Sidebar({ active, attention, onSelect }: SidebarProps) {
       aria-orientation="vertical"
       className="no-scrollbar flex w-12 shrink-0 flex-col gap-4 overflow-y-auto md:w-52"
     >
-      {(["content", "system"] as const).map((group) => (
+      {SCREEN_GROUPS.map((group) => (
         <div key={group} className={cn("flex flex-col gap-0.5", group === "system" && "mt-auto")}>
           {screenGroup(group).map((screen) => (
             <SidebarItem

@@ -4,6 +4,13 @@ fn binding(action: &str, combo: &str) -> HotkeyBinding {
     HotkeyBinding { action: action.to_string(), combo: combo.to_string() }
 }
 
+type ComboOfPlatform = fn(&PlatformCombo) -> &'static str;
+
+const PLATFORM_VIEWS: [(&str, ComboOfPlatform, &[&str]); 2] = [
+    ("macos", |c| c.macos, MODIFIER_COMBOS.macos),
+    ("windows", |c| c.windows, MODIFIER_COMBOS.windows),
+];
+
 #[test]
 fn registry_ids_unique_and_defaults_parseable() {
     let mut ids: Vec<&str> = HOTKEY_ACTIONS.iter().map(|a| a.id).collect();
@@ -12,35 +19,61 @@ fn registry_ids_unique_and_defaults_parseable() {
     ids.dedup();
     assert_eq!(ids.len(), count, "id действий должны быть уникальны");
 
-    for a in HOTKEY_ACTIONS {
-        match a.kind {
-            HotkeyKind::Combo => assert!(
-                crate::hotkey::parse_hotkey(a.default_combo).is_some(),
-                "дефолт {} не разбирается: {}",
-                a.id,
-                a.default_combo
-            ),
-            _ => assert!(
-                crate::settings::MODIFIER_COMBOS.contains(&a.default_combo),
-                "модификатор {} не из реестра: {}",
-                a.id,
-                a.default_combo
-            ),
+    for (platform, combo_of, offered) in PLATFORM_VIEWS {
+        for a in HOTKEY_ACTIONS {
+            let combo = combo_of(&a.default_combo);
+            match a.kind {
+                HotkeyKind::Combo => assert!(
+                    crate::hotkey::parse_hotkey(combo).is_some(),
+                    "дефолт {} ({platform}) не разбирается: {combo}",
+                    a.id
+                ),
+                _ => assert!(
+                    offered.contains(&combo),
+                    "модификатор {} ({platform}) не из реестра: {combo}",
+                    a.id
+                ),
+            }
         }
     }
 }
 
 #[test]
 fn registry_defaults_do_not_conflict() {
-    for a in HOTKEY_ACTIONS {
-        for b in HOTKEY_ACTIONS {
-            assert!(
-                !conflict(a.id, a.default_combo, b.id, b.default_combo),
-                "дефолты конфликтуют: {} и {}",
-                a.id,
-                b.id
-            );
+    for (platform, combo_of, _) in PLATFORM_VIEWS {
+        for a in HOTKEY_ACTIONS {
+            for b in HOTKEY_ACTIONS {
+                assert!(
+                    !conflict(
+                        a.id,
+                        combo_of(&a.default_combo),
+                        b.id,
+                        combo_of(&b.default_combo)
+                    ),
+                    "дефолты конфликтуют ({platform}): {} и {}",
+                    a.id,
+                    b.id
+                );
+            }
         }
+    }
+}
+
+#[test]
+fn windows_defaults_avoid_the_super_key() {
+    for a in HOTKEY_ACTIONS {
+        assert!(
+            !a.default_combo.windows.contains(MODIFIER_CMD),
+            "дефолт {} на Windows не должен использовать клавишу Win: {}",
+            a.id,
+            a.default_combo.windows
+        );
+    }
+    for combo in MODIFIER_COMBOS.windows {
+        assert!(
+            !combo.contains(MODIFIER_CMD),
+            "модификатор {combo} на Windows не предлагается"
+        );
     }
 }
 

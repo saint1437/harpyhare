@@ -7,6 +7,22 @@ import {
   VenetianMask,
   type LucideIcon,
 } from "lucide-react";
+import { PLATFORM, type Platform } from "@/lib/platform";
+
+export const SCREEN_GROUPS = ["content", "system"] as const;
+
+export type ScreenGroup = (typeof SCREEN_GROUPS)[number];
+
+interface ScreenMeta {
+  id: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  group: ScreenGroup;
+  platforms?: readonly Platform[];
+}
+
+const MACOS_ONLY: readonly Platform[] = ["macos"];
 
 export const LAUNCHER_SCREENS = [
   {
@@ -29,6 +45,7 @@ export const LAUNCHER_SCREENS = [
     description: "Имя и иконка, под которыми приложение видно в системе.",
     icon: VenetianMask,
     group: "content",
+    platforms: MACOS_ONLY,
   },
   {
     id: "settings",
@@ -40,9 +57,10 @@ export const LAUNCHER_SCREENS = [
   {
     id: "permissions",
     label: "Доступы",
-    description: "Разрешения macOS, без которых часть приложения не работает.",
+    description: "Системные разрешения, без которых часть приложения не работает.",
     icon: ShieldCheck,
     group: "system",
+    platforms: MACOS_ONLY,
   },
   {
     id: "updates",
@@ -51,20 +69,18 @@ export const LAUNCHER_SCREENS = [
     icon: Download,
     group: "system",
   },
-] as const satisfies readonly {
-  id: string;
-  label: string;
-  description: string;
-  icon: LucideIcon;
-  group: "content" | "system";
-}[];
+] as const satisfies readonly ScreenMeta[];
 
 export type ScreenId = (typeof LAUNCHER_SCREENS)[number]["id"];
 
 export const DEFAULT_SCREEN: ScreenId = "settings";
 
-export function screenGroup(group: "content" | "system") {
-  return LAUNCHER_SCREENS.filter((s) => s.group === group);
+function availableOn(screen: ScreenMeta, platform: Platform): boolean {
+  return screen.platforms?.includes(platform) ?? true;
+}
+
+export function screenGroup(group: ScreenGroup, platform: Platform = PLATFORM) {
+  return LAUNCHER_SCREENS.filter((s) => s.group === group && availableOn(s, platform));
 }
 
 export function screenMeta(id: ScreenId) {

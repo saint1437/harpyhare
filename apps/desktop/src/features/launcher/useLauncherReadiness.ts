@@ -9,6 +9,11 @@ export interface LauncherBlocker {
   screen: ScreenId;
 }
 
+const AUDIO_BLOCKER: LauncherBlocker = {
+  label: "Нет доступа к записи системного звука",
+  screen: "permissions",
+};
+
 export interface LauncherReadiness {
   missingKeys: ApiKeyInfo[];
   permissions: PermissionsApi;
@@ -20,23 +25,22 @@ export interface LauncherReadiness {
 export function useLauncherReadiness(settings: Settings): LauncherReadiness {
   const missingKeys = useMemo(() => missingApiKeys(settings), [settings]);
   const permissions = usePermissions();
+  const checking = !permissions.loaded;
 
   const blockers = useMemo(() => {
     const list: LauncherBlocker[] = [];
     if (missingKeys.length > 0) {
       list.push({ label: missingKeysNotice(missingKeys), screen: "settings" });
     }
-    if (permissions.loaded && !permissions.audioOk) {
-      list.push({ label: "Нет доступа к записи системного звука", screen: "permissions" });
-    }
+    if (!checking && !permissions.audioOk) list.push(AUDIO_BLOCKER);
     return list;
-  }, [missingKeys, permissions.loaded, permissions.audioOk]);
+  }, [missingKeys, checking, permissions.audioOk]);
 
   return {
     missingKeys,
     permissions,
     blockers,
-    checking: !permissions.loaded,
+    checking,
     ready: missingKeys.length === 0 && permissions.audioOk,
   };
 }

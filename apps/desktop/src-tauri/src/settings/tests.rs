@@ -265,8 +265,7 @@ fn clamp_limits_opacity_and_step() {
 }
 
 #[test]
-fn save_load_roundtrip_with_600_perms() {
-    use std::os::unix::fs::PermissionsExt;
+fn save_load_roundtrip_with_owner_only_perms() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("settings.json");
     let s = Settings {
@@ -279,8 +278,12 @@ fn save_load_roundtrip_with_600_perms() {
         ..Default::default()
     };
     s.save(&path).unwrap();
-    let mode = std::fs::metadata(&path).unwrap().permissions().mode();
-    assert_eq!(mode & 0o777, 0o600);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
     let loaded = Settings::load(&path).unwrap();
     assert_eq!(loaded.groq_api_key, "gsk_test");
     assert_eq!(loaded.chat_font_size, 15.0);

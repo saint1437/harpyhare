@@ -1,7 +1,13 @@
 import { RotateCcw } from "lucide-react";
 import { IconButton } from "@/components/IconButton";
 import { HOTKEY_ACTIONS } from "@/ipc/bindings";
-import { effectiveCombo, formatCombo, hotkeyAction, type HotkeyAction } from "@/lib/hotkeys";
+import {
+  defaultCombo,
+  effectiveCombo,
+  formatCombo,
+  hotkeyAction,
+  type HotkeyAction,
+} from "@/lib/hotkeys";
 import type { SectionProps } from "../contract";
 import { SettingGroup, SettingRow } from "../fields";
 import { HotkeyCapture } from "../HotkeyCapture";
@@ -12,7 +18,8 @@ const GLOBAL_GROUP_HINT = "Глобальные сочетания — рабо�
 
 export function HotkeyRow({ action, editor }: { action: HotkeyAction; editor: HotkeyEditor }) {
   const combo = effectiveCombo(editor.bindings, action.id);
-  const isDefault = combo === action.defaultCombo;
+  const fallback = defaultCombo(action.id);
+  const isDefault = combo === fallback;
   return (
     <SettingRow label={action.label} hint={combo.trim() === "" ? UNASSIGNED_HINT : action.hint}>
       <div className="flex w-full items-center gap-1.5">
@@ -25,7 +32,7 @@ export function HotkeyRow({ action, editor }: { action: HotkeyAction; editor: Ho
           />
         </div>
         <IconButton
-          title={`Вернуть ${formatCombo(action.defaultCombo)}`}
+          title={`Вернуть ${formatCombo(fallback)}`}
           disabled={isDefault}
           className={isDefault ? "invisible" : undefined}
           onClick={() => {

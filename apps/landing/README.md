@@ -20,10 +20,17 @@ cd apps/landing && npm run dev
 Кнопка «Скачать» и номер версии берутся **в рантайме** из последнего релиза
 `screenfriskofficial/harpyhare-releases` (GitHub Releases API). Логика:
 
-- `src/lib/release.ts` — чистый разбор ответа API (`parseRelease` → `toReleaseInfo`),
-  выбор `.dmg`-ассета (`pickDmgAsset`), константы репозитория. Покрыт юнит-тестами.
+- `src/lib/platform.ts` — список платформ, подписи, требования и детект ОС посетителя
+  (`detectPlatform` по строке user agent). Покрыт юнит-тестами.
+- `src/lib/release.ts` — чистый разбор ответа API (`parseRelease` → `toReleaseInfo`), выбор
+  установщика под платформу (`pickPlatformAsset`: macOS — `.dmg`, Windows — `-setup.exe`,
+  затем `.msi`, затем `.exe`; ассеты апдейтера отсеиваются), константы репозитория. Покрыт
+  юнит-тестами.
 - `src/hooks/useLatestRelease.ts` — фетч на маунте, состояния `loading | ready | error`.
-- Фолбэк: если API недоступен, кнопка ведёт на страницу релизов (`RELEASES_PAGE`).
+- `src/hooks/usePlatformSelection.ts` — выбранная платформа: автодетект по ОС посетителя,
+  дальше её меняет `PlatformSwitch` в Hero и в CTA.
+- Фолбэк: если API недоступен или под платформу нет ассета, кнопка ведёт на страницу релизов
+  (`RELEASES_PAGE`).
 
 Поэтому **новый релиз приложения появляется на сайте автоматически** — пересобирать и
 редеплоить сайт не нужно.

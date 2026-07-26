@@ -1,6 +1,8 @@
 import { cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { EventMap } from "@/ipc/types";
+import type { EventMap, HotkeyBinding } from "@/ipc/types";
+import { defaultCombo } from "@/lib/hotkeys";
+import { PLATFORMS, type Platform } from "@/lib/platform";
 
 const listeners = new Map<string, (payload: unknown) => void>();
 
@@ -19,43 +21,65 @@ afterEach(() => {
   listeners.clear();
 });
 
+const PRIMARY_MODIFIER: Record<Platform, KeyboardEventInit> = {
+  macos: { metaKey: true },
+  windows: { ctrlKey: true },
+};
+
+function platformBindings(platform: Platform): HotkeyBinding[] {
+  return (["opacity", "send"] as const).map((action) => ({
+    action,
+    combo: defaultCombo(action, platform),
+  }));
+}
+
 function keydown(init: KeyboardEventInit) {
   document.dispatchEvent(new KeyboardEvent("keydown", { ...init, bubbles: true }));
 }
 
-function renderControls(onResizeKey = vi.fn(), onOpacityStep = vi.fn(), onSend = vi.fn()) {
+function renderControls(
+  bindings: HotkeyBinding[] = [],
+  onResizeKey = vi.fn(),
+  onOpacityStep = vi.fn(),
+  onSend = vi.fn(),
+) {
   renderHook(() => {
-    useWindowControls([], onSend, onOpacityStep, onResizeKey);
+    useWindowControls(bindings, onSend, onOpacityStep, onResizeKey);
   });
   return { onResizeKey, onOpacityStep, onSend };
 }
 
-describe("useWindowControls — opacity", () => {
-  it("Cmd+Shift+Equal → onOpacityStep(1)", () => {
-    const { onOpacityStep } = renderControls();
-    keydown({ metaKey: true, shiftKey: true, code: "Equal" });
+describe.each(PLATFORMS)("useWindowControls — прозрачность (%s)", (platform) => {
+  const modifier = { ...PRIMARY_MODIFIER[platform], shiftKey: true };
+
+  it("модификатор с Equal → onOpacityStep(1)", () => {
+    const { onOpacityStep } = renderControls(platformBindings(platform));
+    keydown({ ...modifier, code: "Equal" });
     expect(onOpacityStep).toHaveBeenCalledWith(1);
   });
-  it("Cmd+Shift+Minus → onOpacityStep(-1)", () => {
-    const { onOpacityStep } = renderControls();
-    keydown({ metaKey: true, shiftKey: true, code: "Minus" });
+
+  it("модификатор с Minus → onOpacityStep(-1)", () => {
+    const { onOpacityStep } = renderControls(platformBindings(platform));
+    keydown({ ...modifier, code: "Minus" });
     expect(onOpacityStep).toHaveBeenCalledWith(-1);
   });
+
   it("без Shift не триггерит opacity", () => {
-    const { onOpacityStep } = renderControls();
-    keydown({ metaKey: true, code: "Equal" });
+    const { onOpacityStep } = renderControls(platformBindings(platform));
+    keydown({ ...PRIMARY_MODIFIER[platform], code: "Equal" });
     expect(onOpacityStep).not.toHaveBeenCalled();
   });
 });
 
-describe("useWindowControls — отправка", () => {
-  it("Cmd+Enter отправляет", () => {
-    const { onSend } = renderControls();
-    keydown({ metaKey: true, code: "Enter" });
+describe.each(PLATFORMS)("useWindowControls — отправка (%s)", (platform) => {
+  it("дефолтное сочетание платформы отправляет", () => {
+    const { onSend } = renderControls(platformBindings(platform));
+    keydown({ ...PRIMARY_MODIFIER[platform], code: "Enter" });
     expect(onSend).toHaveBeenCalled();
   });
+
   it("Enter без модификатора не отправляет", () => {
-    const { onSend } = renderControls();
+    const { onSend } = renderControls(platformBindings(platform));
     keydown({ code: "Enter" });
     expect(onSend).not.toHaveBeenCalled();
   });

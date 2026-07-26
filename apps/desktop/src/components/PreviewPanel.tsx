@@ -4,6 +4,7 @@ import { IconButton } from "@/components/IconButton";
 import { SectionLabel } from "@/components/SectionLabel";
 import { Button } from "@/components/ui/button";
 import { setPreviewHtml } from "@/ipc/commands";
+import { previewUrl } from "@/ipc/preview";
 
 export interface PreviewPanelProps {
   html: string;
@@ -12,12 +13,9 @@ export interface PreviewPanelProps {
 
 export const PREVIEW_PANEL_WIDTH_PX = 570;
 
-const PREVIEW_ORIGIN = "preview://localhost";
 const PREVIEW_IFRAME_TITLE = "HTML превью";
 const PREVIEW_IFRAME_CLASS = "min-h-0 flex-1 rounded-xl border-0 bg-white";
 const PREVIEW_SANDBOX = "allow-scripts allow-same-origin";
-
-const previewSrcUrl = (version: number) => `${PREVIEW_ORIGIN}/?v=${version}`;
 
 function usePreviewSrc(html: string) {
   const [src, setSrc] = useState("");
@@ -31,7 +29,7 @@ function usePreviewSrc(html: string) {
     nonce.current += 1;
     const version = nonce.current;
     void setPreviewHtml(html).then(() => {
-      if (version === nonce.current) setSrc(previewSrcUrl(version));
+      if (version === nonce.current) setSrc(previewUrl(version));
     });
   }, [html]);
 

@@ -1,3 +1,5 @@
+import { PLATFORM, type Platform } from "./platform";
+
 export interface HotkeyEvent {
   metaKey: boolean;
   ctrlKey: boolean;
@@ -7,6 +9,7 @@ export interface HotkeyEvent {
 }
 
 const HOTKEY_SEPARATOR = "+";
+const PLATFORMS_WITH_ASSIGNABLE_META: readonly Platform[] = ["macos"];
 const LETTER_CODE_RE = /^Key([A-Z])$/;
 const FUNCTION_KEY_CODE_RE = /^F(?:[1-9]|1[0-9]|2[0-4])$/;
 const DIGIT_CODE_RE = /^Digit([0-9])$/;
@@ -89,9 +92,10 @@ export function conflictsWithTyping(hotkey: string): boolean {
   return SINGLE_LETTER_OR_DIGIT_RE.test(key);
 }
 
-export function hotkeyFromEvent(e: HotkeyEvent): string | null {
+export function hotkeyFromEvent(e: HotkeyEvent, platform: Platform = PLATFORM): string | null {
   const key = mainKeyToken(e.code);
   if (key === null) return null;
+  if (e.metaKey && !PLATFORMS_WITH_ASSIGNABLE_META.includes(platform)) return null;
   const mods: string[] = [];
   if (e.metaKey) mods.push("Cmd");
   if (e.ctrlKey) mods.push("Ctrl");

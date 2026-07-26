@@ -4,7 +4,6 @@ use std::sync::{
 };
 use std::time::Duration;
 
-use cidre::core_audio;
 use futures_util::StreamExt;
 use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
@@ -15,36 +14,35 @@ use crate::app_state::{
 use crate::error::{AppError, ErrorCode};
 use crate::{audio, capture, events, hotkey, state, stt};
 
-const ERR_NO_CAPTURE_PERMISSION: &str = "Нет разрешения на запись системного звука";
+#[cfg(target_os = "macos")]
+const ERR_NO_CAPTURE: (ErrorCode, &str) = (
+    ErrorCode::Permission,
+    "Нет разрешения на запись системного звука",
+);
+#[cfg(target_os = "windows")]
+const ERR_NO_CAPTURE: (ErrorCode, &str) = (
+    ErrorCode::Internal,
+    "Захват системного звука недоступен — проверь устройство вывода в настройках",
+);
 const ERR_NO_AUDIO_BUFFER: &str = "нет аудио-буфера";
+#[cfg(target_os = "macos")]
 const ERR_SILENCE: &str = "Тишина — нечего распознавать (если звук играл: проверь право «Запись системного звука» у macOS и устройство захвата в настройках)";
+#[cfg(target_os = "windows")]
+const ERR_SILENCE: &str = "Тишина — нечего распознавать (если звук играл: проверь устройство вывода в настройках захвата)";
 
 const STT_STREAM_CHANNEL_CAPACITY: usize = 256;
 const MAX_DURATION_WATCHDOG_INTERVAL: Duration = Duration::from_secs(1);
 
 type SttBodyChunk = Result<Vec<u8>, std::io::Error>;
 
-extern "C-unwind" fn on_default_output_device_changed(
-    _obj: core_audio::Obj,
-    _number_addresses: u32,
-    _addresses: *const core_audio::PropAddr,
-    client_data: *mut AppHandle,
-) -> cidre::os::Status {
-    let app = unsafe { &*client_data }.clone();
-    tauri::async_runtime::spawn(async move {
-        handle_default_output_device_changed(&app);
-    });
-    cidre::os::Status::NO_ERR
-}
-
 pub fn install_default_output_device_listener(app: &AppHandle) {
-    let client_data = Box::leak(Box::new(app.clone()));
-    let addr = core_audio::PropSelector::HW_DEFAULT_OUTPUT_DEVICE.global_addr();
-    if let Err(e) =
-        core_audio::System::OBJ.add_prop_listener(&addr, on_default_output_device_changed, client_data)
-    {
-        eprintln!("не удалось подписаться на смену аудио-вывода: {e:?}");
-    }
+    let app = app.clone();
+    capture::watch_default_output_device(Box::new(move || {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            handle_default_output_device_changed(&app);
+        });
+    }));
 }
 
 fn handle_default_output_device_changed(app: &AppHandle) {
@@ -82,7 +80,9 @@ pub fn ensure_capture(app: &AppHandle) -> bool {
 
 fn rebuild_capture_now(app: &AppHandle) {
     let never_built = app.state::<App>().capture.lock().unwrap().is_none();
-    if never_built && !current_settings(app).audio_permission_requested {
+    let would_prompt = crate::permissions::AUDIO_REQUIRES_PERMISSION
+        && !current_settings(app).audio_permission_requested;
+    if never_built && would_prompt {
         return;
     }
     rebuild_capture(app);
@@ -96,7 +96,7 @@ pub fn on_ptt_pressed(app: &AppHandle) {
     if st.capture.lock().unwrap().is_none() {
         events::stt_error(
             app,
-            AppError::new(ErrorCode::Permission, ERR_NO_CAPTURE_PERMISSION),
+            AppError::new(ERR_NO_CAPTURE.0, ERR_NO_CAPTURE.1),
         );
         return;
     }

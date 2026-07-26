@@ -1,10 +1,10 @@
 use super::*;
-use crate::settings::MODIFIER_COMBOS;
+use crate::hotkeys::MODIFIER_COMBOS;
 
 #[test]
 fn every_offered_combo_parses_to_a_distinct_mask() {
     let mut seen = Vec::new();
-    for combo in MODIFIER_COMBOS {
+    for combo in MODIFIER_COMBOS.current() {
         let mask = modifier_mask(combo);
         assert!(!mask.is_empty(), "комбо {combo:?} не разобрано в флаги");
         assert!(!seen.contains(&mask), "комбо {combo:?} дублирует уже занятые флаги");
@@ -33,9 +33,9 @@ fn every_modifier_default_is_offered_by_the_ui() {
         .filter(|a| a.kind != crate::hotkeys::HotkeyKind::Combo);
     for action in families {
         assert!(
-            MODIFIER_COMBOS.contains(&action.default_combo),
+            MODIFIER_COMBOS.current().contains(&action.default_combo.current()),
             "дефолт {:?} не предлагается в UI",
-            action.default_combo
+            action.default_combo.current()
         );
     }
 }

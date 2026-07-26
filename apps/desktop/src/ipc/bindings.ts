@@ -45,9 +45,9 @@ export const commands = {
 };
 
 /* Constants */
-export const HOTKEY_ACTIONS = [{"defaultCombo":"F9","group":"Запись","hint":"Удерживайте, пока говорит собеседник.","id":"record","kind":"combo","label":"Записать системный звук","scope":"global"},{"defaultCombo":"Escape","group":"Запись","hint":"Слушается только пока идёт запись.","id":"cancel_recording","kind":"combo","label":"Отменить запись","scope":"recording"},{"defaultCombo":"Cmd+Enter","group":"Отправка","hint":"Работает из любого места окна, не только из поля ввода.","id":"send","kind":"combo","label":"Отправить","scope":"hud"},{"defaultCombo":"Cmd+Shift+S","group":"Отправка","hint":"Выделенная область уходит вложением в чат.","id":"screenshot","kind":"combo","label":"Снимок области экрана","scope":"global"},{"defaultCombo":"Cmd+Shift+H","group":"Окно","hint":"Работает, даже когда окно спрятано.","id":"toggle_window","kind":"combo","label":"Скрыть или показать","scope":"global"},{"defaultCombo":"Cmd","group":"Окно","hint":"Модификатор со стрелками.","id":"move_window","kind":"modifier_arrows","label":"Передвинуть","scope":"hud"},{"defaultCombo":"Cmd+Shift","group":"Окно","hint":"Модификатор со стрелками.","id":"resize_window","kind":"modifier_arrows","label":"Изменить размер","scope":"hud"},{"defaultCombo":"Cmd+Shift","group":"Окно","hint":"Модификатор с плюсом и минусом.","id":"opacity","kind":"modifier_plus_minus","label":"Прозрачность","scope":"hud"},{"defaultCombo":"Alt","group":"Чат","hint":"Модификатор со стрелками вверх и вниз.","id":"scroll_chat","kind":"modifier_arrows","label":"Скролл переписки","scope":"hud"},{"defaultCombo":"F10","group":"Чат","hint":"Крупный текст ответа поверх экрана.","id":"teleprompter","kind":"combo","label":"Суфлёр","scope":"global"},{"defaultCombo":"Escape","group":"Суфлёр","hint":"Слушается только пока суфлёр открыт.","id":"teleprompter_close","kind":"combo","label":"Закрыть суфлёр","scope":"teleprompter"},{"defaultCombo":"Space","group":"Суфлёр","hint":"Останавливает автопрокрутку.","id":"teleprompter_pause","kind":"combo","label":"Пауза суфлёра","scope":"teleprompter"}] as const;
+export const HOTKEY_ACTIONS = [{"defaultCombo":{"macos":"F9","windows":"F9"},"group":"Запись","hint":"Удерживайте, пока говорит собеседник.","id":"record","kind":"combo","label":"Записать системный звук","scope":"global"},{"defaultCombo":{"macos":"Escape","windows":"Escape"},"group":"Запись","hint":"Слушается только пока идёт запись.","id":"cancel_recording","kind":"combo","label":"Отменить запись","scope":"recording"},{"defaultCombo":{"macos":"Cmd+Enter","windows":"Ctrl+Enter"},"group":"Отправка","hint":"Работает из любого места окна, не только из поля ввода.","id":"send","kind":"combo","label":"Отправить","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+S","windows":"Ctrl+Shift+S"},"group":"Отправка","hint":"Выделенная область уходит вложением в чат.","id":"screenshot","kind":"combo","label":"Снимок области экрана","scope":"global"},{"defaultCombo":{"macos":"Cmd+Shift+H","windows":"Ctrl+Shift+H"},"group":"Окно","hint":"Работает, даже когда окно спрятано.","id":"toggle_window","kind":"combo","label":"Скрыть или показать","scope":"global"},{"defaultCombo":{"macos":"Cmd","windows":"Ctrl"},"group":"Окно","hint":"Модификатор со стрелками.","id":"move_window","kind":"modifier_arrows","label":"Передвинуть","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift","windows":"Ctrl+Shift"},"group":"Окно","hint":"Модификатор со стрелками.","id":"resize_window","kind":"modifier_arrows","label":"Изменить размер","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift","windows":"Ctrl+Shift"},"group":"Окно","hint":"Модификатор с плюсом и минусом.","id":"opacity","kind":"modifier_plus_minus","label":"Прозрачность","scope":"hud"},{"defaultCombo":{"macos":"Alt","windows":"Alt"},"group":"Чат","hint":"Модификатор со стрелками вверх и вниз.","id":"scroll_chat","kind":"modifier_arrows","label":"Скролл переписки","scope":"hud"},{"defaultCombo":{"macos":"F10","windows":"F10"},"group":"Чат","hint":"Крупный текст ответа поверх экрана.","id":"teleprompter","kind":"combo","label":"Суфлёр","scope":"global"},{"defaultCombo":{"macos":"Escape","windows":"Escape"},"group":"Суфлёр","hint":"Слушается только пока суфлёр открыт.","id":"teleprompter_close","kind":"combo","label":"Закрыть суфлёр","scope":"teleprompter"},{"defaultCombo":{"macos":"Space","windows":"Space"},"group":"Суфлёр","hint":"Останавливает автопрокрутку.","id":"teleprompter_pause","kind":"combo","label":"Пауза суфлёра","scope":"teleprompter"}] as const;
 
-export const MODIFIER_COMBOS = ["Cmd","Ctrl","Alt","Cmd+Shift","Ctrl+Shift","Alt+Shift"] as const;
+export const MODIFIER_COMBOS = {"macos":["Cmd","Ctrl","Alt","Cmd+Shift","Ctrl+Shift","Alt+Shift"],"windows":["Ctrl","Alt","Ctrl+Shift","Alt+Shift"]} as const;
 
 export const SETTINGS_DEFAULTS = {"access_token":"","anthropic_api_key":"","audio_permission_requested":false,"auto_preview_html":true,"auto_send":false,"buffer_enabled":true,"buffer_seconds":4,"capture_device_uid":"","chat_font_size":13.5,"groq_api_key":"","hotkeys":[],"identity_id":"","move_step":20,"prompt_presets":[],"resize_step":20,"screen_permission_requested":false,"screen_share_visible":false,"scroll_step":120,"skipped_version":"","stt_language":"ru","stt_translate":false,"teleprompter_font_size":28.0,"teleprompter_resume":true,"teleprompter_speed":40.0,"theme":"gray","window_height":680.0,"window_opacity":0.9,"window_width":960.0} as const;
 
@@ -74,7 +74,7 @@ export type HotkeyAction = {
 	hint: string,
 	kind: HotkeyKind,
 	scope: HotkeyScope,
-	defaultCombo: string,
+	defaultCombo: PlatformCombo,
 };
 
 export type HotkeyBinding = {
@@ -138,6 +138,11 @@ export type PermissionState = "unknown" | "granted" | "denied";
 export type PermissionsStatus = {
 	audio: PermissionState,
 	screen: PermissionState,
+};
+
+export type PlatformCombo = {
+	macos: string,
+	windows: string,
 };
 
 export type PromptPreset = {

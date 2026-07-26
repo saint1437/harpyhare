@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { HotkeyBinding } from "@/ipc/types";
 import { assignHotkey, resetHotkey } from "@/lib/hotkey-conflicts";
-import { hotkeyAction, type HotkeyActionId } from "@/lib/hotkeys";
+import { defaultCombo, type HotkeyActionId } from "@/lib/hotkeys";
 import type { SectionProps } from "./contract";
 
 export interface HotkeyEditor {
@@ -30,7 +30,7 @@ export function useHotkeyEditor(
       apply(id, combo, false);
     },
     onReset: (id) => {
-      apply(id, hotkeyAction(id).defaultCombo, true);
+      apply(id, defaultCombo(id), true);
     },
     stolen,
   };

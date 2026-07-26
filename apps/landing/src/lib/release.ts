@@ -1,8 +1,16 @@
+import { PLATFORMS, type Platform } from "./platform";
+
 export const RELEASES_REPO = "screenfriskofficial/harpyhare-releases";
 export const LATEST_RELEASE_API = `https://api.github.com/repos/${RELEASES_REPO}/releases/latest`;
 export const RELEASES_PAGE = `https://github.com/${RELEASES_REPO}/releases/latest`;
 
-const DMG_EXTENSION = ".dmg";
+const PLATFORM_INSTALLER_SUFFIXES: Record<Platform, readonly string[]> = {
+  macos: [".dmg"],
+  windows: ["-setup.exe", ".msi", ".exe"],
+};
+
+const UPDATER_ARTIFACT_SUFFIXES = [".nsis.zip", ".app.tar.gz", ".sig"];
+const UPDATER_MANIFEST_NAME = "latest.json";
 
 export interface GitHubAsset {
   name: string;
@@ -15,24 +23,47 @@ export interface GitHubRelease {
   assets: GitHubAsset[];
 }
 
+export type PlatformDownloads = Record<Platform, string>;
+
 export interface ReleaseInfo {
   version: string;
-  downloadUrl: string;
+  downloads: PlatformDownloads;
 }
 
 export function stripVersionPrefix(tag: string): string {
   return tag.replace(/^v/i, "");
 }
 
-export function pickDmgAsset(assets: GitHubAsset[]): GitHubAsset | undefined {
-  return assets.find((asset) => asset.name.toLowerCase().endsWith(DMG_EXTENSION));
+function isInstallerAsset(asset: GitHubAsset): boolean {
+  const name = asset.name.toLowerCase();
+  if (name === UPDATER_MANIFEST_NAME) return false;
+  return !UPDATER_ARTIFACT_SUFFIXES.some((suffix) => name.endsWith(suffix));
+}
+
+export function pickPlatformAsset(
+  assets: GitHubAsset[],
+  platform: Platform,
+): GitHubAsset | undefined {
+  const installers = assets.filter(isInstallerAsset);
+  for (const suffix of PLATFORM_INSTALLER_SUFFIXES[platform]) {
+    const match = installers.find((asset) => asset.name.toLowerCase().endsWith(suffix));
+    if (match) return match;
+  }
+  return undefined;
+}
+
+function collectDownloads(assets: GitHubAsset[]): PlatformDownloads {
+  const entries = PLATFORMS.map((platform) => [
+    platform,
+    pickPlatformAsset(assets, platform)?.browser_download_url ?? RELEASES_PAGE,
+  ]);
+  return Object.fromEntries(entries) as PlatformDownloads;
 }
 
 export function toReleaseInfo(release: GitHubRelease): ReleaseInfo {
-  const dmg = pickDmgAsset(release.assets);
   return {
     version: stripVersionPrefix(release.tag_name),
-    downloadUrl: dmg?.browser_download_url ?? release.html_url,
+    downloads: collectDownloads(release.assets),
   };
 }
 

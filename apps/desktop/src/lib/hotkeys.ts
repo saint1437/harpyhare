@@ -1,5 +1,6 @@
 import { HOTKEY_ACTIONS } from "@/ipc/bindings";
 import type { HotkeyBinding } from "@/ipc/types";
+import { PLATFORM, type Platform } from "./platform";
 
 export type HotkeyAction = (typeof HOTKEY_ACTIONS)[number];
 export type HotkeyActionId = HotkeyAction["id"];
@@ -18,11 +19,24 @@ const MODIFIER_ALIASES: Record<string, string> = {
   shift: "Shift",
 };
 
-const MODIFIER_SYMBOLS: Record<string, string> = {
-  Cmd: "⌘",
-  Shift: "⇧",
-  Alt: "⌥",
-  Ctrl: "⌃",
+const MODIFIER_LABELS: Record<Platform, Record<string, string>> = {
+  macos: {
+    Cmd: "⌘",
+    Shift: "⇧",
+    Alt: "⌥",
+    Ctrl: "⌃",
+  },
+  windows: {
+    Cmd: "Win",
+    Shift: "Shift",
+    Alt: "Alt",
+    Ctrl: "Ctrl",
+  },
+};
+
+const TOKEN_JOINER: Record<Platform, string> = {
+  macos: "",
+  windows: COMBO_SEPARATOR,
 };
 
 const KEY_SYMBOLS: Record<string, string> = {
@@ -51,6 +65,7 @@ const KEY_SYMBOLS: Record<string, string> = {
   PAGEDOWN: "PgDn",
 };
 
+const HINT_SEPARATOR = " ";
 const ARROWS_HINT = "←→↑↓";
 const PLUS_MINUS_HINT = "+ −";
 
@@ -58,9 +73,17 @@ export function hotkeyAction(id: HotkeyActionId): HotkeyAction {
   return HOTKEY_ACTIONS.find((a) => a.id === id) ?? HOTKEY_ACTIONS[0];
 }
 
-export function effectiveCombo(bindings: HotkeyBinding[], id: HotkeyActionId): string {
+export function defaultCombo(id: HotkeyActionId, platform: Platform = PLATFORM): string {
+  return hotkeyAction(id).defaultCombo[platform];
+}
+
+export function effectiveCombo(
+  bindings: HotkeyBinding[],
+  id: HotkeyActionId,
+  platform: Platform = PLATFORM,
+): string {
   const bound = [...bindings].reverse().find((b) => b.action === id);
-  return bound ? bound.combo : hotkeyAction(id).defaultCombo;
+  return bound ? bound.combo : defaultCombo(id, platform);
 }
 
 export function splitCombo(combo: string): { modifiers: string[]; key: string | null } {
@@ -95,18 +118,26 @@ function formatKey(token: string): string {
   return KEY_SYMBOLS[canonical] ?? canonical;
 }
 
-export function formatCombo(combo: string): string {
+export function formatCombo(combo: string, platform: Platform = PLATFORM): string {
   const { modifiers, key } = splitCombo(combo);
-  const parts = modifiers.map((m) => MODIFIER_SYMBOLS[m] ?? m);
+  const labels = MODIFIER_LABELS[platform];
+  const parts = modifiers.map((m) => labels[m] ?? m);
   if (key !== null) parts.push(formatKey(key));
-  return parts.join("");
+  return parts.join(TOKEN_JOINER[platform]);
 }
 
-export function comboLabel(action: HotkeyAction, combo: string): string {
+export function comboLabel(
+  action: HotkeyAction,
+  combo: string,
+  platform: Platform = PLATFORM,
+): string {
   if (combo.trim() === "") return "";
-  if (action.kind === "modifier_arrows") return `${formatCombo(combo)} ${ARROWS_HINT}`;
-  if (action.kind === "modifier_plus_minus") return `${formatCombo(combo)} ${PLUS_MINUS_HINT}`;
-  return formatCombo(combo);
+  const formatted = formatCombo(combo, platform);
+  if (action.kind === "modifier_arrows") return `${formatted}${HINT_SEPARATOR}${ARROWS_HINT}`;
+  if (action.kind === "modifier_plus_minus") {
+    return `${formatted}${HINT_SEPARATOR}${PLUS_MINUS_HINT}`;
+  }
+  return formatted;
 }
 
 export interface HotkeyHint {
@@ -119,26 +150,42 @@ export interface HotkeyGroup {
   hints: HotkeyHint[];
 }
 
-const FIELD_HINTS: Record<string, HotkeyHint[]> = {
-  Отправка: [
-    { combo: "⏎", label: "отправить из поля ввода" },
-    { combo: "⇧⏎", label: "перенос строки" },
-    { combo: "⌘V", label: "вставить скриншот" },
-  ],
+const PASTE_MODIFIER: Record<Platform, string> = {
+  macos: "Cmd",
+  windows: "Ctrl",
 };
+const SEND_KEY = "Enter";
+const PASTE_KEY = "V";
+const FIELD_HINTS_GROUP = hotkeyAction("send").group;
 
-export function hotkeyGroups(bindings: HotkeyBinding[]): HotkeyGroup[] {
+function fieldHints(platform: Platform): Record<string, HotkeyHint[]> {
+  const paste = [PASTE_MODIFIER[platform], PASTE_KEY].join(COMBO_SEPARATOR);
+  const newline = ["Shift", SEND_KEY].join(COMBO_SEPARATOR);
+  return {
+    [FIELD_HINTS_GROUP]: [
+      { combo: formatCombo(SEND_KEY, platform), label: "отправить из поля ввода" },
+      { combo: formatCombo(newline, platform), label: "перенос строки" },
+      { combo: formatCombo(paste, platform), label: "вставить скриншот" },
+    ],
+  };
+}
+
+export function hotkeyGroups(
+  bindings: HotkeyBinding[],
+  platform: Platform = PLATFORM,
+): HotkeyGroup[] {
   const groups: HotkeyGroup[] = [];
   for (const action of HOTKEY_ACTIONS) {
-    const combo = comboLabel(action, effectiveCombo(bindings, action.id));
+    const combo = comboLabel(action, effectiveCombo(bindings, action.id, platform), platform);
     if (combo === "") continue;
     const hint = { combo, label: action.label.toLowerCase() };
     const existing = groups.find((g) => g.title === action.group);
     if (existing) existing.hints.push(hint);
     else groups.push({ title: action.group, hints: [hint] });
   }
+  const hints = fieldHints(platform);
   for (const group of groups) {
-    group.hints.push(...(FIELD_HINTS[group.title] ?? []));
+    group.hints.push(...(hints[group.title] ?? []));
   }
   return groups;
 }
@@ -158,32 +205,49 @@ export type ComboIconName =
 
 export type ComboToken = { type: "icon"; icon: ComboIconName } | { type: "text"; text: string };
 
-const ICON_BY_CHAR: Record<string, ComboIconName> = {
-  "⌘": "cmd",
-  "⇧": "shift",
-  "⌥": "option",
-  "⌃": "ctrl",
+const KEY_GLYPH_ICONS: Record<string, ComboIconName> = {
   "⏎": "enter",
   "↑": "up",
   "↓": "down",
   "←": "left",
   "→": "right",
+};
+
+const MACOS_GLYPH_ICONS: Record<string, ComboIconName> = {
+  "⌘": "cmd",
+  "⇧": "shift",
+  "⌥": "option",
+  "⌃": "ctrl",
   "+": "plus",
   "−": "minus",
 };
 
-export function comboTokens(combo: string): ComboToken[] {
+const ICON_BY_CHAR: Record<Platform, Record<string, ComboIconName>> = {
+  macos: { ...MACOS_GLYPH_ICONS, ...KEY_GLYPH_ICONS },
+  windows: KEY_GLYPH_ICONS,
+};
+
+export function comboTokens(combo: string, platform: Platform = PLATFORM): ComboToken[] {
+  const icons = ICON_BY_CHAR[platform];
   const tokens: ComboToken[] = [];
+  let openText = false;
   for (const ch of combo) {
-    const icon = ICON_BY_CHAR[ch];
-    if (icon) {
-      tokens.push({ type: "icon", icon });
+    if (ch === HINT_SEPARATOR) {
+      openText = false;
       continue;
     }
-    if (ch === " ") continue;
+    const icon = icons[ch];
+    if (icon) {
+      tokens.push({ type: "icon", icon });
+      openText = false;
+      continue;
+    }
     const last = tokens[tokens.length - 1];
-    if (last?.type === "text") last.text += ch;
-    else tokens.push({ type: "text", text: ch });
+    if (openText && last?.type === "text") last.text += ch;
+    else {
+      tokens.push({ type: "text", text: ch });
+      openText = true;
+    }
   }
   return tokens;
 }

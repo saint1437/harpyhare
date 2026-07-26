@@ -1,51 +1,100 @@
 import { describe, expect, it } from "vitest";
+import { HOTKEY_ACTIONS } from "@/ipc/bindings";
 import type { HotkeyBinding } from "@/ipc/types";
-import { comboTokens, effectiveCombo, formatCombo, hotkeyGroups } from "./hotkeys";
+import { comboTokens, defaultCombo, effectiveCombo, formatCombo, hotkeyGroups } from "./hotkeys";
+import { PLATFORMS } from "./platform";
 
 const NO_BINDINGS: HotkeyBinding[] = [];
+const WINDOWS_KEY_TOKEN = "Cmd";
 
-describe("formatCombo", () => {
+describe("formatCombo на macOS", () => {
   it("сворачивает модификаторы в mac-символы", () => {
-    expect(formatCombo("Cmd+Shift+H")).toBe("⌘⇧H");
-    expect(formatCombo("Ctrl+Alt+P")).toBe("⌃⌥P");
+    expect(formatCombo("Cmd+Shift+H", "macos")).toBe("⌘⇧H");
+    expect(formatCombo("Ctrl+Alt+P", "macos")).toBe("⌃⌥P");
   });
 
   it("сворачивает спеку из одних модификаторов, без клавиши на конце", () => {
-    expect(formatCombo("Cmd")).toBe("⌘");
-    expect(formatCombo("Cmd+Shift")).toBe("⌘⇧");
+    expect(formatCombo("Cmd", "macos")).toBe("⌘");
+    expect(formatCombo("Cmd+Shift", "macos")).toBe("⌘⇧");
   });
 
   it("именованные клавиши получают свои символы", () => {
-    expect(formatCombo("Cmd+Enter")).toBe("⌘⏎");
-    expect(formatCombo("Escape")).toBe("Esc");
-    expect(formatCombo("Space")).toBe("␣");
-    expect(formatCombo("Cmd+ArrowUp")).toBe("⌘↑");
-    expect(formatCombo("Cmd+Minus")).toBe("⌘−");
+    expect(formatCombo("Cmd+Enter", "macos")).toBe("⌘⏎");
+    expect(formatCombo("Escape", "macos")).toBe("Esc");
+    expect(formatCombo("Space", "macos")).toBe("␣");
+    expect(formatCombo("Cmd+ArrowUp", "macos")).toBe("⌘↑");
+    expect(formatCombo("Cmd+Minus", "macos")).toBe("⌘−");
   });
 
   it("длинная форма буквы читается как короткая", () => {
-    expect(formatCombo("Cmd+KeyS")).toBe("⌘S");
-    expect(formatCombo("Digit1")).toBe("1");
+    expect(formatCombo("Cmd+KeyS", "macos")).toBe("⌘S");
+    expect(formatCombo("Digit1", "macos")).toBe("1");
   });
 });
 
-describe("effectiveCombo", () => {
-  it("без биндинга отдаёт дефолт действия", () => {
-    expect(effectiveCombo(NO_BINDINGS, "record")).toBe("F9");
-    expect(effectiveCombo(NO_BINDINGS, "teleprompter")).toBe("F10");
+describe("formatCombo на Windows", () => {
+  it("модификаторы пишутся словами и разделяются плюсом", () => {
+    expect(formatCombo("Ctrl+Shift+S", "windows")).toBe("Ctrl+Shift+S");
+    expect(formatCombo("Ctrl+Alt+P", "windows")).toBe("Ctrl+Alt+P");
+    expect(formatCombo("Cmd+Shift+H", "windows")).toBe("Win+Shift+H");
+  });
+
+  it("сворачивает спеку из одних модификаторов, без клавиши на конце", () => {
+    expect(formatCombo("Ctrl", "windows")).toBe("Ctrl");
+    expect(formatCombo("Ctrl+Shift", "windows")).toBe("Ctrl+Shift");
+  });
+
+  it("именованные клавиши получают свои символы", () => {
+    expect(formatCombo("Ctrl+Enter", "windows")).toBe("Ctrl+⏎");
+    expect(formatCombo("Escape", "windows")).toBe("Esc");
+    expect(formatCombo("Space", "windows")).toBe("␣");
+    expect(formatCombo("Ctrl+ArrowUp", "windows")).toBe("Ctrl+↑");
+    expect(formatCombo("Ctrl+Minus", "windows")).toBe("Ctrl+−");
+  });
+
+  it("длинная форма буквы читается как короткая", () => {
+    expect(formatCombo("Ctrl+KeyS", "windows")).toBe("Ctrl+S");
+    expect(formatCombo("Digit1", "windows")).toBe("1");
+  });
+});
+
+describe("defaultCombo", () => {
+  it("отдаёт сочетание своей платформы", () => {
+    expect(defaultCombo("toggle_window", "macos")).toBe("Cmd+Shift+H");
+    expect(defaultCombo("toggle_window", "windows")).toBe("Ctrl+Shift+H");
+    expect(defaultCombo("send", "macos")).toBe("Cmd+Enter");
+    expect(defaultCombo("send", "windows")).toBe("Ctrl+Enter");
+  });
+
+  it("клавиши без платформенной разницы совпадают", () => {
+    expect(defaultCombo("record", "macos")).toBe(defaultCombo("record", "windows"));
+    expect(defaultCombo("teleprompter", "macos")).toBe(defaultCombo("teleprompter", "windows"));
+  });
+
+  it("на Windows ни один дефолт не занимает клавишу Win", () => {
+    for (const action of HOTKEY_ACTIONS) {
+      expect(defaultCombo(action.id, "windows")).not.toContain(WINDOWS_KEY_TOKEN);
+    }
+  });
+});
+
+describe.each(PLATFORMS)("effectiveCombo (%s)", (platform) => {
+  it("без биндинга отдаёт дефолт действия своей платформы", () => {
+    expect(effectiveCombo(NO_BINDINGS, "record", platform)).toBe("F9");
+    expect(effectiveCombo(NO_BINDINGS, "send", platform)).toBe(defaultCombo("send", platform));
   });
 
   it("биндинг перекрывает дефолт, пустая строка значит «не назначен»", () => {
-    expect(effectiveCombo([{ action: "record", combo: "Cmd+Shift+X" }], "record")).toBe(
+    expect(effectiveCombo([{ action: "record", combo: "Cmd+Shift+X" }], "record", platform)).toBe(
       "Cmd+Shift+X",
     );
-    expect(effectiveCombo([{ action: "record", combo: "" }], "record")).toBe("");
+    expect(effectiveCombo([{ action: "record", combo: "" }], "record", platform)).toBe("");
   });
 });
 
-describe("hotkeyGroups", () => {
+describe("hotkeyGroups на macOS", () => {
   it("собирает подсказки из реестра и текущих биндингов", () => {
-    const combos = hotkeyGroups(NO_BINDINGS)
+    const combos = hotkeyGroups(NO_BINDINGS, "macos")
       .flatMap((g) => g.hints)
       .map((h) => h.combo);
     expect(combos).toContain("F9");
@@ -53,25 +102,52 @@ describe("hotkeyGroups", () => {
     expect(combos).toContain("⌘ ←→↑↓");
     expect(combos).toContain("⌘⇧ + −");
     expect(combos).toContain("⌥ ←→↑↓");
+    expect(combos).toContain("⌘V");
   });
 
   it("переназначенное действие показывается новым сочетанием", () => {
-    const combos = hotkeyGroups([{ action: "record", combo: "Cmd+Shift+X" }])
+    const combos = hotkeyGroups([{ action: "record", combo: "Cmd+Shift+X" }], "macos")
       .flatMap((g) => g.hints)
       .map((h) => h.combo);
     expect(combos).toContain("⌘⇧X");
     expect(combos).not.toContain("F9");
   });
+});
 
+describe("hotkeyGroups на Windows", () => {
+  it("собирает подсказки из реестра и текущих биндингов", () => {
+    const combos = hotkeyGroups(NO_BINDINGS, "windows")
+      .flatMap((g) => g.hints)
+      .map((h) => h.combo);
+    expect(combos).toContain("F9");
+    expect(combos).toContain("Ctrl+Shift+H");
+    expect(combos).toContain("Ctrl ←→↑↓");
+    expect(combos).toContain("Ctrl+Shift + −");
+    expect(combos).toContain("Alt ←→↑↓");
+    expect(combos).toContain("Ctrl+V");
+  });
+
+  it("mac-глифов в подсказках нет", () => {
+    const combos = hotkeyGroups(NO_BINDINGS, "windows")
+      .flatMap((g) => g.hints)
+      .map((h) => h.combo)
+      .join("");
+    for (const glyph of ["⌘", "⇧", "⌥", "⌃"]) {
+      expect(combos).not.toContain(glyph);
+    }
+  });
+});
+
+describe.each(PLATFORMS)("hotkeyGroups (%s)", (platform) => {
   it("не назначенное действие в справочник не попадает", () => {
-    const labels = hotkeyGroups([{ action: "teleprompter", combo: "" }])
+    const labels = hotkeyGroups([{ action: "teleprompter", combo: "" }], platform)
       .flatMap((g) => g.hints)
       .map((h) => h.label);
     expect(labels).not.toContain("суфлёр");
   });
 
   it("каждая группа названа и непуста, подписи и комбо заполнены", () => {
-    for (const group of hotkeyGroups(NO_BINDINGS)) {
+    for (const group of hotkeyGroups(NO_BINDINGS, platform)) {
       expect(group.title).not.toBe("");
       expect(group.hints.length).toBeGreaterThan(0);
       for (const hint of group.hints) {
@@ -82,9 +158,9 @@ describe("hotkeyGroups", () => {
   });
 });
 
-describe("comboTokens", () => {
+describe("comboTokens на macOS", () => {
   it("модификаторы разбираются в иконки", () => {
-    expect(comboTokens("⌘⇧H")).toEqual([
+    expect(comboTokens("⌘⇧H", "macos")).toEqual([
       { type: "icon", icon: "cmd" },
       { type: "icon", icon: "shift" },
       { type: "text", text: "H" },
@@ -92,12 +168,42 @@ describe("comboTokens", () => {
   });
 
   it("текстовые клавиши склеиваются, пробелы выбрасываются", () => {
-    expect(comboTokens("F9")).toEqual([{ type: "text", text: "F9" }]);
-    expect(comboTokens("⌘⇧ + −")).toEqual([
+    expect(comboTokens("F9", "macos")).toEqual([{ type: "text", text: "F9" }]);
+    expect(comboTokens("⌘⇧ + −", "macos")).toEqual([
       { type: "icon", icon: "cmd" },
       { type: "icon", icon: "shift" },
       { type: "icon", icon: "plus" },
       { type: "icon", icon: "minus" },
+    ]);
+  });
+});
+
+describe("comboTokens на Windows", () => {
+  it("сочетание идёт одним текстовым токеном", () => {
+    expect(comboTokens("Ctrl+Shift+S", "windows")).toEqual([
+      { type: "text", text: "Ctrl+Shift+S" },
+    ]);
+  });
+
+  it("плюс-разделитель не превращается в иконку, подсказка отделяется пробелом", () => {
+    expect(comboTokens("Ctrl+Shift + −", "windows")).toEqual([
+      { type: "text", text: "Ctrl+Shift" },
+      { type: "text", text: "+" },
+      { type: "text", text: "−" },
+    ]);
+  });
+
+  it("стрелки и ввод остаются иконками", () => {
+    expect(comboTokens("Ctrl ←→↑↓", "windows")).toEqual([
+      { type: "text", text: "Ctrl" },
+      { type: "icon", icon: "left" },
+      { type: "icon", icon: "right" },
+      { type: "icon", icon: "up" },
+      { type: "icon", icon: "down" },
+    ]);
+    expect(comboTokens("Ctrl+⏎", "windows")).toEqual([
+      { type: "text", text: "Ctrl+" },
+      { type: "icon", icon: "enter" },
     ]);
   });
 });

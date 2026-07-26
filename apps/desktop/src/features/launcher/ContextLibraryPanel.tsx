@@ -40,6 +40,7 @@ import {
   rootDocs,
   type ContextDoc,
 } from "@/lib/context-library";
+import { PLATFORM, type Platform } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 
 const ROOT_FOLDER_ID = "";
@@ -47,6 +48,11 @@ const ROOT_SELECT_VALUE = "root";
 const DROP_FOLDER_ATTR = "data-drop-folder";
 const IMPORT_ACCEPT = ".md,.markdown,.txt,.pdf";
 const THOUSAND = 1000;
+
+const FILE_MANAGER_LABEL: Record<Platform, string> = {
+  macos: "Finder",
+  windows: "проводника",
+};
 
 interface DocDraft {
   id: string | null;
@@ -387,7 +393,8 @@ function EmptyDropZone({ onPick }: { onPick: () => void }) {
         <Upload className="size-4 text-muted-foreground" />
       </span>
       <span className="text-body text-foreground/80">
-        Перетащи .md, .txt или .pdf из Finder — или нажми, чтобы выбрать файлы
+        Перетащи .md, .txt или .pdf из {FILE_MANAGER_LABEL[PLATFORM]} — или нажми, чтобы выбрать
+        файлы
       </span>
       <span className="text-caption text-muted-foreground">
         Материалы можно добавлять и текстом — кнопка «Материал»

@@ -5,6 +5,9 @@ const setPreviewHtml = vi.fn<(_h: string) => Promise<void>>(() => Promise.resolv
 vi.mock("@/ipc/commands", () => ({
   setPreviewHtml: (h: string) => setPreviewHtml(h),
 }));
+vi.mock("@/ipc/preview", () => ({
+  previewUrl: (version: number) => `preview://localhost/?v=${version}`,
+}));
 
 import { PreviewPanel } from "./PreviewPanel";
 
@@ -13,7 +16,7 @@ beforeEach(() => {
 });
 
 describe("PreviewPanel", () => {
-  it("шлёт html в set_preview_html и грузит iframe с preview://-src", async () => {
+  it("шлёт html в set_preview_html и грузит iframe с нонсом в src", async () => {
     const { container } = render(<PreviewPanel html="<p>hi</p>" onClose={() => undefined} />);
     await waitFor(() => {
       expect(setPreviewHtml).toHaveBeenCalledWith("<p>hi</p>");

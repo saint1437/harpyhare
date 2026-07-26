@@ -1,7 +1,7 @@
 [package]
 name = "harpyhare"
 version = "0.9.0"
-description = "Системный звук → STT → Claude (macOS push-to-talk ассистент)"
+description = "Системный звук → STT → Claude (push-to-talk ассистент для macOS и Windows)"
 authors = ["mark"]
 edition = "2021"
 
@@ -16,6 +16,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+
+[target.'cfg(target_os = "macos")'.build-dependencies]
 cc = "1.2"
 
 [dependencies]
@@ -32,19 +34,44 @@ futures-util = "0.3.32"
 tokio = { version = "1.52.3", features = ["full"] }
 tokio-util = "0.7.18"
 reqwest = { version = "0.13.4", features = ["json", "multipart", "stream"] }
-cidre = "0.15.2"
 async-trait = "0.1.89"
 dotenvy = "0.15.7"
 ringbuf = "0.4.8"
-objc2 = "0.6"
-objc2-app-kit = { version = "0.3.2", features = ["NSEvent", "block2"] }
-block2 = "0.6"
 tauri-plugin-updater = "2.10.1"
 pdf-extract = "0.12"
-plist = "1.9.0"
 specta-typescript = "0.0.12"
 specta = "2.0.0-rc"
 tauri-specta = { version = "2.0.0-rc", features = ["typescript"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cidre = "0.15.2"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3.2", features = ["NSEvent", "block2"] }
+block2 = "0.6"
+plist = "1.9.0"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+png = "0.17"
+windows = { version = "0.61", features = [
+  "Win32_Devices_FunctionDiscovery",
+  "Win32_Foundation",
+  "Win32_Graphics_Dwm",
+  "Win32_Graphics_Gdi",
+  "Win32_Media_Audio",
+  "Win32_Media_KernelStreaming",
+  "Win32_Media_Multimedia",
+  "Win32_Security",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Threading",
+  "Win32_System_Variant",
+  "Win32_UI_HiDpi",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+  "Win32_UI_Shell_PropertiesSystem",
+  "Win32_UI_WindowsAndMessaging",
+] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

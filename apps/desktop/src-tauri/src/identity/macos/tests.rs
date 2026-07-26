@@ -1,4 +1,5 @@
 use super::*;
+use crate::identity::{is_known_id, list, ORIGINAL_DISPLAY_NAME};
 
 fn dict_with_icon(value: &str) -> plist::Dictionary {
     let mut d = plist::Dictionary::new();

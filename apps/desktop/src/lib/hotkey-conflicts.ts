@@ -2,6 +2,7 @@ import { HOTKEY_ACTIONS } from "@/ipc/bindings";
 import type { HotkeyBinding } from "@/ipc/types";
 import {
   canonicalKey,
+  defaultCombo,
   effectiveCombo,
   hotkeyAction,
   sortedModifiers,
@@ -77,7 +78,7 @@ function withBinding(
   combo: string,
 ): HotkeyBinding[] {
   const rest = bindings.filter((b) => b.action !== id);
-  if (combo === hotkeyAction(id).defaultCombo) return rest;
+  if (combo === defaultCombo(id)) return rest;
   return [...rest, { action: id, combo }];
 }
 
@@ -99,5 +100,5 @@ export function assignHotkey(
 }
 
 export function resetHotkey(bindings: HotkeyBinding[], id: HotkeyActionId): HotkeyAssignment {
-  return assignHotkey(bindings, id, hotkeyAction(id).defaultCombo);
+  return assignHotkey(bindings, id, defaultCombo(id));
 }

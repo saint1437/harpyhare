@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+#[cfg(unix)]
 const OWNER_ONLY_FILE_MODE: u32 = 0o600;
 const TMP_FILE_EXTENSION: &str = "tmp";
 
@@ -172,9 +173,6 @@ impl Default for Settings {
     }
 }
 
-pub const MODIFIER_COMBOS: [&str; 6] =
-    ["Cmd", "Ctrl", "Alt", "Cmd+Shift", "Ctrl+Shift", "Alt+Shift"];
-
 impl Settings {
     pub fn clamp(&mut self) {
         self.window_opacity = limits::window::OPACITY.clamp(self.window_opacity);
@@ -239,20 +237,25 @@ impl Settings {
     }
 }
 
+fn create_owner_only(path: &Path) -> std::io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(OWNER_ONLY_FILE_MODE);
+    }
+    options.open(path)
+}
+
 pub(crate) fn write_atomic_owner_only(path: &Path, contents: &str) -> std::io::Result<()> {
     use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let tmp = path.with_extension(TMP_FILE_EXTENSION);
     {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(OWNER_ONLY_FILE_MODE)
-            .open(&tmp)?;
+        let mut f = create_owner_only(&tmp)?;
         f.write_all(contents.as_bytes())?;
     }
     std::fs::rename(&tmp, path)

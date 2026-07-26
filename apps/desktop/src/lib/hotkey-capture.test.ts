@@ -21,6 +21,11 @@ describe("hotkeyFromEvent", () => {
       hotkeyFromEvent({ metaKey: true, ctrlKey: true, altKey: true, shiftKey: true, code: "KeyA" }),
     ).toBe("Cmd+Ctrl+Alt+Shift+A");
   });
+  it("на Windows клавиша Win не назначается — иначе биндинг мёртвый", () => {
+    expect(hotkeyFromEvent({ ...base, metaKey: true, code: "KeyR" }, "windows")).toBeNull();
+    expect(hotkeyFromEvent({ ...base, ctrlKey: true, code: "KeyR" }, "windows")).toBe("Ctrl+R");
+    expect(hotkeyFromEvent({ ...base, metaKey: true, code: "KeyR" }, "macos")).toBe("Cmd+R");
+  });
   it("только модификаторы → null", () => {
     expect(hotkeyFromEvent({ ...base, metaKey: true, code: "MetaLeft" })).toBeNull();
     expect(hotkeyFromEvent({ ...base, shiftKey: true, code: "ShiftLeft" })).toBeNull();

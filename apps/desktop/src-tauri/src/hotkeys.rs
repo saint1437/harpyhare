@@ -13,10 +13,112 @@ pub const ACTION_TELEPROMPTER: &str = "teleprompter";
 pub const ACTION_TELEPROMPTER_CLOSE: &str = "teleprompter_close";
 pub const ACTION_TELEPROMPTER_PAUSE: &str = "teleprompter_pause";
 
-const MODIFIER_TOKENS: &[&str] = &["Cmd", "Ctrl", "Alt", "Shift"];
+macro_rules! cmd_token {
+    () => {
+        "Cmd"
+    };
+}
+macro_rules! ctrl_token {
+    () => {
+        "Ctrl"
+    };
+}
+macro_rules! alt_token {
+    () => {
+        "Alt"
+    };
+}
+macro_rules! shift_token {
+    () => {
+        "Shift"
+    };
+}
+macro_rules! separator_token {
+    () => {
+        "+"
+    };
+}
+
+macro_rules! primary_combo {
+    ($($rest:expr),*) => {
+        PlatformCombo {
+            macos: concat!(cmd_token!() $(, separator_token!(), $rest)*),
+            windows: concat!(ctrl_token!() $(, separator_token!(), $rest)*),
+        }
+    };
+}
+
+pub const MODIFIER_CMD: &str = cmd_token!();
+pub const MODIFIER_CTRL: &str = ctrl_token!();
+pub const MODIFIER_ALT: &str = alt_token!();
+pub const MODIFIER_SHIFT: &str = shift_token!();
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PlatformCombo {
+    pub macos: &'static str,
+    pub windows: &'static str,
+}
+
+impl PlatformCombo {
+    const fn shared(combo: &'static str) -> Self {
+        Self { macos: combo, windows: combo }
+    }
+
+    pub fn current(&self) -> &'static str {
+        #[cfg(target_os = "macos")]
+        {
+            self.macos
+        }
+        #[cfg(target_os = "windows")]
+        {
+            self.windows
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PlatformModifierCombos {
+    pub macos: &'static [&'static str],
+    pub windows: &'static [&'static str],
+}
+
+impl PlatformModifierCombos {
+    pub fn current(&self) -> &'static [&'static str] {
+        #[cfg(target_os = "macos")]
+        {
+            self.macos
+        }
+        #[cfg(target_os = "windows")]
+        {
+            self.windows
+        }
+    }
+}
+
+pub const MODIFIER_TOKENS: &[&str] =
+    &[MODIFIER_CMD, MODIFIER_CTRL, MODIFIER_ALT, MODIFIER_SHIFT];
+
+pub const MODIFIER_COMBOS: PlatformModifierCombos = PlatformModifierCombos {
+    macos: &[
+        cmd_token!(),
+        ctrl_token!(),
+        alt_token!(),
+        concat!(cmd_token!(), separator_token!(), shift_token!()),
+        concat!(ctrl_token!(), separator_token!(), shift_token!()),
+        concat!(alt_token!(), separator_token!(), shift_token!()),
+    ],
+    windows: &[
+        ctrl_token!(),
+        alt_token!(),
+        concat!(ctrl_token!(), separator_token!(), shift_token!()),
+        concat!(alt_token!(), separator_token!(), shift_token!()),
+    ],
+};
 const ARROW_KEYS: &[&str] = &["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
 const PLUS_MINUS_KEYS: &[&str] = &["Minus", "Equal"];
-const COMBO_SEPARATOR: char = '+';
+pub const COMBO_SEPARATOR: char = separator_token!().as_bytes()[0] as char;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
@@ -44,7 +146,7 @@ pub struct HotkeyAction {
     pub hint: &'static str,
     pub kind: HotkeyKind,
     pub scope: HotkeyScope,
-    pub default_combo: &'static str,
+    pub default_combo: PlatformCombo,
 }
 
 pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
@@ -55,7 +157,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Удерживайте, пока говорит собеседник.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
-        default_combo: "F9",
+        default_combo: PlatformCombo::shared("F9"),
     },
     HotkeyAction {
         id: ACTION_CANCEL_RECORDING,
@@ -64,7 +166,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Слушается только пока идёт запись.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Recording,
-        default_combo: "Escape",
+        default_combo: PlatformCombo::shared("Escape"),
     },
     HotkeyAction {
         id: ACTION_SEND,
@@ -73,7 +175,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Работает из любого места окна, не только из поля ввода.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Hud,
-        default_combo: "Cmd+Enter",
+        default_combo: primary_combo!("Enter"),
     },
     HotkeyAction {
         id: ACTION_SCREENSHOT,
@@ -82,7 +184,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Выделенная область уходит вложением в чат.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
-        default_combo: "Cmd+Shift+S",
+        default_combo: primary_combo!(shift_token!(), "S"),
     },
     HotkeyAction {
         id: ACTION_TOGGLE_WINDOW,
@@ -91,7 +193,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Работает, даже когда окно спрятано.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
-        default_combo: "Cmd+Shift+H",
+        default_combo: primary_combo!(shift_token!(), "H"),
     },
     HotkeyAction {
         id: ACTION_MOVE_WINDOW,
@@ -100,7 +202,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Модификатор со стрелками.",
         kind: HotkeyKind::ModifierArrows,
         scope: HotkeyScope::Hud,
-        default_combo: "Cmd",
+        default_combo: primary_combo!(),
     },
     HotkeyAction {
         id: ACTION_RESIZE_WINDOW,
@@ -109,7 +211,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Модификатор со стрелками.",
         kind: HotkeyKind::ModifierArrows,
         scope: HotkeyScope::Hud,
-        default_combo: "Cmd+Shift",
+        default_combo: primary_combo!(shift_token!()),
     },
     HotkeyAction {
         id: ACTION_OPACITY,
@@ -118,7 +220,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Модификатор с плюсом и минусом.",
         kind: HotkeyKind::ModifierPlusMinus,
         scope: HotkeyScope::Hud,
-        default_combo: "Cmd+Shift",
+        default_combo: primary_combo!(shift_token!()),
     },
     HotkeyAction {
         id: ACTION_SCROLL_CHAT,
@@ -127,7 +229,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Модификатор со стрелками вверх и вниз.",
         kind: HotkeyKind::ModifierArrows,
         scope: HotkeyScope::Hud,
-        default_combo: "Alt",
+        default_combo: PlatformCombo::shared(MODIFIER_ALT),
     },
     HotkeyAction {
         id: ACTION_TELEPROMPTER,
@@ -136,7 +238,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Крупный текст ответа поверх экрана.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
-        default_combo: "F10",
+        default_combo: PlatformCombo::shared("F10"),
     },
     HotkeyAction {
         id: ACTION_TELEPROMPTER_CLOSE,
@@ -145,7 +247,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Слушается только пока суфлёр открыт.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Teleprompter,
-        default_combo: "Escape",
+        default_combo: PlatformCombo::shared("Escape"),
     },
     HotkeyAction {
         id: ACTION_TELEPROMPTER_PAUSE,
@@ -154,7 +256,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Останавливает автопрокрутку.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Teleprompter,
-        default_combo: "Space",
+        default_combo: PlatformCombo::shared("Space"),
     },
 ];
 
@@ -172,7 +274,7 @@ pub fn effective(bindings: &[HotkeyBinding], id: &str) -> String {
     if let Some(binding) = bindings.iter().rev().find(|b| b.action == id) {
         return binding.combo.clone();
     }
-    action(id).map(|a| a.default_combo.to_string()).unwrap_or_default()
+    action(id).map(|a| a.default_combo.current().to_string()).unwrap_or_default()
 }
 
 fn split_combo(combo: &str) -> (Vec<String>, Option<String>) {
@@ -283,7 +385,7 @@ pub fn normalize(bindings: &mut Vec<HotkeyBinding>) {
     }
     for action in HOTKEY_ACTIONS {
         if !claimed.iter().any(|(id, _)| *id == action.id) {
-            claimed.push((action.id, action.default_combo.to_string()));
+            claimed.push((action.id, action.default_combo.current().to_string()));
         }
     }
 
@@ -302,8 +404,8 @@ pub fn normalize(bindings: &mut Vec<HotkeyBinding>) {
                 .iter()
                 .find(|(id, _)| *id == action.id)
                 .map(|(_, combo)| combo.clone())
-                .unwrap_or_else(|| action.default_combo.to_string());
-            (combo != action.default_combo)
+                .unwrap_or_else(|| action.default_combo.current().to_string());
+            (combo != action.default_combo.current())
                 .then(|| HotkeyBinding { action: action.id.to_string(), combo })
         })
         .collect();

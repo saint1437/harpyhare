@@ -2,166 +2,131 @@ use tauri::{AppHandle, Manager};
 
 use crate::app_state::App;
 use crate::events;
+use crate::hotkeys;
 use crate::window::main_window;
+
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "windows")]
+mod windows;
+
+#[cfg(target_os = "macos")]
+use macos as backend;
+#[cfg(target_os = "windows")]
+use windows as backend;
 
 pub const WINDOW_CORNER_RADIUS_LOGICAL_PX: f64 = 22.0;
 
-const KEY_CODE_ARROW_LEFT: u16 = 123;
-const KEY_CODE_ARROW_RIGHT: u16 = 124;
-const KEY_CODE_ARROW_DOWN: u16 = 125;
-const KEY_CODE_ARROW_UP: u16 = 126;
-
-const OPEN_COMMAND: &str = "open";
-const AUDIO_CAPTURE_PRIVACY_PANE_URL: &str =
-    "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture";
-const SCREEN_CAPTURE_PRIVACY_PANE_URL: &str =
-    "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
 const HTTPS_URL_PREFIX: &str = "https://";
 const HTTP_URL_PREFIX: &str = "http://";
 
-pub fn disable_cursor_autohide_on_typing() {
-    unsafe extern "C-unwind" fn keep_cursor_visible() {}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModifierMask(u8);
 
-    let Some(cursor_class) = objc2::runtime::AnyClass::get(c"NSCursor") else {
-        return;
-    };
-    let Some(method) = cursor_class
-        .metaclass()
-        .instance_method(objc2::sel!(setHiddenUntilMouseMoves:))
-    else {
-        return;
-    };
-    unsafe {
-        let _ = objc2::ffi::method_setImplementation(
-            std::ptr::from_ref(method).cast(),
-            keep_cursor_visible,
-        );
+const fn modifier_bit(index: usize) -> ModifierMask {
+    ModifierMask(1 << index)
+}
+
+impl ModifierMask {
+    pub const EMPTY: Self = Self(0);
+    pub const CMD: Self = modifier_bit(0);
+    pub const CTRL: Self = modifier_bit(1);
+    pub const ALT: Self = modifier_bit(2);
+    pub const SHIFT: Self = modifier_bit(3);
+
+    pub fn is_empty(self) -> bool {
+        self.0 == 0
     }
 }
 
-pub fn clip_native_window_corners(app: &AppHandle) {
-    use objc2::{msg_send, runtime::AnyObject};
-    let Some(w) = main_window(app) else {
-        return;
-    };
-    let Ok(ns_window) = w.ns_window() else {
-        return;
-    };
-    let ns_window = ns_window.cast::<AnyObject>();
-    unsafe {
-        let content_view: *mut AnyObject = msg_send![ns_window, contentView];
-        if content_view.is_null() {
-            return;
-        }
-        let _: () = msg_send![content_view, setWantsLayer: true];
-        let layer: *mut AnyObject = msg_send![content_view, layer];
-        if layer.is_null() {
-            return;
-        }
-        let _: () = msg_send![layer, setCornerRadius: WINDOW_CORNER_RADIUS_LOGICAL_PX];
-        let _: () = msg_send![layer, setMasksToBounds: true];
+impl std::ops::BitOr for ModifierMask {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
     }
 }
 
-fn modifier_mask(spec: &str) -> objc2_app_kit::NSEventModifierFlags {
-    use objc2_app_kit::NSEventModifierFlags as F;
-    let mut mask = F::empty();
-    for part in spec.split('+') {
-        match part.trim() {
-            "Cmd" => mask |= F::Command,
-            "Ctrl" => mask |= F::Control,
-            "Alt" => mask |= F::Option,
-            "Shift" => mask |= F::Shift,
-            _ => {}
+impl std::ops::BitOrAssign for ModifierMask {
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0;
+    }
+}
+
+pub fn modifier_mask(spec: &str) -> ModifierMask {
+    let mut mask = ModifierMask::EMPTY;
+    for part in spec.split(hotkeys::COMBO_SEPARATOR) {
+        let token = part.trim();
+        if let Some(index) = hotkeys::MODIFIER_TOKENS
+            .iter()
+            .position(|m| m.eq_ignore_ascii_case(token))
+        {
+            mask |= modifier_bit(index);
         }
     }
     mask
 }
 
+pub fn handle_arrow_key(app: &AppHandle, active: ModifierMask, dx: i32, dy: i32) -> bool {
+    if active.is_empty() {
+        return false;
+    }
+    let (move_mask, resize_mask, step) = {
+        let st = app.state::<App>();
+        let Ok(s) = st.settings.try_lock() else {
+            return false;
+        };
+        (
+            modifier_mask(&hotkeys::effective(&s.hotkeys, hotkeys::ACTION_MOVE_WINDOW)),
+            modifier_mask(&hotkeys::effective(&s.hotkeys, hotkeys::ACTION_RESIZE_WINDOW)),
+            s.move_step as i32,
+        )
+    };
+    let Some(w) = main_window(app) else {
+        return false;
+    };
+    if active == move_mask {
+        if let Ok(pos) = w.outer_position() {
+            let _ = w.set_position(tauri::PhysicalPosition::new(
+                pos.x + dx * step,
+                pos.y + dy * step,
+            ));
+        }
+        return true;
+    }
+    if active == resize_mask {
+        events::resize_key(app, dx, dy);
+        return true;
+    }
+    false
+}
+
+pub fn disable_cursor_autohide_on_typing() {
+    backend::disable_cursor_autohide_on_typing();
+}
+
+pub fn clip_native_window_corners(app: &AppHandle) {
+    backend::clip_native_window_corners(app);
+}
+
 pub fn install_move_keys_monitor(app: AppHandle) {
-    use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags};
-
-    let relevant = NSEventModifierFlags::Command
-        | NSEventModifierFlags::Control
-        | NSEventModifierFlags::Option
-        | NSEventModifierFlags::Shift;
-
-    let block = block2::RcBlock::new(move |ev: std::ptr::NonNull<NSEvent>| -> *mut NSEvent {
-        let pass = ev.as_ptr();
-        let event = unsafe { ev.as_ref() };
-        let (dx, dy) = match event.keyCode() {
-            KEY_CODE_ARROW_LEFT => (-1i32, 0i32),
-            KEY_CODE_ARROW_RIGHT => (1, 0),
-            KEY_CODE_ARROW_DOWN => (0, 1),
-            KEY_CODE_ARROW_UP => (0, -1),
-            _ => return pass,
-        };
-        let active = event.modifierFlags() & relevant;
-        if active.is_empty() {
-            return pass;
-        }
-        let (move_mask, resize_mask, step) = {
-            let st = app.state::<App>();
-            let s = st.settings.lock().unwrap();
-            (
-                modifier_mask(&crate::hotkeys::effective(
-                    &s.hotkeys,
-                    crate::hotkeys::ACTION_MOVE_WINDOW,
-                )),
-                modifier_mask(&crate::hotkeys::effective(
-                    &s.hotkeys,
-                    crate::hotkeys::ACTION_RESIZE_WINDOW,
-                )),
-                s.move_step as i32,
-            )
-        };
-        let Some(w) = main_window(&app) else {
-            return pass;
-        };
-        if active == move_mask {
-            if let Ok(pos) = w.outer_position() {
-                let _ = w.set_position(tauri::PhysicalPosition::new(
-                    pos.x + dx * step,
-                    pos.y + dy * step,
-                ));
-            }
-            return std::ptr::null_mut();
-        }
-        if active == resize_mask {
-            events::resize_key(&app, dx, dy);
-            return std::ptr::null_mut();
-        }
-        pass
-    });
-    let monitor =
-        unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(NSEventMask::KeyDown, &block) };
-    std::mem::forget(monitor);
+    backend::install_move_keys_monitor(app);
 }
 
 pub fn open_audio_capture_privacy_pane() {
-    let _ = std::process::Command::new(OPEN_COMMAND)
-        .arg(AUDIO_CAPTURE_PRIVACY_PANE_URL)
-        .spawn();
+    backend::open_audio_capture_privacy_pane();
 }
 
 pub fn open_screen_capture_privacy_pane() {
-    let _ = std::process::Command::new(OPEN_COMMAND)
-        .arg(SCREEN_CAPTURE_PRIVACY_PANE_URL)
-        .spawn();
-}
-
-#[link(name = "CoreGraphics", kind = "framework")]
-extern "C" {
-    fn CGPreflightScreenCaptureAccess() -> bool;
-    fn CGRequestScreenCaptureAccess() -> bool;
+    backend::open_screen_capture_privacy_pane();
 }
 
 pub fn screen_capture_access() -> bool {
-    unsafe { CGPreflightScreenCaptureAccess() }
+    backend::screen_capture_access()
 }
 
 pub fn request_screen_capture_access() -> bool {
-    unsafe { CGRequestScreenCaptureAccess() }
+    backend::request_screen_capture_access()
 }
 
 fn is_web_url(url: &str) -> bool {
@@ -170,7 +135,7 @@ fn is_web_url(url: &str) -> bool {
 
 pub fn open_web_url(url: &str) {
     if is_web_url(url) {
-        let _ = std::process::Command::new(OPEN_COMMAND).arg(url).spawn();
+        backend::open_url(url);
     }
 }
 

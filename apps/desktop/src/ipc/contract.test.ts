@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { RequestOptions } from "@/lib/chats";
 import type { AppError } from "@/lib/errors";
 import type { ModelInfo } from "@/lib/models";
+import type { Platform } from "@/lib/platform";
 import type { PromptPreset } from "@/lib/presets";
 import type * as Rust from "./bindings";
 import type {
@@ -41,6 +42,7 @@ const contract = {
   UpdateDone: true satisfies SameShape<EventMap["update-done"], Rust.UpdateDone>,
   ScreenshotReady: true satisfies SameShape<EventMap["screenshot-ready"], Rust.ScreenshotReady>,
   HotkeyBinding: true satisfies SameShape<HotkeyBinding, Rust.HotkeyBinding>,
+  PlatformCombo: true satisfies SameShape<Record<Platform, string>, Rust.PlatformCombo>,
 };
 
 describe("рукописные типы IPC против сгенерированных из Rust", () => {

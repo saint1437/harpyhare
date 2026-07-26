@@ -1,5 +1,6 @@
 import type { LatestReleaseState } from "@/hooks/useLatestRelease";
 import { cn } from "@/lib/cn";
+import type { Platform } from "@/lib/platform";
 import { RELEASES_PAGE } from "@/lib/release";
 import { DownloadButton } from "./DownloadButton";
 import { Logo } from "./Logo";
@@ -10,7 +11,7 @@ const NAV = [
   { href: RELEASES_PAGE, label: "Релизы", show: "md:inline", external: true },
 ];
 
-export function Header({ state }: { state: LatestReleaseState }) {
+export function Header({ state, platform }: { state: LatestReleaseState; platform: Platform }) {
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-border bg-bg/75 backdrop-blur-md">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
@@ -29,7 +30,7 @@ export function Header({ state }: { state: LatestReleaseState }) {
               {link.label}
             </a>
           ))}
-          <DownloadButton state={state} size="sm" />
+          <DownloadButton state={state} platform={platform} size="sm" />
         </nav>
       </div>
     </header>

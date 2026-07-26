@@ -10,8 +10,6 @@ const PRODUCT_NAME = "Audio System";
 const ASSET_SLUG = "AudioSystem";
 const RELEASES_REPO = "screenfriskofficial/harpyhare-releases";
 const RELEASES_REPO_URL = `https://github.com/${RELEASES_REPO}`;
-const ARCH = "aarch64";
-const PLATFORM = `darwin-${ARCH}`;
 
 const PKG_PATH = join(ROOT, "package.json");
 const LOCKFILE_PATH = join(ROOT, "../../package-lock.json");
@@ -29,6 +27,34 @@ const VERSION_PARTS = 3;
 const JSON_INDENT = 2;
 const ANSI_RED = "\x1b[31m";
 const ANSI_RESET = "\x1b[0m";
+const STDOUT_TARGET = "-";
+
+const UPDATER_ARCH_BY_NODE_ARCH = { arm64: "aarch64", x64: "x86_64" };
+const BUNDLE_ARCH_BY_NODE_ARCH = { arm64: "aarch64", x64: "x64" };
+
+const MACOS_HOST = {
+  updaterOs: "darwin",
+  updaterBundle: () => join(BUNDLE_DIR, `macos/${PRODUCT_NAME}.app.tar.gz`),
+  updaterAsset: ({ version, updaterArch }) => `${ASSET_SLUG}_${version}_${updaterArch}.app.tar.gz`,
+  installerBundle: ({ version, bundleArch }) =>
+    join(BUNDLE_DIR, `dmg/${PRODUCT_NAME}_${version}_${bundleArch}.dmg`),
+  installerAsset: ({ version, bundleArch }) => `${ASSET_SLUG}_${version}_${bundleArch}.dmg`,
+};
+
+const windowsSetupBundle = ({ version, bundleArch }) =>
+  join(BUNDLE_DIR, `nsis/${PRODUCT_NAME}_${version}_${bundleArch}-setup.exe`);
+const windowsSetupAsset = ({ version, updaterArch }) =>
+  `${ASSET_SLUG}_${version}_${updaterArch}-setup.exe`;
+
+const WINDOWS_HOST = {
+  updaterOs: "windows",
+  updaterBundle: windowsSetupBundle,
+  updaterAsset: windowsSetupAsset,
+  installerBundle: windowsSetupBundle,
+  installerAsset: windowsSetupAsset,
+};
+
+const HOST_BY_NODE_PLATFORM = { darwin: MACOS_HOST, win32: WINDOWS_HOST };
 
 const die = (msg) => {
   console.error(`${ANSI_RED}ошибка:${ANSI_RESET} ${msg}`);
@@ -40,8 +66,15 @@ const capture = (cmd, args) => execFileSync(cmd, args, { cwd: ROOT, encoding: "u
 const writeJson = (path, data) =>
   writeFileSync(path, JSON.stringify(data, null, JSON_INDENT) + "\n");
 
-const tauriBundleBase = (version) => `${PRODUCT_NAME}_${version}_${ARCH}`;
-const uploadedAssetBase = (version) => `${ASSET_SLUG}_${version}_${ARCH}`;
+const resolveHost = () => {
+  const host = HOST_BY_NODE_PLATFORM[process.platform];
+  const updaterArch = UPDATER_ARCH_BY_NODE_ARCH[process.arch];
+  const bundleArch = BUNDLE_ARCH_BY_NODE_ARCH[process.arch];
+  if (!host || !updaterArch || !bundleArch) {
+    die(`сборка релиза не поддерживается на ${process.platform}/${process.arch}`);
+  }
+  return { host, updaterArch, bundleArch, updaterPlatform: `${host.updaterOs}-${updaterArch}` };
+};
 
 const parseCliArgs = (argv) => {
   const version = argv[0];
@@ -87,14 +120,28 @@ const releaseExists = (version) => {
   }
 };
 
-const assertReadyToRelease = (version, current) => {
-  if (!isNewerVersion(version, current)) die(`версия ${version} не новее текущей ${current}`);
+const assertToolingReady = () => {
   if (capture("git", ["status", "--porcelain"]) !== "") {
     die("git-дерево не чистое — закоммить или отложи изменения");
   }
   if (!existsSync(keyPath)) die(`нет ключа подписи ${keyPath} (см. README, раздел «Релиз»)`);
   run("gh", ["auth", "status"], { stdio: "ignore" });
-  if (releaseExists(version)) die(`релиз v${version} уже существует в ${RELEASES_REPO}`);
+};
+
+const assertReadyToCreate = (version, current) => {
+  if (!isNewerVersion(version, current)) die(`версия ${version} не новее текущей ${current}`);
+};
+
+const assertReadyToAppend = (version, current, updaterPlatform) => {
+  if (version !== current) {
+    die(
+      `релиз v${version} уже есть, но локальная версия ${current} — переключись на тег v${version}`,
+    );
+  }
+  const manifest = fetchPublishedManifest(version);
+  if (manifest?.platforms?.[updaterPlatform]) {
+    die(`в релизе v${version} уже есть платформа ${updaterPlatform}`);
+  }
 };
 
 const bumpVersions = (pkg, conf, current, version) => {
@@ -122,36 +169,76 @@ const buildSignedBundle = () => {
   });
 };
 
-const collectBuildArtifacts = (version) => {
-  const tarSrc = join(BUNDLE_DIR, `macos/${PRODUCT_NAME}.app.tar.gz`);
-  const sigSrc = `${tarSrc}.sig`;
-  const dmgSrc = join(BUNDLE_DIR, `dmg/${tauriBundleBase(version)}.dmg`);
-  for (const f of [tarSrc, sigSrc, dmgSrc]) {
+const collectBuildArtifacts = ({ host, version, updaterArch, bundleArch }) => {
+  const naming = { version, updaterArch, bundleArch };
+  const updaterSrc = host.updaterBundle(naming);
+  const signatureSrc = `${updaterSrc}.sig`;
+  const installerSrc = host.installerBundle(naming);
+  for (const f of [updaterSrc, signatureSrc, installerSrc]) {
     if (!existsSync(f)) die(`сборка не дала артефакт ${f}`);
   }
-  return { tarSrc, sigSrc, dmgSrc };
+  return { updaterSrc, signatureSrc, installerSrc };
 };
 
-const prepareReleaseAssets = ({ version, notes, tarSrc, sigSrc }) => {
+const fetchPublishedManifest = (version) => {
+  try {
+    const raw = capture("gh", [
+      "release",
+      "download",
+      `v${version}`,
+      "--repo",
+      RELEASES_REPO,
+      "--pattern",
+      LATEST_MANIFEST_NAME,
+      "--output",
+      STDOUT_TARGET,
+    ]);
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+const assetUrl = (version, assetName) =>
+  `${RELEASES_REPO_URL}/releases/download/v${version}/${assetName}`;
+
+const prepareReleaseAssets = ({
+  host,
+  version,
+  notes,
+  updaterPlatform,
+  updaterArch,
+  bundleArch,
+  updaterSrc,
+  signatureSrc,
+  installerSrc,
+}) => {
   mkdirSync(RELEASE_ASSETS_DIR, { recursive: true });
-  const tarName = `${uploadedAssetBase(version)}.app.tar.gz`;
-  copyFileSync(tarSrc, join(RELEASE_ASSETS_DIR, tarName));
+  const naming = { version, updaterArch, bundleArch };
+  const updaterAsset = host.updaterAsset(naming);
+  const installerAsset = host.installerAsset(naming);
+  const uploadedAssets = [...new Set([updaterAsset, installerAsset, LATEST_MANIFEST_NAME])];
+  copyFileSync(updaterSrc, join(RELEASE_ASSETS_DIR, updaterAsset));
+  copyFileSync(installerSrc, join(RELEASE_ASSETS_DIR, installerAsset));
+
+  const published = fetchPublishedManifest(version);
   const latest = {
     version,
-    notes,
-    pub_date: new Date().toISOString(),
+    notes: published?.notes ?? notes,
+    pub_date: published?.pub_date ?? new Date().toISOString(),
     platforms: {
-      [PLATFORM]: {
-        signature: readFileSync(sigSrc, "utf8").trim(),
-        url: `${RELEASES_REPO_URL}/releases/download/v${version}/${tarName}`,
+      ...(published?.platforms ?? {}),
+      [updaterPlatform]: {
+        signature: readFileSync(signatureSrc, "utf8").trim(),
+        url: assetUrl(version, updaterAsset),
       },
     },
   };
   writeJson(join(RELEASE_ASSETS_DIR, LATEST_MANIFEST_NAME), latest);
-  return tarName;
+  return uploadedAssets.map((name) => join(RELEASE_ASSETS_DIR, name));
 };
 
-const publishGithubRelease = ({ version, notes, tarName, dmgSrc }) => {
+const createGithubRelease = ({ version, notes, assetPaths }) => {
   run("gh", [
     "release",
     "create",
@@ -162,9 +249,19 @@ const publishGithubRelease = ({ version, notes, tarName, dmgSrc }) => {
     `${PRODUCT_NAME} ${version}`,
     "--notes",
     notes,
-    join(RELEASE_ASSETS_DIR, tarName),
-    join(RELEASE_ASSETS_DIR, LATEST_MANIFEST_NAME),
-    dmgSrc,
+    ...assetPaths,
+  ]);
+};
+
+const appendToGithubRelease = ({ version, assetPaths }) => {
+  run("gh", [
+    "release",
+    "upload",
+    `v${version}`,
+    "--repo",
+    RELEASES_REPO,
+    "--clobber",
+    ...assetPaths,
   ]);
 };
 
@@ -181,19 +278,45 @@ const commitAndTag = (version) => {
   run("git", ["tag", `v${version}`]);
 };
 
+const { host, updaterArch, bundleArch, updaterPlatform } = resolveHost();
 const { version, notes } = parseCliArgs(process.argv.slice(2));
 const { pkg, conf } = readVersionedConfigs();
 const current = assertVersionsInSync(pkg, conf);
-assertReadyToRelease(version, current);
+assertToolingReady();
 
-console.log(`\n${PRODUCT_NAME} ${current} → ${version}\n`);
-bumpVersions(pkg, conf, current, version);
+const appending = releaseExists(version);
+if (appending) {
+  assertReadyToAppend(version, current, updaterPlatform);
+} else {
+  assertReadyToCreate(version, current);
+}
+
+console.log(`\n${PRODUCT_NAME} ${current} → ${version} (${updaterPlatform})\n`);
+if (!appending) bumpVersions(pkg, conf, current, version);
 buildSignedBundle();
 
-const { tarSrc, sigSrc, dmgSrc } = collectBuildArtifacts(version);
-const tarName = prepareReleaseAssets({ version, notes, tarSrc, sigSrc });
-publishGithubRelease({ version, notes, tarName, dmgSrc });
-commitAndTag(version);
+const artifacts = collectBuildArtifacts({ host, version, updaterArch, bundleArch });
+const assetPaths = prepareReleaseAssets({
+  host,
+  version,
+  notes,
+  updaterPlatform,
+  updaterArch,
+  bundleArch,
+  ...artifacts,
+});
+
+if (appending) {
+  appendToGithubRelease({ version, assetPaths });
+} else {
+  createGithubRelease({ version, notes, assetPaths });
+  commitAndTag(version);
+}
 
 console.log(`\nготово: ${RELEASES_REPO_URL}/releases/tag/v${version}`);
-console.log("не забудь: git push && git push --tags");
+if (appending) {
+  console.log(`платформа ${updaterPlatform} добавлена в релиз`);
+} else {
+  console.log("не забудь: git push && git push --tags");
+  console.log(`вторую платформу добавь тем же вызовом на её машине: npm run release -- ${version}`);
+}

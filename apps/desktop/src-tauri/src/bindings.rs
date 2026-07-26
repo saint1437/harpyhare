@@ -69,7 +69,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         .typ::<hotkeys::HotkeyScope>()
         .constant(SETTINGS_LIMITS_CONSTANT, SettingsLimits::current())
         .constant(SETTINGS_DEFAULTS_CONSTANT, settings::Settings::default())
-        .constant(MODIFIER_COMBOS_CONSTANT, settings::MODIFIER_COMBOS)
+        .constant(MODIFIER_COMBOS_CONSTANT, hotkeys::MODIFIER_COMBOS)
         .constant(HOTKEY_ACTIONS_CONSTANT, hotkeys::HOTKEY_ACTIONS)
         .error_handling(ErrorHandlingMode::Throw)
 }

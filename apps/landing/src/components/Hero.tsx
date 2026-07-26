@@ -1,13 +1,20 @@
 import type { LatestReleaseState } from "@/hooks/useLatestRelease";
+import type { PlatformSelection } from "@/hooks/usePlatformSelection";
+import { SUPPORTED_PLATFORMS_LABEL } from "@/lib/platform";
 import { RELEASES_PAGE } from "@/lib/release";
 import { DownloadButton } from "./DownloadButton";
 import { EqBars } from "./EqBars";
 import { HudPreview } from "./HudPreview";
+import { PlatformSwitch } from "./PlatformSwitch";
 import { Bush } from "./Scenery";
 import { Cloud } from "./Sky";
 import { VersionNote } from "./VersionNote";
 
-export function Hero({ state }: { state: LatestReleaseState }) {
+interface HeroProps extends PlatformSelection {
+  state: LatestReleaseState;
+}
+
+export function Hero({ state, platform, onSelectPlatform }: HeroProps) {
   return (
     <section className="relative overflow-hidden px-6 pt-32 pb-20 sm:pt-40 sm:pb-24">
       <div
@@ -18,7 +25,7 @@ export function Hero({ state }: { state: LatestReleaseState }) {
       <div className="fade-rise relative mx-auto flex max-w-3xl flex-col items-center text-center">
         <span className="inline-flex items-center gap-2.5 rounded-full border border-border-strong bg-surface/60 px-4 py-1.5 text-[13px] font-medium text-fg-muted">
           <EqBars animated />
-          Незаметный ассистент для macOS
+          Незаметный ассистент для {SUPPORTED_PLATFORMS_LABEL}
         </span>
 
         <h1 className="mt-8 text-4xl leading-[1.08] font-semibold tracking-tight text-balance sm:text-6xl">
@@ -33,7 +40,7 @@ export function Hero({ state }: { state: LatestReleaseState }) {
         </p>
 
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-          <DownloadButton state={state} />
+          <DownloadButton state={state} platform={platform} />
           <a
             href={RELEASES_PAGE}
             target="_blank"
@@ -44,7 +51,9 @@ export function Hero({ state }: { state: LatestReleaseState }) {
           </a>
         </div>
 
-        <VersionNote state={state} className="mt-5" />
+        <PlatformSwitch platform={platform} onSelectPlatform={onSelectPlatform} className="mt-6" />
+
+        <VersionNote state={state} platform={platform} className="mt-4" />
       </div>
 
       <HudPreview />

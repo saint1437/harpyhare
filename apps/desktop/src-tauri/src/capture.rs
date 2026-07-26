@@ -2,19 +2,21 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-use cidre::{
-    cat, cf,
-    core_audio::{self as ca, aggregate_device_keys as agg_keys, sub_device_keys as sub_keys},
-    ns, os,
-};
 use ringbuf::traits::{Consumer, Producer, Split};
 use ringbuf::{HeapCons, HeapProd, HeapRb};
 
 use crate::audio;
 
-const OS_STATUS_ILLEGAL_OPERATION: i32 = i32::from_be_bytes(*b"!hog");
-const SAMPLE_BYTES: usize = std::mem::size_of::<f32>();
-const F32_BITS_PER_CHANNEL: u32 = (SAMPLE_BYTES * 8) as u32;
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "windows")]
+mod windows;
+
+#[cfg(target_os = "macos")]
+use macos as backend;
+#[cfg(target_os = "windows")]
+use windows as backend;
+
 const RING_SECONDS: usize = 8;
 const CONSUMER_THREAD_NAME: &str = "audio-consumer";
 const RAW_SCRATCH_CAPACITY: usize = 32 * 1024;
@@ -28,8 +30,8 @@ const STOP_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 pub enum CaptureError {
     #[error("Нет разрешения на запись системного звука")]
     PermissionDenied,
-    #[error("Core Audio: {0}")]
-    CoreAudio(String),
+    #[error("{0}")]
+    Backend(String),
     #[error("Обработка аудио: {0}")]
     Audio(String),
 }
@@ -39,22 +41,18 @@ impl crate::error::CodedError for CaptureError {
         use crate::error::ErrorCode;
         match self {
             CaptureError::PermissionDenied => ErrorCode::Permission,
-            CaptureError::CoreAudio(_) | CaptureError::Audio(_) => ErrorCode::Internal,
-        }
-    }
-}
-
-impl CaptureError {
-    fn from_os(err: os::Error) -> Self {
-        if err.0.get() == OS_STATUS_ILLEGAL_OPERATION {
-            CaptureError::PermissionDenied
-        } else {
-            CaptureError::CoreAudio(format!("{err}"))
+            CaptureError::Backend(_) | CaptureError::Audio(_) => ErrorCode::Internal,
         }
     }
 }
 
 pub type ChunkSink = Box<dyn FnMut(&[f32]) + Send>;
+pub type DeviceChangeHandler = Box<dyn Fn() + Send + Sync>;
+
+pub struct StreamSpec {
+    pub sample_rate: u32,
+    pub channels: usize,
+}
 
 enum Session {
     Idle,
@@ -81,14 +79,27 @@ struct CallbackCtx {
     prod: HeapProd<f32>,
 }
 
-pub struct SystemAudioCapture {
-    shared: Arc<Shared>,
-    _started: ca::hardware::StartedDevice<ca::AggregateDevice>,
-    _tap: ca::TapGuard,
-    _ctx: Box<CallbackCtx>,
+impl CallbackCtx {
+    fn wants_samples(&self) -> bool {
+        self.shared.recording.load(Ordering::Acquire)
+            || self.shared.buffering.load(Ordering::Acquire)
+    }
+
+    fn push_samples(&mut self, samples: &[f32]) {
+        let pushed = self.prod.push_slice(samples);
+        self.shared.produced.fetch_add(pushed as u64, Ordering::Relaxed);
+        if pushed < samples.len() {
+            self.shared
+                .dropped
+                .fetch_add((samples.len() - pushed) as u64, Ordering::Relaxed);
+        }
+    }
 }
 
-unsafe impl Send for SystemAudioCapture {}
+pub struct SystemAudioCapture {
+    shared: Arc<Shared>,
+    _running: backend::Running,
+}
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct OutputDeviceInfo {
@@ -96,99 +107,19 @@ pub struct OutputDeviceInfo {
     pub name: String,
 }
 
-fn device_has_output(device: &ca::Device) -> bool {
-    device.output_asbd().is_ok()
-}
-
 pub fn list_output_devices() -> Vec<OutputDeviceInfo> {
-    let Ok(devices) = ca::System::devices() else {
-        return Vec::new();
-    };
-    devices
-        .iter()
-        .filter(|d| device_has_output(d))
-        .filter_map(|d| {
-            Some(OutputDeviceInfo {
-                uid: d.uid().ok()?.to_string(),
-                name: d.name().ok()?.to_string(),
-            })
-        })
-        .collect()
+    backend::list_output_devices()
 }
 
-fn find_output_device_by_uid(uid: &str) -> Option<ca::Device> {
-    let devices = ca::System::devices().ok()?;
-    devices
-        .into_iter()
-        .find(|d| device_has_output(d) && d.uid().map(|u| u.to_string() == uid).unwrap_or(false))
-}
-
-fn resolve_output_device(uid: Option<&str>) -> Result<ca::Device, CaptureError> {
-    if let Some(uid) = uid {
-        if let Some(device) = find_output_device_by_uid(uid) {
-            return Ok(device);
-        }
-        eprintln!("устройство захвата {uid:?} не найдено — используется системный вывод");
-    }
-    ca::System::default_output_device().map_err(CaptureError::from_os)
+pub fn watch_default_output_device(on_change: DeviceChangeHandler) {
+    backend::watch_default_output_device(on_change);
 }
 
 impl SystemAudioCapture {
     pub fn new(output_device_uid: Option<&str>, buffer_secs: u64) -> Result<Self, CaptureError> {
-        let tap_desc = ca::TapDesc::with_stereo_global_tap_excluding_processes(&ns::Array::new());
+        let (source, spec) = backend::open(output_device_uid)?;
 
-        let tap = tap_desc
-            .create_process_tap()
-            .map_err(CaptureError::from_os)?;
-        let tap_uid = tap.uid().map_err(CaptureError::from_os)?;
-
-        let asbd = tap.asbd().map_err(CaptureError::from_os)?;
-
-        if !asbd.format_flags.contains(cat::audio::FormatFlags::IS_FLOAT)
-            || asbd.format_flags.contains(cat::audio::FormatFlags::IS_NON_INTERLEAVED)
-            || asbd.bits_per_channel != F32_BITS_PER_CHANNEL
-        {
-            return Err(CaptureError::CoreAudio(format!(
-                "неожиданный формат tap: format_flags={:#010x}, bits_per_channel={}",
-                asbd.format_flags.0, asbd.bits_per_channel
-            )));
-        }
-
-        let sample_rate = asbd.sample_rate as u32;
-        let channels = asbd.channels_per_frame as usize;
-
-        let output_device = resolve_output_device(output_device_uid)?;
-        let output_uid = output_device.uid().map_err(CaptureError::from_os)?;
-        let sub_device =
-            cf::DictionaryOf::with_keys_values(&[sub_keys::uid()], &[output_uid.as_type_ref()]);
-        let sub_tap =
-            cf::DictionaryOf::with_keys_values(&[sub_keys::uid()], &[tap_uid.as_type_ref()]);
-
-        let dict = cf::DictionaryOf::with_keys_values(
-            &[
-                agg_keys::is_private(),
-                agg_keys::is_stacked(),
-                agg_keys::tap_auto_start(),
-                agg_keys::name(),
-                agg_keys::main_sub_device(),
-                agg_keys::uid(),
-                agg_keys::sub_device_list(),
-                agg_keys::tap_list(),
-            ],
-            &[
-                cf::Boolean::value_true().as_type_ref(),
-                cf::Boolean::value_false(),
-                cf::Boolean::value_true(),
-                cf::str!(c"audio-system-tap"),
-                &output_uid,
-                &cf::Uuid::new().to_cf_string(),
-                &cf::ArrayOf::from_slice(&[sub_device.as_ref()]),
-                &cf::ArrayOf::from_slice(&[sub_tap.as_ref()]),
-            ],
-        );
-        let agg_device = ca::AggregateDevice::with_desc(&dict).map_err(CaptureError::from_os)?;
-
-        let ring = HeapRb::<f32>::new(sample_rate as usize * channels * RING_SECONDS);
+        let ring = HeapRb::<f32>::new(spec.sample_rate as usize * spec.channels * RING_SECONDS);
         let (prod, cons) = ring.split();
         let shared = Arc::new(Shared {
             recording: AtomicBool::new(false),
@@ -196,13 +127,13 @@ impl SystemAudioCapture {
             stop_requested: AtomicBool::new(false),
             produced: AtomicU64::new(0),
             dropped: AtomicU64::new(0),
-            sample_rate,
-            channels,
+            sample_rate: spec.sample_rate,
+            channels: spec.channels,
             session: Mutex::new(Session::Idle),
             rolling: Mutex::new(audio::RollingBuffer::new(buffer_secs)),
             cv: Condvar::new(),
         });
-        let mut ctx = Box::new(CallbackCtx {
+        let ctx = Box::new(CallbackCtx {
             shared: Arc::clone(&shared),
             prod,
         });
@@ -215,16 +146,11 @@ impl SystemAudioCapture {
                 .map_err(|e| CaptureError::Audio(e.to_string()))?;
         }
 
-        let proc_id = agg_device
-            .create_io_proc_id(io_proc, Some(ctx.as_mut()))
-            .map_err(CaptureError::from_os)?;
-        let started = ca::device_start(agg_device, Some(proc_id)).map_err(CaptureError::from_os)?;
+        let running = backend::start(source, ctx)?;
 
         Ok(Self {
             shared,
-            _started: started,
-            _tap: tap,
-            _ctx: ctx,
+            _running: running,
         })
     }
 
@@ -529,42 +455,4 @@ fn run_buffering(shared: &Shared, ring: &mut HeapCons<f32>, scratch: &mut Scratc
         }
         std::thread::sleep(CONSUMER_IDLE_SLEEP);
     }
-}
-
-extern "C" fn io_proc(
-    _device: ca::Device,
-    _now: &cat::AudioTimeStamp,
-    input_data: &cat::AudioBufList<1>,
-    _input_time: &cat::AudioTimeStamp,
-    _output_data: &mut cat::AudioBufList<1>,
-    _output_time: &cat::AudioTimeStamp,
-    ctx: Option<&mut CallbackCtx>,
-) -> os::Status {
-    let Some(ctx) = ctx else {
-        return os::Status::NO_ERR;
-    };
-    let shared = &ctx.shared;
-
-    if !shared.recording.load(Ordering::Acquire) && !shared.buffering.load(Ordering::Acquire) {
-        return os::Status::NO_ERR;
-    }
-
-    let abuf = &input_data.buffers[0];
-    if abuf.data.is_null() || abuf.data_bytes_size == 0 {
-        return os::Status::NO_ERR;
-    }
-
-    debug_assert_eq!(abuf.data_bytes_size as usize % SAMPLE_BYTES, 0);
-    let n = abuf.data_bytes_size as usize / SAMPLE_BYTES;
-    let samples = unsafe { std::slice::from_raw_parts(abuf.data as *const f32, n) };
-
-    let pushed = ctx.prod.push_slice(samples);
-    shared.produced.fetch_add(pushed as u64, Ordering::Relaxed);
-    if pushed < n {
-        shared
-            .dropped
-            .fetch_add((n - pushed) as u64, Ordering::Relaxed);
-    }
-
-    os::Status::NO_ERR
 }

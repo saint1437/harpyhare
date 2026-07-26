@@ -1,6 +1,7 @@
 import { SelectItem } from "@/components/ui/select";
 import { MODIFIER_COMBOS, SETTINGS_LIMITS } from "@/ipc/bindings";
 import { effectiveCombo, formatCombo, hotkeyAction, type HotkeyActionId } from "@/lib/hotkeys";
+import { PLATFORM } from "@/lib/platform";
 import type { SectionProps } from "../contract";
 import { SettingBlock, SettingGroup, SettingSelect, SettingSlider } from "../fields";
 import { useHotkeyEditor } from "../useHotkeyEditor";
@@ -33,6 +34,7 @@ const PAIRS = [
 }[];
 
 const STEP_GRANULARITY = 5;
+const PLATFORM_MODIFIERS: readonly string[] = MODIFIER_COMBOS[PLATFORM];
 
 export function WindowSection({ draft, set }: SectionProps) {
   const editor = useHotkeyEditor(draft, set);
@@ -58,7 +60,7 @@ export function WindowSection({ draft, set }: SectionProps) {
                   editor.onAssign(pair.action, v);
                 }}
               >
-                {MODIFIER_COMBOS.filter((m) => m === combo || !taken.includes(m)).map((m) => (
+                {PLATFORM_MODIFIERS.filter((m) => m === combo || !taken.includes(m)).map((m) => (
                   <SelectItem key={m} value={m}>
                     {formatCombo(m)} + стрелки
                   </SelectItem>

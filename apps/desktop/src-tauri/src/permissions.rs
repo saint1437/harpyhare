@@ -26,6 +26,8 @@ pub struct PermissionsStatus {
     pub screen: PermissionState,
 }
 
+pub const AUDIO_REQUIRES_PERMISSION: bool = cfg!(target_os = "macos");
+
 pub fn state_from_granted(granted: bool) -> PermissionState {
     if granted {
         PermissionState::Granted
@@ -35,6 +37,9 @@ pub fn state_from_granted(granted: bool) -> PermissionState {
 }
 
 fn audio_state(app: &AppHandle) -> PermissionState {
+    if !AUDIO_REQUIRES_PERMISSION {
+        return PermissionState::Granted;
+    }
     if app.state::<App>().capture.lock().unwrap().is_some() {
         return PermissionState::Granted;
     }
@@ -87,6 +92,9 @@ pub fn permissions_status(app: AppHandle) -> PermissionsStatus {
 pub fn request_permission(app: AppHandle, kind: PermissionKind) -> Result<PermissionState, String> {
     match kind {
         PermissionKind::Audio => {
+            if !AUDIO_REQUIRES_PERMISSION {
+                return Ok(PermissionState::Granted);
+            }
             mark_requested(&app, kind)?;
             Ok(state_from_granted(recording::rebuild_capture(&app)))
         }

@@ -4,6 +4,7 @@ import { IconButton } from "@/components/IconButton";
 import { Button } from "@/components/ui/button";
 import { useWindowDrag } from "@/hooks/useWindowDrag";
 import type { RecorderState } from "@/ipc/types";
+import { formatCombo } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { EqBars, type EqBarsProps } from "./EqBars";
 
@@ -114,7 +115,7 @@ function WindowButtons({
         <X />
       </IconButton>
       <IconButton
-        title={`Скрыть окно — вернуть: ${toggleHotkey}`}
+        title={`Скрыть окно — вернуть: ${formatCombo(toggleHotkey)}`}
         aria-label="Скрыть окно"
         onClick={onHide}
       >

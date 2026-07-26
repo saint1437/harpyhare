@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MODIFIER_COMBOS } from "@/ipc/bindings";
 import { matchesModifier, parseModifier, type ModifierState } from "./hotkey-modifier";
+import { PLATFORMS } from "./platform";
 
 const NONE: ModifierState = {
   metaKey: false,
@@ -45,13 +46,22 @@ describe("parseModifier", () => {
     expect(parseModifier("Fn")).toEqual(NONE);
   });
 
-  it("каждое комбо из реестра Rust разбирается в непустой и уникальный набор флагов", () => {
-    const seen = new Set<string>();
-    for (const combo of MODIFIER_COMBOS) {
-      const parsed = parseModifier(combo);
-      expect(Object.values(parsed).some(Boolean)).toBe(true);
-      expect(seen.has(JSON.stringify(parsed))).toBe(false);
-      seen.add(JSON.stringify(parsed));
+  it.each(PLATFORMS)(
+    "каждое комбо из реестра Rust (%s) разбирается в непустой и уникальный набор флагов",
+    (platform) => {
+      const seen = new Set<string>();
+      for (const combo of MODIFIER_COMBOS[platform]) {
+        const parsed = parseModifier(combo);
+        expect(Object.values(parsed).some(Boolean)).toBe(true);
+        expect(seen.has(JSON.stringify(parsed))).toBe(false);
+        seen.add(JSON.stringify(parsed));
+      }
+    },
+  );
+
+  it("в реестре Windows нет комбо с клавишей Win", () => {
+    for (const combo of MODIFIER_COMBOS.windows) {
+      expect(parseModifier(combo).metaKey).toBe(false);
     }
   });
 });
