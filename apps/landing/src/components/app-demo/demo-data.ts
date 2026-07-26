@@ -1,3 +1,7 @@
+export type AppTheme = "gray" | "black";
+
+export const THEME_LABELS: Record<AppTheme, string> = { gray: "Серая", black: "Чёрная" };
+
 export interface DemoMessage {
   role: "user" | "assistant";
   text: string;

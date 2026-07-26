@@ -1,6 +1,6 @@
 import { Mic } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { VOICE_PROMPTS, type VoicePrompt } from "./demo-data";
+import { VOICE_PROMPTS, type AppTheme, type VoicePrompt } from "./demo-data";
 import { HudWindow } from "./HudWindow";
 import { LauncherWindow } from "./LauncherWindow";
 import { useDemoRun } from "./useDemoRun";
@@ -12,6 +12,7 @@ export function AppDemo() {
   const [inHud, setInHud] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [hidden, setHidden] = useState(false);
+  const [theme, setTheme] = useState<AppTheme>("black");
   const timerRef = useRef(0);
 
   useEffect(
@@ -49,6 +50,7 @@ export function AppDemo() {
         className="relative overflow-hidden rounded-[18px] border border-border-strong bg-app-bg shadow-[0_36px_70px_-22px_var(--hud-shadow)]"
         role="group"
         aria-label="Интерактивная демонстрация интерфейса приложения"
+        data-app-theme={theme}
       >
         <div className="h-[440px] sm:h-[560px] lg:h-[640px]">
           {inHud ? (
@@ -60,7 +62,12 @@ export function AppDemo() {
               }}
             />
           ) : (
-            <LauncherWindow launching={launching} onLaunch={launch} />
+            <LauncherWindow
+              launching={launching}
+              theme={theme}
+              onLaunch={launch}
+              onThemeChange={setTheme}
+            />
           )}
         </div>
 

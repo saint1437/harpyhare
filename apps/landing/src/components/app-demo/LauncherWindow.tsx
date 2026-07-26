@@ -11,6 +11,7 @@ import {
 import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { ContextsScreen, IdentityScreen, PresetsScreen } from "./ContentScreens";
+import type { AppTheme } from "./demo-data";
 import { SettingsScreen } from "./SettingsScreen";
 import { PermissionsScreen, UpdatesScreen } from "./SystemScreens";
 import { AppEqBars, AppPrimaryButton } from "./ui";
@@ -159,21 +160,33 @@ function ScreenShell({ screen, children }: { screen: ScreenMeta; children: React
   );
 }
 
-function ScreenContent({ id }: { id: ScreenId }) {
+function ScreenContent({
+  id,
+  theme,
+  onThemeChange,
+}: {
+  id: ScreenId;
+  theme: AppTheme;
+  onThemeChange: (theme: AppTheme) => void;
+}) {
   if (id === "contexts") return <ContextsScreen />;
   if (id === "presets") return <PresetsScreen />;
   if (id === "identity") return <IdentityScreen />;
   if (id === "permissions") return <PermissionsScreen />;
   if (id === "updates") return <UpdatesScreen />;
-  return <SettingsScreen />;
+  return <SettingsScreen theme={theme} onThemeChange={onThemeChange} />;
 }
 
 export function LauncherWindow({
   launching,
+  theme,
   onLaunch,
+  onThemeChange,
 }: {
   launching: boolean;
+  theme: AppTheme;
   onLaunch: () => void;
+  onThemeChange: (theme: AppTheme) => void;
 }) {
   const [screen, setScreen] = useState<ScreenId>("settings");
   const meta = SCREENS.find((item) => item.id === screen) ?? SCREENS[0];
@@ -187,7 +200,7 @@ export function LauncherWindow({
           <Sidebar active={screen} onSelect={setScreen} />
           {meta && (
             <ScreenShell screen={meta}>
-              <ScreenContent id={screen} />
+              <ScreenContent id={screen} theme={theme} onThemeChange={onThemeChange} />
             </ScreenShell>
           )}
         </div>

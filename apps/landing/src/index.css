@@ -344,6 +344,20 @@ section[id] {
   --app-border: oklch(1 0 0 / 8%);
 }
 
+[data-app-theme="black"] {
+  --app-bg: oklch(0.17 0.004 285);
+  --app-card: oklch(0.21 0.003 285);
+  --app-muted-fg: oklch(0.68 0.006 285);
+  --app-border: oklch(1 0 0 / 10%);
+}
+
+[data-app-theme="black"] .app-launcher {
+  --app-bg: oklch(0.13 0.004 285);
+  --app-card: oklch(0.175 0.004 285);
+  --app-surface: oklch(0.215 0.005 285);
+  --app-surface-active: oklch(0.27 0.006 285);
+}
+
 .app-scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--app-surface-active) transparent;

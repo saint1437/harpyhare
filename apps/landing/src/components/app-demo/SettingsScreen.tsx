@@ -1,10 +1,15 @@
 import { useState } from "react";
+import { THEME_LABELS, type AppTheme } from "./demo-data";
 import { AppSlider, AppSwitch, CycleSelect, Kbd, SettingGroup, SettingRow } from "./ui";
 
 const STT_LANGUAGES = ["Автоопределение", "Русский", "English"] as const;
 const CAPTURE_DEVICES = ["Системное по умолчанию", "MacBook Pro Speakers", "AirPods Pro"] as const;
 const MOVE_MODIFIERS = ["⌘", "⌘⇧", "⌥", "Ctrl"] as const;
-const THEMES = ["Серая", "Чёрная"] as const;
+const THEME_OPTIONS = Object.values(THEME_LABELS);
+
+function themeFromLabel(label: string): AppTheme {
+  return label === THEME_LABELS.black ? "black" : "gray";
+}
 
 const HOTKEYS = [
   { label: "Записать вопрос", hint: "Удерживайте, пока говорит собеседник", combo: "F9" },
@@ -21,7 +26,13 @@ function MaskedKey({ value }: { value: string }) {
   );
 }
 
-export function SettingsScreen() {
+export function SettingsScreen({
+  theme,
+  onThemeChange,
+}: {
+  theme: AppTheme;
+  onThemeChange: (theme: AppTheme) => void;
+}) {
   const [language, setLanguage] = useState<string>(STT_LANGUAGES[0]);
   const [translate, setTranslate] = useState(false);
   const [device, setDevice] = useState<string>(CAPTURE_DEVICES[0]);
@@ -32,7 +43,6 @@ export function SettingsScreen() {
   const [autoSend, setAutoSend] = useState(true);
   const [autoPreview, setAutoPreview] = useState(true);
   const [screenShareVisible, setScreenShareVisible] = useState(false);
-  const [theme, setTheme] = useState<string>(THEMES[0]);
   const [chatFont, setChatFont] = useState(13.5);
 
   return (
@@ -148,7 +158,14 @@ export function SettingsScreen() {
 
       <SettingGroup title="Вид">
         <SettingRow label="Тема">
-          <CycleSelect value={theme} options={THEMES} ariaLabel="Тема" onChange={setTheme} />
+          <CycleSelect
+            value={THEME_LABELS[theme]}
+            options={THEME_OPTIONS}
+            ariaLabel="Тема"
+            onChange={(label) => {
+              onThemeChange(themeFromLabel(label));
+            }}
+          />
         </SettingRow>
         <SettingRow label="Размер текста чата">
           <AppSlider
