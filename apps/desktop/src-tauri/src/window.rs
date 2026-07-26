@@ -157,11 +157,14 @@ pub fn on_toggle_teleprompter(app: &AppHandle) {
 pub fn launch_main_window(app: AppHandle) -> Result<(), String> {
     let settings = current_settings(&app);
     create_main_window(&app, &settings)?;
-    crate::recording::ensure_capture(&app);
     register_main_window_hotkeys(&app, &settings);
     if let Some(w) = launcher_window(&app) {
         let _ = w.destroy();
     }
+    let capture_app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::recording::ensure_capture(&capture_app);
+    });
     Ok(())
 }
 

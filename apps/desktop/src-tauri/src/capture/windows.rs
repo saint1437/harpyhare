@@ -1,7 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::mpsc;
 use std::sync::Arc;
-use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use windows::core::PCWSTR;
@@ -263,15 +262,11 @@ pub struct Source {
 
 pub struct Running {
     stop: Arc<AtomicBool>,
-    thread: Option<JoinHandle<()>>,
 }
 
 impl Drop for Running {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
     }
 }
 
@@ -294,29 +289,21 @@ pub fn start(source: Source, ctx: Box<CallbackCtx>) -> Result<Running, CaptureEr
         channels: ctx.shared.channels,
     };
     let thread_stop = Arc::clone(&stop);
-    let thread = std::thread::Builder::new()
+    std::thread::Builder::new()
         .name(CAPTURE_THREAD_NAME.into())
         .spawn(move || capture_main(source, ctx, spec, thread_stop, ready_tx))
         .map_err(|e| CaptureError::Audio(e.to_string()))?;
 
     let started = ready_rx.recv_timeout(START_TIMEOUT);
+    if let Ok(Ok(())) = started {
+        return Ok(Running { stop });
+    }
+    stop.store(true, Ordering::Release);
     match started {
-        Ok(Ok(())) => Ok(Running {
-            stop,
-            thread: Some(thread),
-        }),
-        Ok(Err(e)) => {
-            stop.store(true, Ordering::Release);
-            let _ = thread.join();
-            Err(e)
-        }
-        Err(RecvTimeoutError::Timeout) | Err(RecvTimeoutError::Disconnected) => {
-            stop.store(true, Ordering::Release);
-            let _ = thread.join();
-            Err(CaptureError::Backend(
-                "поток захвата не запустился".to_string(),
-            ))
-        }
+        Ok(Err(e)) => Err(e),
+        _ => Err(CaptureError::Backend(
+            "поток захвата не запустился".to_string(),
+        )),
     }
 }
 
