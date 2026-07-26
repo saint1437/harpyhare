@@ -43,6 +43,19 @@
   --primary-hover: oklch(0.6 0.19 22);
   --primary-fg: oklch(0.98 0.01 30);
 
+  --app-bg: oklch(0.28 0.004 285);
+  --app-fg: oklch(0.95 0 0);
+  --app-card: oklch(0.32 0.003 285);
+  --app-muted-fg: oklch(0.72 0.006 285);
+  --app-primary: oklch(0.45 0.16 18);
+  --app-primary-fg: oklch(0.97 0.01 30);
+  --app-destructive: oklch(0.55 0.2 18);
+  --app-recording: oklch(0.62 0.2 18);
+  --app-border: oklch(1 0 0 / 12%);
+  --app-surface: oklch(1 0 0 / 5%);
+  --app-surface-active: oklch(1 0 0 / 10%);
+  --app-code: oklch(0 0 0 / 28%);
+
   --hud-shadow: color-mix(in oklab, rgb(0 0 0 / 0.7), rgb(0 0 0 / 0.12) var(--dayness));
 
   --sky-glow: color-mix(
@@ -79,6 +92,23 @@
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-primary-fg: var(--primary-fg);
+  --color-app-bg: var(--app-bg);
+  --color-app-fg: var(--app-fg);
+  --color-app-card: var(--app-card);
+  --color-app-muted: var(--app-muted-fg);
+  --color-app-primary: var(--app-primary);
+  --color-app-primary-fg: var(--app-primary-fg);
+  --color-app-destructive: var(--app-destructive);
+  --color-app-recording: var(--app-recording);
+  --color-app-border: var(--app-border);
+  --color-app-surface: var(--app-surface);
+  --color-app-surface-active: var(--app-surface-active);
+  --color-app-code: var(--app-code);
+  --text-app-hint: 10.5px;
+  --text-app-caption: 11.5px;
+  --text-app-body: 12.5px;
+  --text-app-chat: 13.5px;
+  --text-app-title: 15px;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Inter", sans-serif;
 }
 
@@ -303,6 +333,132 @@ section[id] {
 
 .caret {
   animation: caret-blink 1.1s step-end infinite;
+}
+
+/* the app replica keeps its own dark palette regardless of the page's day/night */
+.app-launcher {
+  --app-bg: oklch(0.19 0.004 285);
+  --app-card: oklch(0.235 0.004 285);
+  --app-surface: oklch(0.275 0.005 285);
+  --app-surface-active: oklch(0.33 0.006 285);
+  --app-border: oklch(1 0 0 / 8%);
+}
+
+.app-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--app-surface-active) transparent;
+}
+
+.app-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.app-scroll::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: var(--app-surface-active);
+}
+
+.app-no-scrollbar {
+  scrollbar-width: none;
+}
+
+.app-no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.app-prose > :first-child {
+  margin-top: 0;
+}
+
+.app-prose > :last-child {
+  margin-bottom: 0;
+}
+
+.app-prose p {
+  margin: 0 0 0.7em;
+}
+
+.app-prose ul {
+  margin: 0 0 0.7em;
+  padding-left: 1.35em;
+  list-style: disc;
+}
+
+.app-prose li {
+  margin: 0.22em 0;
+}
+
+.app-prose li::marker {
+  color: var(--app-primary);
+}
+
+.app-prose code {
+  padding: 1.5px 5.5px;
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--app-primary) 14%, transparent);
+  color: oklch(0.8 0.09 18);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.89em;
+}
+
+.app-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--app-muted-fg) 40%,
+    var(--app-fg) 50%,
+    var(--app-muted-fg) 60%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: app-shimmer 1.9s linear infinite;
+}
+
+@keyframes app-shimmer {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+
+.app-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 14px;
+  background: transparent;
+}
+
+.app-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--app-surface-active);
+}
+
+.app-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--app-fg);
+}
+
+.app-range::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--app-surface-active);
+}
+
+.app-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--app-fg);
 }
 
 @keyframes fade-rise {
@@ -760,6 +916,7 @@ section[id] {
     transform: scaleY(0.7);
   }
   .caret,
+  .app-shimmer,
   .fade-rise,
   .moon-disc,
   .moon-mist,

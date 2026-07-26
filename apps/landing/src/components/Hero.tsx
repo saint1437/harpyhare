@@ -1,9 +1,9 @@
 import type { LatestReleaseState } from "@/hooks/useLatestRelease";
 import { SUPPORTED_PLATFORMS_LABEL, type Platform } from "@/lib/platform";
 import { RELEASES_PAGE } from "@/lib/release";
+import { AppDemo } from "./app-demo/AppDemo";
 import { DownloadChoice } from "./DownloadChoice";
 import { EqBars } from "./EqBars";
-import { HudPreview } from "./HudPreview";
 import { Bush } from "./Scenery";
 import { Cloud } from "./Sky";
 import { VersionNote } from "./VersionNote";
@@ -53,7 +53,7 @@ export function Hero({ state, platform }: HeroProps) {
         <VersionNote state={state} platform={platform} className="mt-4" />
       </div>
 
-      <HudPreview />
+      <AppDemo />
 
       <Cloud
         variant="wide"
