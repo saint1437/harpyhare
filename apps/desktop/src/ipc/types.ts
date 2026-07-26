@@ -25,6 +25,7 @@ export interface Settings {
   teleprompter_font_size: number;
   teleprompter_hotkey: string;
   teleprompter_resume: boolean;
+  screenshot_hotkey: string;
   window_width: number;
   window_height: number;
   resize_step: number;
@@ -88,4 +89,6 @@ export interface EventMap {
   "toggle-teleprompter": null;
   "resize-key": { dim: "width" | "height"; dir: 1 | -1 };
   "official-presets-updated": PromptPreset[];
+  "screenshot-ready": { mediaType: string; dataBase64: string };
+  "screenshot-error": AppError;
 }

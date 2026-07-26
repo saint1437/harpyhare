@@ -65,10 +65,27 @@ pub fn request_capture_rebuild(app: &AppHandle) {
     }
 }
 
-fn rebuild_capture_now(app: &AppHandle) {
+pub fn rebuild_capture(app: &AppHandle) -> bool {
     let st = app.state::<App>();
     let new_capture = build_capture(&current_settings(app));
+    let built = new_capture.is_some();
     *st.capture.lock().unwrap() = new_capture;
+    built
+}
+
+pub fn ensure_capture(app: &AppHandle) -> bool {
+    if app.state::<App>().capture.lock().unwrap().is_some() {
+        return true;
+    }
+    rebuild_capture(app)
+}
+
+fn rebuild_capture_now(app: &AppHandle) {
+    let never_built = app.state::<App>().capture.lock().unwrap().is_none();
+    if never_built && !current_settings(app).audio_permission_requested {
+        return;
+    }
+    rebuild_capture(app);
 }
 
 pub fn on_ptt_pressed(app: &AppHandle) {
@@ -339,15 +356,3 @@ pub fn list_audio_output_devices() -> Vec<capture::OutputDeviceInfo> {
     capture::list_output_devices()
 }
 
-#[tauri::command]
-#[specta::specta]
-pub fn capture_available(app: AppHandle) -> bool {
-    app.state::<App>().capture.lock().unwrap().is_some()
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn request_audio_capture_permission(app: AppHandle) -> bool {
-    rebuild_capture_now(&app);
-    app.state::<App>().capture.lock().unwrap().is_some()
-}

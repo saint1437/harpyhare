@@ -2,7 +2,7 @@ use std::str::FromStr;
 use tauri::AppHandle;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-use crate::{recording, window};
+use crate::{recording, screenshot, window};
 
 const ESC_HOTKEY: &str = "Escape";
 
@@ -64,6 +64,23 @@ pub fn register_teleprompter(app: &AppHandle, hotkey: &str) -> Result<(), String
 }
 
 pub fn unregister_teleprompter(app: &AppHandle, hotkey: &str) {
+    if let Some(shortcut) = parse_hotkey(hotkey) {
+        let _ = app.global_shortcut().unregister(shortcut);
+    }
+}
+
+pub fn register_screenshot(app: &AppHandle, hotkey: &str) -> Result<(), String> {
+    let shortcut = parse_hotkey(hotkey).ok_or_else(|| unparseable_hotkey_error(hotkey))?;
+    app.global_shortcut()
+        .on_shortcut(shortcut, |app, _shortcut, event| {
+            if event.state == ShortcutState::Pressed {
+                defer(app, screenshot::on_capture_region);
+            }
+        })
+        .map_err(|e| e.to_string())
+}
+
+pub fn unregister_screenshot(app: &AppHandle, hotkey: &str) {
     if let Some(shortcut) = parse_hotkey(hotkey) {
         let _ = app.global_shortcut().unregister(shortcut);
     }

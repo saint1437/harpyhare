@@ -17,8 +17,6 @@ export const commands = {
 	readContextPdfBytes: (dataBase64: string) => __TAURI_INVOKE<string>("read_context_pdf_bytes", { dataBase64 }),
 	retryTranscription: () => __TAURI_INVOKE<void>("retry_transcription"),
 	listAudioOutputDevices: () => __TAURI_INVOKE<OutputDeviceInfo[]>("list_audio_output_devices"),
-	captureAvailable: () => __TAURI_INVOKE<boolean>("capture_available"),
-	requestAudioCapturePermission: () => __TAURI_INVOKE<boolean>("request_audio_capture_permission"),
 	getSettings: () => __TAURI_INVOKE<Settings>("get_settings"),
 	setSettings: (newSettings: Settings) => __TAURI_INVOKE<Settings>("set_settings", { newSettings }),
 	getOfficialPresets: () => __TAURI_INVOKE<PromptPreset[]>("get_official_presets"),
@@ -29,7 +27,10 @@ export const commands = {
 	hideMainWindow: () => __TAURI_INVOKE<void>("hide_main_window"),
 	launchMainWindow: () => __TAURI_INVOKE<null>("launch_main_window"),
 	stopMainWindow: () => __TAURI_INVOKE<null>("stop_main_window"),
-	openAudioPermissionSettings: () => __TAURI_INVOKE<void>("open_audio_permission_settings"),
+	captureRegionScreenshot: () => __TAURI_INVOKE<void>("capture_region_screenshot"),
+	permissionsStatus: () => __TAURI_INVOKE<PermissionsStatus>("permissions_status"),
+	requestPermission: (kind: PermissionKind) => __TAURI_INVOKE<PermissionState>("request_permission", { kind }),
+	openPermissionSettings: (kind: PermissionKind) => __TAURI_INVOKE<void>("open_permission_settings", { kind }),
 	openExternal: (url: string) => __TAURI_INVOKE<void>("open_external", { url }),
 	setPreviewHtml: (html: string) => __TAURI_INVOKE<void>("set_preview_html", { html }),
 	checkForUpdate: () => __TAURI_INVOKE<{
@@ -46,7 +47,7 @@ export const commands = {
 /* Constants */
 export const MODIFIER_COMBOS = ["Cmd","Ctrl","Alt","Cmd+Shift","Ctrl+Shift","Alt+Shift"] as const;
 
-export const SETTINGS_DEFAULTS = {"access_token":"","anthropic_api_key":"","auto_preview_html":true,"auto_send":false,"buffer_enabled":true,"buffer_seconds":4,"capture_device_uid":"","chat_font_size":13.5,"groq_api_key":"","hotkey":"F9","identity_id":"","move_modifier":"Cmd","move_step":20,"prompt_presets":[],"resize_modifier":"Cmd+Shift","resize_step":20,"screen_share_visible":false,"scroll_modifier":"Alt","scroll_step":120,"skipped_version":"","stt_language":"ru","stt_translate":false,"teleprompter_font_size":28.0,"teleprompter_hotkey":"F10","teleprompter_resume":true,"teleprompter_speed":40.0,"theme":"gray","toggle_hotkey":"Cmd+Shift+H","window_height":680.0,"window_opacity":0.9,"window_width":960.0} as const;
+export const SETTINGS_DEFAULTS = {"access_token":"","anthropic_api_key":"","audio_permission_requested":false,"auto_preview_html":true,"auto_send":false,"buffer_enabled":true,"buffer_seconds":4,"capture_device_uid":"","chat_font_size":13.5,"groq_api_key":"","hotkey":"F9","identity_id":"","move_modifier":"Cmd","move_step":20,"prompt_presets":[],"resize_modifier":"Cmd+Shift","resize_step":20,"screen_permission_requested":false,"screen_share_visible":false,"screenshot_hotkey":"Cmd+Shift+S","scroll_modifier":"Alt","scroll_step":120,"skipped_version":"","stt_language":"ru","stt_translate":false,"teleprompter_font_size":28.0,"teleprompter_hotkey":"F10","teleprompter_resume":true,"teleprompter_speed":40.0,"theme":"gray","toggle_hotkey":"Cmd+Shift+H","window_height":680.0,"window_opacity":0.9,"window_width":960.0} as const;
 
 export const SETTINGS_LIMITS = {"bufferSeconds":{"default":4,"max":10,"min":4},"chatFontSize":{"default":13.5,"max":20.0,"min":10.0},"moveStep":{"default":20,"max":200,"min":1},"resizeStep":{"default":20,"max":200,"min":1},"scrollStep":{"default":120,"max":1000,"min":10},"teleprompterFontSize":{"default":28.0,"max":48.0,"min":20.0},"teleprompterSpeed":{"default":40.0,"max":150.0,"min":10.0},"windowHeight":{"default":680.0,"max":1100.0,"min":520.0},"windowOpacity":{"default":0.9,"max":1.0,"min":0.2},"windowWidth":{"default":960.0,"max":1600.0,"min":300.0}} as const;
 
@@ -109,6 +110,15 @@ export type OutputDeviceInfo = {
 	name: string,
 };
 
+export type PermissionKind = "audio" | "screen";
+
+export type PermissionState = "unknown" | "granted" | "denied";
+
+export type PermissionsStatus = {
+	audio: PermissionState,
+	screen: PermissionState,
+};
+
 export type PromptPreset = {
 	id: string,
 	name: string,
@@ -127,6 +137,11 @@ export type ResizeDim = "width" | "height";
 export type ResizeKeyPayload = {
 	dim: ResizeDim,
 	dir: number,
+};
+
+export type ScreenshotReady = {
+	mediaType: string,
+	dataBase64: string,
 };
 
 export type Settings = {
@@ -149,6 +164,9 @@ export type Settings = {
 	teleprompter_font_size?: number | null,
 	teleprompter_hotkey?: string,
 	teleprompter_resume?: boolean,
+	screenshot_hotkey?: string,
+	audio_permission_requested?: boolean,
+	screen_permission_requested?: boolean,
 	window_width?: number | null,
 	window_height?: number | null,
 	resize_step?: number,

@@ -12,10 +12,12 @@ pub mod hotkey;
 pub mod identity;
 pub mod llm;
 pub mod platform;
+pub mod permissions;
 pub mod preferences;
 pub mod preview_protocol;
 pub mod recording;
 pub mod remote_presets;
+pub mod screenshot;
 pub mod settings;
 pub mod state;
 pub mod storage;
@@ -63,7 +65,6 @@ fn setup_app(handle: &AppHandle) {
     preferences::load_dotenv_files();
     let settings = preferences::load_settings_with_env_key_fallback(handle);
     let official_presets = remote_presets::load_initial(handle);
-    let capture = app_state::build_capture(&settings);
     let models: llm::ModelCatalog = Arc::new(Mutex::new(llm::fallback_models()));
     let stt = app_state::build_stt_client(&settings);
     let llm = app_state::build_llm_client(&settings, Arc::clone(&models));
@@ -72,7 +73,7 @@ fn setup_app(handle: &AppHandle) {
     handle.manage(app_state::build_app_state(
         settings,
         official_presets,
-        capture,
+        None,
         stt,
         llm,
         models,

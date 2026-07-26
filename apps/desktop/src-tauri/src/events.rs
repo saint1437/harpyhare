@@ -18,6 +18,15 @@ const EVENT_UPDATE_AVAILABLE: &str = "update-available";
 const EVENT_UPDATE_PROGRESS: &str = "update-progress";
 const EVENT_UPDATE_DONE: &str = "update-done";
 const EVENT_OFFICIAL_PRESETS_UPDATED: &str = "official-presets-updated";
+const EVENT_SCREENSHOT_READY: &str = "screenshot-ready";
+const EVENT_SCREENSHOT_ERROR: &str = "screenshot-error";
+
+#[derive(Clone, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreenshotReady {
+    pub media_type: String,
+    pub data_base64: String,
+}
 
 #[derive(Clone, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -120,6 +129,14 @@ pub fn llm_usage(app: &AppHandle, chat_id: &str, input_tokens: u32) {
             input_tokens,
         },
     );
+}
+
+pub fn screenshot_ready(app: &AppHandle, payload: ScreenshotReady) {
+    let _ = app.emit(EVENT_SCREENSHOT_READY, payload);
+}
+
+pub fn screenshot_error(app: &AppHandle, error: AppError) {
+    let _ = app.emit(EVENT_SCREENSHOT_ERROR, error);
 }
 
 pub fn toggle_teleprompter(app: &AppHandle) {

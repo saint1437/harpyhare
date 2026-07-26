@@ -5,6 +5,7 @@ const CFG = {
   ptt: "F9",
   toggleWindow: "Cmd+Shift+H",
   teleprompter: "F10",
+  screenshot: "Cmd+Shift+S",
   moveWindow: "Cmd",
   resizeWindow: "Cmd+Shift",
   scrollChat: "Alt",
@@ -56,6 +57,7 @@ describe("hotkeyGroups", () => {
     expect(combos).toContain("F9");
     expect(combos).toContain("⌘⇧H");
     expect(combos).toContain("F10");
+    expect(combos).toContain("⌘⇧S");
     expect(combos).toContain("⌘ ←→↑↓");
     expect(combos).toContain("⌘⇧ ←→↑↓");
     expect(combos).toContain("⌥ ↑↓");

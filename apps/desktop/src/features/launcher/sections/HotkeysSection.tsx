@@ -55,6 +55,14 @@ export function HotkeysSection({ draft, set }: SectionProps) {
             }}
           />
         </Field>
+        <Field label="Снимок области экрана">
+          <HotkeyCapture
+            value={draft.screenshot_hotkey}
+            onChange={(hk) => {
+              set("screenshot_hotkey", hk);
+            }}
+          />
+        </Field>
       </SectionColumns>
 
       <SectionColumns>

@@ -66,6 +66,7 @@ pub mod defaults {
     pub const PTT_HOTKEY: &str = "F9";
     pub const TOGGLE_HOTKEY: &str = "Cmd+Shift+H";
     pub const TELEPROMPTER_HOTKEY: &str = "F10";
+    pub const SCREENSHOT_HOTKEY: &str = "Cmd+Shift+S";
     pub const STT_LANGUAGE: &str = "ru";
     pub const THEME: &str = super::THEME_GRAY;
     pub const MOVE_MODIFIER: &str = "Cmd";
@@ -132,6 +133,9 @@ pub struct Settings {
     pub teleprompter_font_size: f64,
     pub teleprompter_hotkey: String,
     pub teleprompter_resume: bool,
+    pub screenshot_hotkey: String,
+    pub audio_permission_requested: bool,
+    pub screen_permission_requested: bool,
     pub window_width: f64,
     pub window_height: f64,
     pub resize_step: u32,
@@ -168,6 +172,9 @@ impl Default for Settings {
             teleprompter_font_size: limits::teleprompter::FONT_SIZE.default,
             teleprompter_hotkey: defaults::TELEPROMPTER_HOTKEY.into(),
             teleprompter_resume: true,
+            screenshot_hotkey: defaults::SCREENSHOT_HOTKEY.into(),
+            audio_permission_requested: false,
+            screen_permission_requested: false,
             window_width: limits::window::WIDTH.default,
             window_height: limits::window::HEIGHT.default,
             resize_step: limits::window::RESIZE_STEP.default,

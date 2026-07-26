@@ -108,13 +108,24 @@ pub fn register_main_window_hotkeys(app: &AppHandle, s: &settings::Settings) {
     if let Err(e) = hotkey::register_teleprompter(app, &s.teleprompter_hotkey) {
         eprintln!("не удалось зарегистрировать суфлёр-хоткей {:?}: {e}", s.teleprompter_hotkey);
     }
+    if let Err(e) = hotkey::register_screenshot(app, &s.screenshot_hotkey) {
+        eprintln!("не удалось зарегистрировать хоткей снимка {:?}: {e}", s.screenshot_hotkey);
+    }
 }
 
 fn unregister_main_window_hotkeys(app: &AppHandle, s: &settings::Settings) {
     hotkey::unregister_ptt(app, &s.hotkey);
     hotkey::unregister_toggle(app, &s.toggle_hotkey);
     hotkey::unregister_teleprompter(app, &s.teleprompter_hotkey);
+    hotkey::unregister_screenshot(app, &s.screenshot_hotkey);
     hotkey::unregister_esc(app);
+}
+
+pub fn show_and_focus_main(app: &AppHandle) {
+    if let Some(w) = main_window(app) {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
 }
 
 pub fn on_toggle_visibility(app: &AppHandle) {
@@ -137,6 +148,7 @@ pub fn on_toggle_teleprompter(app: &AppHandle) {
 pub fn launch_main_window(app: AppHandle) -> Result<(), String> {
     let settings = current_settings(&app);
     create_main_window(&app, &settings)?;
+    crate::recording::ensure_capture(&app);
     register_main_window_hotkeys(&app, &settings);
     if let Some(w) = launcher_window(&app) {
         let _ = w.destroy();

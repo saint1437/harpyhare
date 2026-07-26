@@ -5,12 +5,6 @@ use crate::{identity, platform, update};
 
 #[tauri::command]
 #[specta::specta]
-pub fn open_audio_permission_settings() {
-    platform::open_audio_capture_privacy_pane();
-}
-
-#[tauri::command]
-#[specta::specta]
 pub fn open_external(url: String) {
     platform::open_web_url(&url);
 }

@@ -1636,6 +1636,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "block2",
+ "cc",
  "cidre",
  "dotenvy",
  "futures-util",

@@ -14,6 +14,7 @@ export interface HotkeyConfig {
   ptt: string;
   toggleWindow: string;
   teleprompter: string;
+  screenshot: string;
   moveWindow: string;
   resizeWindow: string;
   scrollChat: string;
@@ -90,6 +91,7 @@ export function hotkeyGroups(cfg: HotkeyConfig): HotkeyGroup[] {
         { combo: "⏎", label: "отправить" },
         { combo: "⇧⏎", label: "перенос строки" },
         { combo: "⌘V", label: "вставить скриншот" },
+        { combo: formatCombo(cfg.screenshot), label: "снимок области экрана" },
       ],
     },
     {

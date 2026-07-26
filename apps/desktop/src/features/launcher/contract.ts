@@ -16,7 +16,6 @@ export interface LauncherPanelProps {
   readiness: LauncherReadiness;
   launching: boolean;
   error: string | null;
-  onOpenAudioSettings: () => void;
   onRedeem: (code: string) => Promise<string | null>;
   onCheckUpdates: () => Promise<UpdateInfo | null>;
   onSave: (next: Settings) => void;

@@ -9,6 +9,7 @@ import { missingKeysNotice } from "@/lib/api-keys";
 import { BRAND_NAME } from "@/lib/brand";
 import { isPresetFilled } from "@/lib/presets";
 import type { LauncherPanelProps, SetSetting } from "./contract";
+import { PermissionsDialog } from "./PermissionsDialog";
 import type { PresetsUpdate } from "./sections/PresetsSection";
 import { TabContent } from "./TabContent";
 import { TabRail } from "./TabRail";
@@ -30,6 +31,7 @@ function normalizeDraft(draft: Settings): Settings {
     hotkey: draft.hotkey.trim() || DEFAULT_SETTINGS.hotkey,
     toggle_hotkey: draft.toggle_hotkey.trim() || DEFAULT_SETTINGS.toggle_hotkey,
     teleprompter_hotkey: draft.teleprompter_hotkey.trim() || DEFAULT_SETTINGS.teleprompter_hotkey,
+    screenshot_hotkey: draft.screenshot_hotkey.trim() || DEFAULT_SETTINGS.screenshot_hotkey,
     prompt_presets: draft.prompt_presets.filter(isPresetFilled),
   };
 }
@@ -41,7 +43,6 @@ export function LauncherPanel({
   readiness,
   launching,
   error,
-  onOpenAudioSettings,
   onRedeem,
   onCheckUpdates,
   onSave,
@@ -51,7 +52,15 @@ export function LauncherPanel({
   const [checkState, setCheckState] = useState<CheckState>("idle");
   const [tab, setTab] = useState<TabId>("main");
 
-  const { ready, missingKeys, permissionOk, requestPermission } = readiness;
+  const { ready, missingKeys, permissions } = readiness;
+  const [permissionsOpen, setPermissionsOpen] = useState(false);
+  const permissionsPrompted = useRef(false);
+
+  useEffect(() => {
+    if (permissionsPrompted.current || !permissions.loaded) return;
+    permissionsPrompted.current = true;
+    if (permissions.needsAttention) setPermissionsOpen(true);
+  }, [permissions.loaded, permissions.needsAttention]);
 
   useEffect(() => {
     setDraft((d) =>
@@ -140,18 +149,14 @@ export function LauncherPanel({
               {missingKeysNotice(missingKeys)}
             </WarningBanner>
           )}
-          {!permissionOk && (
-            <WarningBanner actionLabel="Разрешить" onAction={() => void requestPermission()}>
-              <span className="inline-flex items-center gap-2">
-                Нет разрешения на запись системного звука
-                <button
-                  type="button"
-                  className="underline underline-offset-2 hover:no-underline"
-                  onClick={onOpenAudioSettings}
-                >
-                  открыть настройки
-                </button>
-              </span>
+          {!permissions.audioOk && (
+            <WarningBanner
+              actionLabel="Доступы"
+              onAction={() => {
+                setPermissionsOpen(true);
+              }}
+            >
+              Нет доступа к записи системного звука
             </WarningBanner>
           )}
         </div>
@@ -161,7 +166,18 @@ export function LauncherPanel({
         className="launcher-rise flex flex-wrap items-center justify-between gap-3 border-t pt-3"
         style={riseDelay(4)}
       >
-        <VersionRow appVersion={appVersion} checkState={checkState} onCheck={checkUpdates} />
+        <div className="flex min-w-0 items-center gap-2">
+          <VersionRow appVersion={appVersion} checkState={checkState} onCheck={checkUpdates} />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setPermissionsOpen(true);
+            }}
+          >
+            Доступы
+          </Button>
+        </div>
         <div className="flex min-w-0 items-center gap-2.5">
           {error !== null && (
             <span className="min-w-0 truncate text-caption text-destructive" title={error}>
@@ -180,6 +196,12 @@ export function LauncherPanel({
           </Button>
         </div>
       </footer>
+
+      <PermissionsDialog
+        permissions={permissions}
+        open={permissionsOpen}
+        onOpenChange={setPermissionsOpen}
+      />
     </div>
   );
 }

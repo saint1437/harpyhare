@@ -1,7 +1,7 @@
 use tauri_specta::{collect_commands, Builder, ErrorHandlingMode};
 
 use crate::settings::{self, SettingsLimits};
-use crate::{chat, events, preferences, recording, storage, system, window};
+use crate::{chat, events, permissions, preferences, recording, screenshot, storage, system, window};
 
 pub const BINDINGS_OUTPUT_PATH: &str = "../src/ipc/bindings.ts";
 const SETTINGS_LIMITS_CONSTANT: &str = "SETTINGS_LIMITS";
@@ -24,8 +24,6 @@ pub fn builder() -> Builder<tauri::Wry> {
             storage::read_context_pdf_bytes,
             recording::retry_transcription,
             recording::list_audio_output_devices,
-            recording::capture_available,
-            recording::request_audio_capture_permission,
             preferences::get_settings,
             preferences::set_settings,
             preferences::get_official_presets,
@@ -36,7 +34,10 @@ pub fn builder() -> Builder<tauri::Wry> {
             window::hide_main_window,
             window::launch_main_window,
             window::stop_main_window,
-            system::open_audio_permission_settings,
+            screenshot::capture_region_screenshot,
+            permissions::permissions_status,
+            permissions::request_permission,
+            permissions::open_permission_settings,
             system::open_external,
             system::set_preview_html,
             system::check_for_update,
@@ -55,6 +56,10 @@ pub fn builder() -> Builder<tauri::Wry> {
         .typ::<events::ResizeDim>()
         .typ::<events::UpdateProgress>()
         .typ::<events::UpdateDone>()
+        .typ::<events::ScreenshotReady>()
+        .typ::<permissions::PermissionsStatus>()
+        .typ::<permissions::PermissionState>()
+        .typ::<permissions::PermissionKind>()
         .constant(SETTINGS_LIMITS_CONSTANT, SettingsLimits::current())
         .constant(SETTINGS_DEFAULTS_CONSTANT, settings::Settings::default())
         .constant(MODIFIER_COMBOS_CONSTANT, settings::MODIFIER_COMBOS)

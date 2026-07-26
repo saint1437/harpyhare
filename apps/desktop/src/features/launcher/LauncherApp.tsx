@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { useContextLibrary } from "@/hooks/useContextLibrary";
 import { useSettingsStore } from "@/hooks/useSettingsStore";
 import { useUpdater } from "@/hooks/useUpdater";
-import { launchMainWindow, openAudioPermissionSettings, redeemAccessCode } from "@/ipc/commands";
+import { launchMainWindow, redeemAccessCode } from "@/ipc/commands";
 import type { Settings } from "@/ipc/types";
 import { applyTheme } from "@/lib/window-controls";
 import { LauncherPanel } from "./LauncherPanel";
@@ -66,7 +66,6 @@ export function LauncherApp() {
       readiness={readiness}
       launching={launching}
       error={error}
-      onOpenAudioSettings={() => void openAudioPermissionSettings()}
       onRedeem={redeem}
       onCheckUpdates={updater.checkNow}
       onSave={handleSave}

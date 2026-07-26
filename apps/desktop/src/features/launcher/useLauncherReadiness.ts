@@ -1,19 +1,18 @@
 import { useMemo } from "react";
-import { useCapturePermission } from "@/hooks/useCapturePermission";
+import { usePermissions, type PermissionsApi } from "@/hooks/usePermissions";
 import type { Settings } from "@/ipc/types";
 import { missingApiKeys, type ApiKeyInfo } from "@/lib/api-keys";
 
 export interface LauncherReadiness {
   missingKeys: ApiKeyInfo[];
-  permissionOk: boolean;
+  permissions: PermissionsApi;
   ready: boolean;
-  requestPermission: () => Promise<void>;
 }
 
 export function useLauncherReadiness(settings: Settings): LauncherReadiness {
   const missingKeys = useMemo(() => missingApiKeys(settings), [settings]);
-  const { permissionOk, requestPermission } = useCapturePermission();
+  const permissions = usePermissions();
 
-  const ready = missingKeys.length === 0 && permissionOk;
-  return { missingKeys, permissionOk, ready, requestPermission };
+  const ready = missingKeys.length === 0 && permissions.audioOk;
+  return { missingKeys, permissions, ready };
 }

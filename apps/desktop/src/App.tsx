@@ -19,8 +19,6 @@ import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel"
 import { StatusBar, type ContextUsage, type StatusBarProps } from "@/components/StatusBar";
 import { Teleprompter } from "@/components/Teleprompter";
 import { UpdateDialog } from "@/components/UpdateDialog";
-import { WarningBanner } from "@/components/WarningBanner";
-import { useCapturePermission } from "@/hooks/useCapturePermission";
 import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
 import { useConnectivity } from "@/hooks/useConnectivity";
@@ -29,6 +27,7 @@ import { useModels } from "@/hooks/useModels";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
 import { usePttSuspend } from "@/hooks/usePttSuspend";
 import { useRecorder } from "@/hooks/useRecorder";
+import { useRegionScreenshot } from "@/hooks/useRegionScreenshot";
 import { useSettings } from "@/hooks/useSettings";
 import { useTranscription } from "@/hooks/useTranscription";
 import { useUpdater, type UpdaterApi } from "@/hooks/useUpdater";
@@ -36,7 +35,6 @@ import { useWindowControls } from "@/hooks/useWindowControls";
 import {
   closeApp,
   hideMainWindow,
-  openAudioPermissionSettings,
   countChatTokens,
   retryTranscription,
   setWindowSize,
@@ -401,6 +399,7 @@ interface AppComposerProps {
   models: ModelInfo[];
   presets: PromptPreset[];
   library: ContextLibrary;
+  onCaptureRegion: () => void;
   streaming: boolean;
   showRetry: boolean;
   onSend: () => void;
@@ -413,6 +412,7 @@ function AppComposer({
   models,
   presets,
   library,
+  onCaptureRegion,
   streaming,
   showRetry,
   onSend,
@@ -441,6 +441,7 @@ function AppComposer({
       presets={presets}
       library={library}
       models={models}
+      onCaptureRegion={onCaptureRegion}
     />
   );
 }
@@ -463,7 +464,6 @@ export default function App() {
   const [teleprompterOpen, setTeleprompterOpen] = useState(false);
   const teleprompterResumeRef = useRef({ text: "", offset: 0 });
 
-  const { permissionOk } = useCapturePermission();
   const { sttError, showRetry, setSttError, clearError, clearFeedback, retry } =
     useSttFeedback(state);
   const { previewHtml, previewOpen, openPreview, togglePreview, closePreview } = usePreviewPanel();
@@ -499,6 +499,19 @@ export default function App() {
   const chatsRef = useLatestRef(chats);
   const libraryRef = useLatestRef(contextLibrary.library);
 
+  const onScreenshotImage = useCallback(
+    (dataUrl: string, mediaType: string) => {
+      void chatsRef.current.addDraftImage(chatsRef.current.activeId, dataUrl, mediaType);
+    },
+    [chatsRef],
+  );
+  const screenshot = useRegionScreenshot(onScreenshotImage);
+  const clearScreenshotError = screenshot.clearError;
+  const clearAllErrors = useCallback(() => {
+    clearError();
+    clearScreenshotError();
+  }, [clearError, clearScreenshotError]);
+
   const onAssistantDone = useCallback(
     (chatId: string, text: string) => {
       if (text === "") return;
@@ -519,7 +532,7 @@ export default function App() {
     streamRef,
     presetsRef,
     libraryRef,
-    clearError,
+    clearAllErrors,
   );
 
   useTranscription(
@@ -558,7 +571,7 @@ export default function App() {
   const active = chats.active;
   const activeId = chats.activeId;
   const activeStreaming = !!stream.streaming[activeId];
-  const error: AppError | null = sttError ?? stream.error[activeId] ?? null;
+  const error: AppError | null = sttError ?? screenshot.error ?? stream.error[activeId] ?? null;
   const partial = activeStreaming ? (stream.partial[activeId] ?? "") : null;
   const reportNetworkError = connectivity.reportNetworkError;
   useEffect(() => {
@@ -603,6 +616,7 @@ export default function App() {
     ptt: settings.hotkey,
     toggleWindow: settings.toggle_hotkey,
     teleprompter: settings.teleprompter_hotkey,
+    screenshot: settings.screenshot_hotkey,
     moveWindow: settings.move_modifier,
     resizeWindow: settings.resize_modifier,
     scrollChat: settings.scroll_modifier,
@@ -637,15 +651,6 @@ export default function App() {
           }}
         />
 
-        {!permissionOk && (
-          <WarningBanner
-            actionLabel="Открыть настройки"
-            onAction={() => void openAudioPermissionSettings()}
-          >
-            Нет разрешения на запись системного звука
-          </WarningBanner>
-        )}
-
         <AnswerPanel
           messages={active.messages}
           chatId={activeId}
@@ -666,6 +671,7 @@ export default function App() {
           models={models}
           presets={presets}
           library={contextLibrary.library}
+          onCaptureRegion={screenshot.capture}
           streaming={activeStreaming}
           showRetry={showRetry}
           onSend={doSend}

@@ -1,6 +1,7 @@
 import {
   ArrowUp,
   Check,
+  Crop,
   Eraser,
   NotebookText,
   RotateCcw,
@@ -62,6 +63,7 @@ export interface ComposerProps {
   presets: { id: string; name: string }[];
   library: ContextLibrary;
   models: ModelInfo[];
+  onCaptureRegion: () => void;
 }
 
 const SELECT_TRIGGER_CLASS = "h-7 w-full text-caption";
@@ -306,7 +308,13 @@ function RequestParamsPopover(props: RequestParamsProps) {
 type ComposerToolbarProps = RequestParamsProps &
   Pick<
     ComposerProps,
-    "onClearHistory" | "showRetry" | "onRetry" | "streaming" | "onStop" | "onSend"
+    | "onClearHistory"
+    | "showRetry"
+    | "onRetry"
+    | "streaming"
+    | "onStop"
+    | "onSend"
+    | "onCaptureRegion"
   > & {
     hasContext: boolean;
     onOpenContext: () => void;
@@ -340,6 +348,15 @@ function ComposerToolbar(props: ComposerToolbarProps) {
             aria-hidden
           />
         )}
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-compact"
+        onClick={props.onCaptureRegion}
+        title="Снимок области экрана"
+        aria-label="Снимок области экрана"
+      >
+        <Crop />
       </Button>
       <RequestParamsPopover
         chat={props.chat}
@@ -556,6 +573,7 @@ export function Composer(props: ComposerProps) {
           streaming={props.streaming}
           onStop={props.onStop}
           onSend={props.onSend}
+          onCaptureRegion={props.onCaptureRegion}
         />
       </div>
       <ChatContextDialog

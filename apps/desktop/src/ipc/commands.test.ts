@@ -11,8 +11,8 @@ vi.mock("@tauri-apps/api/window", () => ({
 }));
 
 import {
-  captureAvailable,
   getSettings,
+  permissionsStatus,
   probeConnectivity,
   sendToClaude,
   startWindowDrag,
@@ -31,10 +31,11 @@ describe("commands (Tauri IPC)", () => {
     expect(invoke).toHaveBeenCalledWith("get_settings", undefined);
   });
 
-  it("captureAvailable проксирует invoke('capture_available')", async () => {
-    invoke.mockResolvedValue(true);
-    expect(await captureAvailable()).toBe(true);
-    expect(invoke).toHaveBeenCalledWith("capture_available", undefined);
+  it("permissionsStatus проксирует invoke('permissions_status')", async () => {
+    const status = { audio: "granted", screen: "denied" };
+    invoke.mockResolvedValue(status);
+    expect(await permissionsStatus()).toBe(status);
+    expect(invoke).toHaveBeenCalledWith("permissions_status", undefined);
   });
 
   it("probeConnectivity проксирует invoke('probe_connectivity')", async () => {

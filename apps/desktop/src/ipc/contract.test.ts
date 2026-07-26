@@ -38,6 +38,7 @@ const contract = {
   ResizeDim: true satisfies SameShape<EventMap["resize-key"]["dim"], Rust.ResizeDim>,
   UpdateProgress: true satisfies SameShape<EventMap["update-progress"], Rust.UpdateProgress>,
   UpdateDone: true satisfies SameShape<EventMap["update-done"], Rust.UpdateDone>,
+  ScreenshotReady: true satisfies SameShape<EventMap["screenshot-ready"], Rust.ScreenshotReady>,
 };
 
 describe("рукописные типы IPC против сгенерированных из Rust", () => {
