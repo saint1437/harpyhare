@@ -79,6 +79,10 @@ function isAsset(value: unknown): value is GitHubAsset {
   );
 }
 
+export function downloadHref(release: ReleaseInfo | null, platform: Platform): string {
+  return release?.downloads[platform] ?? RELEASES_PAGE;
+}
+
 export function parseRelease(data: unknown): GitHubRelease | null {
   if (!isRecord(data)) return null;
   const tag = data["tag_name"];

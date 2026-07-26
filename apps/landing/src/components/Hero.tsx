@@ -1,6 +1,5 @@
-import type { LatestReleaseState } from "@/hooks/useLatestRelease";
-import { SUPPORTED_PLATFORMS_LABEL, type Platform } from "@/lib/platform";
-import { RELEASES_PAGE } from "@/lib/release";
+import type { Dictionary } from "@/i18n/types";
+import { RELEASES_PAGE, type ReleaseInfo } from "@/lib/release";
 import { AppDemo } from "./app-demo/AppDemo";
 import { DownloadChoice } from "./DownloadChoice";
 import { EqBars } from "./EqBars";
@@ -9,11 +8,11 @@ import { Cloud } from "./Sky";
 import { VersionNote } from "./VersionNote";
 
 interface HeroProps {
-  state: LatestReleaseState;
-  platform: Platform;
+  dict: Dictionary;
+  release: ReleaseInfo | null;
 }
 
-export function Hero({ state, platform }: HeroProps) {
+export function Hero({ dict, release }: HeroProps) {
   return (
     <section className="relative overflow-hidden px-6 pt-32 pb-20 sm:pt-40 sm:pb-24">
       <div
@@ -24,36 +23,35 @@ export function Hero({ state, platform }: HeroProps) {
       <div className="fade-rise relative mx-auto flex max-w-3xl flex-col items-center text-center">
         <span className="inline-flex items-center gap-2.5 rounded-full border border-border-strong bg-surface/60 px-4 py-1.5 text-[13px] font-medium text-fg-muted">
           <EqBars animated />
-          Незаметный ассистент для {SUPPORTED_PLATFORMS_LABEL}
+          {dict.hero.badge}
         </span>
 
         <h1 className="mt-8 text-4xl leading-[1.08] font-semibold tracking-tight text-balance sm:text-6xl">
-          Слышит вопрос.
+          {dict.hero.titleTop}
           <br />
-          <span className="text-primary">Показывает ответ.</span>
+          <span className="text-primary">{dict.hero.titleAccent}</span>
         </h1>
 
         <p className="mt-6 max-w-2xl text-base leading-relaxed text-pretty text-fg-muted sm:text-lg">
-          Зажмите клавишу — harpyhare запишет звук из любого приложения, распознает речь и покажет
-          ответ Claude поверх остальных окон. От вопроса до ответа — пара секунд.
+          {dict.hero.lead}
         </p>
 
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-          <DownloadChoice state={state} platform={platform} />
+          <DownloadChoice release={release} primaryPrefix={dict.download.primaryPrefix} />
           <a
             href={RELEASES_PAGE}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center justify-center rounded-full border border-border-strong px-7 py-3.5 text-base font-medium text-fg-muted transition-colors hover:bg-surface/60 hover:text-fg"
           >
-            Все версии
+            {dict.hero.allVersions}
           </a>
         </div>
 
-        <VersionNote state={state} platform={platform} className="mt-4" />
+        <VersionNote release={release} className="mt-4" />
       </div>
 
-      <AppDemo />
+      <AppDemo dict={dict} />
 
       <Cloud
         variant="wide"

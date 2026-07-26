@@ -1,14 +1,14 @@
 import js from "@eslint/js";
+import next from "@next/eslint-plugin-next";
 import prettier from "eslint-config-prettier";
 import importX from "eslint-plugin-import-x";
 import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
-import reactRefresh from "eslint-plugin-react-refresh";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
 const buildArtifactAndConfigIgnores = {
-  ignores: ["dist", "*.config.js", "*.config.ts", "!vite.config.ts", "*.config.d.ts"],
+  ignores: [".next", "next-env.d.ts", "*.config.js", "*.config.ts", "*.config.d.ts"],
 };
 
 const srcTypeAwareRules = {
@@ -20,8 +20,8 @@ const srcTypeAwareRules = {
   plugins: {
     react,
     "react-hooks": reactHooks,
-    "react-refresh": reactRefresh,
     "import-x": importX,
+    "@next/next": next,
   },
   settings: {
     react: { version: "detect" },
@@ -31,7 +31,9 @@ const srcTypeAwareRules = {
     ...react.configs.flat.recommended.rules,
     ...react.configs.flat["jsx-runtime"].rules,
     ...reactHooks.configs.recommended.rules,
-    "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+    ...next.configs.recommended.rules,
+    ...next.configs["core-web-vitals"].rules,
+    "@next/next/no-img-element": "off",
 
     "@typescript-eslint/ban-ts-comment": [
       "error",
@@ -64,7 +66,7 @@ const testsHoistedViMockImportOrderExemption = {
 };
 
 const plainScriptsWithoutTypeChecking = {
-  files: ["**/*.js", "**/*.mjs", "vite.config.ts"],
+  files: ["**/*.js", "**/*.mjs"],
   ...tseslint.configs.disableTypeChecked,
 };
 

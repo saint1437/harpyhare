@@ -5,6 +5,6 @@ export default {
   semi: true,
   trailingComma: "all",
   plugins: ["prettier-plugin-tailwindcss"],
-  tailwindStylesheet: "./src/index.css",
+  tailwindStylesheet: "./src/app/globals.css",
   tailwindFunctions: ["cn", "cva"],
 };

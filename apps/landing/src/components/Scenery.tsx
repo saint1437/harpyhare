@@ -10,9 +10,11 @@ interface BushProps {
 export function Bush({ variant = "back", width, className }: BushProps) {
   return (
     <img
-      src={variant === "back" ? "./hare/bush-back.png" : "./hare/bush-front.png"}
+      src={variant === "back" ? "/hare/bush-back.png" : "/hare/bush-front.png"}
       alt=""
       aria-hidden
+      loading="lazy"
+      decoding="async"
       style={{ width }}
       className={cn("pointer-events-none absolute bottom-0 select-none", className)}
     />
@@ -29,8 +31,10 @@ export function BushWatcher({ className }: { className?: string }) {
         className="bottom-3 left-1/2 -translate-x-1/2"
       />
       <img
-        src="./hare/bush-front.png"
+        src="/hare/bush-front.png"
         alt=""
+        loading="lazy"
+        decoding="async"
         className="pointer-events-none relative block w-[100px]"
       />
     </div>

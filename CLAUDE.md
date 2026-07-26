@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Проект          | Что это                                                                          | Своя документация                                     |
 | --------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------- |
 | `apps/desktop`  | Продукт: Tauri 2 + Rust-бэкенд + React 19. Системный звук → STT → ответ Claude    | **`apps/desktop/CLAUDE.md`** (подробно) + `README.md` |
-| `apps/landing`  | Одностраничный сайт со скачиванием (Vite + React + Tailwind), без бэкенда         | `apps/landing/README.md`                              |
+| `apps/landing`  | Одностраничный сайт со скачиванием (Next.js 16 App Router + React + Tailwind)     | `apps/landing/README.md`                              |
 
 **Работаешь внутри `apps/desktop` — читай `apps/desktop/CLAUDE.md`.** Там вся архитектура приложения, инварианты Rust⇄TS-контракта, правила палитры и десятки «почему так, а не иначе». Этот файл — только про монорепо в целом.
 
@@ -20,7 +20,7 @@ Nx выводит проекты из npm-workspaces, а таргеты — из
 ```bash
 npm install                                       # все воркспейсы разом
 
-npx nx dev landing                                # лендинг
+npx nx dev landing                                # лендинг (Next.js, http://localhost:3000)
 cd apps/desktop && npm run tauri dev              # приложение целиком (Rust + фронт) — единственный способ увидеть UI
 
 npx nx <target> <project>                         # build | lint | typecheck | test для одного проекта
@@ -44,13 +44,13 @@ npm run presets:publish                           # config/presets.json → пу
 
 1. **`config/presets.json` — один файл, два потребителя.** Его вшивает Rust (`include_str!` в `remote_presets.rs`, фолбэк, когда сеть недоступна) и импортирует фронт (`lib/presets.ts`). Правка формата ломает обе стороны сразу; публикация в блоб (`npm run presets:publish`) перекрывает вшитую копию в рантайме.
 
-2. **Репозиторий релизов `screenfriskofficial/harpyhare-releases`.** `apps/desktop/scripts/release.mjs` публикует туда подписанный бандл и `latest.json`; апдейтер приложения тянет оттуда обновления, а лендинг в рантайме спрашивает у GitHub Releases API последнюю версию и подбирает установщик под ОС посетителя по суффиксу имени ассета (`apps/landing/src/lib/release.ts`: `.dmg` против `-setup.exe`, апдейтерные `.nsis.zip`/`.app.tar.gz`/`.sig` и `latest.json` отсеиваются). Поэтому смена имени ассета в релиз-скрипте ломает и апдейтер, и кнопку «Скачать» на сайте. **Релиз двухплатформенный и собирается на двух машинах:** первый прогон создаёт релиз и тег, второй (на другой ОС, тот же тег) версию не бампает, доливает свои ассеты и вливает свою платформу в существующий `latest.json` (`darwin-aarch64` / `windows-x86_64`).
+2. **Репозиторий релизов `screenfriskofficial/harpyhare-releases`.** `apps/desktop/scripts/release.mjs` публикует туда подписанный бандл и `latest.json`; апдейтер приложения тянет оттуда обновления, а лендинг спрашивает у GitHub Releases API последнюю версию **на сервере** (ISR, ревалидация раз в 30 минут — версия и ссылки попадают в HTML) и подбирает установщик под ОС посетителя по суффиксу имени ассета (`apps/landing/src/lib/release.ts`: `.dmg` против `-setup.exe`, апдейтерные `.nsis.zip`/`.app.tar.gz`/`.sig` и `latest.json` отсеиваются). Поэтому смена имени ассета в релиз-скрипте ломает и апдейтер, и кнопку «Скачать» на сайте. **Релиз двухплатформенный и собирается на двух машинах:** первый прогон создаёт релиз и тег, второй (на другой ОС, тот же тег) версию не бампает, доливает свои ассеты и вливает свою платформу в существующий `latest.json` (`darwin-aarch64` / `windows-x86_64`).
 
 3. **Прокси `screenfriskofficial/itech-relay`** (Cloudflare Worker, отдельный репозиторий) — через него идут запросы приложения в режиме кода доступа. Его инварианты описаны в `apps/desktop/CLAUDE.md`.
 
 ## knip
 
-`knip.json` задаёт точки входа явно, потому что автоопределение здесь врёт: у desktop это `src/launcher.tsx` и `src/index.css` (второе окно приложения и Tailwind-слой), из проверки исключены `src/components/ui/**` (примитивы shadcn, часть добавлена впрок) и `src/ipc/bindings.ts` (генерируется из Rust). Добавляя окно или генерируемый артефакт, правь `knip.json` — иначе pre-commit будет ругаться на «мёртвый» код, который на самом деле живой.
+`knip.json` задаёт точки входа явно, потому что автоопределение здесь врёт: у desktop это `src/launcher.tsx` и `src/index.css` (второе окно приложения и Tailwind-слой), из проверки исключены `src/components/ui/**` (примитивы shadcn, часть добавлена впрок) и `src/ipc/bindings.ts` (генерируется из Rust). Добавляя окно или генерируемый артефакт, правь `knip.json` — иначе pre-commit будет ругаться на «мёртвый» код, который на самом деле живой. У landing своей секции нет намеренно: точки входа App Router (`page.tsx`, `layout.tsx`, `sitemap.ts`, `robots.ts`, `manifest.ts`) находит плагин knip для Next.js.
 
 ## Прочее
 

@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useRef } from "react";
 
 const BEAM_SWEEP_DEG = 26;
@@ -56,7 +58,7 @@ export function Moon() {
           />
         ))}
       </svg>
-      <img src="./hare/moon.png" alt="" className="moon-disc" />
+      <img src="/hare/moon.png" alt="" className="moon-disc" />
       <span className="sun-disc" />
     </div>
   );

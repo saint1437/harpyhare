@@ -1,24 +1,22 @@
-import type { LatestReleaseState } from "@/hooks/useLatestRelease";
-import { cn } from "@/lib/cn";
-import { PLATFORM_REQUIREMENTS, type Platform } from "@/lib/platform";
+"use client";
 
-function versionLine(state: LatestReleaseState, platform: Platform): string {
-  const requirements = PLATFORM_REQUIREMENTS[platform];
-  if (state.status === "loading") return "Проверяем последнюю версию…";
-  if (state.status === "error") return requirements;
-  return `v${state.release.version} · ${requirements}`;
-}
+import { usePlatform } from "@/hooks/usePlatform";
+import { cn } from "@/lib/cn";
+import { PLATFORM_REQUIREMENTS } from "@/lib/platform";
+import type { ReleaseInfo } from "@/lib/release";
 
 export function VersionNote({
-  state,
-  platform,
+  release,
   className,
 }: {
-  state: LatestReleaseState;
-  platform: Platform;
+  release: ReleaseInfo | null;
   className?: string;
 }) {
+  const platform = usePlatform();
+  const requirements = PLATFORM_REQUIREMENTS[platform];
   return (
-    <span className={cn("text-sm text-fg-subtle", className)}>{versionLine(state, platform)}</span>
+    <span className={cn("text-sm text-fg-subtle", className)}>
+      {release ? `v${release.version} · ${requirements}` : requirements}
+    </span>
   );
 }

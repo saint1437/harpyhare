@@ -1,5 +1,8 @@
+"use client";
+
 import { Mic } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import type { Dictionary } from "@/i18n/types";
 import { VOICE_PROMPTS, type AppTheme, type VoicePrompt } from "./demo-data";
 import { HudWindow } from "./HudWindow";
 import { LauncherWindow } from "./LauncherWindow";
@@ -7,7 +10,7 @@ import { useDemoRun } from "./useDemoRun";
 
 const LAUNCH_MS = 800;
 
-export function AppDemo() {
+export function AppDemo({ dict }: { dict: Dictionary }) {
   const run = useDemoRun();
   const [inHud, setInHud] = useState(false);
   const [launching, setLaunching] = useState(false);
@@ -89,7 +92,7 @@ export function AppDemo() {
       <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
         <span className="inline-flex items-center gap-1.5 text-xs text-fg-subtle">
           <Mic className="size-3.5" aria-hidden />
-          Спросить голосом:
+          {dict.demo.ask}
         </span>
         {VOICE_PROMPTS.map((prompt) => (
           <button
@@ -106,8 +109,8 @@ export function AppDemo() {
       </div>
 
       <p className="mt-4 text-center text-xs text-balance text-fg-subtle">
-        Это работающий макет: ответы записаны заранее, запросы никуда не уходят. В приложении окно
-        плавает поверх остальных, и при демонстрации экрана его видите только вы.
+        {dict.demo.caption}
+        {dict.demo.interfaceLanguageNote !== null && <> {dict.demo.interfaceLanguageNote}</>}
       </p>
     </div>
   );

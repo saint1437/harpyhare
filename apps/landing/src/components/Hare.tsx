@@ -1,3 +1,5 @@
+"use client";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 
@@ -5,11 +7,11 @@ type HareVariant = "side" | "front";
 type HareFrame = "sit" | "front" | "frontEar" | "gather" | "leap";
 
 const FRAME_SRC: Record<HareFrame, string> = {
-  sit: "./hare/hare-sit.png",
-  front: "./hare/hare-front.png",
-  frontEar: "./hare/hare-front-ear.png",
-  gather: "./hare/hare-gather.png",
-  leap: "./hare/hare-leap.png",
+  sit: "/hare/hare-sit.png",
+  front: "/hare/hare-front.png",
+  frontEar: "/hare/hare-front-ear.png",
+  gather: "/hare/hare-gather.png",
+  leap: "/hare/hare-leap.png",
 };
 
 const REST_FRAME: Record<HareVariant, HareFrame> = { side: "sit", front: "front" };
@@ -236,6 +238,8 @@ export function Hare({
                 key={poseFrame}
                 src={FRAME_SRC[poseFrame]}
                 alt=""
+                loading="lazy"
+                decoding="async"
                 draggable={false}
                 style={{ height: frameHeight(poseFrame) }}
                 className={cn(
