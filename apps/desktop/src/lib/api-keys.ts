@@ -11,16 +11,18 @@ const API_KEYS = [
   {
     id: "anthropic",
     name: "Anthropic",
-    purpose: "ответы Claude",
+    purpose: "ответов Claude",
     consoleUrl: "https://console.anthropic.com/settings/keys",
   },
   {
     id: "groq",
     name: "Groq",
-    purpose: "распознавание речи",
+    purpose: "распознавания речи",
     consoleUrl: "https://console.groq.com/keys",
   },
 ] as const satisfies readonly ApiKeyInfo[];
+
+export const API_KEY_IDS: readonly ApiKeyId[] = API_KEYS.map((k) => k.id);
 
 export function apiKeyInfo(id: ApiKeyId): ApiKeyInfo {
   return API_KEYS.find((k) => k.id === id) ?? API_KEYS[0];

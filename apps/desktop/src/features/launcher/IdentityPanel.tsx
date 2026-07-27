@@ -22,8 +22,34 @@ interface IdentityPanelProps {
   currentIdentityId: string;
 }
 
+const SKELETON_TILES = 3;
+
+function IdentitySkeleton() {
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      {Array.from({ length: SKELETON_TILES }, (_, index) => (
+        <div
+          key={index}
+          className="flex animate-pulse flex-col items-center gap-2 rounded-xl bg-card p-4 ring-1 ring-border ring-inset"
+        >
+          <div className="size-16 rounded-[14px] bg-surface" />
+          <div className="h-3 w-20 rounded-full bg-surface" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function loadErrorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export function IdentityPanel({ currentIdentityId }: IdentityPanelProps) {
-  const { data } = useQuery({
+  const {
+    data,
+    isPending,
+    error: loadError,
+  } = useQuery({
     queryKey: queryKeys.identities,
     queryFn: listIdentities,
     staleTime: IDENTITIES_STALE_MS,
@@ -62,6 +88,12 @@ export function IdentityPanel({ currentIdentityId }: IdentityPanelProps) {
         активности он показывается под выбранным именем и иконкой. Смена облика перезапускает
         приложение.
       </p>
+      {isPending && <IdentitySkeleton />}
+      {!isPending && loadError !== null && (
+        <p className="text-caption text-destructive">
+          Не удалось получить список обликов: {loadErrorText(loadError)}
+        </p>
+      )}
       <div className="grid grid-cols-3 gap-3">
         {identities.map((identity) => (
           <IdentityTile
@@ -166,7 +198,7 @@ function IdentityTile({
       disabled={disabled}
       className={cn(
         "flex min-w-0 flex-col items-center gap-2 rounded-xl p-4 text-center ring-1 ring-border transition-colors ring-inset",
-        active ? "bg-primary/10 ring-primary" : "bg-card/60 hover:bg-card",
+        active ? "bg-primary/10 ring-primary" : "bg-card hover:bg-surface",
         disabled && !active && !pending && "opacity-50",
       )}
     >
@@ -175,7 +207,7 @@ function IdentityTile({
         alt={identity.displayName}
         className="size-16 rounded-[14px]"
       />
-      <span className="w-full truncate text-caption text-foreground/80">
+      <span className="w-full truncate text-caption text-muted-foreground">
         {pending ? "Применяю…" : identity.displayName}
       </span>
     </button>

@@ -3,11 +3,15 @@ import { usePermissions, type PermissionsApi } from "@/hooks/usePermissions";
 import type { Settings } from "@/ipc/types";
 import { missingApiKeys, missingKeysNotice, type ApiKeyInfo } from "@/lib/api-keys";
 import type { ScreenId } from "./screens";
+import type { SettingsTabId } from "./settings-tabs";
 
 export interface LauncherBlocker {
   label: string;
   screen: ScreenId;
+  tab?: SettingsTabId;
 }
+
+const KEYS_TAB: SettingsTabId = "access";
 
 const AUDIO_BLOCKER: LauncherBlocker = {
   label: "Нет доступа к записи системного звука",
@@ -30,7 +34,7 @@ export function useLauncherReadiness(settings: Settings): LauncherReadiness {
   const blockers = useMemo(() => {
     const list: LauncherBlocker[] = [];
     if (missingKeys.length > 0) {
-      list.push({ label: missingKeysNotice(missingKeys), screen: "settings" });
+      list.push({ label: missingKeysNotice(missingKeys), screen: "settings", tab: KEYS_TAB });
     }
     if (!checking && !permissions.audioOk) list.push(AUDIO_BLOCKER);
     return list;

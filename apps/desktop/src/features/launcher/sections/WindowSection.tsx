@@ -16,7 +16,7 @@ const PAIRS = [
   },
   {
     action: "resize_window",
-    hint: "То же самое, но меняет ширину и высоту.",
+    hint: "Модификатор со стрелками меняет ширину и высоту окна.",
     stepKey: "resize_step",
     limits: SETTINGS_LIMITS.resizeStep,
   },
@@ -41,7 +41,7 @@ export function WindowSection({ draft, set }: SectionProps) {
 
   return (
     <SettingGroup
-      title="Модификаторы со стрелками"
+      title="Сдвиг, размер и скролл"
       description="Модификатор и его шаг настраиваются вместе — они работают только в паре."
     >
       {PAIRS.map((pair) => {
@@ -81,8 +81,7 @@ export function WindowSection({ draft, set }: SectionProps) {
           </SettingBlock>
         );
       })}
-      <StolenNote editor={editor} group="Окно" />
-      <StolenNote editor={editor} group="Чат" />
+      <StolenNote editor={editor} />
     </SettingGroup>
   );
 }

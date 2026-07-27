@@ -35,11 +35,11 @@ function PresetRow({
           {preset.text.trim() === "" ? "" : ` · ${preset.text.trim()}`}
         </span>
       </div>
-      <div className="flex shrink-0 items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+      <div className="pointer-events-none flex shrink-0 items-center gap-1 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
         <IconButton title="Изменить пресет" onClick={onEdit}>
           <Pencil />
         </IconButton>
-        <IconButton title="Удалить пресет" onClick={onRemove}>
+        <IconButton title="Удалить пресет" className="hover:text-destructive" onClick={onRemove}>
           <Trash2 />
         </IconButton>
       </div>
@@ -68,7 +68,7 @@ function PresetEditor({
             onChange({ name: e.target.value });
           }}
         />
-        <Button size="sm" onClick={onDone}>
+        <Button onClick={onDone}>
           <Check />
           Готово
         </Button>

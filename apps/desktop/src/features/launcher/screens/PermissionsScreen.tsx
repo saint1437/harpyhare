@@ -1,35 +1,10 @@
-import { AudioLines, Monitor, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { PermissionsApi } from "@/hooks/usePermissions";
-import type { PermissionKind, PermissionState } from "@/ipc/bindings";
+import type { PermissionState } from "@/ipc/bindings";
 import { cn } from "@/lib/utils";
 import { SettingGroup } from "../fields";
+import { PERMISSION_ROWS, type PermissionRow } from "../permission-rows";
 import { ScreenShell } from "../ScreenShell";
-
-interface PermissionRow {
-  kind: PermissionKind;
-  title: string;
-  purpose: string;
-  icon: LucideIcon;
-  required: boolean;
-}
-
-const PERMISSION_ROWS: PermissionRow[] = [
-  {
-    kind: "audio",
-    title: "Запись системного звука",
-    purpose: "Приложение слышит собеседника и расшифровывает речь. Без него запускать нечего.",
-    icon: AudioLines,
-    required: true,
-  },
-  {
-    kind: "screen",
-    title: "Запись экрана",
-    purpose: "Нужна снимку области экрана. Без неё работает всё остальное.",
-    icon: Monitor,
-    required: false,
-  },
-];
 
 const STATE_LABEL: Record<PermissionState, string> = {
   granted: "выдан",
@@ -62,7 +37,7 @@ function PermissionRowView({
   const state = permissions.status[row.kind];
   const granted = state === "granted";
   return (
-    <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_10.75rem] items-center gap-x-4 px-4 py-3">
+    <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_14rem] items-center gap-x-4 px-4 py-3">
       <row.icon
         className={cn("size-5", granted ? "text-foreground" : "text-muted-foreground")}
         aria-hidden
@@ -97,7 +72,7 @@ function PermissionRowView({
               disabled={permissions.pending !== null}
               onClick={() => void permissions.request(row.kind)}
             >
-              Выдать
+              {permissions.pending === row.kind ? "Запрашиваю…" : "Выдать"}
             </Button>
           </>
         )}
@@ -118,7 +93,7 @@ export function PermissionsScreen({ permissions }: { permissions: PermissionsApi
     >
       <SettingGroup
         title="Разрешения macOS"
-        description="Система выдаёт их только по запросу. Нажмите «Выдать» — macOS спросит подтверждение; если окно не появилось, доступ уже решён и меняется в системных настройках."
+        description="Система выдаёт их только по запросу. Нажмите «Выдать» — macOS спросит подтверждение; если окно не появилось, доступ уже решён и меняется в системных настройках. Меняли что-то там — нажмите «Проверить заново»."
       >
         {PERMISSION_ROWS.map((row) => (
           <PermissionRowView key={row.kind} row={row} permissions={permissions} />

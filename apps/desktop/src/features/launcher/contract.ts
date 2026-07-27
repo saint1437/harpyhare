@@ -16,6 +16,7 @@ export interface LauncherPanelProps {
   readiness: LauncherReadiness;
   updater: UpdaterApi;
   launching: boolean;
+  saving: boolean;
   error: string | null;
   onRedeem: (code: string) => Promise<string | null>;
   onCheckUpdates: () => Promise<UpdateInfo | null>;

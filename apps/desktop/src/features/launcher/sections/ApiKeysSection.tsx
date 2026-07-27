@@ -19,7 +19,7 @@ export function ApiKeysSection({ draft, set, onRedeem }: ApiKeysSectionProps) {
   if (draft.access_token.trim() !== "") {
     return (
       <SettingGroup
-        title="Доступ"
+        title="Доступ к API"
         description="Запросы идут через общий доступ по коду, свои ключи не используются."
       >
         <SettingRow label="Код доступа активен" hint="Отвязка вернёт запросы на ваши ключи API.">
@@ -39,7 +39,7 @@ export function ApiKeysSection({ draft, set, onRedeem }: ApiKeysSectionProps) {
 
   return (
     <SettingGroup
-      title="Доступ"
+      title="Доступ к API"
       description="Нужен код доступа либо пара своих ключей API — иначе запускать нечего."
     >
       <SettingBlock label="Код доступа" hint="Быстрый путь: заводить ключи не нужно.">
@@ -48,7 +48,7 @@ export function ApiKeysSection({ draft, set, onRedeem }: ApiKeysSectionProps) {
       {KEY_FIELDS.map(({ id, placeholder }) => {
         const info = apiKeyInfo(id);
         return (
-          <SettingBlock key={id} label={`Ключ ${info.name}`} hint={`Нужен на ${info.purpose}.`}>
+          <SettingBlock key={id} label={`Ключ ${info.name}`} hint={`Нужен для ${info.purpose}.`}>
             <div className="flex items-center gap-2">
               <Input
                 type="password"

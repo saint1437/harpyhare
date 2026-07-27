@@ -192,13 +192,13 @@ function RowActions({
   removeTitle: string;
 }) {
   return (
-    <div className="flex shrink-0 gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+    <div className="pointer-events-none flex shrink-0 items-center gap-1 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
       {onEdit && (
-        <IconButton title={editTitle ?? ""} className="size-6 rounded-md" onClick={onEdit}>
+        <IconButton title={editTitle ?? ""} className="size-6" onClick={onEdit}>
           <Pencil className="size-3.5" />
         </IconButton>
       )}
-      <IconButton title={removeTitle} className="size-6 rounded-md" onClick={onRemove}>
+      <IconButton title={removeTitle} className="size-6 hover:text-destructive" onClick={onRemove}>
         <Trash2 className="size-3.5" />
       </IconButton>
     </div>
@@ -233,7 +233,7 @@ function DocRow({
         dragging && "opacity-40",
       )}
     >
-      <GripVertical className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50" />
+      <GripVertical className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" />
       <RowIconBadge>
         <FileText className="size-3.5 text-muted-foreground" />
       </RowIconBadge>
@@ -327,7 +327,7 @@ function DocEditor({
   onCancel: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-xl bg-card/60 p-3 ring-1 ring-border ring-inset">
+    <div className="flex flex-col gap-2 rounded-xl bg-card p-3 ring-1 ring-border ring-inset">
       <SectionLabel>{draft.id === null ? "Новый материал" : "Материал"}</SectionLabel>
       <div className="flex gap-2">
         <Input
@@ -392,7 +392,7 @@ function EmptyDropZone({ onPick }: { onPick: () => void }) {
       <span className="grid size-9 place-items-center rounded-full bg-surface">
         <Upload className="size-4 text-muted-foreground" />
       </span>
-      <span className="text-body text-foreground/80">
+      <span className="text-body text-foreground">
         Перетащи .md, .txt или .pdf из {FILE_MANAGER_LABEL[PLATFORM]} — или нажми, чтобы выбрать
         файлы
       </span>
@@ -554,7 +554,7 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
               key={folder.id}
               {...{ [DROP_FOLDER_ATTR]: folder.id }}
               className={cn(
-                "flex flex-col gap-0.5 rounded-lg bg-white/[0.03] p-1.5 ring-1 ring-white/5 transition-colors",
+                "flex flex-col gap-0.5 rounded-xl bg-card p-1.5 ring-1 ring-border transition-colors ring-inset",
                 dropTarget === folder.id && "bg-primary/5 ring-primary/40",
               )}
             >

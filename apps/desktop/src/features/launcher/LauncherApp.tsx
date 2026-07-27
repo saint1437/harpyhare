@@ -18,6 +18,7 @@ export function LauncherApp() {
   const contextLibrary = useContextLibrary();
   const readiness = useLauncherReadiness(settings);
   const [launching, setLaunching] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const redeem = useCallback(
@@ -31,9 +32,14 @@ export function LauncherApp() {
 
   const persist = async (next: Settings): Promise<boolean> => {
     setError(null);
-    const failure = await save(next);
-    if (failure !== null) setError(failure);
-    return failure === null;
+    setSaving(true);
+    try {
+      const failure = await save(next);
+      if (failure !== null) setError(failure);
+      return failure === null;
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSave = (next: Settings) => {
@@ -65,6 +71,7 @@ export function LauncherApp() {
       contextLibrary={contextLibrary}
       readiness={readiness}
       launching={launching}
+      saving={saving}
       error={error}
       onRedeem={redeem}
       onCheckUpdates={updater.checkNow}

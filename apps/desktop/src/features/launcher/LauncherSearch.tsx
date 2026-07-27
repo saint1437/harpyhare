@@ -1,0 +1,159 @@
+import { Search } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+import { searchLauncher, type SearchHit, type SearchSources } from "./search";
+
+const MAX_RESULTS = 8;
+const FIRST_INDEX = 0;
+const NEXT_STEP = 1;
+const PREVIOUS_STEP = -1;
+
+const PLACEHOLDER = "Поиск по настройкам";
+const EMPTY_NOTE = "Ничего не найдено";
+const LIST_ID = "launcher-search-results";
+
+function optionDomId(hitId: string): string {
+  return `launcher-search-option-${hitId}`;
+}
+
+interface LauncherSearchProps {
+  sources: SearchSources;
+  onNavigate: (hit: SearchHit) => void;
+}
+
+function overflowNote(shown: number, total: number): string {
+  return `Показаны первые ${String(shown)} из ${String(total)} — уточните запрос`;
+}
+
+export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(FIRST_INDEX);
+
+  const hits = useMemo(() => searchLauncher(query, sources), [query, sources]);
+  const shown = hits.slice(FIRST_INDEX, MAX_RESULTS);
+  const activeIndex = Math.min(active, shown.length - 1);
+  const listVisible = open && query.trim() !== "";
+
+  const reset = () => {
+    setQuery("");
+    setOpen(false);
+    setActive(FIRST_INDEX);
+  };
+
+  const choose = (hit: SearchHit) => {
+    onNavigate(hit);
+    reset();
+  };
+
+  const step = (delta: number) => {
+    if (shown.length === 0) return;
+    setActive((current) => {
+      const next = Math.min(current, shown.length - 1) + delta;
+      return (next + shown.length) % shown.length;
+    });
+  };
+
+  return (
+    <div className="relative min-w-0 flex-1">
+      <Search
+        className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+        aria-hidden
+      />
+      <Input
+        value={query}
+        placeholder={PLACEHOLDER}
+        aria-label={PLACEHOLDER}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={listVisible}
+        aria-controls={listVisible ? LIST_ID : undefined}
+        aria-activedescendant={
+          listVisible && shown[activeIndex] ? optionDomId(shown[activeIndex].id) : undefined
+        }
+        autoComplete="off"
+        spellCheck={false}
+        className="h-8 pl-8 text-body focus-visible:ring-inset"
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setActive(FIRST_INDEX);
+          setOpen(true);
+        }}
+        onFocus={() => {
+          setOpen(true);
+        }}
+        onBlur={() => {
+          setOpen(false);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            reset();
+            return;
+          }
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            step(NEXT_STEP);
+            return;
+          }
+          if (e.key === "ArrowUp") {
+            e.preventDefault();
+            step(PREVIOUS_STEP);
+            return;
+          }
+          if (e.key !== "Enter") return;
+          const hit = shown[activeIndex];
+          if (!hit) return;
+          e.preventDefault();
+          choose(hit);
+        }}
+      />
+
+      {listVisible && (
+        <div
+          role="listbox"
+          id={LIST_ID}
+          aria-label={PLACEHOLDER}
+          data-no-drag
+          className="absolute top-full right-0 left-0 z-20 mt-1 max-h-80 animate-in overflow-y-auto rounded-md border bg-popover p-1 shadow-md duration-150 fade-in-0 slide-in-from-top-1 motion-reduce:animate-none"
+          onMouseDown={(e) => {
+            e.preventDefault();
+          }}
+        >
+          {shown.length === 0 && (
+            <p className="px-2 py-1.5 text-caption text-muted-foreground">{EMPTY_NOTE}</p>
+          )}
+          {shown.map((hit, index) => (
+            <button
+              key={hit.id}
+              id={optionDomId(hit.id)}
+              type="button"
+              role="option"
+              aria-selected={index === activeIndex}
+              className={cn(
+                "flex w-full flex-col items-start gap-0.5 rounded-sm px-2 py-1.5 text-left transition-colors outline-none",
+                index === activeIndex ? "bg-surface-active" : "hover:bg-surface",
+              )}
+              onMouseEnter={() => {
+                setActive(index);
+              }}
+              onClick={() => {
+                choose(hit);
+              }}
+            >
+              <span className="w-full truncate text-body text-foreground">{hit.title}</span>
+              <span className="w-full truncate text-caption text-muted-foreground">
+                {hit.breadcrumb}
+              </span>
+            </button>
+          ))}
+          {hits.length > shown.length && (
+            <p className="mt-1 border-t border-border px-2 py-1.5 text-caption text-muted-foreground">
+              {overflowNote(shown.length, hits.length)}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

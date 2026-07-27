@@ -1,4 +1,4 @@
-import { RotateCcw } from "lucide-react";
+import { Info, RotateCcw } from "lucide-react";
 import { IconButton } from "@/components/IconButton";
 import { HOTKEY_ACTIONS } from "@/ipc/bindings";
 import {
@@ -14,7 +14,6 @@ import { HotkeyCapture } from "../HotkeyCapture";
 import { useHotkeyEditor, type HotkeyEditor } from "../useHotkeyEditor";
 
 const UNASSIGNED_HINT = "Не назначен — действие сейчас недоступно.";
-const GLOBAL_GROUP_HINT = "Глобальные сочетания — работают, пока запущено основное окно.";
 
 export function HotkeyRow({ action, editor }: { action: HotkeyAction; editor: HotkeyEditor }) {
   const combo = effectiveCombo(editor.bindings, action.id);
@@ -46,14 +45,18 @@ export function HotkeyRow({ action, editor }: { action: HotkeyAction; editor: Ho
   );
 }
 
-export function StolenNote({ editor, group }: { editor: HotkeyEditor; group: string }) {
+export function StolenNote({ editor, group }: { editor: HotkeyEditor; group?: string }) {
   if (editor.stolen === null) return null;
+  if (group !== undefined && hotkeyAction(editor.stolen.to).group !== group) return null;
   const victim = hotkeyAction(editor.stolen.from);
-  if (victim.group !== group) return null;
   return (
-    <p className="px-4 pb-3 text-caption text-muted-foreground">
-      {formatCombo(editor.stolen.combo)} снят у действия «{victim.label}» — оно осталось без хоткея.
-    </p>
+    <div className="flex items-center gap-2 bg-surface px-4 py-2.5">
+      <Info className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+      <p className="text-caption text-foreground">
+        {formatCombo(editor.stolen.combo)} снят у действия «{victim.label}» — оно осталось без
+        хоткея.
+      </p>
+    </div>
   );
 }
 
@@ -67,11 +70,7 @@ export function HotkeysSection({ draft, set }: SectionProps) {
   return (
     <>
       {groups.map((group) => (
-        <SettingGroup
-          key={group}
-          title={group}
-          description={group === "Запись" ? GLOBAL_GROUP_HINT : undefined}
-        >
+        <SettingGroup key={group} title={group}>
           {comboActions
             .filter((a) => a.group === group)
             .map((action) => (

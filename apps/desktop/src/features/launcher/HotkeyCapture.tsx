@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { hotkeyFromEvent, isModifierOnlyCode } from "@/lib/hotkey-capture";
 import { formatCombo } from "@/lib/hotkeys";
+import { cn } from "@/lib/utils";
 
 export interface HotkeyCaptureProps {
   value: string;
@@ -44,8 +45,12 @@ export function HotkeyCapture({ value, onChange }: HotkeyCaptureProps) {
       onClick={() => {
         setCapturing((c) => !c);
       }}
-      className="w-full justify-start font-mono"
+      className={cn(
+        "w-full justify-start font-mono",
+        capturing && "border-ring text-muted-foreground ring-[3px] ring-ring/50",
+      )}
     >
+      {capturing && <span className="size-1.5 shrink-0 rounded-full bg-ring" aria-hidden />}
       {capturing ? "Жду сочетание · Esc отменит" : formatCombo(value) || "Не назначен"}
     </Button>
   );

@@ -3,6 +3,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 
 export function SettingGroup({
   title,
@@ -16,7 +17,7 @@ export function SettingGroup({
   return (
     <section className="overflow-hidden rounded-xl bg-card ring-1 ring-border ring-inset">
       <header className="px-4 pt-3 pb-2.5">
-        <h3 className="text-body font-medium text-foreground">{title}</h3>
+        <h3 className="text-body font-semibold text-foreground">{title}</h3>
         {description !== undefined && (
           <p className="mt-0.5 text-caption text-muted-foreground">{description}</p>
         )}
@@ -112,6 +113,7 @@ export function SettingSlider({
   step,
   ariaLabel,
   readout,
+  disabled,
   onChange,
 }: {
   value: number;
@@ -120,6 +122,7 @@ export function SettingSlider({
   step: number;
   ariaLabel: string;
   readout: string;
+  disabled?: boolean;
   onChange: (value: number) => void;
 }) {
   return (
@@ -130,13 +133,19 @@ export function SettingSlider({
         max={max}
         step={step}
         value={[value]}
+        disabled={disabled}
         aria-label={ariaLabel}
         onValueChange={([next]) => {
           if (next === undefined) return;
           onChange(next);
         }}
       />
-      <span className="w-12 shrink-0 text-right font-mono text-caption text-muted-foreground tabular-nums">
+      <span
+        className={cn(
+          "w-12 shrink-0 text-right font-mono text-caption text-muted-foreground tabular-nums",
+          disabled && "opacity-50",
+        )}
+      >
         {readout}
       </span>
     </div>

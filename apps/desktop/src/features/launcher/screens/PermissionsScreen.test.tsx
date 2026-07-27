@@ -58,12 +58,14 @@ describe("PermissionsScreen", () => {
     expect(permissions.request).toHaveBeenCalledWith("audio");
   });
 
-  it("набор кнопок не зависит от того, идёт ли запрос — меняется только их доступность", () => {
+  it("во время запроса нажатая кнопка говорит «Запрашиваю…», обе заблокированы", () => {
     const permissions = api({ audio: "unknown", screen: "unknown" }, { pending: "audio" });
     render(<PermissionsScreen permissions={permissions} />);
-    const grants = screen.getAllByText<HTMLButtonElement>("Выдать");
-    expect(grants).toHaveLength(2);
-    expect(grants.every((b) => b.disabled)).toBe(true);
+    const requesting = screen.getByText<HTMLButtonElement>("Запрашиваю…").closest("button");
+    const idle = screen.getByText<HTMLButtonElement>("Выдать").closest("button");
+    if (!requesting || !idle) throw new Error("нет кнопок запроса доступа");
+    expect(requesting.disabled).toBe(true);
+    expect(idle.disabled).toBe(true);
   });
 
   it("«Проверить заново» перечитывает статусы", () => {

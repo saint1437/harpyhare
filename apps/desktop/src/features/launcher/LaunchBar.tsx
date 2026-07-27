@@ -1,14 +1,19 @@
-import { Play } from "lucide-react";
+import { ChevronRight, Play } from "lucide-react";
+import type { ReactNode } from "react";
 import { EqBars } from "@/components/EqBars";
 import { Button } from "@/components/ui/button";
+import { useWindowDrag } from "@/hooks/useWindowDrag";
 import { BRAND_NAME } from "@/lib/brand";
+import { PLATFORM } from "@/lib/platform";
 import { cn } from "@/lib/utils";
-import type { ScreenId } from "./screens";
-import type { LauncherReadiness } from "./useLauncherReadiness";
+import type { LauncherBlocker, LauncherReadiness } from "./useLauncherReadiness";
 
-function statusText(readiness: LauncherReadiness, launching: boolean): string {
+const MACOS_TRAFFIC_LIGHTS_CLASS = PLATFORM === "macos" ? "pl-16" : "";
+
+function statusText(readiness: LauncherReadiness, launching: boolean, saving: boolean): string {
   if (launching) return "Запускаю основное окно…";
   if (readiness.checking) return "Проверяю доступы…";
+  if (saving) return "Сохраняю…";
   const blocker = readiness.blockers[0];
   if (blocker) return blocker.label;
   return "Всё готово к запуску";
@@ -17,37 +22,43 @@ function statusText(readiness: LauncherReadiness, launching: boolean): string {
 function StatusLine({
   readiness,
   launching,
+  saving,
   onGoToBlocker,
 }: {
   readiness: LauncherReadiness;
   launching: boolean;
-  onGoToBlocker: (screen: ScreenId) => void;
+  saving: boolean;
+  onGoToBlocker: (blocker: LauncherBlocker) => void;
 }) {
   const blocker = readiness.blockers[0];
-  const text = statusText(readiness, launching);
+  const busy = launching || readiness.checking || saving;
+  const text = statusText(readiness, launching, saving);
   const dot = (
     <span
       className={cn(
         "size-1.5 shrink-0 rounded-full",
-        readiness.checking && "bg-muted-foreground/40",
-        !readiness.checking && (blocker ? "bg-destructive" : "bg-primary"),
+        busy && "bg-muted-foreground/40",
+        !busy && (blocker ? "bg-destructive" : "bg-primary"),
       )}
       aria-hidden
     />
   );
 
-  if (blocker && !launching) {
+  if (blocker && !busy) {
     return (
       <Button
         variant="ghost"
         size="compact"
         className="min-w-0 gap-2 text-muted-foreground"
         onClick={() => {
-          onGoToBlocker(blocker.screen);
+          onGoToBlocker(blocker);
         }}
       >
         {dot}
-        <span className="truncate">{text}</span>
+        <span className="truncate" title={text}>
+          {text}
+        </span>
+        <ChevronRight className="size-3 shrink-0 text-muted-foreground/70" aria-hidden />
       </Button>
     );
   }
@@ -55,7 +66,9 @@ function StatusLine({
   return (
     <span className="inline-flex min-w-0 items-center gap-2 px-2 text-caption text-muted-foreground">
       {dot}
-      <span className="truncate">{text}</span>
+      <span className="truncate" title={text}>
+        {text}
+      </span>
     </span>
   );
 }
@@ -63,32 +76,42 @@ function StatusLine({
 export function LaunchBar({
   readiness,
   launching,
-  error,
+  saving,
+  search,
   onGoToBlocker,
   onLaunch,
 }: {
   readiness: LauncherReadiness;
   launching: boolean;
-  error: string | null;
-  onGoToBlocker: (screen: ScreenId) => void;
+  saving: boolean;
+  search: ReactNode;
+  onGoToBlocker: (blocker: LauncherBlocker) => void;
   onLaunch: () => void;
 }) {
+  const onDragMouseDown = useWindowDrag();
   return (
-    <header className="flex h-8 items-center gap-2.5">
-      <EqBars animated={launching} barClass="bg-primary" />
-      <h1 className="font-mono text-caption font-semibold tracking-[0.16em] text-foreground/80 uppercase">
-        {BRAND_NAME}
-      </h1>
+    <header
+      onMouseDown={onDragMouseDown}
+      className={cn("flex h-9 shrink-0 items-center gap-2.5", MACOS_TRAFFIC_LIGHTS_CLASS)}
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        <EqBars animated={launching} barClass="bg-primary" />
+        <h1 className="truncate font-mono text-caption font-semibold tracking-[0.16em] text-foreground/80 uppercase">
+          {BRAND_NAME}
+        </h1>
+      </div>
+
+      <div className="w-72 min-w-0 shrink">{search}</div>
 
       <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">
-        {error !== null && (
-          <span className="min-w-0 truncate text-caption text-destructive" title={error}>
-            {error}
-          </span>
-        )}
-        <StatusLine readiness={readiness} launching={launching} onGoToBlocker={onGoToBlocker} />
+        <StatusLine
+          readiness={readiness}
+          launching={launching}
+          saving={saving}
+          onGoToBlocker={onGoToBlocker}
+        />
         <Button
-          size="sm"
+          size="compact"
           className="gap-1.5"
           disabled={launching || readiness.checking || !readiness.ready}
           onClick={onLaunch}

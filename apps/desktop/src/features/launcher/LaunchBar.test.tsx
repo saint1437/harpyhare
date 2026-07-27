@@ -39,7 +39,8 @@ describe("LaunchBar", () => {
       <LaunchBar
         readiness={readiness({ checking: true, ready: false })}
         launching={false}
-        error={null}
+        saving={false}
+        search={null}
         onGoToBlocker={vi.fn()}
         onLaunch={vi.fn()}
       />,
@@ -54,7 +55,8 @@ describe("LaunchBar", () => {
       <LaunchBar
         readiness={readiness()}
         launching={false}
-        error={null}
+        saving={false}
+        search={null}
         onGoToBlocker={vi.fn()}
         onLaunch={onLaunch}
       />,
@@ -64,19 +66,35 @@ describe("LaunchBar", () => {
     expect(onLaunch).toHaveBeenCalledTimes(1);
   });
 
+  it("пока настройки сохраняются, статус говорит об этом", () => {
+    render(
+      <LaunchBar
+        readiness={readiness({ ready: false, blockers: [AUDIO_BLOCKER] })}
+        launching={false}
+        saving={true}
+        search={null}
+        onGoToBlocker={vi.fn()}
+        onLaunch={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Сохраняю…")).not.toBeNull();
+    expect(screen.queryByText(AUDIO_BLOCKER.label)).toBeNull();
+  });
+
   it("блокер назван словами и ведёт на свой экран", () => {
     const onGoToBlocker = vi.fn();
     render(
       <LaunchBar
         readiness={readiness({ ready: false, blockers: [AUDIO_BLOCKER] })}
         launching={false}
-        error={null}
+        saving={false}
+        search={null}
         onGoToBlocker={onGoToBlocker}
         onLaunch={vi.fn()}
       />,
     );
     expect(launchButton().disabled).toBe(true);
     fireEvent.click(screen.getByText(AUDIO_BLOCKER.label));
-    expect(onGoToBlocker).toHaveBeenCalledWith("permissions");
+    expect(onGoToBlocker).toHaveBeenCalledWith(AUDIO_BLOCKER);
   });
 });

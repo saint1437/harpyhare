@@ -134,6 +134,12 @@ body.launcher {
   animation: launcher-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .launcher-rise {
+    animation: none;
+  }
+}
+
 #root {
   height: 100vh;
 }

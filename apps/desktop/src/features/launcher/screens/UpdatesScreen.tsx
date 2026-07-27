@@ -90,7 +90,7 @@ export function UpdatesScreen({
         >
           {updater.info.notes !== "" && (
             <SettingBlock label="Что нового">
-              <div className="prose-answer max-h-56 overflow-y-auto rounded-lg bg-surface px-3 py-2.5 text-body leading-relaxed text-foreground/90">
+              <div className="prose-answer max-h-56 overflow-y-auto rounded-lg bg-surface px-3 py-2.5 text-body leading-relaxed text-muted-foreground">
                 <Markdown remarkPlugins={REMARK_PLUGINS}>{updater.info.notes}</Markdown>
               </div>
             </SettingBlock>
@@ -111,11 +111,11 @@ export function UpdatesScreen({
           )}
 
           {available && (
-            <div className="flex items-center justify-end gap-2 px-4 py-3">
-              <Button variant="ghost" onClick={updater.dismiss}>
+            <div className="flex items-center justify-end gap-2 px-4 py-2.5">
+              <Button variant="ghost" size="sm" onClick={updater.dismiss}>
                 Позже
               </Button>
-              <Button onClick={updater.install}>
+              <Button size="sm" onClick={updater.install}>
                 {updater.status === "error" ? "Повторить" : "Обновить и перезапустить"}
               </Button>
             </div>

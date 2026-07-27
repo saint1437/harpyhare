@@ -1,10 +1,20 @@
 import { cn } from "@/lib/utils";
 import { screenGroup, SCREEN_GROUPS, type ScreenId } from "./screens";
 
+export interface SidebarNotice {
+  screen: ScreenId;
+  label: string;
+  kind: "blocker" | "info";
+}
+
 interface SidebarProps {
   active: ScreenId;
-  attention: ScreenId[];
+  notices: SidebarNotice[];
   onSelect: (id: ScreenId) => void;
+}
+
+function itemTitle(label: string, notice: SidebarNotice | undefined): string {
+  return notice === undefined ? label : `${label} — ${notice.label}`;
 }
 
 function SidebarItem({
@@ -12,14 +22,14 @@ function SidebarItem({
   label,
   icon: Icon,
   active,
-  attention,
+  notice,
   onSelect,
 }: {
   id: ScreenId;
   label: string;
   icon: (props: { className?: string }) => React.ReactNode;
   active: boolean;
-  attention: boolean;
+  notice: SidebarNotice | undefined;
   onSelect: (id: ScreenId) => void;
 }) {
   return (
@@ -27,22 +37,30 @@ function SidebarItem({
       type="button"
       role="tab"
       aria-selected={active}
-      title={label}
+      title={itemTitle(label, notice)}
       onClick={() => {
         onSelect(id);
       }}
       className={cn(
-        "group relative flex items-center justify-center gap-2.5 rounded-lg px-0 py-2 text-left text-body whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring md:justify-start md:px-2.5",
+        "group relative flex items-center justify-center rounded-lg px-0 py-2 transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
         active
           ? "bg-surface-active text-foreground"
-          : "text-muted-foreground hover:bg-surface hover:text-foreground",
+          : "text-muted-foreground hover:bg-surface hover:text-foreground active:bg-surface-active",
       )}
     >
-      <Icon className="size-4 shrink-0" />
-      <span className="hidden truncate md:inline">{label}</span>
-      {attention && (
+      {active && (
         <span
-          className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary md:static md:ml-auto"
+          className="absolute top-1/2 left-0 h-4 w-0.5 -translate-y-1/2 rounded-full bg-primary"
+          aria-hidden
+        />
+      )}
+      <Icon className="size-4 shrink-0" />
+      {notice !== undefined && (
+        <span
+          className={cn(
+            "absolute top-1.5 right-1.5 size-1.5 rounded-full",
+            notice.kind === "blocker" ? "bg-destructive" : "bg-primary",
+          )}
           aria-hidden
         />
       )}
@@ -50,12 +68,12 @@ function SidebarItem({
   );
 }
 
-export function Sidebar({ active, attention, onSelect }: SidebarProps) {
+export function Sidebar({ active, notices, onSelect }: SidebarProps) {
   return (
     <div
       role="tablist"
       aria-orientation="vertical"
-      className="no-scrollbar flex w-12 shrink-0 flex-col gap-4 overflow-y-auto md:w-52"
+      className="no-scrollbar flex w-11 shrink-0 flex-col gap-4 overflow-y-auto"
     >
       {SCREEN_GROUPS.map((group) => (
         <div key={group} className={cn("flex flex-col gap-0.5", group === "system" && "mt-auto")}>
@@ -66,7 +84,7 @@ export function Sidebar({ active, attention, onSelect }: SidebarProps) {
               label={screen.label}
               icon={screen.icon}
               active={active === screen.id}
-              attention={attention.includes(screen.id)}
+              notice={notices.find((n) => n.screen === screen.id)}
               onSelect={onSelect}
             />
           ))}

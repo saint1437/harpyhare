@@ -71,7 +71,7 @@ export function SttSection({ draft, set }: SectionProps) {
     >
       <CaptureDeviceRow draft={draft} set={set} />
       <SettingRow
-        label="Язык"
+        label="Язык распознавания"
         hint={
           draft.stt_translate
             ? "При переводе язык определяется автоматически."
@@ -114,21 +114,20 @@ export function SttSection({ draft, set }: SectionProps) {
           }}
         />
       </SettingRow>
-      {draft.buffer_enabled && (
-        <SettingRow label="Глубина буфера" hint="Сколько секунд звука держится в памяти.">
-          <SettingSlider
-            ariaLabel="Глубина буфера"
-            value={draft.buffer_seconds}
-            min={SETTINGS_LIMITS.bufferSeconds.min}
-            max={SETTINGS_LIMITS.bufferSeconds.max}
-            step={BUFFER_SECONDS_STEP}
-            readout={`${String(draft.buffer_seconds)} с`}
-            onChange={(v) => {
-              set("buffer_seconds", v);
-            }}
-          />
-        </SettingRow>
-      )}
+      <SettingRow label="Глубина буфера" hint="Сколько секунд звука держится в памяти.">
+        <SettingSlider
+          ariaLabel="Глубина буфера"
+          value={draft.buffer_seconds}
+          min={SETTINGS_LIMITS.bufferSeconds.min}
+          max={SETTINGS_LIMITS.bufferSeconds.max}
+          step={BUFFER_SECONDS_STEP}
+          readout={`${String(draft.buffer_seconds)} с`}
+          disabled={!draft.buffer_enabled}
+          onChange={(v) => {
+            set("buffer_seconds", v);
+          }}
+        />
+      </SettingRow>
     </SettingGroup>
   );
 }
