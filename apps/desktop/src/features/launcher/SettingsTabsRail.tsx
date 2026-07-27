@@ -29,7 +29,7 @@ function SettingsTabButton({
         onSelect(id);
       }}
       className={cn(
-        "relative flex items-center justify-center gap-2 rounded-lg px-0 py-1.5 text-left text-body whitespace-nowrap transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 min-[900px]:justify-start min-[900px]:px-2.5",
+        "relative flex items-center justify-center gap-2 rounded-md px-0 py-1.5 text-left text-body whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60 min-[900px]:justify-start min-[900px]:px-2",
         active
           ? "bg-surface-active text-foreground"
           : "text-muted-foreground hover:bg-surface hover:text-foreground active:bg-surface-active",
@@ -52,7 +52,7 @@ export function SettingsTabsRail({ active, onSelect }: SettingsTabsRailProps) {
     <div
       role="tablist"
       aria-orientation="vertical"
-      className="sticky top-0 flex w-9 shrink-0 flex-col gap-0.5 self-start min-[900px]:w-32"
+      className="sticky top-0 flex w-9 shrink-0 flex-col gap-0.5 self-start min-[900px]:w-30"
     >
       {SETTINGS_TABS.map((tab) => (
         <SettingsTabButton

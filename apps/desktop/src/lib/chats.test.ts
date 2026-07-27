@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { chatTitle, createChat, deserializeChats, serializeChats, type Chat } from "./chats";
+import {
+  chatTitle,
+  createChat,
+  createChatFrom,
+  deserializeChats,
+  serializeChats,
+  type Chat,
+} from "./chats";
 
 const img = { media_type: "image/png", data: "AAAA" };
 
@@ -39,6 +46,39 @@ describe("createChat", () => {
     expect(c.thinkingEnabled).toBe(false);
     expect(c.model).toBe("claude-haiku-4-5-20251001");
     expect(c.webSearch).toBe(false);
+  });
+});
+
+describe("createChatFrom", () => {
+  it("копирует параметры запроса и контекст, но не содержимое", () => {
+    const source = chatWith([{ role: "user", text: "вопрос", images: [img] }], {
+      title: "Мой чат",
+      titlePinned: true,
+      draft: "недописанное",
+      draftAttachments: [{ payload: img, preview: "data:image/png;base64,AAAA" }],
+      presetId: "golang",
+      thinkingEnabled: true,
+      model: "claude-opus-4-8",
+      webSearch: true,
+      context: "справка",
+      libraryDocIds: ["a", "b"],
+      lastInputTokens: 4242,
+    });
+    const copy = createChatFrom(source, 3);
+    expect(copy.id).not.toBe(source.id);
+    expect(copy.title).toBe("Чат 3");
+    expect(copy.titlePinned).toBe(false);
+    expect(copy.messages).toEqual([]);
+    expect(copy.draft).toBe("");
+    expect(copy.draftAttachments).toEqual([]);
+    expect(copy.lastInputTokens).toBe(0);
+    expect(copy.presetId).toBe("golang");
+    expect(copy.thinkingEnabled).toBe(true);
+    expect(copy.model).toBe("claude-opus-4-8");
+    expect(copy.webSearch).toBe(true);
+    expect(copy.context).toBe("справка");
+    expect(copy.libraryDocIds).toEqual(["a", "b"]);
+    expect(copy.libraryDocIds).not.toBe(source.libraryDocIds);
   });
 });
 

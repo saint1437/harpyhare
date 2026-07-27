@@ -16,7 +16,7 @@ import { StolenNote } from "./HotkeysSection";
 
 const QUICK_ACTION: HotkeyActionId = "quick_action";
 const PLATFORM_MODIFIERS: readonly string[] = MODIFIER_COMBOS[PLATFORM];
-const PROMPT_ROWS = 3;
+const PROMPT_ROWS = 2;
 
 const COMBO_LABEL = "Сочетание";
 const ATTACHMENTS_LABEL = "Прикреплять вложения";
@@ -52,7 +52,7 @@ function QuickActionRow({
   onRemove: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 px-4 py-3">
+    <div className="flex flex-col gap-1.5 px-3 py-2.5">
       <div className="flex items-center gap-2">
         <Input
           aria-label={TITLE_LABEL}
@@ -140,7 +140,7 @@ export function QuickActionsSection({ draft, set }: SectionProps) {
       </SettingRow>
 
       {actions.length === 0 && (
-        <p className="px-4 py-3 text-caption text-muted-foreground">{EMPTY_NOTE}</p>
+        <p className="px-3 py-2.5 text-caption text-muted-foreground">{EMPTY_NOTE}</p>
       )}
       {actions.map((quickAction, index) => (
         <QuickActionRow
@@ -155,7 +155,7 @@ export function QuickActionsSection({ draft, set }: SectionProps) {
           }}
         />
       ))}
-      <div className="flex items-center gap-3 px-4 py-2.5">
+      <div className="flex items-center gap-3 px-3 py-2">
         <Button variant="ghost" size="sm" disabled={atLimit} onClick={add}>
           <Plus />
           {ADD_LABEL}

@@ -5,7 +5,7 @@ const VISIBLE_LABEL = "Видно при демонстрации экрана";
 const HIDDEN_LABEL = "Скрыто при демонстрации экрана";
 const VISIBLE_ACTION = "нажмите, чтобы скрыть";
 const HIDDEN_ACTION = "нажмите, чтобы показывать";
-const VISIBLE_CLASS = "text-primary hover:text-primary";
+const VISIBLE_CLASS = "text-primary hover:text-primary/85";
 
 interface ScreenShareIndicatorProps {
   visible: boolean;

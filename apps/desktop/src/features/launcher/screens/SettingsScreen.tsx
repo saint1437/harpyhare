@@ -34,7 +34,7 @@ export function SettingsScreen({ draft, set, tab, onRedeem, onTabChange }: Setti
         <SettingsTabsRail active={tab} onSelect={onTabChange} />
         <div
           key={tab}
-          className="flex min-w-0 flex-1 animate-in flex-col gap-3 duration-200 fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none"
+          className="flex min-w-0 flex-1 animate-in flex-col gap-3 duration-150 fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none"
         >
           <p className="text-caption text-muted-foreground">{settingsTabMeta(tab).description}</p>
           {sections[tab]}

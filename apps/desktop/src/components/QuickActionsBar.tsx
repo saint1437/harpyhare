@@ -32,10 +32,12 @@ function QuickActionButton({ action, hint, disabled, onRun }: QuickActionButtonP
       disabled={disabled}
       title={action.title}
       onClick={onRun}
-      className="rounded-full bg-surface px-2.5 text-foreground/80 ring-1 ring-border ring-inset hover:bg-surface-active"
+      className="bg-surface text-foreground/85 ring-1 ring-border ring-inset hover:bg-surface-active active:bg-surface"
     >
       {action.title}
-      {hint !== null && <span className="font-mono text-foreground/45">{hint}</span>}
+      {hint !== null && (
+        <span className="font-mono text-hint text-muted-foreground/80 tabular-nums">{hint}</span>
+      )}
     </Button>
   );
 }
@@ -47,7 +49,7 @@ export function QuickActionsBar({ actions, combo, disabled, onRun }: QuickAction
       role="group"
       aria-label={BAR_LABEL}
       onMouseDown={keepPromptFocus}
-      className="no-scrollbar mb-2 flex min-w-0 items-center gap-1.5 overflow-x-auto"
+      className="no-scrollbar mb-1.5 flex min-w-0 items-center gap-1 overflow-x-auto"
     >
       {actions.map((action, index) => (
         <QuickActionButton

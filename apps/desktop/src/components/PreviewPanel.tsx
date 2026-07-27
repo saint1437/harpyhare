@@ -38,9 +38,8 @@ function usePreviewSrc(html: string) {
 
 function PreviewHeader({ html, onClose }: { html: string; onClose: () => void }) {
   return (
-    <header className="flex items-center gap-2.5">
-      <SectionLabel>Превью</SectionLabel>
-      <span className="h-px flex-1 bg-border" aria-hidden />
+    <header className="flex min-h-7 items-center gap-1.5">
+      <SectionLabel className="min-w-0 flex-1 truncate">Превью</SectionLabel>
       <Button
         variant="ghost"
         size="compact"

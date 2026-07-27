@@ -12,7 +12,7 @@ export function IconButton({ title, className, ...props }: IconButtonProps) {
       size="icon-compact"
       title={title}
       aria-label={props["aria-label"] ?? title}
-      className={cn("rounded-full text-muted-foreground hover:text-foreground", className)}
+      className={cn("rounded-md text-muted-foreground hover:text-foreground", className)}
       {...props}
     />
   );

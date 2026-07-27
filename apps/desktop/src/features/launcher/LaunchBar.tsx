@@ -64,7 +64,7 @@ function StatusLine({
   }
 
   return (
-    <span className="inline-flex min-w-0 items-center gap-2 px-2 text-caption text-muted-foreground">
+    <span className="inline-flex h-6.5 min-w-0 items-center gap-2 px-2 text-caption text-muted-foreground">
       {dot}
       <span className="truncate" title={text}>
         {text}
@@ -92,31 +92,33 @@ export function LaunchBar({
   return (
     <header
       onMouseDown={onDragMouseDown}
-      className={cn("flex h-9 shrink-0 items-center gap-2.5", MACOS_TRAFFIC_LIGHTS_CLASS)}
+      className={cn("flex h-9 shrink-0 items-center gap-3", MACOS_TRAFFIC_LIGHTS_CLASS)}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+      <div className="flex shrink-0 items-center gap-2">
         <EqBars animated={launching} barClass="bg-primary" />
-        <h1 className="truncate font-mono text-caption font-semibold tracking-[0.16em] text-foreground/80 uppercase">
+        <h1 className="font-mono text-hint font-semibold tracking-wider text-foreground/55 uppercase">
           {BRAND_NAME}
         </h1>
       </div>
 
-      <div className="w-72 min-w-0 shrink">{search}</div>
+      <div className="max-w-96 min-w-0 flex-1">{search}</div>
 
-      <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">
-        <StatusLine
-          readiness={readiness}
-          launching={launching}
-          saving={saving}
-          onGoToBlocker={onGoToBlocker}
-        />
+      <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1.5">
+        <div className="max-w-80 min-w-0">
+          <StatusLine
+            readiness={readiness}
+            launching={launching}
+            saving={saving}
+            onGoToBlocker={onGoToBlocker}
+          />
+        </div>
         <Button
           size="compact"
           className="gap-1.5"
           disabled={launching || readiness.checking || !readiness.ready}
           onClick={onLaunch}
         >
-          <Play className="size-3.5" aria-hidden />
+          <Play className="size-3" aria-hidden />
           {launching ? "Запускаю…" : "Запустить"}
         </Button>
       </div>

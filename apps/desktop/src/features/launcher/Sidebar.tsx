@@ -42,7 +42,7 @@ function SidebarItem({
         onSelect(id);
       }}
       className={cn(
-        "group relative flex items-center justify-center rounded-lg px-0 py-2 transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "group relative flex items-center justify-center rounded-md px-0 py-2 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
         active
           ? "bg-surface-active text-foreground"
           : "text-muted-foreground hover:bg-surface hover:text-foreground active:bg-surface-active",
@@ -58,7 +58,7 @@ function SidebarItem({
       {notice !== undefined && (
         <span
           className={cn(
-            "absolute top-1.5 right-1.5 size-1.5 rounded-full",
+            "absolute top-1 right-1 size-1.5 rounded-full",
             notice.kind === "blocker" ? "bg-destructive" : "bg-primary",
           )}
           aria-hidden
@@ -73,7 +73,7 @@ export function Sidebar({ active, notices, onSelect }: SidebarProps) {
     <div
       role="tablist"
       aria-orientation="vertical"
-      className="no-scrollbar flex w-11 shrink-0 flex-col gap-4 overflow-y-auto"
+      className="no-scrollbar flex w-10 shrink-0 flex-col gap-4 overflow-y-auto"
     >
       {SCREEN_GROUPS.map((group) => (
         <div key={group} className={cn("flex flex-col gap-0.5", group === "system" && "mt-auto")}>

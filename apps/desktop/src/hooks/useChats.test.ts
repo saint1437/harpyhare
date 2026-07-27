@@ -55,6 +55,49 @@ describe("useChats", () => {
     expect(result.current.chats.length).toBe(CHAT_LIMIT);
   });
 
+  it("duplicateChat создаёт чистый чат с настройками исходного и уважает лимит", async () => {
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(1);
+    });
+    const sourceId = result.current.activeId;
+    act(() => {
+      result.current.appendUserMessage(sourceId, "вопрос", []);
+      result.current.patchChat(sourceId, {
+        model: "claude-opus-4-8",
+        thinkingEnabled: true,
+        webSearch: true,
+        presetId: "golang",
+        context: "справка",
+        libraryDocIds: ["doc-1"],
+        draft: "недописанное",
+      });
+    });
+    act(() => {
+      result.current.duplicateChat(sourceId);
+    });
+    expect(result.current.chats.length).toBe(2);
+    const copy = result.current.active;
+    expect(copy.id).not.toBe(sourceId);
+    expect(result.current.activeId).toBe(copy.id);
+    expect(copy.messages).toEqual([]);
+    expect(copy.draft).toBe("");
+    expect(copy.model).toBe("claude-opus-4-8");
+    expect(copy.thinkingEnabled).toBe(true);
+    expect(copy.webSearch).toBe(true);
+    expect(copy.presetId).toBe("golang");
+    expect(copy.context).toBe("справка");
+    expect(copy.libraryDocIds).toEqual(["doc-1"]);
+    while (result.current.chats.length < CHAT_LIMIT)
+      act(() => {
+        result.current.newChat();
+      });
+    act(() => {
+      result.current.duplicateChat(result.current.activeId);
+    });
+    expect(result.current.chats.length).toBe(CHAT_LIMIT);
+  });
+
   it("appendUserMessage ставит заголовок из первого вопроса и чистит черновик", async () => {
     const { result } = renderHook(() => useChats());
     await waitFor(() => {

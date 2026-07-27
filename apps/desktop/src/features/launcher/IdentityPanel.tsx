@@ -22,17 +22,17 @@ interface IdentityPanelProps {
   currentIdentityId: string;
 }
 
-const SKELETON_TILES = 3;
+const SKELETON_TILES = 9;
 
 function IdentitySkeleton() {
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-3 gap-2.5">
       {Array.from({ length: SKELETON_TILES }, (_, index) => (
         <div
           key={index}
-          className="flex animate-pulse flex-col items-center gap-2 rounded-xl bg-card p-4 ring-1 ring-border ring-inset"
+          className="flex animate-pulse flex-col items-center gap-2 rounded-lg bg-card p-3 ring-1 ring-border ring-inset"
         >
-          <div className="size-16 rounded-[14px] bg-surface" />
+          <div className="size-14 rounded-xl bg-surface" />
           <div className="h-3 w-20 rounded-full bg-surface" />
         </div>
       ))}
@@ -94,7 +94,7 @@ export function IdentityPanel({ currentIdentityId }: IdentityPanelProps) {
           Не удалось получить список обликов: {loadErrorText(loadError)}
         </p>
       )}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2.5">
         {identities.map((identity) => (
           <IdentityTile
             key={identity.id}
@@ -159,7 +159,7 @@ function ConfirmIdentityDialog({
             <img
               src={`data:image/png;base64,${shownTarget.iconPngBase64}`}
               alt=""
-              className="size-12 shrink-0 rounded-[10px]"
+              className="size-12 shrink-0 rounded-lg"
             />
             <p className="text-body text-muted-foreground">
               Приложение станет выглядеть как «{shownTarget.displayName}» — сменит имя и иконку,
@@ -197,18 +197,19 @@ function IdentityTile({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex min-w-0 flex-col items-center gap-2 rounded-xl p-4 text-center ring-1 ring-border transition-colors ring-inset",
-        active ? "bg-primary/10 ring-primary" : "bg-card hover:bg-surface",
+        "flex min-w-0 flex-col items-center gap-1.5 rounded-lg p-3 text-center ring-1 ring-border transition-colors outline-none ring-inset focus-visible:ring-2 focus-visible:ring-ring/60",
+        active ? "bg-primary/10 ring-primary" : "bg-card hover:bg-surface active:bg-surface-active",
+        pending && "animate-pulse",
         disabled && !active && !pending && "opacity-50",
       )}
     >
       <img
         src={`data:image/png;base64,${identity.iconPngBase64}`}
         alt={identity.displayName}
-        className="size-16 rounded-[14px]"
+        className="size-14 rounded-xl"
       />
       <span className="w-full truncate text-caption text-muted-foreground">
-        {pending ? "Применяю…" : identity.displayName}
+        {pending ? `${identity.displayName}…` : identity.displayName}
       </span>
     </button>
   );

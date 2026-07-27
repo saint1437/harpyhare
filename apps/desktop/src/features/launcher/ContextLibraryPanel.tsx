@@ -174,7 +174,7 @@ async function importPickedFiles(
 
 function RowIconBadge({ children }: { children: ReactNode }) {
   return (
-    <span className="grid size-6 shrink-0 place-items-center rounded-md bg-surface">
+    <span className="grid size-6 shrink-0 place-items-center rounded-sm bg-surface">
       {children}
     </span>
   );
@@ -229,11 +229,11 @@ function DocRow({
       onMouseDown={onMouseDown}
       title="Перетащи, чтобы переложить в папку"
       className={cn(
-        "group flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-surface",
+        "group flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-surface active:bg-surface-active",
         dragging && "opacity-40",
       )}
     >
-      <GripVertical className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" />
+      <GripVertical className="size-3.5 shrink-0 text-muted-foreground/35 transition-colors group-hover:text-muted-foreground" />
       <RowIconBadge>
         <FileText className="size-3.5 text-muted-foreground" />
       </RowIconBadge>
@@ -327,7 +327,7 @@ function DocEditor({
   onCancel: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-xl bg-card p-3 ring-1 ring-border ring-inset">
+    <div className="flex flex-col gap-2 rounded-lg bg-card p-3 shadow-raise ring-1 ring-border ring-inset">
       <SectionLabel>{draft.id === null ? "Новый материал" : "Материал"}</SectionLabel>
       <div className="flex gap-2">
         <Input
@@ -387,9 +387,9 @@ function EmptyDropZone({ onPick }: { onPick: () => void }) {
       type="button"
       onClick={onPick}
       {...{ [DROP_FOLDER_ATTR]: ROOT_FOLDER_ID }}
-      className="flex flex-col items-center gap-2 rounded-xl border border-dashed px-4 py-8 text-center transition-colors outline-none hover:border-foreground/30 hover:bg-surface focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-7 text-center transition-colors outline-none hover:border-foreground/30 hover:bg-surface focus-visible:ring-2 focus-visible:ring-ring/60"
     >
-      <span className="grid size-9 place-items-center rounded-full bg-surface">
+      <span className="grid size-9 place-items-center rounded-lg bg-surface ring-1 ring-border ring-inset">
         <Upload className="size-4 text-muted-foreground" />
       </span>
       <span className="text-body text-foreground">
@@ -554,7 +554,7 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
               key={folder.id}
               {...{ [DROP_FOLDER_ATTR]: folder.id }}
               className={cn(
-                "flex flex-col gap-0.5 rounded-xl bg-card p-1.5 ring-1 ring-border transition-colors ring-inset",
+                "flex flex-col gap-0.5 rounded-lg bg-card p-1.5 shadow-raise ring-1 ring-border transition-colors ring-inset",
                 dropTarget === folder.id && "bg-primary/5 ring-primary/40",
               )}
             >

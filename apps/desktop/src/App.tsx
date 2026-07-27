@@ -24,6 +24,7 @@ import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
 import { useConnectivity } from "@/hooks/useConnectivity";
 import { useContextLibrary } from "@/hooks/useContextLibrary";
+import { useDuplicateChatKey } from "@/hooks/useDuplicateChatKey";
 import { useLatestRef } from "@/hooks/useLatestRef";
 import { useModels } from "@/hooks/useModels";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
@@ -421,6 +422,10 @@ function AppHeader({
             chats.removeChat(id);
           }}
           onNew={chats.newChat}
+          onDuplicate={() => {
+            chats.duplicateChat(chats.activeId);
+          }}
+          duplicateCombo={effectiveCombo(hotkeys, "duplicate_chat")}
         />
       }
       actions={
@@ -615,6 +620,15 @@ export default function App() {
   const connectivity = useConnectivity();
   const promptCoveredByOverlay = teleprompterOpen || connectivity.offline;
   const promptRef = usePromptFocus(promptCoveredByOverlay);
+
+  const duplicateActiveChat = useCallback(() => {
+    chatsRef.current.duplicateChat(chatsRef.current.activeId);
+  }, [chatsRef]);
+  useDuplicateChatKey(
+    effectiveCombo(settings.hotkeys, "duplicate_chat"),
+    !promptCoveredByOverlay,
+    duplicateActiveChat,
+  );
 
   const quickActions = useMemo(
     () => (settingsLoading ? [] : filledQuickActions(settings.quick_actions)),

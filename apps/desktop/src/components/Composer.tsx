@@ -34,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { QuickAction } from "@/ipc/types";
 import type { Chat, ChatPatch } from "@/lib/chats";
@@ -73,9 +74,9 @@ export interface ComposerProps {
 
 const SELECT_TRIGGER_CLASS = "h-7 w-full text-caption";
 const SELECT_CONTENT_POSITION = "popper";
-const TOGGLE_ON = "on";
-const TOGGLE_OFF = "off";
 const NO_PRESET_VALUE = "none";
+const THINKING_PARAM_LABEL = "Thinking";
+const WEB_SEARCH_PARAM_LABEL = "Веб-поиск";
 
 function pasteHasImages(items: DataTransferItemList) {
   return extractImageItems(items).length > 0;
@@ -133,7 +134,7 @@ function PromptTextarea(props: PromptTextareaProps) {
       }}
       spellCheck={false}
       placeholder="Расшифровка появится здесь — или напиши вопрос сам"
-      className="max-h-40 min-h-9 resize-none overflow-y-auto border-0 bg-transparent py-1.5 text-body shadow-none focus-visible:ring-0 dark:bg-transparent"
+      className="max-h-40 min-h-9 resize-none overflow-y-auto border-0 bg-transparent py-1.5 text-body focus-visible:ring-0"
     />
   );
 }
@@ -146,7 +147,7 @@ interface AttachmentListProps {
 function AttachmentList({ attachments, onRemove }: AttachmentListProps) {
   if (attachments.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-2 px-3 pb-2">
+    <div className="flex flex-wrap gap-1.5 px-2.5 pb-2">
       {attachments.map((att, i) => (
         <AttachmentChip
           key={att.preview}
@@ -160,29 +161,22 @@ function AttachmentList({ attachments, onRemove }: AttachmentListProps) {
   );
 }
 
-interface ToggleSelectProps {
+interface ParamToggleProps {
+  label: string;
   value: boolean;
   onChange: (enabled: boolean) => void;
   disabled?: boolean;
 }
 
-function ToggleSelect(props: ToggleSelectProps) {
+function ParamToggle(props: ParamToggleProps) {
   return (
-    <Select
-      value={props.value ? TOGGLE_ON : TOGGLE_OFF}
+    <Switch
+      size="sm"
+      aria-label={props.label}
+      checked={props.value}
       disabled={props.disabled}
-      onValueChange={(v) => {
-        props.onChange(v === TOGGLE_ON);
-      }}
-    >
-      <SelectTrigger className={SELECT_TRIGGER_CLASS}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent position={SELECT_CONTENT_POSITION}>
-        <SelectItem value={TOGGLE_ON}>Вкл</SelectItem>
-        <SelectItem value={TOGGLE_OFF}>Выкл</SelectItem>
-      </SelectContent>
-    </Select>
+      onCheckedChange={props.onChange}
+    />
   );
 }
 
@@ -242,9 +236,9 @@ function PresetSelect({ presets, presetId, onChange }: PresetSelectProps) {
 
 function ParamRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-2">
-      <Label className="w-[76px] shrink-0">{label}</Label>
-      <div className="min-w-0 flex-1">{children}</div>
+    <div className="flex min-h-7 items-center gap-2">
+      <Label className="w-20 shrink-0">{label}</Label>
+      <div className="flex min-w-0 flex-1 items-center justify-end">{children}</div>
     </div>
   );
 }
@@ -267,8 +261,8 @@ function RequestParamsPopover(props: RequestParamsProps) {
           <SlidersHorizontal />
         </Button>
       </PopoverTrigger>
-      <PopoverContent side="top" align="start" className="w-60 p-3">
-        <div className="flex flex-col gap-1.5">
+      <PopoverContent side="top" align="start" className="w-64 p-3">
+        <div className="flex flex-col gap-1">
           <ParamRow label="Модель">
             <ModelSelect
               models={props.modelOptions}
@@ -278,8 +272,18 @@ function RequestParamsPopover(props: RequestParamsProps) {
               }}
             />
           </ParamRow>
-          <ParamRow label="Thinking">
-            <ToggleSelect
+          <ParamRow label="Препромпт">
+            <PresetSelect
+              presets={props.presets}
+              presetId={props.chat.presetId}
+              onChange={(presetId) => {
+                props.onPatch({ presetId });
+              }}
+            />
+          </ParamRow>
+          <ParamRow label={THINKING_PARAM_LABEL}>
+            <ParamToggle
+              label={THINKING_PARAM_LABEL}
               value={props.chat.thinkingEnabled}
               disabled={props.thinkingDisabled}
               onChange={(thinkingEnabled) => {
@@ -287,20 +291,12 @@ function RequestParamsPopover(props: RequestParamsProps) {
               }}
             />
           </ParamRow>
-          <ParamRow label="Веб-поиск">
-            <ToggleSelect
+          <ParamRow label={WEB_SEARCH_PARAM_LABEL}>
+            <ParamToggle
+              label={WEB_SEARCH_PARAM_LABEL}
               value={props.chat.webSearch}
               onChange={(webSearch) => {
                 props.onPatch({ webSearch });
-              }}
-            />
-          </ParamRow>
-          <ParamRow label="Препромпт">
-            <PresetSelect
-              presets={props.presets}
-              presetId={props.chat.presetId}
-              onChange={(presetId) => {
-                props.onPatch({ presetId });
               }}
             />
           </ParamRow>
@@ -431,8 +427,10 @@ function LibraryDocToggle({
       type="button"
       onClick={onToggle}
       className={cn(
-        "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-body transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-        selected ? "bg-surface-active text-foreground" : "text-muted-foreground hover:bg-surface",
+        "flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-body transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+        selected
+          ? "bg-surface-active text-foreground"
+          : "text-muted-foreground hover:bg-surface active:bg-surface-active",
       )}
     >
       <Check className={`size-3.5 shrink-0 ${selected ? "" : "opacity-0"}`} />
@@ -453,7 +451,7 @@ function LibraryPicker({
   if (library.docs.length === 0) {
     return (
       <p className="text-caption text-muted-foreground">
-        Библиотека пуста — материалы добавляются в Настройках, вкладка «Контексты».
+        Библиотека пуста — материалы добавляются в лаунчере на экране «Контексты».
       </p>
     );
   }
@@ -560,7 +558,7 @@ export function Composer(props: ComposerProps) {
         disabled={props.streaming}
         onRun={props.onQuickAction}
       />
-      <div className="rounded-xl bg-card/60 ring-1 ring-border transition-[box-shadow] ring-inset focus-within:ring-ring/50">
+      <div className="rounded-xl bg-card/70 shadow-raise ring-1 ring-border transition-[box-shadow] ring-inset focus-within:ring-ring/60">
         <PromptTextarea
           fieldRef={props.promptRef}
           value={chat.draft}

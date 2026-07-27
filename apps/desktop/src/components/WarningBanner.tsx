@@ -25,7 +25,7 @@ export function WarningBanner({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-2.5 rounded-xl px-3 py-2.5 ring-1 ring-inset",
+        "flex items-center justify-between gap-2.5 rounded-lg px-3 py-2 ring-1 ring-inset",
         TONE_STYLES[tone],
       )}
     >

@@ -11,6 +11,7 @@ pub const ACTION_MOVE_WINDOW: &str = "move_window";
 pub const ACTION_RESIZE_WINDOW: &str = "resize_window";
 pub const ACTION_OPACITY: &str = "opacity";
 pub const ACTION_SCROLL_CHAT: &str = "scroll_chat";
+pub const ACTION_DUPLICATE_CHAT: &str = "duplicate_chat";
 pub const ACTION_TELEPROMPTER: &str = "teleprompter";
 pub const ACTION_TELEPROMPTER_CLOSE: &str = "teleprompter_close";
 pub const ACTION_TELEPROMPTER_PAUSE: &str = "teleprompter_pause";
@@ -252,6 +253,15 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         kind: HotkeyKind::ModifierArrows,
         scope: HotkeyScope::Hud,
         default_combo: PlatformCombo::shared(MODIFIER_ALT),
+    },
+    HotkeyAction {
+        id: ACTION_DUPLICATE_CHAT,
+        group: "Чат",
+        label: "Дубликат чата",
+        hint: "Новый чат с параметрами текущего, без сообщений.",
+        kind: HotkeyKind::Combo,
+        scope: HotkeyScope::Hud,
+        default_combo: primary_combo!(shift_token!(), "N"),
     },
     HotkeyAction {
         id: ACTION_TELEPROMPTER,

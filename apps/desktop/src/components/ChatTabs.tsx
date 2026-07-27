@@ -1,6 +1,7 @@
-import { Plus, X } from "lucide-react";
+import { CopyPlus, Plus, X } from "lucide-react";
 import { IconButton } from "@/components/IconButton";
 import { CHAT_LIMIT, type Chat } from "@/lib/chats";
+import { formatCombo } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 
 export interface ChatTabsProps {
@@ -10,9 +11,21 @@ export interface ChatTabsProps {
   onSelect: (id: string) => void;
   onRemove: (id: string) => void;
   onNew: () => void;
+  onDuplicate: () => void;
+  duplicateCombo: string;
 }
 
-export function ChatTabs({ chats, activeId, streaming, onSelect, onRemove, onNew }: ChatTabsProps) {
+export function ChatTabs({
+  chats,
+  activeId,
+  streaming,
+  onSelect,
+  onRemove,
+  onNew,
+  onDuplicate,
+  duplicateCombo,
+}: ChatTabsProps) {
+  const atLimit = chats.length >= CHAT_LIMIT;
   return (
     <nav
       aria-label="Чаты"
@@ -34,7 +47,8 @@ export function ChatTabs({ chats, activeId, streaming, onSelect, onRemove, onNew
           }}
         />
       ))}
-      <NewChatButton disabled={chats.length >= CHAT_LIMIT} onClick={onNew} />
+      <NewChatButton disabled={atLimit} onClick={onNew} />
+      <DuplicateChatButton disabled={atLimit} combo={duplicateCombo} onClick={onDuplicate} />
     </nav>
   );
 }
@@ -66,14 +80,14 @@ function ChatTab({
       title={title || `Чат ${String(number)}`}
       aria-label={closeOnClick ? `Закрыть чат ${String(number)}` : `Чат ${String(number)}`}
       className={cn(
-        "group relative grid size-7 shrink-0 place-items-center rounded-md font-mono text-caption transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "group relative grid size-6.5 shrink-0 place-items-center rounded-md font-mono text-caption transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
         isActive
-          ? "bg-surface-active text-foreground"
-          : "text-muted-foreground hover:bg-surface hover:text-foreground",
+          ? "bg-surface-active text-foreground ring-1 ring-border ring-inset"
+          : "text-muted-foreground hover:bg-surface hover:text-foreground active:bg-surface-active",
       )}
     >
-      <span className={cn(closeOnClick && "group-hover:hidden")}>{number}</span>
-      {closeOnClick && <X className="hidden size-4 group-hover:block" />}
+      <span className={cn("tabular-nums", closeOnClick && "group-hover:hidden")}>{number}</span>
+      {closeOnClick && <X className="hidden size-3.5 group-hover:block" />}
       {isStreaming && (
         <span
           className="absolute -top-0.5 -right-0.5 size-1.5 animate-pulse rounded-full bg-primary"
@@ -86,13 +100,36 @@ function ChatTab({
 
 function NewChatButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
   return (
+    <IconButton title="Новый чат" onClick={onClick} disabled={disabled} className="shrink-0">
+      <Plus />
+    </IconButton>
+  );
+}
+
+const DUPLICATE_TITLE = "Дубликат чата — те же параметры, без сообщений";
+
+function duplicateTitle(combo: string): string {
+  const formatted = formatCombo(combo);
+  return formatted === "" ? DUPLICATE_TITLE : `${DUPLICATE_TITLE} (${formatted})`;
+}
+
+function DuplicateChatButton({
+  disabled,
+  combo,
+  onClick,
+}: {
+  disabled: boolean;
+  combo: string;
+  onClick: () => void;
+}) {
+  return (
     <IconButton
-      title="Новый чат"
+      title={duplicateTitle(combo)}
       onClick={onClick}
       disabled={disabled}
-      className="shrink-0 rounded-md"
+      className="shrink-0"
     >
-      <Plus />
+      <CopyPlus />
     </IconButton>
   );
 }

@@ -41,15 +41,15 @@ const COMBO_ICONS: Record<ComboIconName, LucideIcon> = {
 
 function ComboTokenView({ token }: { token: ComboToken }) {
   if (token.type === "text") {
-    return <span className="font-mono text-body text-foreground/90">{token.text}</span>;
+    return <span className="font-mono text-caption text-foreground/90">{token.text}</span>;
   }
   const Icon = COMBO_ICONS[token.icon];
-  return <Icon className="size-3.5 text-foreground/90" />;
+  return <Icon className="size-3 text-foreground/90" />;
 }
 
 function ComboChip({ combo }: { combo: string }) {
   return (
-    <kbd className="inline-flex w-full items-center justify-center gap-0.5 rounded-md border bg-surface px-2 py-1">
+    <kbd className="inline-flex h-5 w-full items-center justify-center gap-0.5 rounded-sm bg-surface px-1.5 ring-1 ring-border ring-inset">
       {comboTokens(combo).map((token, i) => (
         <ComboTokenView key={i} token={token} />
       ))}
@@ -70,7 +70,7 @@ export function HotkeysPopover({ hotkeys }: HotkeysPopoverProps) {
         <div className="grid grid-cols-[max-content_1fr] items-center gap-x-2.5 gap-y-1">
           {groups.map((group, index) => (
             <Fragment key={group.title}>
-              <SectionLabel className={cn("col-span-2", index > 0 && "mt-2")}>
+              <SectionLabel className={cn("col-span-2", index > 0 && "mt-2.5")}>
                 {group.title}
               </SectionLabel>
               {group.hints.map((hint) => (

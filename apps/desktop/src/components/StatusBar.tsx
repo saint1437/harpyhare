@@ -40,13 +40,13 @@ function ContextUsageGauge({ usage }: { usage: ContextUsage }) {
       <span className="h-1 w-10 overflow-hidden rounded-full bg-surface-active">
         <span
           className={cn(
-            "block h-full rounded-full",
+            "block h-full rounded-full transition-[width] duration-300",
             percent >= CONTEXT_USAGE_WARN_PERCENT ? "bg-destructive" : "bg-muted-foreground/60",
           )}
           style={{ width: `${String(Math.max(CONTEXT_GAUGE_MIN_FILL_PERCENT, percent))}%` }}
         />
       </span>
-      <span className="text-hint text-muted-foreground">{percent}%</span>
+      <span className="text-hint text-muted-foreground tabular-nums">{percent}%</span>
     </div>
   );
 }
@@ -73,7 +73,13 @@ export function StatusBar({
 
   return (
     <header className="flex min-h-7 items-center gap-2" onMouseDown={onDragMouseDown}>
-      <WindowButtons toggleHotkey={toggleHotkey} onHide={onHide} />
+      <IconButton
+        title={`Скрыть окно — вернуть: ${formatCombo(toggleHotkey)}`}
+        aria-label="Скрыть окно"
+        onClick={onHide}
+      >
+        <Minus />
+      </IconButton>
       <EqBars {...indicatorProps(state, showError)} />
       {tabs}
       <span
@@ -94,20 +100,6 @@ export function StatusBar({
   );
 }
 
-function WindowButtons({ toggleHotkey, onHide }: { toggleHotkey: string; onHide: () => void }) {
-  return (
-    <div className="flex shrink-0 items-center gap-0.5 pr-1">
-      <IconButton
-        title={`Скрыть окно — вернуть: ${formatCombo(toggleHotkey)}`}
-        aria-label="Скрыть окно"
-        onClick={onHide}
-      >
-        <Minus />
-      </IconButton>
-    </div>
-  );
-}
-
 function UpdateBadge({ update }: { update: NonNullable<StatusBarProps["update"]> }) {
   const availableTitle = `Доступна версия ${update.version}`;
   return (
@@ -117,7 +109,7 @@ function UpdateBadge({ update }: { update: NonNullable<StatusBarProps["update"]>
       onClick={update.onOpen}
       aria-label={availableTitle}
       title={update.busy ? `Обновление до ${update.version}…` : availableTitle}
-      className="rounded-full font-mono text-muted-foreground"
+      className="font-mono text-muted-foreground tabular-nums"
     >
       <ArrowDownCircle className={cn("text-primary", update.busy && "animate-pulse")} />
       {update.version}

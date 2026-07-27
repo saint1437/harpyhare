@@ -66,6 +66,18 @@ export function createChat(index: number, id: string = uid()): Chat {
   };
 }
 
+export function createChatFrom(source: Chat, index: number, id: string = uid()): Chat {
+  return {
+    ...createChat(index, id),
+    presetId: source.presetId,
+    thinkingEnabled: source.thinkingEnabled,
+    model: source.model,
+    webSearch: source.webSearch,
+    context: source.context,
+    libraryDocIds: [...source.libraryDocIds],
+  };
+}
+
 export type ChatPatch = Partial<
   Pick<
     Chat,

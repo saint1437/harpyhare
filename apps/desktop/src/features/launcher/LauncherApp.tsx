@@ -62,7 +62,12 @@ export function LauncherApp() {
     })();
   };
 
-  if (loading) return <div className="p-6 text-body text-muted-foreground">Загрузка…</div>;
+  if (loading)
+    return (
+      <div className="grid h-screen place-items-center text-body text-muted-foreground">
+        Загрузка…
+      </div>
+    );
 
   return (
     <LauncherPanel

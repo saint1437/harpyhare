@@ -41,7 +41,7 @@ function DownloadProgress({ updater }: { updater: UpdaterApi }) {
   const percent = downloadPercent(updater.progress);
   return (
     <div className="grid gap-1.5">
-      <div className="h-1.5 overflow-hidden rounded-full bg-surface-active">
+      <div className="h-1 overflow-hidden rounded-full bg-surface-active">
         <div
           className={
             percent === null
@@ -51,7 +51,7 @@ function DownloadProgress({ updater }: { updater: UpdaterApi }) {
           style={percent === null ? undefined : { width: `${String(percent)}%` }}
         />
       </div>
-      <span className="font-mono text-caption text-muted-foreground">
+      <span className="font-mono text-caption text-muted-foreground tabular-nums">
         {progressCaption(updater, percent)}
       </span>
     </div>
@@ -90,7 +90,7 @@ export function UpdatesScreen({
         >
           {updater.info.notes !== "" && (
             <SettingBlock label="Что нового">
-              <div className="prose-answer max-h-56 overflow-y-auto rounded-lg bg-surface px-3 py-2.5 text-body leading-relaxed text-muted-foreground">
+              <div className="prose-answer max-h-56 overflow-y-auto rounded-lg bg-surface px-3 py-2 text-body leading-relaxed text-muted-foreground ring-1 ring-border ring-inset">
                 <Markdown remarkPlugins={REMARK_PLUGINS}>{updater.info.notes}</Markdown>
               </div>
             </SettingBlock>
@@ -111,7 +111,7 @@ export function UpdatesScreen({
           )}
 
           {available && (
-            <div className="flex items-center justify-end gap-2 px-4 py-2.5">
+            <div className="flex items-center justify-end gap-2 px-3 py-2">
               <Button variant="ghost" size="sm" onClick={updater.dismiss}>
                 Позже
               </Button>

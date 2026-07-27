@@ -138,7 +138,7 @@ export function Teleprompter({
         />
       </div>
 
-      <div className="flex items-center justify-center gap-1.5 pb-4">
+      <div className="flex items-center justify-center gap-1.5 pb-3">
         <IconButton title="Сначала" onClick={restart}>
           <RotateCcw />
         </IconButton>
@@ -192,11 +192,11 @@ function Stepper({
   onInc: () => void;
 }) {
   return (
-    <div className="flex items-center gap-1 rounded-full bg-surface px-1">
+    <div className="flex items-center gap-0.5 rounded-lg bg-surface px-0.5 ring-1 ring-border ring-inset">
       <IconButton title={`${label} −`} onClick={onDec}>
         <Minus />
       </IconButton>
-      <span className="w-14 text-center font-mono text-caption text-muted-foreground">
+      <span className="w-14 text-center font-mono text-caption text-muted-foreground tabular-nums">
         {label} {value}
       </span>
       <IconButton title={`${label} +`} onClick={onInc}>

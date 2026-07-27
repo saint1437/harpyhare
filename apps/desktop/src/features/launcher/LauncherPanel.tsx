@@ -18,7 +18,7 @@ import { PresetsSection, type PresetsUpdate } from "./sections/PresetsSection";
 import { DEFAULT_SETTINGS_TAB, type SettingsTabId } from "./settings-tabs";
 import { Sidebar, type SidebarNotice } from "./Sidebar";
 
-const RISE_STEP_MS = 70;
+const RISE_STEP_MS = 50;
 const AUTOSAVE_DEBOUNCE_MS = 600;
 
 export interface LauncherDestination {
@@ -148,8 +148,8 @@ export function LauncherPanel({
   };
 
   return (
-    <div className="flex h-screen flex-col gap-3 px-4 pt-0 pb-4 sm:px-5">
-      <div className="launcher-rise" style={riseDelay(0)}>
+    <div className="flex h-screen flex-col gap-2.5 px-4 pt-0 pb-4 sm:px-5">
+      <div className="launcher-rise relative z-30" style={riseDelay(0)}>
         <LaunchBar
           readiness={readiness}
           launching={launching}
@@ -172,13 +172,13 @@ export function LauncherPanel({
       </div>
 
       {error !== null && (
-        <div className="flex items-center gap-2.5 rounded-xl bg-destructive/10 px-4 py-2.5 ring-1 ring-destructive/30 ring-inset">
+        <div className="flex items-center gap-2.5 rounded-lg bg-destructive/10 px-3 py-2 ring-1 ring-destructive/30 ring-inset">
           <span className="size-1.5 shrink-0 rounded-full bg-destructive" aria-hidden />
           <span className="min-w-0 text-body text-destructive">{error}</span>
         </div>
       )}
 
-      <div className="flex min-h-0 min-w-0 flex-1 gap-4 md:gap-6">
+      <div className="flex min-h-0 min-w-0 flex-1 gap-3 md:gap-4">
         <div className="launcher-rise flex min-h-0" style={riseDelay(1)}>
           <Sidebar
             active={screen}
@@ -191,7 +191,7 @@ export function LauncherPanel({
         <div className="launcher-rise flex min-h-0 min-w-0 flex-1" style={riseDelay(2)}>
           <div
             key={screen}
-            className="flex min-h-0 min-w-0 flex-1 animate-in duration-200 fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none"
+            className="flex min-h-0 min-w-0 flex-1 animate-in duration-150 fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none"
           >
             {screen === "settings" && (
               <SettingsScreen

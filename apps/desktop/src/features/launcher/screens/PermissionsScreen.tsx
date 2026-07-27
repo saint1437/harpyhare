@@ -37,9 +37,9 @@ function PermissionRowView({
   const state = permissions.status[row.kind];
   const granted = state === "granted";
   return (
-    <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_14rem] items-center gap-x-4 px-4 py-3">
+    <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_14rem] items-center gap-x-3 px-3 py-2.5">
       <row.icon
-        className={cn("size-5", granted ? "text-foreground" : "text-muted-foreground")}
+        className={cn("size-4.5", granted ? "text-foreground" : "text-muted-foreground")}
         aria-hidden
       />
 
@@ -47,7 +47,7 @@ function PermissionRowView({
         <div className="flex flex-wrap items-center gap-x-2">
           <span className="text-body">{row.title}</span>
           <StatusChip state={state} />
-          <span className="text-caption text-muted-foreground">
+          <span className="text-hint text-muted-foreground/80">
             {row.required ? "обязателен" : "необязателен"}
           </span>
         </div>

@@ -1,4 +1,4 @@
-import { Copy, RotateCw, Trash2 } from "lucide-react";
+import { Copy, MessagesSquare, RotateCw, Trash2 } from "lucide-react";
 import {
   isValidElement,
   memo,
@@ -60,7 +60,7 @@ const AUTODETECT_LANGUAGE_SUBSET = [
 ];
 const ASSISTANT_PROSE_CLASS = "prose-answer text-chat leading-relaxed text-foreground/90";
 
-const FLOATING_CHIP_CLASS = "border bg-popover/95 shadow-md backdrop-blur-sm";
+const FLOATING_CHIP_CLASS = "border bg-popover/95 shadow-pop backdrop-blur-sm";
 const MESSAGE_IMAGE_ALT = "Картинка в сообщении";
 const COPY_MESSAGE_TITLE = "Копировать сообщение";
 const ASSISTANT_ACTIONS_GUTTER_CLASS = "pr-13.5";
@@ -130,14 +130,16 @@ const MarkdownChunk = memo(function MarkdownChunk({
 function MessageActionButton({
   title,
   onClick,
+  className,
   children,
 }: {
   title: string;
   onClick: () => void;
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <IconButton title={title} onClick={onClick} className="size-6 rounded-md">
+    <IconButton title={title} onClick={onClick} className={cn("size-6", className)}>
       {children}
     </IconButton>
   );
@@ -167,7 +169,11 @@ function MessageActions({
           <RotateCw className="size-3.5" />
         </MessageActionButton>
       )}
-      <MessageActionButton title="Удалить сообщение" onClick={onRemove}>
+      <MessageActionButton
+        title="Удалить сообщение"
+        onClick={onRemove}
+        className="hover:text-destructive"
+      >
         <Trash2 className="size-3.5" />
       </MessageActionButton>
     </div>
@@ -272,7 +278,12 @@ function useStickToBottom() {
 function EmptyState() {
   return (
     <div className="grid h-full place-items-center">
-      <span className="text-body text-muted-foreground">Чат появится здесь</span>
+      <div className="flex flex-col items-center gap-2.5 text-center">
+        <span className="grid size-9 place-items-center rounded-lg bg-surface ring-1 ring-border ring-inset">
+          <MessagesSquare className="size-4 text-muted-foreground" aria-hidden />
+        </span>
+        <span className="text-body text-muted-foreground">Чат появится здесь</span>
+      </div>
     </div>
   );
 }
@@ -295,7 +306,7 @@ function MessageImages({ images }: { images: ImagePayload[] }) {
 
 function UserBubble({ text, images }: { text: string; images: ImagePayload[] }) {
   return (
-    <div className="flex max-w-[85%] flex-col gap-1.5 rounded-lg bg-surface px-3 py-1.5 text-chat text-foreground/80">
+    <div className="flex max-w-[85%] flex-col gap-1.5 rounded-lg bg-surface px-3 py-1.5 text-chat text-foreground/90 ring-1 ring-border/50 ring-inset">
       <MessageImages images={images} />
       {text !== "" && <span className="min-w-0 break-words whitespace-pre-wrap">{text}</span>}
     </div>
@@ -309,7 +320,7 @@ function JumpToBottomButton({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       className={cn(
         FLOATING_CHIP_CLASS,
-        "absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-caption text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full px-2.5 py-1 text-caption text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 active:bg-surface-active",
       )}
     >
       ↓ Вниз
@@ -422,7 +433,7 @@ export function AnswerPanel({
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          className="flex min-h-0 w-full flex-col gap-3 overflow-y-auto pr-1.5"
+          className="flex min-h-0 w-full flex-col gap-2.5 overflow-y-auto pr-1.5"
         >
           {empty ? (
             <EmptyState />

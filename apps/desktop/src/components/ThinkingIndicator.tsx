@@ -32,7 +32,7 @@ export function ThinkingIndicator({ startedAt }: { startedAt: number }) {
   const seconds = useElapsedSeconds(startedAt);
 
   return (
-    <div className="flex animate-in items-baseline gap-2 duration-300 fade-in">
+    <div className="flex animate-in items-baseline gap-2 duration-200 fade-in motion-reduce:animate-none">
       <span className="thinking-shimmer text-body font-medium" aria-live="polite">
         Думает…
       </span>

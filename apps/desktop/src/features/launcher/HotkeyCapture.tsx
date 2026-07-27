@@ -37,6 +37,7 @@ export function HotkeyCapture({ value, onChange }: HotkeyCaptureProps) {
     };
   }, [capturing, onChange]);
 
+  const label = formatCombo(value);
   return (
     <Button
       type="button"
@@ -47,11 +48,12 @@ export function HotkeyCapture({ value, onChange }: HotkeyCaptureProps) {
       }}
       className={cn(
         "w-full justify-start font-mono",
-        capturing && "border-ring text-muted-foreground ring-[3px] ring-ring/50",
+        capturing && "border-ring text-muted-foreground ring-2 ring-ring/40",
+        !capturing && label === "" && "text-muted-foreground/60",
       )}
     >
       {capturing && <span className="size-1.5 shrink-0 rounded-full bg-ring" aria-hidden />}
-      {capturing ? "Жду сочетание · Esc отменит" : formatCombo(value) || "Не назначен"}
+      {capturing ? "Жду сочетание · Esc отменит" : label || "Не назначен"}
     </Button>
   );
 }

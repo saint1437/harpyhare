@@ -12,6 +12,7 @@ import {
   CHAT_LIMIT,
   chatTitle,
   createChat,
+  createChatFrom,
   deserializeChats,
   serializeChats,
   type Chat,
@@ -190,6 +191,7 @@ export interface ChatsApi {
   activeId: string;
   active: Chat;
   newChat: () => void;
+  duplicateChat: (sourceId: string) => void;
   removeChat: (id: string) => void;
   patchChat: (id: string, patch: ChatPatch) => void;
   selectChat: (id: string) => void;
@@ -227,6 +229,21 @@ export function useChats(): ChatsApi {
     );
     setActiveId(id);
   }, [chats.length]);
+
+  const duplicateChat = useCallback(
+    (sourceId: string) => {
+      if (chats.length >= CHAT_LIMIT) return;
+      const id = crypto.randomUUID();
+      setChats((prev) => {
+        if (prev.length >= CHAT_LIMIT) return prev;
+        const source = prev.find((c) => c.id === sourceId);
+        if (!source) return prev;
+        setActiveId(id);
+        return [...prev, createChatFrom(source, prev.length + 1, id)];
+      });
+    },
+    [chats.length],
+  );
 
   const removeChat = useCallback((id: string) => {
     setChats((prev) => {
@@ -368,6 +385,7 @@ export function useChats(): ChatsApi {
     activeId: effectiveActiveId,
     active,
     newChat,
+    duplicateChat,
     removeChat,
     patchChat,
     selectChat,

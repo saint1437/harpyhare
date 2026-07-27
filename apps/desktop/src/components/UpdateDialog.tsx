@@ -107,7 +107,7 @@ export function UpdateDialog({
 
 function ReleaseNotes({ notes }: { notes: string }) {
   return (
-    <div className="prose-answer max-h-48 overflow-y-auto rounded-md bg-surface px-3 py-2.5 text-body leading-relaxed text-foreground/90">
+    <div className="prose-answer max-h-48 overflow-y-auto rounded-lg bg-surface px-3 py-2 text-body leading-relaxed text-foreground/90 ring-1 ring-border ring-inset">
       <Markdown remarkPlugins={REMARK_PLUGINS}>{notes}</Markdown>
     </div>
   );
@@ -123,7 +123,7 @@ function DownloadProgress({
   const percent = downloadPercent(progress);
   return (
     <div className="grid gap-1.5">
-      <div className="h-1.5 overflow-hidden rounded-full bg-surface-active">
+      <div className="h-1 overflow-hidden rounded-full bg-surface-active">
         <div
           className={
             percent === null
@@ -133,7 +133,7 @@ function DownloadProgress({
           style={percent === null ? undefined : { width: `${percent}%` }}
         />
       </div>
-      <span className="font-mono text-caption text-muted-foreground">
+      <span className="font-mono text-caption text-muted-foreground tabular-nums">
         {progressCaption(status, percent, progress)}
       </span>
     </div>

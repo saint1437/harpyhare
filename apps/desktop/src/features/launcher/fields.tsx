@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { SectionLabel } from "@/components/SectionLabel";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
@@ -15,14 +16,16 @@ export function SettingGroup({
   children: ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-xl bg-card ring-1 ring-border ring-inset">
-      <header className="px-4 pt-3 pb-2.5">
-        <h3 className="text-body font-semibold text-foreground">{title}</h3>
+    <section className="flex flex-col gap-1.5">
+      <header className="flex flex-col gap-0.5 px-1">
+        <SectionLabel>{title}</SectionLabel>
         {description !== undefined && (
-          <p className="mt-0.5 text-caption text-muted-foreground">{description}</p>
+          <p className="text-caption text-muted-foreground/90">{description}</p>
         )}
       </header>
-      <div className="divide-y divide-border border-t border-border">{children}</div>
+      <div className="divide-y divide-border overflow-hidden rounded-lg bg-card shadow-raise ring-1 ring-border ring-inset">
+        {children}
+      </div>
     </section>
   );
 }
@@ -39,7 +42,7 @@ export function SettingRow({
   children: ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_14rem] items-center gap-x-5 px-4 py-2.5">
+    <div className="grid min-h-9 grid-cols-[minmax(0,1fr)_14rem] items-center gap-x-4 px-3 py-2">
       <div className="min-w-0">
         <Label htmlFor={htmlFor} className="text-body font-normal text-foreground">
           {label}
@@ -61,7 +64,7 @@ export function SettingBlock({
   children: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-2 px-4 py-3">
+    <div className="flex flex-col gap-1.5 px-3 py-2.5">
       <div className="min-w-0">
         <span className="text-body text-foreground">{label}</span>
         {hint !== undefined && <p className="mt-0.5 text-caption text-muted-foreground">{hint}</p>}
@@ -126,7 +129,7 @@ export function SettingSlider({
   onChange: (value: number) => void;
 }) {
   return (
-    <div className="flex w-full items-center gap-3">
+    <div className="flex w-full items-center gap-2.5">
       <Slider
         className="min-w-0 flex-1"
         min={min}

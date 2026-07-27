@@ -27,10 +27,10 @@ function PresetRow({
   onRemove: () => void;
 }) {
   return (
-    <div className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5">
+    <div className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 transition-colors hover:bg-surface/50">
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="truncate text-body">{preset.name.trim() || UNNAMED_PRESET_LABEL}</span>
-        <span className="line-clamp-2 text-caption text-muted-foreground">
+        <span className="line-clamp-1 text-caption text-muted-foreground">
           {lengthLabel(preset.text)}
           {preset.text.trim() === "" ? "" : ` · ${preset.text.trim()}`}
         </span>
@@ -57,7 +57,7 @@ function PresetEditor({
   onDone: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 bg-surface px-4 py-3">
+    <div className="flex flex-col gap-2 bg-surface px-3 py-2.5">
       <div className="flex items-center gap-2">
         <Input
           autoFocus
@@ -116,7 +116,7 @@ export function PresetsSection({
         description="Препромпт подставляется в начало системного промпта чата и выбирается в тулбаре под полем ввода."
       >
         {presets.length === 0 && (
-          <div className="flex flex-col items-start gap-2 px-4 py-5">
+          <div className="flex flex-col items-start gap-2 px-3 py-4">
             <span className="text-body">Пока ни одного пресета</span>
             <span className="max-w-prose text-caption text-muted-foreground">
               Пресет — заготовка роли: «отвечай кратко и по делу», «ты интервьюер по Go», «переводи
@@ -154,7 +154,7 @@ export function PresetsSection({
           ),
         )}
         {presets.length > 0 && (
-          <div className="px-4 py-2.5">
+          <div className="px-3 py-2">
             <Button variant="ghost" size="sm" onClick={add}>
               <Plus />
               Добавить пресет
@@ -168,9 +168,9 @@ export function PresetsSection({
         description="Приходят вместе с приложением и обновляются сами — их видно в том же списке в чате."
       >
         {official.map((preset) => (
-          <div key={preset.id} className="flex min-w-0 flex-col gap-0.5 px-4 py-2.5">
+          <div key={preset.id} className="flex min-w-0 flex-col gap-0.5 px-3 py-2">
             <span className="truncate text-body">{preset.name}</span>
-            <span className="line-clamp-2 text-caption text-muted-foreground">{preset.text}</span>
+            <span className="line-clamp-1 text-caption text-muted-foreground">{preset.text}</span>
           </div>
         ))}
       </SettingGroup>
