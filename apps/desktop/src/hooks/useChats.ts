@@ -112,6 +112,21 @@ function dataUrlToFile(dataUrl: string, mediaType: string): File {
   return new File([bytes], SCREENSHOT_FILE_NAME, { type: mediaType });
 }
 
+const ACTIVE_CHAT_STORAGE_KEY = "active-chat-id";
+
+function rememberedActiveId(chats: Chat[]): string {
+  const stored = localStorage.getItem(ACTIVE_CHAT_STORAGE_KEY) ?? "";
+  const survived = chats.some((c) => c.id === stored);
+  return survived ? stored : (chats[0]?.id ?? "");
+}
+
+function useRememberActiveChat(activeId: string, loaded: RefObject<boolean>): void {
+  useEffect(() => {
+    if (!loaded.current || activeId === "") return;
+    localStorage.setItem(ACTIVE_CHAT_STORAGE_KEY, activeId);
+  }, [activeId, loaded]);
+}
+
 function useInitialChatsLoad(
   setChats: Dispatch<SetStateAction<Chat[]>>,
   setActiveId: Dispatch<SetStateAction<string>>,
@@ -125,7 +140,7 @@ function useInitialChatsLoad(
       const first = initial[0];
       if (!first) return;
       setChats(initial);
-      setActiveId(first.id);
+      setActiveId(rememberedActiveId(initial));
       loaded.current = true;
     });
     return () => {
@@ -148,6 +163,28 @@ function useDebouncedChatsSave(chats: Chat[], loaded: RefObject<boolean>): void 
   }, [chats, loaded]);
 }
 
+function chatWithUserMessage(
+  chat: Chat,
+  index: number,
+  text: string,
+  images: ImagePayload[],
+): Chat {
+  const isFirst = chat.messages.length === 0;
+  return {
+    ...chat,
+    title: isFirst && !chat.titlePinned ? chatTitle(text, index + 1) : chat.title,
+    messages: [...chat.messages, { role: "user", text, images }],
+  };
+}
+
+function withClearedDraft(chat: Chat): Chat {
+  return { ...chat, draft: "", draftAttachments: [] };
+}
+
+function withoutSentAttachments(chat: Chat, images: ImagePayload[]): Chat {
+  return images.length === 0 ? chat : { ...chat, draftAttachments: [] };
+}
+
 export interface ChatsApi {
   chats: Chat[];
   activeId: string;
@@ -160,6 +197,7 @@ export interface ChatsApi {
   addDraftImage: (id: string, dataUrl: string, mediaType: string) => Promise<void>;
   removeDraftAttachment: (id: string, index: number) => void;
   appendUserMessage: (id: string, text: string, images: ImagePayload[]) => void;
+  appendQuickActionMessage: (id: string, text: string, images: ImagePayload[]) => void;
   appendAssistantMessage: (id: string, text: string) => void;
   removeMessage: (id: string, index: number) => void;
   truncateMessages: (id: string, count: number) => void;
@@ -175,6 +213,7 @@ export function useChats(): ChatsApi {
   useDebouncedChatsSave(chats, loaded);
 
   const effectiveActiveId = activeId || (chats[0]?.id ?? "");
+  useRememberActiveChat(effectiveActiveId, loaded);
 
   const patch = useCallback((id: string, fn: (c: Chat) => Chat) => {
     setChats((prev) => prev.map((c) => (c.id === id ? fn(c) : c)));
@@ -266,21 +305,30 @@ export function useChats(): ChatsApi {
     [patch],
   );
 
-  const appendUserMessage = useCallback((id: string, text: string, images: ImagePayload[]) => {
-    setChats((prev) =>
-      prev.map((c, i) => {
-        if (c.id !== id) return c;
-        const isFirst = c.messages.length === 0;
-        return {
-          ...c,
-          title: isFirst && !c.titlePinned ? chatTitle(text, i + 1) : c.title,
-          messages: [...c.messages, { role: "user", text, images }],
-          draft: "",
-          draftAttachments: [],
-        };
-      }),
-    );
-  }, []);
+  const appendUserTurn = useCallback(
+    (id: string, text: string, images: ImagePayload[], afterAppend: (chat: Chat) => Chat) => {
+      setChats((prev) =>
+        prev.map((c, i) =>
+          c.id === id ? afterAppend(chatWithUserMessage(c, i, text, images)) : c,
+        ),
+      );
+    },
+    [],
+  );
+
+  const appendUserMessage = useCallback(
+    (id: string, text: string, images: ImagePayload[]) => {
+      appendUserTurn(id, text, images, withClearedDraft);
+    },
+    [appendUserTurn],
+  );
+
+  const appendQuickActionMessage = useCallback(
+    (id: string, text: string, images: ImagePayload[]) => {
+      appendUserTurn(id, text, images, (c) => withoutSentAttachments(c, images));
+    },
+    [appendUserTurn],
+  );
 
   const appendAssistantMessage = useCallback(
     (id: string, text: string) => {
@@ -327,6 +375,7 @@ export function useChats(): ChatsApi {
     addDraftImage,
     removeDraftAttachment,
     appendUserMessage,
+    appendQuickActionMessage,
     appendAssistantMessage,
     removeMessage,
     truncateMessages,

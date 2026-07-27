@@ -20,6 +20,7 @@ const EVENT_UPDATE_DONE: &str = "update-done";
 const EVENT_OFFICIAL_PRESETS_UPDATED: &str = "official-presets-updated";
 const EVENT_SCREENSHOT_READY: &str = "screenshot-ready";
 const EVENT_SCREENSHOT_ERROR: &str = "screenshot-error";
+const EVENT_FOCUS_PROMPT: &str = "focus-prompt";
 
 #[derive(Clone, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -141,6 +142,10 @@ pub fn screenshot_error(app: &AppHandle, error: AppError) {
 
 pub fn toggle_teleprompter(app: &AppHandle) {
     let _ = app.emit(EVENT_TOGGLE_TELEPROMPTER, ());
+}
+
+pub fn focus_prompt(app: &AppHandle) {
+    let _ = app.emit(EVENT_FOCUS_PROMPT, ());
 }
 
 pub fn resize_key(app: &AppHandle, dx: i32, dy: i32) {

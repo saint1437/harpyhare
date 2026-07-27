@@ -31,6 +31,8 @@ static HOOK_APP: OnceLock<AppHandle> = OnceLock::new();
 
 pub fn disable_cursor_autohide_on_typing() {}
 
+pub fn merge_titlebar_into_content(_app: &AppHandle) {}
+
 pub fn clip_native_window_corners(app: &AppHandle) {
     let Some(w) = main_window(app) else {
         return;

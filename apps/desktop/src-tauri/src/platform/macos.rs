@@ -2,7 +2,7 @@ use objc2_app_kit::NSEventModifierFlags;
 use tauri::AppHandle;
 
 use super::{handle_arrow_key, ModifierMask, WINDOW_CORNER_RADIUS_LOGICAL_PX};
-use crate::window::main_window;
+use crate::window::{launcher_window, main_window};
 
 const KEY_CODE_ARROW_LEFT: u16 = 123;
 const KEY_CODE_ARROW_RIGHT: u16 = 124;
@@ -32,6 +32,26 @@ pub fn disable_cursor_autohide_on_typing() {
             std::ptr::from_ref(method).cast(),
             keep_cursor_visible,
         );
+    }
+}
+
+const STYLE_MASK_FULL_SIZE_CONTENT_VIEW: usize = 1 << 15;
+const TITLE_VISIBILITY_HIDDEN: isize = 1;
+
+pub fn merge_titlebar_into_content(app: &AppHandle) {
+    use objc2::{msg_send, runtime::AnyObject};
+    let Some(w) = launcher_window(app) else {
+        return;
+    };
+    let Ok(ns_window) = w.ns_window() else {
+        return;
+    };
+    let ns_window = ns_window.cast::<AnyObject>();
+    unsafe {
+        let mask: usize = msg_send![ns_window, styleMask];
+        let _: () = msg_send![ns_window, setStyleMask: mask | STYLE_MASK_FULL_SIZE_CONTENT_VIEW];
+        let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: true];
+        let _: () = msg_send![ns_window, setTitleVisibility: TITLE_VISIBILITY_HIDDEN];
     }
 }
 

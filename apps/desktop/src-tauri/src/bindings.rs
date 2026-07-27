@@ -2,7 +2,8 @@ use tauri_specta::{collect_commands, Builder, ErrorHandlingMode};
 
 use crate::settings::{self, SettingsLimits};
 use crate::{
-    chat, events, hotkeys, permissions, preferences, recording, screenshot, storage, system, window,
+    chat, clipboard, events, hotkeys, permissions, preferences, recording, screenshot, storage,
+    system, window,
 };
 
 pub const BINDINGS_OUTPUT_PATH: &str = "../src/ipc/bindings.ts";
@@ -10,6 +11,8 @@ const SETTINGS_LIMITS_CONSTANT: &str = "SETTINGS_LIMITS";
 const SETTINGS_DEFAULTS_CONSTANT: &str = "SETTINGS_DEFAULTS";
 const MODIFIER_COMBOS_CONSTANT: &str = "MODIFIER_COMBOS";
 const HOTKEY_ACTIONS_CONSTANT: &str = "HOTKEY_ACTIONS";
+const QUICK_ACTION_LIMIT_CONSTANT: &str = "QUICK_ACTION_LIMIT";
+const ANSWER_STYLES_CONSTANT: &str = "ANSWER_STYLES";
 
 pub fn builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new()
@@ -41,6 +44,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             permissions::permissions_status,
             permissions::request_permission,
             permissions::open_permission_settings,
+            clipboard::copy_image_to_clipboard,
             system::open_external,
             system::set_preview_html,
             system::check_for_update,
@@ -71,6 +75,8 @@ pub fn builder() -> Builder<tauri::Wry> {
         .constant(SETTINGS_DEFAULTS_CONSTANT, settings::Settings::default())
         .constant(MODIFIER_COMBOS_CONSTANT, hotkeys::MODIFIER_COMBOS)
         .constant(HOTKEY_ACTIONS_CONSTANT, hotkeys::HOTKEY_ACTIONS)
+        .constant(QUICK_ACTION_LIMIT_CONSTANT, settings::QUICK_ACTION_LIMIT as u32)
+        .constant(ANSWER_STYLES_CONSTANT, settings::ANSWER_STYLES)
         .error_handling(ErrorHandlingMode::Throw)
 }
 

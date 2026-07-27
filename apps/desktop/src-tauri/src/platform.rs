@@ -148,6 +148,10 @@ pub fn clip_native_window_corners(app: &AppHandle) {
     backend::clip_native_window_corners(app);
 }
 
+pub fn merge_titlebar_into_content(app: &AppHandle) {
+    backend::merge_titlebar_into_content(app);
+}
+
 pub fn install_move_keys_monitor(app: AppHandle) {
     backend::install_move_keys_monitor(app);
 }

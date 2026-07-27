@@ -15,6 +15,13 @@ function focusTextarea() {
   return ta;
 }
 
+function mountFocusedTextarea() {
+  const ta = document.createElement("textarea");
+  document.body.appendChild(ta);
+  ta.focus();
+  return ta;
+}
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -30,6 +37,15 @@ describe("usePttSuspend", () => {
     expect(setPttSuspended).toHaveBeenCalledWith(true);
     ta.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
     expect(setPttSuspended).toHaveBeenCalledWith(false);
+  });
+
+  it("буквенный хоткей глушится, даже если поле сфокусировали до подписки", () => {
+    const ta = mountFocusedTextarea();
+    expect(document.activeElement).toBe(ta);
+    renderHook(() => {
+      usePttSuspend("V");
+    });
+    expect(setPttSuspended).toHaveBeenCalledWith(true);
   });
 
   it("F9 не глушится: запись стартует и при фокусе в поле промпта", () => {

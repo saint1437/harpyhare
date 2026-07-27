@@ -31,6 +31,7 @@ describe("AnswerPanel — подсветка кода", () => {
         streaming={false}
         scrollModifier="Alt"
         onTogglePreview={() => undefined}
+        onCopyMessage={() => undefined}
         onRemoveMessage={() => undefined}
         onResendMessage={() => undefined}
       />,
@@ -54,6 +55,7 @@ describe("AnswerPanel — подсветка кода", () => {
         streaming={false}
         scrollModifier="Alt"
         onTogglePreview={() => undefined}
+        onCopyMessage={() => undefined}
         onRemoveMessage={() => undefined}
         onResendMessage={() => undefined}
       />,
@@ -74,6 +76,7 @@ describe("AnswerPanel — подсветка кода", () => {
         streaming={false}
         scrollModifier="Alt"
         onTogglePreview={() => undefined}
+        onCopyMessage={() => undefined}
         onRemoveMessage={() => undefined}
         onResendMessage={() => undefined}
       />,
@@ -92,6 +95,7 @@ describe("AnswerPanel — индикатор ожидания", () => {
         streaming={true}
         scrollModifier="Alt"
         onTogglePreview={() => undefined}
+        onCopyMessage={() => undefined}
         onRemoveMessage={() => undefined}
         onResendMessage={() => undefined}
       />,
@@ -107,6 +111,7 @@ describe("AnswerPanel — индикатор ожидания", () => {
         streaming={true}
         scrollModifier="Alt"
         onTogglePreview={() => undefined}
+        onCopyMessage={() => undefined}
         onRemoveMessage={() => undefined}
         onResendMessage={() => undefined}
       />,
@@ -122,10 +127,55 @@ describe("AnswerPanel — индикатор ожидания", () => {
         streaming={false}
         scrollModifier="Alt"
         onTogglePreview={() => undefined}
+        onCopyMessage={() => undefined}
         onRemoveMessage={() => undefined}
         onResendMessage={() => undefined}
       />,
     );
     expect(queryByText(/Думает…/)).toBeNull();
+  });
+});
+
+describe("AnswerPanel — картинки в сообщении пользователя", () => {
+  const withImage: ChatMessage = {
+    role: "user",
+    text: "что тут не так?",
+    images: [{ media_type: "image/png", data: "iVBORw0K" }],
+  };
+
+  function renderMessages(messages: ChatMessage[]) {
+    return render(
+      <AnswerPanel
+        messages={messages}
+        partial={null}
+        streaming={false}
+        scrollModifier="Alt"
+        onTogglePreview={() => undefined}
+        onCopyMessage={() => undefined}
+        onRemoveMessage={() => undefined}
+        onResendMessage={() => undefined}
+      />,
+    );
+  }
+
+  it("отправленная картинка видна в пузыре, а не только уходит в запрос", () => {
+    const { container } = renderMessages([withImage]);
+    const img = container.querySelector("img");
+    expect(img?.getAttribute("src")).toBe("data:image/png;base64,iVBORw0K");
+  });
+
+  it("текст сообщения остаётся рядом с картинкой", () => {
+    const { container } = renderMessages([withImage]);
+    expect(container.textContent).toContain("что тут не так?");
+  });
+
+  it("сообщение без картинок не рисует пустых img", () => {
+    const { container } = renderMessages([userMsg]);
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("картинка без текста показывается сама по себе", () => {
+    const { container } = renderMessages([{ ...withImage, text: "" }]);
+    expect(container.querySelectorAll("img")).toHaveLength(1);
   });
 });

@@ -9,7 +9,13 @@ vi.mock("@/ipc/commands", () => ({
 }));
 
 import { CHAT_LIMIT } from "@/lib/chats";
+import type { Attachment } from "@/lib/composer";
 import { useChats } from "./useChats";
+
+const ATTACHMENT: Attachment = {
+  payload: { media_type: "image/png", data: "AAAA" },
+  preview: "data:image/png;base64,AAAA",
+};
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -65,6 +71,48 @@ describe("useChats", () => {
     expect(result.current.active.draft).toBe("");
     expect(result.current.active.messages).toHaveLength(1);
     expect(result.current.active.messages[0]?.role).toBe("user");
+  });
+
+  it("appendQuickActionMessage не трогает черновик и оставляет неотправленные вложения", async () => {
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(1);
+    });
+    const id = result.current.activeId;
+    act(() => {
+      result.current.patchChat(id, {
+        draft: "недописанный промпт",
+        draftAttachments: [ATTACHMENT],
+      });
+    });
+    act(() => {
+      result.current.appendQuickActionMessage(id, "Переведи на английский", []);
+    });
+    expect(result.current.active.messages).toHaveLength(1);
+    expect(result.current.active.messages[0]?.text).toBe("Переведи на английский");
+    expect(result.current.active.draft).toBe("недописанный промпт");
+    expect(result.current.active.draftAttachments).toEqual([ATTACHMENT]);
+  });
+
+  it("appendQuickActionMessage чистит вложения, ушедшие в сообщение, но не черновик", async () => {
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(1);
+    });
+    const id = result.current.activeId;
+    act(() => {
+      result.current.patchChat(id, {
+        draft: "недописанный промпт",
+        draftAttachments: [ATTACHMENT],
+      });
+    });
+    act(() => {
+      result.current.appendQuickActionMessage(id, "Опиши скриншот", [ATTACHMENT.payload]);
+    });
+    expect(result.current.active.messages[0]?.images).toEqual([ATTACHMENT.payload]);
+    expect(result.current.active.draftAttachments).toEqual([]);
+    expect(result.current.active.draft).toBe("недописанный промпт");
+    expect(result.current.active.title).toBe("Опиши скриншот");
   });
 
   it("removeMessage удаляет сообщение по индексу (и своё, и ответ)", async () => {
@@ -219,5 +267,51 @@ describe("useChats", () => {
     });
     expect(result.current.active.draftAttachments).toHaveLength(1);
     expect(result.current.active.draftAttachments[0]?.payload.media_type).toBe("image/png");
+  });
+});
+
+describe("useChats — активный чат переживает выход", () => {
+  const STORAGE_KEY = "active-chat-id";
+  const TWO_CHATS = JSON.stringify([
+    { id: "one", title: "Чат 1", messages: [], draft: "" },
+    { id: "two", title: "Чат 2", messages: [], draft: "" },
+  ]);
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("открывается тот чат, в котором вышли, а не первый", async () => {
+    localStorage.setItem(STORAGE_KEY, "two");
+    loadChats.mockResolvedValue(TWO_CHATS);
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(2);
+    });
+    expect(result.current.activeId).toBe("two");
+  });
+
+  it("если запомненный чат удалён, открывается первый", async () => {
+    localStorage.setItem(STORAGE_KEY, "которого-нет");
+    loadChats.mockResolvedValue(TWO_CHATS);
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(2);
+    });
+    expect(result.current.activeId).toBe("one");
+  });
+
+  it("переключение чата запоминается сразу", async () => {
+    loadChats.mockResolvedValue(TWO_CHATS);
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(2);
+    });
+    act(() => {
+      result.current.selectChat("two");
+    });
+    await waitFor(() => {
+      expect(localStorage.getItem(STORAGE_KEY)).toBe("two");
+    });
   });
 });

@@ -84,6 +84,23 @@ pub fn unregister_screenshot(app: &AppHandle, hotkey: &str) {
     }
 }
 
+pub fn register_focus_prompt(app: &AppHandle, hotkey: &str) -> Result<(), String> {
+    let shortcut = parse_hotkey(hotkey).ok_or_else(|| unparseable_hotkey_error(hotkey))?;
+    app.global_shortcut()
+        .on_shortcut(shortcut, |app, _shortcut, event| {
+            if event.state == ShortcutState::Pressed {
+                defer(app, window::show_and_focus_prompt);
+            }
+        })
+        .map_err(|e| e.to_string())
+}
+
+pub fn unregister_focus_prompt(app: &AppHandle, hotkey: &str) {
+    if let Some(shortcut) = parse_hotkey(hotkey) {
+        let _ = app.global_shortcut().unregister(shortcut);
+    }
+}
+
 pub fn register_cancel(app: &AppHandle, hotkey: &str) {
     if let Some(shortcut) = parse_hotkey(hotkey) {
         let _ = app

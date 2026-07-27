@@ -12,7 +12,6 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useRef,
   useState,
   type ReactNode,
   type RefObject,
@@ -36,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import type { QuickAction } from "@/ipc/types";
 import type { Chat, ChatPatch } from "@/lib/chats";
 import { extractImageItems } from "@/lib/composer";
 import type { Attachment } from "@/lib/composer";
@@ -48,6 +48,7 @@ import {
 import { modelLabel, selectableModels, thinkingLocked, type ModelInfo } from "@/lib/models";
 import { cn } from "@/lib/utils";
 import { AttachmentChip } from "./AttachmentChip";
+import { QuickActionsBar } from "./QuickActionsBar";
 
 export interface ComposerProps {
   chat: Chat;
@@ -64,6 +65,10 @@ export interface ComposerProps {
   library: ContextLibrary;
   models: ModelInfo[];
   onCaptureRegion: () => void;
+  promptRef: RefObject<HTMLTextAreaElement | null>;
+  quickActions: QuickAction[];
+  quickActionCombo: string;
+  onQuickAction: (action: QuickAction) => void;
 }
 
 const SELECT_TRIGGER_CLASS = "h-7 w-full text-caption";
@@ -79,6 +84,7 @@ function pasteHasImages(items: DataTransferItemList) {
 type PromptTextareaProps = Pick<ComposerProps, "onPaste" | "onSend"> & {
   value: string;
   onChange: (value: string) => void;
+  fieldRef: RefObject<HTMLTextAreaElement | null>;
 };
 
 const PROMPT_MAX_HEIGHT_PX = 160;
@@ -105,11 +111,10 @@ function usePromptAutosize(ref: RefObject<HTMLTextAreaElement | null>, value: st
 }
 
 function PromptTextarea(props: PromptTextareaProps) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-  usePromptAutosize(ref, props.value);
+  usePromptAutosize(props.fieldRef, props.value);
   return (
     <Textarea
-      ref={ref}
+      ref={props.fieldRef}
       value={props.value}
       onChange={(e) => {
         props.onChange(e.target.value);
@@ -549,8 +554,15 @@ export function Composer(props: ComposerProps) {
   };
   return (
     <section>
+      <QuickActionsBar
+        actions={props.quickActions}
+        combo={props.quickActionCombo}
+        disabled={props.streaming}
+        onRun={props.onQuickAction}
+      />
       <div className="rounded-xl bg-card/60 ring-1 ring-border transition-[box-shadow] ring-inset focus-within:ring-ring/50">
         <PromptTextarea
+          fieldRef={props.promptRef}
           value={chat.draft}
           onChange={(draft) => {
             onPatch({ draft });

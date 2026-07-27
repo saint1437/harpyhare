@@ -17,6 +17,15 @@ describe("hotkeysConflict — зеркало правил из Rust", () => {
     expect(hotkeysConflict("resize_window", "Cmd+Shift", "scroll_chat", "Cmd+Shift")).toBe(true);
   });
 
+  it("семейство цифр делит модификатор с другими семействами, но спорит за цифры", () => {
+    expect(hotkeysConflict("quick_action", "Cmd", "move_window", "Cmd")).toBe(false);
+    expect(hotkeysConflict("quick_action", "Cmd+Shift", "opacity", "Cmd+Shift")).toBe(false);
+    expect(hotkeysConflict("send", "Cmd+1", "quick_action", "Cmd")).toBe(true);
+    expect(hotkeysConflict("send", "Cmd+Digit9", "quick_action", "Cmd")).toBe(true);
+    expect(hotkeysConflict("send", "Cmd+0", "quick_action", "Cmd")).toBe(false);
+    expect(hotkeysConflict("send", "Cmd+Enter", "quick_action", "Cmd")).toBe(false);
+  });
+
   it("сочетание конфликтует с семейством, в которое попадает", () => {
     expect(hotkeysConflict("send", "Cmd+ArrowUp", "move_window", "Cmd")).toBe(true);
     expect(hotkeysConflict("send", "Cmd+Shift+Minus", "opacity", "Cmd+Shift")).toBe(true);

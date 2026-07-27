@@ -16,6 +16,7 @@ import { ConnectivityOverlay } from "@/components/ConnectivityOverlay";
 import { HotkeysPopover } from "@/components/HotkeysPopover";
 import { IconButton } from "@/components/IconButton";
 import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
+import { ScreenShareIndicator } from "@/components/ScreenShareIndicator";
 import { StatusBar, type ContextUsage, type StatusBarProps } from "@/components/StatusBar";
 import { Teleprompter } from "@/components/Teleprompter";
 import { UpdateDialog } from "@/components/UpdateDialog";
@@ -23,9 +24,12 @@ import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
 import { useConnectivity } from "@/hooks/useConnectivity";
 import { useContextLibrary } from "@/hooks/useContextLibrary";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import { useModels } from "@/hooks/useModels";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
+import { usePromptFocus } from "@/hooks/usePromptFocus";
 import { usePttSuspend } from "@/hooks/usePttSuspend";
+import { useQuickActionKeys } from "@/hooks/useQuickActionKeys";
 import { useRecorder } from "@/hooks/useRecorder";
 import { useRegionScreenshot } from "@/hooks/useRegionScreenshot";
 import { useSettings } from "@/hooks/useSettings";
@@ -33,31 +37,35 @@ import { useTranscription } from "@/hooks/useTranscription";
 import { useUpdater, type UpdaterApi } from "@/hooks/useUpdater";
 import { useWindowControls } from "@/hooks/useWindowControls";
 import {
-  closeApp,
   hideMainWindow,
   countChatTokens,
   retryTranscription,
   setWindowSize,
   startWindowDrag,
   stopMainWindow,
+  copyImageToClipboard,
 } from "@/ipc/commands";
 import { onEvent, onWindowResized, type LogicalWindowSize } from "@/ipc/events";
 import type {
   ChatMessageDto,
   HotkeyBinding,
   ImagePayload,
+  QuickAction,
   RecorderState,
   Settings,
 } from "@/ipc/types";
+import { answerStyleBlock } from "@/lib/answer-style";
 import { chatRequestOptions, type Chat, type ChatMessage } from "@/lib/chats";
 import { appendTranscript } from "@/lib/composer";
 import { libraryContextBlocks, type ContextLibrary } from "@/lib/context-library";
 import { internalError, isNetworkError, isRetryable, type AppError } from "@/lib/errors";
 import { effectiveCombo } from "@/lib/hotkeys";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
+import { imagePngBase64, messageCopyImage, messageCopyText } from "@/lib/message-clipboard";
 import type { ModelInfo } from "@/lib/models";
 import { mergePresets, presetText, type PromptPreset } from "@/lib/presets";
 import { queryKeys } from "@/lib/query-client";
+import { filledQuickActions } from "@/lib/quick-actions";
 import { toReadingText } from "@/lib/teleprompter";
 import { nativeSizeEcho, windowSizesEqual } from "@/lib/window-size";
 
@@ -69,6 +77,7 @@ const USER_CONTEXT_SYSTEM_HEADER = "Контекст от пользовател
 const SYSTEM_BLOCKS_SEPARATOR = "\n\n";
 
 const settingsSaveErrorText = (err: string) => `Ошибка сохранения настроек: ${err}`;
+const COPY_IMAGE_ERROR_TEXT = "Не удалось скопировать картинку в буфер обмена";
 
 function historyWithNewUserMessage(
   chat: Chat,
@@ -81,12 +90,22 @@ function historyWithNewUserMessage(
   ];
 }
 
-function chatSystemPrompt(presets: PromptPreset[], chat: Chat, library: ContextLibrary): string {
+function draftImages(chat: Chat): ImagePayload[] {
+  return chat.draftAttachments.map((a) => a.payload);
+}
+
+function chatSystemPrompt(
+  presets: PromptPreset[],
+  chat: Chat,
+  library: ContextLibrary,
+  answerStyle: string,
+): string {
   const context = chat.context.trim();
   return [
     presetText(presets, chat.presetId),
     ...libraryContextBlocks(library, chat.libraryDocIds),
     context === "" ? "" : `${USER_CONTEXT_SYSTEM_HEADER}${context}`,
+    answerStyleBlock(answerStyle, chat.presetId),
   ]
     .filter((s) => s !== "")
     .join(SYSTEM_BLOCKS_SEPARATOR);
@@ -113,12 +132,6 @@ function updateBadge(updater: UpdaterApi, onOpen: () => void): StatusBarProps["u
     busy: updater.status === "downloading" || updater.status === "restarting",
     onOpen,
   };
-}
-
-function useLatestRef<T>(value: T): RefObject<T> {
-  const ref = useRef(value);
-  ref.current = value;
-  return ref;
 }
 
 interface SttFeedback {
@@ -276,6 +289,7 @@ function useProjectedContextTokens(chat: Chat, system: string, streaming: boolea
 
 interface SendPipeline {
   dispatchSend: (rawText: string) => void;
+  dispatchQuickAction: (prompt: string, withAttachments: boolean) => void;
   doSend: () => void;
   resendFromMessage: (index: number) => void;
 }
@@ -285,22 +299,48 @@ function useSendPipeline(
   streamRef: RefObject<ClaudeStreams>,
   presetsRef: RefObject<PromptPreset[]>,
   libraryRef: RefObject<ContextLibrary>,
+  settingsRef: RefObject<Settings>,
   clearSttError: () => void,
 ): SendPipeline {
+  const streamChat = useCallback(
+    (chat: Chat, history: ChatMessageDto[]) => {
+      const system = chatSystemPrompt(
+        presetsRef.current,
+        chat,
+        libraryRef.current,
+        settingsRef.current.answer_style,
+      );
+      void streamRef.current.send(chat.id, history, system, chat.model, chatRequestOptions(chat));
+    },
+    [streamRef, presetsRef, libraryRef, settingsRef],
+  );
+
   const dispatchSend = useCallback(
     (rawText: string) => {
       const chat = chatsRef.current.active;
       if (streamRef.current.streaming[chat.id]) return;
       const trimmed = rawText.trim();
-      const images = chat.draftAttachments.map((a) => a.payload);
+      const images = draftImages(chat);
       if (trimmed === "" && images.length === 0) return;
       clearSttError();
       chatsRef.current.appendUserMessage(chat.id, trimmed, images);
-      const history = historyWithNewUserMessage(chat, trimmed, images);
-      const system = chatSystemPrompt(presetsRef.current, chat, libraryRef.current);
-      void streamRef.current.send(chat.id, history, system, chat.model, chatRequestOptions(chat));
+      streamChat(chat, historyWithNewUserMessage(chat, trimmed, images));
     },
-    [chatsRef, streamRef, presetsRef, libraryRef, clearSttError],
+    [chatsRef, streamRef, clearSttError, streamChat],
+  );
+
+  const dispatchQuickAction = useCallback(
+    (prompt: string, withAttachments: boolean) => {
+      const chat = chatsRef.current.active;
+      if (streamRef.current.streaming[chat.id]) return;
+      const trimmed = prompt.trim();
+      if (trimmed === "") return;
+      const images = withAttachments ? draftImages(chat) : [];
+      clearSttError();
+      chatsRef.current.appendQuickActionMessage(chat.id, trimmed, images);
+      streamChat(chat, historyWithNewUserMessage(chat, trimmed, images));
+    },
+    [chatsRef, streamRef, clearSttError, streamChat],
   );
 
   const doSend = useCallback(() => {
@@ -315,14 +355,15 @@ function useSendPipeline(
       clearSttError();
       const kept = chat.messages.slice(0, index + 1);
       chatsRef.current.truncateMessages(chat.id, kept.length);
-      const history = kept.map((m) => ({ role: m.role, text: m.text, images: m.images }));
-      const system = chatSystemPrompt(presetsRef.current, chat, libraryRef.current);
-      void streamRef.current.send(chat.id, history, system, chat.model, chatRequestOptions(chat));
+      streamChat(
+        chat,
+        kept.map((m) => ({ role: m.role, text: m.text, images: m.images })),
+      );
     },
-    [chatsRef, streamRef, presetsRef, libraryRef, clearSttError],
+    [chatsRef, streamRef, clearSttError, streamChat],
   );
 
-  return { dispatchSend, doSend, resendFromMessage };
+  return { dispatchSend, dispatchQuickAction, doSend, resendFromMessage };
 }
 
 interface AppHeaderProps {
@@ -335,6 +376,8 @@ interface AppHeaderProps {
   canCopy: boolean;
   canTeleprompt: boolean;
   contextUsage: ContextUsage | null;
+  screenShareVisible: boolean;
+  onToggleScreenShare: () => void;
   onCopy: () => void;
   onOpenTeleprompter: () => void;
   onStop: () => void;
@@ -351,6 +394,8 @@ function AppHeader({
   canCopy,
   canTeleprompt,
   contextUsage,
+  screenShareVisible,
+  onToggleScreenShare,
   onCopy,
   onOpenTeleprompter,
   onStop,
@@ -364,7 +409,6 @@ function AppHeader({
       contextUsage={contextUsage}
       update={updateBadge(updater, onOpenUpdate)}
       onStop={onStop}
-      onClose={() => void closeApp()}
       onHide={() => void hideMainWindow()}
       tabs={
         <ChatTabs
@@ -381,6 +425,7 @@ function AppHeader({
       }
       actions={
         <>
+          <ScreenShareIndicator visible={screenShareVisible} onToggle={onToggleScreenShare} />
           {canTeleprompt && (
             <IconButton title="Суфлёр" onClick={onOpenTeleprompter}>
               <ScrollText />
@@ -409,6 +454,10 @@ interface AppComposerProps {
   onSend: () => void;
   onStop: () => void;
   onRetry: () => void;
+  promptRef: RefObject<HTMLTextAreaElement | null>;
+  quickActions: QuickAction[];
+  quickActionCombo: string;
+  onQuickAction: (action: QuickAction) => void;
 }
 
 function AppComposer({
@@ -422,6 +471,10 @@ function AppComposer({
   onSend,
   onStop,
   onRetry,
+  promptRef,
+  quickActions,
+  quickActionCombo,
+  onQuickAction,
 }: AppComposerProps) {
   const { active, activeId } = chats;
   return (
@@ -446,6 +499,10 @@ function AppComposer({
       library={library}
       models={models}
       onCaptureRegion={onCaptureRegion}
+      promptRef={promptRef}
+      quickActions={quickActions}
+      quickActionCombo={quickActionCombo}
+      onQuickAction={onQuickAction}
     />
   );
 }
@@ -531,11 +588,12 @@ export default function App() {
   const stream = useClaudeStream(onAssistantDone);
   const streamRef = useLatestRef(stream);
 
-  const { dispatchSend, doSend, resendFromMessage } = useSendPipeline(
+  const { dispatchSend, dispatchQuickAction, doSend, resendFromMessage } = useSendPipeline(
     chatsRef,
     streamRef,
     presetsRef,
     libraryRef,
+    settingsRef,
     clearAllErrors,
   );
 
@@ -555,6 +613,30 @@ export default function App() {
   useWindowControls(settings.hotkeys, doSend, bumpOpacity, bumpWindowSize);
   usePttSuspend(effectiveCombo(settings.hotkeys, "record"));
   const connectivity = useConnectivity();
+  const promptCoveredByOverlay = teleprompterOpen || connectivity.offline;
+  const promptRef = usePromptFocus(promptCoveredByOverlay);
+
+  const quickActions = useMemo(
+    () => (settingsLoading ? [] : filledQuickActions(settings.quick_actions)),
+    [settingsLoading, settings.quick_actions],
+  );
+  const quickActionCombo = effectiveCombo(settings.hotkeys, "quick_action");
+  const quickActionAttachments = settings.quick_action_attachments;
+  const runQuickAction = useCallback(
+    (action: QuickAction) => {
+      dispatchQuickAction(action.prompt, quickActionAttachments);
+    },
+    [dispatchQuickAction, quickActionAttachments],
+  );
+  const runQuickActionAt = useCallback(
+    (index: number) => {
+      if (promptCoveredByOverlay) return;
+      const action = quickActions[index];
+      if (action) runQuickAction(action);
+    },
+    [promptCoveredByOverlay, quickActions, runQuickAction],
+  );
+  useQuickActionKeys(quickActionCombo, quickActions.length, runQuickActionAt);
 
   useEffect(
     () =>
@@ -589,8 +671,8 @@ export default function App() {
   const canTeleprompt = hasAssistantReply || (partial !== null && partial !== "");
   const activeModelMaxInput = models.find((m) => m.id === active.model)?.maxInputTokens ?? 0;
   const activeSystem = useMemo(
-    () => chatSystemPrompt(presets, active, contextLibrary.library),
-    [presets, active, contextLibrary.library],
+    () => chatSystemPrompt(presets, active, contextLibrary.library, settings.answer_style),
+    [presets, active, contextLibrary.library, settings.answer_style],
   );
   const projectedTokens = useProjectedContextTokens(active, activeSystem, activeStreaming);
   const usedTokens = projectedTokens > 0 ? projectedTokens : active.lastInputTokens;
@@ -602,6 +684,31 @@ export default function App() {
   const saveSettingsReportingError = (next: Settings) => {
     void save(next).then((err) => {
       if (err) setSttError(internalError(settingsSaveErrorText(err)));
+    });
+  };
+
+  const copyMessage = (index: number) => {
+    const message = chatsRef.current.active.messages[index];
+    if (!message) return;
+    const text = messageCopyText(message);
+    if (text !== "") {
+      void navigator.clipboard.writeText(text);
+      return;
+    }
+    const image = messageCopyImage(message);
+    if (!image) return;
+    void imagePngBase64(image)
+      .then(copyImageToClipboard)
+      .catch(() => {
+        setSttError(internalError(COPY_IMAGE_ERROR_TEXT));
+      });
+  };
+
+  const toggleScreenShareVisible = () => {
+    const current = settingsRef.current;
+    saveSettingsReportingError({
+      ...current,
+      screen_share_visible: !current.screen_share_visible,
     });
   };
 
@@ -633,6 +740,8 @@ export default function App() {
           canCopy={canCopy}
           canTeleprompt={canTeleprompt}
           contextUsage={contextUsage}
+          screenShareVisible={settings.screen_share_visible}
+          onToggleScreenShare={toggleScreenShareVisible}
           onCopy={() => {
             copyLastAssistantMessage(active.messages);
           }}
@@ -654,6 +763,7 @@ export default function App() {
           scrollStep={settings.scroll_step}
           scrollModifier={effectiveCombo(settings.hotkeys, "scroll_chat")}
           onTogglePreview={togglePreview}
+          onCopyMessage={copyMessage}
           onRemoveMessage={(index) => {
             chats.removeMessage(activeId, index);
           }}
@@ -673,6 +783,10 @@ export default function App() {
             stream.stop(activeId);
           }}
           onRetry={retry}
+          promptRef={promptRef}
+          quickActions={quickActions}
+          quickActionCombo={quickActionCombo}
+          onQuickAction={runQuickAction}
         />
       </div>
 

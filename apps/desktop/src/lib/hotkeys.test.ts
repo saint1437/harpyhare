@@ -101,6 +101,7 @@ describe("hotkeyGroups на macOS", () => {
     expect(combos).toContain("⌘⇧H");
     expect(combos).toContain("⌘ ←→↑↓");
     expect(combos).toContain("⌘⇧ + −");
+    expect(combos).toContain("⌘ 1…9");
     expect(combos).toContain("⌥ ←→↑↓");
     expect(combos).toContain("⌘V");
   });
@@ -123,6 +124,7 @@ describe("hotkeyGroups на Windows", () => {
     expect(combos).toContain("Ctrl+Shift+H");
     expect(combos).toContain("Ctrl ←→↑↓");
     expect(combos).toContain("Ctrl+Shift + −");
+    expect(combos).toContain("Ctrl 1…9");
     expect(combos).toContain("Alt ←→↑↓");
     expect(combos).toContain("Ctrl+V");
   });
@@ -174,6 +176,13 @@ describe("comboTokens на macOS", () => {
       { type: "icon", icon: "shift" },
       { type: "icon", icon: "plus" },
       { type: "icon", icon: "minus" },
+    ]);
+  });
+
+  it("подсказка с цифрами остаётся текстом", () => {
+    expect(comboTokens("⌘ 1…9", "macos")).toEqual([
+      { type: "icon", icon: "cmd" },
+      { type: "text", text: "1…9" },
     ]);
   });
 });

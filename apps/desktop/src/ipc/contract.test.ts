@@ -10,6 +10,7 @@ import type {
   AudioOutputDevice,
   EventMap,
   IdentityInfo,
+  QuickAction,
   RecorderState,
   Settings,
   UpdateInfo,
@@ -17,9 +18,15 @@ import type {
 
 type Loosened<T> = { [K in keyof T]-?: Exclude<T[K], null> };
 
+type SameKeys<Ours, Generated> = [keyof Ours] extends [keyof Generated]
+  ? [keyof Generated] extends [keyof Ours]
+    ? true
+    : never
+  : never;
+
 type SameShape<Ours, Generated> = [Ours] extends [Generated]
   ? [Loosened<Generated>] extends [Ours]
-    ? true
+    ? SameKeys<Ours, Generated>
     : never
   : never;
 
@@ -42,6 +49,7 @@ const contract = {
   UpdateDone: true satisfies SameShape<EventMap["update-done"], Rust.UpdateDone>,
   ScreenshotReady: true satisfies SameShape<EventMap["screenshot-ready"], Rust.ScreenshotReady>,
   HotkeyBinding: true satisfies SameShape<HotkeyBinding, Rust.HotkeyBinding>,
+  QuickAction: true satisfies SameShape<QuickAction, Rust.QuickAction>,
   PlatformCombo: true satisfies SameShape<Record<Platform, string>, Rust.PlatformCombo>,
 };
 

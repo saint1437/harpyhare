@@ -4,6 +4,8 @@ pub const ACTION_RECORD: &str = "record";
 pub const ACTION_CANCEL_RECORDING: &str = "cancel_recording";
 pub const ACTION_SEND: &str = "send";
 pub const ACTION_SCREENSHOT: &str = "screenshot";
+pub const ACTION_QUICK_ACTION: &str = "quick_action";
+pub const ACTION_FOCUS_PROMPT: &str = "focus_prompt";
 pub const ACTION_TOGGLE_WINDOW: &str = "toggle_window";
 pub const ACTION_MOVE_WINDOW: &str = "move_window";
 pub const ACTION_RESIZE_WINDOW: &str = "resize_window";
@@ -118,6 +120,7 @@ pub const MODIFIER_COMBOS: PlatformModifierCombos = PlatformModifierCombos {
 };
 const ARROW_KEYS: &[&str] = &["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
 const PLUS_MINUS_KEYS: &[&str] = &["Minus", "Equal"];
+const FIRST_DIGIT_KEY: usize = 1;
 pub const COMBO_SEPARATOR: char = separator_token!().as_bytes()[0] as char;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, specta::Type)]
@@ -126,6 +129,7 @@ pub enum HotkeyKind {
     Combo,
     ModifierArrows,
     ModifierPlusMinus,
+    ModifierDigits,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, specta::Type)]
@@ -185,6 +189,24 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
         default_combo: primary_combo!(shift_token!(), "S"),
+    },
+    HotkeyAction {
+        id: ACTION_QUICK_ACTION,
+        group: "Отправка",
+        label: "Быстрое действие",
+        hint: "Модификатор с цифрой: 1…9 по порядку кнопок.",
+        kind: HotkeyKind::ModifierDigits,
+        scope: HotkeyScope::Hud,
+        default_combo: primary_combo!(),
+    },
+    HotkeyAction {
+        id: ACTION_FOCUS_PROMPT,
+        group: "Отправка",
+        label: "Сфокусировать поле ввода",
+        hint: "Поднимает окно и ставит каретку в конец текста.",
+        kind: HotkeyKind::Combo,
+        scope: HotkeyScope::Global,
+        default_combo: primary_combo!(shift_token!(), "D"),
     },
     HotkeyAction {
         id: ACTION_TOGGLE_WINDOW,
@@ -329,6 +351,12 @@ fn is_plus_minus(key: &str) -> bool {
     PLUS_MINUS_KEYS.iter().any(|k| k.eq_ignore_ascii_case(key))
 }
 
+fn is_digit(key: &str) -> bool {
+    canonical_key(key)
+        .parse::<usize>()
+        .is_ok_and(|digit| (FIRST_DIGIT_KEY..=crate::settings::QUICK_ACTION_LIMIT).contains(&digit))
+}
+
 fn scopes_coexist(a: HotkeyScope, b: HotkeyScope) -> bool {
     !matches!(
         (a, b),
@@ -346,9 +374,14 @@ fn key_spaces_overlap(a: &HotkeyAction, combo_a: &str, b: &HotkeyAction, combo_b
     match (a.kind, b.kind) {
         (HotkeyKind::Combo, HotkeyKind::Combo) => mods_a == mods_b && keys_equal(&key_a, &key_b),
         (HotkeyKind::ModifierArrows, HotkeyKind::ModifierArrows)
-        | (HotkeyKind::ModifierPlusMinus, HotkeyKind::ModifierPlusMinus) => mods_a == mods_b,
+        | (HotkeyKind::ModifierPlusMinus, HotkeyKind::ModifierPlusMinus)
+        | (HotkeyKind::ModifierDigits, HotkeyKind::ModifierDigits) => mods_a == mods_b,
         (HotkeyKind::ModifierArrows, HotkeyKind::ModifierPlusMinus)
-        | (HotkeyKind::ModifierPlusMinus, HotkeyKind::ModifierArrows) => false,
+        | (HotkeyKind::ModifierPlusMinus, HotkeyKind::ModifierArrows)
+        | (HotkeyKind::ModifierArrows, HotkeyKind::ModifierDigits)
+        | (HotkeyKind::ModifierDigits, HotkeyKind::ModifierArrows)
+        | (HotkeyKind::ModifierPlusMinus, HotkeyKind::ModifierDigits)
+        | (HotkeyKind::ModifierDigits, HotkeyKind::ModifierPlusMinus) => false,
         (HotkeyKind::Combo, HotkeyKind::ModifierArrows) => {
             mods_a == mods_b && key_a.as_deref().is_some_and(is_arrow)
         }
@@ -360,6 +393,12 @@ fn key_spaces_overlap(a: &HotkeyAction, combo_a: &str, b: &HotkeyAction, combo_b
         }
         (HotkeyKind::ModifierPlusMinus, HotkeyKind::Combo) => {
             mods_a == mods_b && key_b.as_deref().is_some_and(is_plus_minus)
+        }
+        (HotkeyKind::Combo, HotkeyKind::ModifierDigits) => {
+            mods_a == mods_b && key_a.as_deref().is_some_and(is_digit)
+        }
+        (HotkeyKind::ModifierDigits, HotkeyKind::Combo) => {
+            mods_a == mods_b && key_b.as_deref().is_some_and(is_digit)
         }
     }
 }

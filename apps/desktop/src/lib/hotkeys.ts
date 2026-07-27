@@ -1,4 +1,4 @@
-import { HOTKEY_ACTIONS } from "@/ipc/bindings";
+import { HOTKEY_ACTIONS, QUICK_ACTION_LIMIT } from "@/ipc/bindings";
 import type { HotkeyBinding } from "@/ipc/types";
 import { PLATFORM, type Platform } from "./platform";
 
@@ -68,6 +68,13 @@ const KEY_SYMBOLS: Record<string, string> = {
 const HINT_SEPARATOR = " ";
 const ARROWS_HINT = "←→↑↓";
 const PLUS_MINUS_HINT = "+ −";
+const DIGITS_HINT = `1…${QUICK_ACTION_LIMIT}`;
+
+const KIND_HINTS: Partial<Record<HotkeyAction["kind"], string>> = {
+  modifier_arrows: ARROWS_HINT,
+  modifier_plus_minus: PLUS_MINUS_HINT,
+  modifier_digits: DIGITS_HINT,
+};
 
 export function hotkeyAction(id: HotkeyActionId): HotkeyAction {
   return HOTKEY_ACTIONS.find((a) => a.id === id) ?? HOTKEY_ACTIONS[0];
@@ -126,6 +133,14 @@ export function formatCombo(combo: string, platform: Platform = PLATFORM): strin
   return parts.join(TOKEN_JOINER[platform]);
 }
 
+export function formatComboWithKey(
+  combo: string,
+  key: string,
+  platform: Platform = PLATFORM,
+): string {
+  return formatCombo([combo, key].join(COMBO_SEPARATOR), platform);
+}
+
 export function comboLabel(
   action: HotkeyAction,
   combo: string,
@@ -133,11 +148,8 @@ export function comboLabel(
 ): string {
   if (combo.trim() === "") return "";
   const formatted = formatCombo(combo, platform);
-  if (action.kind === "modifier_arrows") return `${formatted}${HINT_SEPARATOR}${ARROWS_HINT}`;
-  if (action.kind === "modifier_plus_minus") {
-    return `${formatted}${HINT_SEPARATOR}${PLUS_MINUS_HINT}`;
-  }
-  return formatted;
+  const hint = KIND_HINTS[action.kind];
+  return hint === undefined ? formatted : `${formatted}${HINT_SEPARATOR}${hint}`;
 }
 
 export interface HotkeyHint {

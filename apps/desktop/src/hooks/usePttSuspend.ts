@@ -22,6 +22,7 @@ export function usePttSuspend(hotkey: string): void {
     const resumeOnFieldBlur = (e: FocusEvent) => {
       if (isTextField(e.target)) void setPttSuspended(false);
     };
+    if (isTextField(document.activeElement)) void setPttSuspended(true);
     document.addEventListener(FOCUS_IN_EVENT, suspendOnFieldFocus);
     document.addEventListener(FOCUS_OUT_EVENT, resumeOnFieldBlur);
     return () => {

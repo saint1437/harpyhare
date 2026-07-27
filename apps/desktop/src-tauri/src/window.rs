@@ -68,6 +68,7 @@ pub fn create_launcher_window(app: &AppHandle, settings: &settings::Settings) ->
     .content_protected(!settings.screen_share_visible)
     .build()
     .map_err(|e| e.to_string())?;
+    platform::merge_titlebar_into_content(app);
     Ok(())
 }
 
@@ -106,6 +107,7 @@ const GLOBAL_HOTKEYS: &[(&str, GlobalRegistrar, GlobalUnregistrar)] = &[
     (hotkeys::ACTION_TOGGLE_WINDOW, hotkey::register_toggle, hotkey::unregister_toggle),
     (hotkeys::ACTION_TELEPROMPTER, hotkey::register_teleprompter, hotkey::unregister_teleprompter),
     (hotkeys::ACTION_SCREENSHOT, hotkey::register_screenshot, hotkey::unregister_screenshot),
+    (hotkeys::ACTION_FOCUS_PROMPT, hotkey::register_focus_prompt, hotkey::unregister_focus_prompt),
 ];
 
 pub fn register_main_window_hotkeys(app: &AppHandle, s: &settings::Settings) {
@@ -130,10 +132,11 @@ pub fn unregister_main_window_hotkeys_for(app: &AppHandle, s: &settings::Setting
     hotkey::unregister_cancel(app, &hotkeys::effective(&s.hotkeys, hotkeys::ACTION_CANCEL_RECORDING));
 }
 
-pub fn show_and_focus_main(app: &AppHandle) {
+pub fn show_and_focus_prompt(app: &AppHandle) {
     if let Some(w) = main_window(app) {
         let _ = w.show();
         let _ = w.set_focus();
+        events::focus_prompt(app);
     }
 }
 
@@ -142,8 +145,7 @@ pub fn on_toggle_visibility(app: &AppHandle) {
         if w.is_visible().unwrap_or(true) {
             let _ = w.hide();
         } else {
-            let _ = w.show();
-            let _ = w.set_focus();
+            show_and_focus_prompt(app);
         }
     }
 }
@@ -328,3 +330,6 @@ fn apply_window_frame(app: &AppHandle, w: &WebviewWindow, x: i32, y: i32, width:
         let _ = win.set_size(tauri::LogicalSize::new(width, height));
     });
 }
+
+#[cfg(test)]
+mod tests;

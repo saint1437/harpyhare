@@ -10,6 +10,8 @@ export const SUPPORTED_IMAGE_TYPES = new Set([
 
 const DOWNSCALE_SAFETY_MARGIN = 0.95;
 const DATA_URL_BASE64_SEPARATOR = ",";
+const DATA_URL_SCHEME = "data:";
+const DATA_URL_BASE64_MARKER = ";base64";
 const TRANSCRIPT_SEPARATOR = " ";
 const ENDS_WITH_WHITESPACE = /\s$/;
 
@@ -49,6 +51,10 @@ export function appendTranscript(draft: string, transcript: string): string {
   if (draft.trim() === "") return transcript;
   if (ENDS_WITH_WHITESPACE.test(draft)) return draft + transcript;
   return draft + TRANSCRIPT_SEPARATOR + transcript;
+}
+
+export function imageDataUrl(image: ImagePayload): string {
+  return `${DATA_URL_SCHEME}${image.media_type}${DATA_URL_BASE64_MARKER}${DATA_URL_BASE64_SEPARATOR}${image.data}`;
 }
 
 export function toImagePayload(dataUrl: string, resultMediaType: string): ImagePayload {

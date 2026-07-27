@@ -5,6 +5,7 @@ pub mod bindings;
 pub mod capture;
 pub mod chat;
 pub mod chats;
+pub mod clipboard;
 pub mod context_import;
 pub mod error;
 pub mod events;

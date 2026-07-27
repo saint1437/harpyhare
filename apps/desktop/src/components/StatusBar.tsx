@@ -1,4 +1,4 @@
-import { ArrowDownCircle, Minus, Square, X } from "lucide-react";
+import { ArrowDownCircle, Minus, Square } from "lucide-react";
 import type { ReactNode } from "react";
 import { IconButton } from "@/components/IconButton";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,6 @@ export interface StatusBarProps {
   contextUsage: ContextUsage | null;
   update: { version: string; busy: boolean; onOpen: () => void } | null;
   onStop: () => void;
-  onClose: () => void;
   onHide: () => void;
 }
 
@@ -67,7 +66,6 @@ export function StatusBar({
   contextUsage,
   update,
   onStop,
-  onClose,
   onHide,
 }: StatusBarProps) {
   const showError = error !== null && state === "idle";
@@ -75,7 +73,7 @@ export function StatusBar({
 
   return (
     <header className="flex min-h-7 items-center gap-2" onMouseDown={onDragMouseDown}>
-      <WindowButtons toggleHotkey={toggleHotkey} onClose={onClose} onHide={onHide} />
+      <WindowButtons toggleHotkey={toggleHotkey} onHide={onHide} />
       <EqBars {...indicatorProps(state, showError)} />
       {tabs}
       <span
@@ -96,24 +94,9 @@ export function StatusBar({
   );
 }
 
-function WindowButtons({
-  toggleHotkey,
-  onClose,
-  onHide,
-}: {
-  toggleHotkey: string;
-  onClose: () => void;
-  onHide: () => void;
-}) {
+function WindowButtons({ toggleHotkey, onHide }: { toggleHotkey: string; onHide: () => void }) {
   return (
     <div className="flex shrink-0 items-center gap-0.5 pr-1">
-      <IconButton
-        title="Закрыть приложение"
-        onClick={onClose}
-        className="hover:bg-destructive/15 hover:text-destructive"
-      >
-        <X />
-      </IconButton>
       <IconButton
         title={`Скрыть окно — вернуть: ${formatCombo(toggleHotkey)}`}
         aria-label="Скрыть окно"

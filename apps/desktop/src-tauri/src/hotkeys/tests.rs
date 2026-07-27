@@ -4,6 +4,18 @@ fn binding(action: &str, combo: &str) -> HotkeyBinding {
     HotkeyBinding { action: action.to_string(), combo: combo.to_string() }
 }
 
+fn digit_family_action(id: &'static str) -> HotkeyAction {
+    HotkeyAction {
+        id,
+        group: "",
+        label: "",
+        hint: "",
+        kind: HotkeyKind::ModifierDigits,
+        scope: HotkeyScope::Hud,
+        default_combo: PlatformCombo::shared(MODIFIER_CMD),
+    }
+}
+
 type ComboOfPlatform = fn(&PlatformCombo) -> &'static str;
 
 const PLATFORM_VIEWS: [(&str, ComboOfPlatform, &[&str]); 2] = [
@@ -104,6 +116,29 @@ fn combo_conflicts_with_family_it_falls_into() {
     assert!(conflict(ACTION_SEND, "Cmd+ArrowUp", ACTION_MOVE_WINDOW, "Cmd"));
     assert!(conflict(ACTION_SEND, "Cmd+Shift+Minus", ACTION_OPACITY, "Cmd+Shift"));
     assert!(!conflict(ACTION_SEND, "Cmd+Enter", ACTION_MOVE_WINDOW, "Cmd"));
+}
+
+#[test]
+fn digit_family_conflicts_only_with_digit_combos() {
+    assert!(conflict(ACTION_SEND, "Cmd+1", ACTION_QUICK_ACTION, "Cmd"));
+    assert!(conflict(ACTION_SEND, "Cmd+Digit9", ACTION_QUICK_ACTION, "Cmd"));
+    assert!(!conflict(ACTION_SEND, "Cmd+0", ACTION_QUICK_ACTION, "Cmd"));
+    assert!(!conflict(ACTION_SEND, "Cmd+Enter", ACTION_QUICK_ACTION, "Cmd"));
+    assert!(!conflict(ACTION_SEND, "Alt+1", ACTION_QUICK_ACTION, "Cmd"));
+}
+
+#[test]
+fn digit_family_shares_a_modifier_with_the_arrow_and_plus_minus_families() {
+    assert!(!conflict(ACTION_MOVE_WINDOW, "Cmd", ACTION_QUICK_ACTION, "Cmd"));
+    assert!(!conflict(ACTION_OPACITY, "Cmd", ACTION_QUICK_ACTION, "Cmd"));
+}
+
+#[test]
+fn two_digit_families_collide_on_a_shared_modifier() {
+    let first = digit_family_action("первое");
+    let second = digit_family_action("второе");
+    assert!(key_spaces_overlap(&first, "Cmd", &second, "Cmd"));
+    assert!(!key_spaces_overlap(&first, "Cmd", &second, "Alt"));
 }
 
 #[test]

@@ -7,6 +7,11 @@ const TMP_FILE_EXTENSION: &str = "tmp";
 
 pub const THEME_GRAY: &str = "gray";
 pub const THEME_BLACK: &str = "black";
+pub const ANSWER_STYLE_DETAILED: &str = "detailed";
+pub const ANSWER_STYLE_CONCISE: &str = "concise";
+pub const ANSWER_STYLES: &[&str] = &[ANSWER_STYLE_DETAILED, ANSWER_STYLE_CONCISE];
+
+pub const QUICK_ACTION_LIMIT: usize = 9;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, specta::Type)]
 pub struct Bounds<T> {
@@ -66,6 +71,7 @@ impl SettingsLimits {
 pub mod defaults {
     pub const STT_LANGUAGE: &str = "ru";
     pub const THEME: &str = super::THEME_GRAY;
+    pub const ANSWER_STYLE: &str = super::ANSWER_STYLE_DETAILED;
 }
 
 pub mod limits {
@@ -105,6 +111,36 @@ pub struct PromptPreset {
     pub text: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct QuickAction {
+    pub id: String,
+    pub title: String,
+    pub prompt: String,
+}
+
+struct QuickActionSeed {
+    id: &'static str,
+    title: &'static str,
+    prompt: &'static str,
+}
+
+const QUICK_ACTION_SEEDS: &[QuickActionSeed] = &[
+    QuickActionSeed { id: "detail", title: "Подробнее", prompt: "Расскажи более подробно." },
+    QuickActionSeed { id: "brief", title: "Короче", prompt: "Ответь короче, только суть." },
+    QuickActionSeed { id: "code", title: "Пример кода", prompt: "Покажи пример кода." },
+];
+
+fn seeded_quick_actions() -> Vec<QuickAction> {
+    QUICK_ACTION_SEEDS
+        .iter()
+        .map(|seed| QuickAction {
+            id: seed.id.into(),
+            title: seed.title.into(),
+            prompt: seed.prompt.into(),
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(default)]
 pub struct Settings {
@@ -132,10 +168,13 @@ pub struct Settings {
     pub resize_step: u32,
     pub capture_device_uid: String,
     pub theme: String,
+    pub answer_style: String,
     pub scroll_step: u32,
     pub buffer_enabled: bool,
     pub buffer_seconds: u32,
     pub identity_id: String,
+    pub quick_actions: Vec<QuickAction>,
+    pub quick_action_attachments: bool,
 }
 
 impl Default for Settings {
@@ -165,10 +204,13 @@ impl Default for Settings {
             resize_step: limits::window::RESIZE_STEP.default,
             capture_device_uid: String::new(),
             theme: defaults::THEME.into(),
+            answer_style: defaults::ANSWER_STYLE.into(),
             scroll_step: limits::chat::SCROLL_STEP.default,
             buffer_enabled: true,
             buffer_seconds: limits::capture::BUFFER_SECONDS.default,
             identity_id: String::new(),
+            quick_actions: seeded_quick_actions(),
+            quick_action_attachments: false,
         }
     }
 }
@@ -186,12 +228,16 @@ impl Settings {
         self.teleprompter_font_size =
             limits::teleprompter::FONT_SIZE.clamp(self.teleprompter_font_size);
         self.buffer_seconds = limits::capture::BUFFER_SECONDS.clamp(self.buffer_seconds);
+        if !ANSWER_STYLES.contains(&self.answer_style.as_str()) {
+            self.answer_style = defaults::ANSWER_STYLE.into();
+        }
         if self.theme != THEME_GRAY && self.theme != THEME_BLACK {
             self.theme = defaults::THEME.into();
         }
         if !crate::identity::is_known_id(&self.identity_id) {
             self.identity_id = String::new();
         }
+        self.quick_actions.truncate(QUICK_ACTION_LIMIT);
         crate::hotkeys::normalize(&mut self.hotkeys);
     }
 

@@ -1,4 +1,4 @@
-import { RotateCw, Trash2 } from "lucide-react";
+import { Copy, RotateCw, Trash2 } from "lucide-react";
 import {
   isValidElement,
   memo,
@@ -18,7 +18,9 @@ import { IconButton } from "@/components/IconButton";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { openExternal } from "@/ipc/commands";
 import type { ChatMessage } from "@/lib/chats";
+import { imageDataUrl, type ImagePayload } from "@/lib/composer";
 import { matchesModifier, parseModifier } from "@/lib/hotkey-modifier";
+import { isMessageCopyable } from "@/lib/message-clipboard";
 import { splitStableTail } from "@/lib/stream-markdown";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +33,7 @@ export interface AnswerPanelProps {
   scrollStep?: number;
   scrollModifier: string;
   onTogglePreview: (code: string) => void;
+  onCopyMessage: (index: number) => void;
   onRemoveMessage: (index: number) => void;
   onResendMessage: (index: number) => void;
 }
@@ -58,6 +61,9 @@ const AUTODETECT_LANGUAGE_SUBSET = [
 const ASSISTANT_PROSE_CLASS = "prose-answer text-chat leading-relaxed text-foreground/90";
 
 const FLOATING_CHIP_CLASS = "border bg-popover/95 shadow-md backdrop-blur-sm";
+const MESSAGE_IMAGE_ALT = "Картинка в сообщении";
+const COPY_MESSAGE_TITLE = "Копировать сообщение";
+const ASSISTANT_ACTIONS_GUTTER_CLASS = "pr-13.5";
 
 const REHYPE_PLUGINS: NonNullable<Parameters<typeof Markdown>[0]["rehypePlugins"]> = [
   [
@@ -138,14 +144,21 @@ function MessageActionButton({
 }
 
 function MessageActions({
+  onCopy,
   onRemove,
   onResend,
 }: {
+  onCopy: (() => void) | null;
   onRemove: () => void;
   onResend: (() => void) | null;
 }) {
   return (
     <div className="pointer-events-none flex shrink-0 gap-0.5 opacity-0 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
+      {onCopy && (
+        <MessageActionButton title={COPY_MESSAGE_TITLE} onClick={onCopy}>
+          <Copy className="size-3.5" />
+        </MessageActionButton>
+      )}
       {onResend && (
         <MessageActionButton
           title="Переотправить (всё, что ниже, будет заменено новым ответом)"
@@ -163,16 +176,18 @@ function MessageActions({
 
 function MessageShell({
   align,
+  onCopy,
   onRemove,
   onResend,
   children,
 }: {
   align: "start" | "end";
+  onCopy: (() => void) | null;
   onRemove: () => void;
   onResend: (() => void) | null;
   children: ReactNode;
 }) {
-  const actions = <MessageActions onRemove={onRemove} onResend={onResend} />;
+  const actions = <MessageActions onCopy={onCopy} onRemove={onRemove} onResend={onResend} />;
   if (align === "end") {
     return (
       <div className="group/msg flex items-start justify-end gap-1">
@@ -200,7 +215,7 @@ function Assistant({ text, components }: { text: string; components: Components 
 function StreamingAssistant({ text, components }: { text: string; components: Components }) {
   const [stable, tail] = splitStableTail(text);
   return (
-    <div className={cn(ASSISTANT_PROSE_CLASS, "pr-7")}>
+    <div className={cn(ASSISTANT_PROSE_CLASS, ASSISTANT_ACTIONS_GUTTER_CLASS)}>
       {stable !== "" && <MarkdownChunk text={stable} components={components} />}
       {tail !== "" && <MarkdownChunk text={tail} components={components} />}
     </div>
@@ -262,10 +277,27 @@ function EmptyState() {
   );
 }
 
-function UserBubble({ text }: { text: string }) {
+function MessageImages({ images }: { images: ImagePayload[] }) {
+  if (images.length === 0) return null;
   return (
-    <div className="max-w-[85%] rounded-lg bg-surface px-3 py-1.5 text-chat break-words whitespace-pre-wrap text-foreground/80">
-      {text}
+    <div className="flex flex-wrap gap-1.5">
+      {images.map((image, i) => (
+        <img
+          key={i}
+          src={imageDataUrl(image)}
+          alt={MESSAGE_IMAGE_ALT}
+          className="max-h-48 max-w-full rounded-md object-contain ring-1 ring-border ring-inset"
+        />
+      ))}
+    </div>
+  );
+}
+
+function UserBubble({ text, images }: { text: string; images: ImagePayload[] }) {
+  return (
+    <div className="flex max-w-[85%] flex-col gap-1.5 rounded-lg bg-surface px-3 py-1.5 text-chat text-foreground/80">
+      <MessageImages images={images} />
+      {text !== "" && <span className="min-w-0 break-words whitespace-pre-wrap">{text}</span>}
     </div>
   );
 }
@@ -291,6 +323,7 @@ function ChatMessages({
   streaming,
   streamStartedAt,
   components,
+  onCopyMessage,
   onRemoveMessage,
   onResendMessage,
 }: {
@@ -299,6 +332,7 @@ function ChatMessages({
   streaming: boolean;
   streamStartedAt?: number;
   components: Components;
+  onCopyMessage: (index: number) => void;
   onRemoveMessage: (index: number) => void;
   onResendMessage: (index: number) => void;
 }) {
@@ -308,6 +342,13 @@ function ChatMessages({
         <MessageShell
           key={i}
           align={m.role === "user" ? "end" : "start"}
+          onCopy={
+            isMessageCopyable(m)
+              ? () => {
+                  onCopyMessage(i);
+                }
+              : null
+          }
           onRemove={() => {
             onRemoveMessage(i);
           }}
@@ -320,7 +361,7 @@ function ChatMessages({
           }
         >
           {m.role === "user" ? (
-            <UserBubble text={m.text} />
+            <UserBubble text={m.text} images={m.images} />
           ) : (
             <Assistant text={m.text} components={components} />
           )}
@@ -345,6 +386,7 @@ export function AnswerPanel({
   scrollStep,
   scrollModifier,
   onTogglePreview,
+  onCopyMessage,
   onRemoveMessage,
   onResendMessage,
 }: AnswerPanelProps) {
@@ -391,6 +433,7 @@ export function AnswerPanel({
               streaming={streaming}
               streamStartedAt={streamStartedAt}
               components={components}
+              onCopyMessage={onCopyMessage}
               onRemoveMessage={onRemoveMessage}
               onResendMessage={onResendMessage}
             />

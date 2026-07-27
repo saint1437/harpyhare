@@ -31,6 +31,7 @@ export const commands = {
 	permissionsStatus: () => __TAURI_INVOKE<PermissionsStatus>("permissions_status"),
 	requestPermission: (kind: PermissionKind) => __TAURI_INVOKE<PermissionState>("request_permission", { kind }),
 	openPermissionSettings: (kind: PermissionKind) => __TAURI_INVOKE<void>("open_permission_settings", { kind }),
+	copyImageToClipboard: (dataBase64: string) => __TAURI_INVOKE<null>("copy_image_to_clipboard", { dataBase64 }),
 	openExternal: (url: string) => __TAURI_INVOKE<void>("open_external", { url }),
 	setPreviewHtml: (html: string) => __TAURI_INVOKE<void>("set_preview_html", { html }),
 	checkForUpdate: () => __TAURI_INVOKE<{
@@ -45,11 +46,15 @@ export const commands = {
 };
 
 /* Constants */
-export const HOTKEY_ACTIONS = [{"defaultCombo":{"macos":"F9","windows":"F9"},"group":"Запись","hint":"Удерживайте, пока говорит собеседник.","id":"record","kind":"combo","label":"Записать системный звук","scope":"global"},{"defaultCombo":{"macos":"Escape","windows":"Escape"},"group":"Запись","hint":"Слушается только пока идёт запись.","id":"cancel_recording","kind":"combo","label":"Отменить запись","scope":"recording"},{"defaultCombo":{"macos":"Cmd+Enter","windows":"Ctrl+Enter"},"group":"Отправка","hint":"Работает из любого места окна, не только из поля ввода.","id":"send","kind":"combo","label":"Отправить","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+S","windows":"Ctrl+Shift+S"},"group":"Отправка","hint":"Выделенная область уходит вложением в чат.","id":"screenshot","kind":"combo","label":"Снимок области экрана","scope":"global"},{"defaultCombo":{"macos":"Cmd+Shift+H","windows":"Ctrl+Shift+H"},"group":"Окно","hint":"Работает, даже когда окно спрятано.","id":"toggle_window","kind":"combo","label":"Скрыть или показать","scope":"global"},{"defaultCombo":{"macos":"Cmd","windows":"Ctrl"},"group":"Окно","hint":"Модификатор со стрелками.","id":"move_window","kind":"modifier_arrows","label":"Передвинуть","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift","windows":"Ctrl+Shift"},"group":"Окно","hint":"Модификатор со стрелками.","id":"resize_window","kind":"modifier_arrows","label":"Изменить размер","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift","windows":"Ctrl+Shift"},"group":"Окно","hint":"Модификатор с плюсом и минусом.","id":"opacity","kind":"modifier_plus_minus","label":"Прозрачность","scope":"hud"},{"defaultCombo":{"macos":"Alt","windows":"Alt"},"group":"Чат","hint":"Модификатор со стрелками вверх и вниз.","id":"scroll_chat","kind":"modifier_arrows","label":"Скролл переписки","scope":"hud"},{"defaultCombo":{"macos":"F10","windows":"F10"},"group":"Чат","hint":"Крупный текст ответа поверх экрана.","id":"teleprompter","kind":"combo","label":"Суфлёр","scope":"global"},{"defaultCombo":{"macos":"Escape","windows":"Escape"},"group":"Суфлёр","hint":"Слушается только пока суфлёр открыт.","id":"teleprompter_close","kind":"combo","label":"Закрыть суфлёр","scope":"teleprompter"},{"defaultCombo":{"macos":"Space","windows":"Space"},"group":"Суфлёр","hint":"Останавливает автопрокрутку.","id":"teleprompter_pause","kind":"combo","label":"Пауза суфлёра","scope":"teleprompter"}] as const;
+export const ANSWER_STYLES = ["detailed","concise"] as const;
+
+export const HOTKEY_ACTIONS = [{"defaultCombo":{"macos":"F9","windows":"F9"},"group":"Запись","hint":"Удерживайте, пока говорит собеседник.","id":"record","kind":"combo","label":"Записать системный звук","scope":"global"},{"defaultCombo":{"macos":"Escape","windows":"Escape"},"group":"Запись","hint":"Слушается только пока идёт запись.","id":"cancel_recording","kind":"combo","label":"Отменить запись","scope":"recording"},{"defaultCombo":{"macos":"Cmd+Enter","windows":"Ctrl+Enter"},"group":"Отправка","hint":"Работает из любого места окна, не только из поля ввода.","id":"send","kind":"combo","label":"Отправить","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+S","windows":"Ctrl+Shift+S"},"group":"Отправка","hint":"Выделенная область уходит вложением в чат.","id":"screenshot","kind":"combo","label":"Снимок области экрана","scope":"global"},{"defaultCombo":{"macos":"Cmd","windows":"Ctrl"},"group":"Отправка","hint":"Модификатор с цифрой: 1…9 по порядку кнопок.","id":"quick_action","kind":"modifier_digits","label":"Быстрое действие","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+D","windows":"Ctrl+Shift+D"},"group":"Отправка","hint":"Поднимает окно и ставит каретку в конец текста.","id":"focus_prompt","kind":"combo","label":"Сфокусировать поле ввода","scope":"global"},{"defaultCombo":{"macos":"Cmd+Shift+H","windows":"Ctrl+Shift+H"},"group":"Окно","hint":"Работает, даже когда окно спрятано.","id":"toggle_window","kind":"combo","label":"Скрыть или показать","scope":"global"},{"defaultCombo":{"macos":"Cmd","windows":"Ctrl"},"group":"Окно","hint":"Модификатор со стрелками.","id":"move_window","kind":"modifier_arrows","label":"Передвинуть","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift","windows":"Ctrl+Shift"},"group":"Окно","hint":"Модификатор со стрелками.","id":"resize_window","kind":"modifier_arrows","label":"Изменить размер","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift","windows":"Ctrl+Shift"},"group":"Окно","hint":"Модификатор с плюсом и минусом.","id":"opacity","kind":"modifier_plus_minus","label":"Прозрачность","scope":"hud"},{"defaultCombo":{"macos":"Alt","windows":"Alt"},"group":"Чат","hint":"Модификатор со стрелками вверх и вниз.","id":"scroll_chat","kind":"modifier_arrows","label":"Скролл переписки","scope":"hud"},{"defaultCombo":{"macos":"F10","windows":"F10"},"group":"Чат","hint":"Крупный текст ответа поверх экрана.","id":"teleprompter","kind":"combo","label":"Суфлёр","scope":"global"},{"defaultCombo":{"macos":"Escape","windows":"Escape"},"group":"Суфлёр","hint":"Слушается только пока суфлёр открыт.","id":"teleprompter_close","kind":"combo","label":"Закрыть суфлёр","scope":"teleprompter"},{"defaultCombo":{"macos":"Space","windows":"Space"},"group":"Суфлёр","hint":"Останавливает автопрокрутку.","id":"teleprompter_pause","kind":"combo","label":"Пауза суфлёра","scope":"teleprompter"}] as const;
 
 export const MODIFIER_COMBOS = {"macos":["Cmd","Ctrl","Alt","Cmd+Shift","Ctrl+Shift","Alt+Shift"],"windows":["Ctrl","Alt","Ctrl+Shift","Alt+Shift"]} as const;
 
-export const SETTINGS_DEFAULTS = {"access_token":"","anthropic_api_key":"","audio_permission_requested":false,"auto_preview_html":true,"auto_send":false,"buffer_enabled":true,"buffer_seconds":4,"capture_device_uid":"","chat_font_size":13.5,"groq_api_key":"","hotkeys":[],"identity_id":"","move_step":20,"prompt_presets":[],"resize_step":20,"screen_permission_requested":false,"screen_share_visible":false,"scroll_step":120,"skipped_version":"","stt_language":"ru","stt_translate":false,"teleprompter_font_size":28.0,"teleprompter_resume":true,"teleprompter_speed":40.0,"theme":"gray","window_height":680.0,"window_opacity":0.9,"window_width":960.0} as const;
+export const QUICK_ACTION_LIMIT = 9 as const;
+
+export const SETTINGS_DEFAULTS = {"access_token":"","answer_style":"detailed","anthropic_api_key":"","audio_permission_requested":false,"auto_preview_html":true,"auto_send":false,"buffer_enabled":true,"buffer_seconds":4,"capture_device_uid":"","chat_font_size":13.5,"groq_api_key":"","hotkeys":[],"identity_id":"","move_step":20,"prompt_presets":[],"quick_action_attachments":false,"quick_actions":[{"id":"detail","prompt":"Расскажи более подробно.","title":"Подробнее"},{"id":"brief","prompt":"Ответь короче, только суть.","title":"Короче"},{"id":"code","prompt":"Покажи пример кода.","title":"Пример кода"}],"resize_step":20,"screen_permission_requested":false,"screen_share_visible":false,"scroll_step":120,"skipped_version":"","stt_language":"ru","stt_translate":false,"teleprompter_font_size":28.0,"teleprompter_resume":true,"teleprompter_speed":40.0,"theme":"gray","window_height":680.0,"window_opacity":0.9,"window_width":960.0} as const;
 
 export const SETTINGS_LIMITS = {"bufferSeconds":{"default":4,"max":10,"min":4},"chatFontSize":{"default":13.5,"max":20.0,"min":10.0},"moveStep":{"default":20,"max":200,"min":1},"resizeStep":{"default":20,"max":200,"min":1},"scrollStep":{"default":120,"max":1000,"min":10},"teleprompterFontSize":{"default":28.0,"max":48.0,"min":20.0},"teleprompterSpeed":{"default":40.0,"max":150.0,"min":10.0},"windowHeight":{"default":680.0,"max":1100.0,"min":520.0},"windowOpacity":{"default":0.9,"max":1.0,"min":0.2},"windowWidth":{"default":960.0,"max":1600.0,"min":300.0}} as const;
 
@@ -82,7 +87,7 @@ export type HotkeyBinding = {
 	combo: string,
 };
 
-export type HotkeyKind = "combo" | "modifier_arrows" | "modifier_plus_minus";
+export type HotkeyKind = "combo" | "modifier_arrows" | "modifier_plus_minus" | "modifier_digits";
 
 export type HotkeyScope = "global" | "recording" | "hud" | "teleprompter";
 
@@ -151,6 +156,12 @@ export type PromptPreset = {
 	text: string,
 };
 
+export type QuickAction = {
+	id: string,
+	title: string,
+	prompt: string,
+};
+
 export type RecorderState = "idle" | "recording" | "transcribing";
 
 export type RequestOptions = {
@@ -195,10 +206,13 @@ export type Settings = {
 	resize_step?: number,
 	capture_device_uid?: string,
 	theme?: string,
+	answer_style?: string,
 	scroll_step?: number,
 	buffer_enabled?: boolean,
 	buffer_seconds?: number,
 	identity_id?: string,
+	quick_actions?: QuickAction[],
+	quick_action_attachments?: boolean,
 };
 
 export type UpdateDone = {

@@ -10,6 +10,12 @@ export interface HotkeyBinding {
   combo: string;
 }
 
+export interface QuickAction {
+  id: string;
+  title: string;
+  prompt: string;
+}
+
 export interface Settings {
   anthropic_api_key: string;
   groq_api_key: string;
@@ -28,21 +34,27 @@ export interface Settings {
   teleprompter_speed: number;
   teleprompter_font_size: number;
   teleprompter_resume: boolean;
+  audio_permission_requested: boolean;
+  screen_permission_requested: boolean;
   window_width: number;
   window_height: number;
   resize_step: number;
   capture_device_uid: string;
   theme: string;
+  answer_style: string;
   scroll_step: number;
   buffer_enabled: boolean;
   buffer_seconds: number;
   identity_id: string;
+  quick_actions: QuickAction[];
+  quick_action_attachments: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   ...SETTINGS_DEFAULTS,
   prompt_presets: [...SETTINGS_DEFAULTS.prompt_presets],
   hotkeys: [...SETTINGS_DEFAULTS.hotkeys],
+  quick_actions: [...SETTINGS_DEFAULTS.quick_actions],
 };
 
 export interface AudioOutputDevice {
@@ -91,4 +103,5 @@ export interface EventMap {
   "official-presets-updated": PromptPreset[];
   "screenshot-ready": { mediaType: string; dataBase64: string };
   "screenshot-error": AppError;
+  "focus-prompt": null;
 }
