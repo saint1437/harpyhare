@@ -81,8 +81,8 @@ export function LauncherPanel({
       .then((found) => {
         setCheckState(found ? "idle" : "latest");
       })
-      .catch(() => {
-        setCheckState("error");
+      .catch((e: unknown) => {
+        setCheckState({ failure: String(e) });
       });
   };
 

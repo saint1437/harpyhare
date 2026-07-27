@@ -7,7 +7,7 @@ import { BRAND_NAME } from "@/lib/brand";
 import { SettingBlock, SettingGroup, SettingRow } from "../fields";
 import { ScreenShell } from "../ScreenShell";
 
-export type CheckState = "idle" | "checking" | "latest" | "error";
+export type CheckState = "idle" | "checking" | "latest" | { failure: string };
 
 const MIB = 1024 * 1024;
 const PERCENT_MAX = 100;
@@ -33,7 +33,7 @@ function progressCaption(updater: UpdaterApi, percent: number | null): string {
 function checkCaption(state: CheckState): string {
   if (state === "checking") return "Проверяю…";
   if (state === "latest") return "Установлена последняя версия";
-  if (state === "error") return "Не удалось проверить обновления";
+  if (typeof state === "object") return `Не удалось проверить обновления: ${state.failure}`;
   return "Проверка идёт автоматически при запуске и раз в шесть часов.";
 }
 

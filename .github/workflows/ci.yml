@@ -3,6 +3,7 @@ name: ci
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -34,6 +35,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
+          save-if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
       - name: Тесты Rust
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
       - name: Контракт не разъехался с закоммиченным
@@ -49,7 +51,20 @@ jobs:
     defaults:
       run:
         working-directory: apps/desktop
+    env:
+      BUILD_INSTALLER: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
     steps:
+      - name: Вывести пути сборки из-под Defender
+        continue-on-error: true
+        working-directory: .
+        shell: pwsh
+        run: |
+          Add-MpPreference -ExclusionPath "${{ github.workspace }}"
+          Add-MpPreference -ExclusionPath "$env:USERPROFILE\.cargo"
+          Add-MpPreference -ExclusionPath "$env:USERPROFILE\.rustup"
+          Add-MpPreference -ExclusionProcess "cargo.exe"
+          Add-MpPreference -ExclusionProcess "rustc.exe"
+          Add-MpPreference -ExclusionProcess "link.exe"
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
@@ -61,12 +76,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
+          save-if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
       - name: Установить зависимости
         run: npm ci
         working-directory: .
       - name: Clippy, он же компиляция тестов
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - name: Собрать установщик
+        if: env.BUILD_INSTALLER == 'true'
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -78,6 +95,7 @@ jobs:
             npx tauri build
           fi
       - uses: actions/upload-artifact@v4
+        if: env.BUILD_INSTALLER == 'true'
         with:
           name: windows-installer
           path: apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
