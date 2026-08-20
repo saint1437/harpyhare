@@ -642,7 +642,8 @@ fn crop_to_png(source: &Canvas, area: RECT) -> Result<Vec<u8>, String> {
     for row in 0..height {
         let start = (area.top as usize + row) * stride + area.left as usize * SOURCE_CHANNELS;
         let line = &pixels[start..start + width * SOURCE_CHANNELS];
-        for sample in line.chunks_exact(SOURCE_CHANNELS) {
+        let (samples, _) = line.as_chunks::<SOURCE_CHANNELS>();
+        for sample in samples {
             rgb.push(sample[CHANNEL_RED]);
             rgb.push(sample[CHANNEL_GREEN]);
             rgb.push(sample[CHANNEL_BLUE]);
