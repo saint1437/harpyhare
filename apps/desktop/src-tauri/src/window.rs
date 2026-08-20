@@ -4,7 +4,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Manager, WebviewWindow};
 
 use crate::app_state::{current_settings, App};
-use crate::{events, hotkey, hotkeys, identity, platform, settings, window_geom};
+use crate::{events, hotkey, hotkeys, platform, settings, window_geom};
 
 pub const MAIN_WINDOW_LABEL: &str = "main";
 pub const LAUNCHER_WINDOW_LABEL: &str = "launcher";
@@ -28,10 +28,8 @@ pub fn launcher_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(LAUNCHER_WINDOW_LABEL)
 }
 
-fn window_title(app: &AppHandle, settings: &settings::Settings) -> String {
-    identity::find(&settings.identity_id)
-        .map(|d| d.display_name.to_string())
-        .unwrap_or_else(|| app.package_info().name.clone())
+fn window_title(app: &AppHandle) -> String {
+    app.package_info().name.clone()
 }
 
 fn apply_content_protection(w: &WebviewWindow, settings: &settings::Settings) {
@@ -53,7 +51,7 @@ pub fn create_launcher_window(app: &AppHandle, settings: &settings::Settings) ->
         LAUNCHER_WINDOW_LABEL,
         tauri::WebviewUrl::App(LAUNCHER_WINDOW_URL.into()),
     )
-    .title(window_title(app, settings))
+    .title(window_title(app))
     .inner_size(
         LAUNCHER_WINDOW_WIDTH_LOGICAL_PX,
         LAUNCHER_WINDOW_HEIGHT_LOGICAL_PX,
@@ -81,7 +79,7 @@ fn create_main_window(app: &AppHandle, settings: &settings::Settings) -> Result<
         MAIN_WINDOW_LABEL,
         tauri::WebviewUrl::App(MAIN_WINDOW_URL.into()),
     )
-    .title(window_title(app, settings))
+    .title(window_title(app))
     .inner_size(settings.window_width, settings.window_height)
     .min_inner_size(
         settings::limits::window::WIDTH.min,

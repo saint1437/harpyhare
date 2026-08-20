@@ -46,7 +46,6 @@ cidre = "0.15.2"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3.2", features = ["NSEvent", "block2"] }
 block2 = "0.6"
-plist = "1.9.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 png = "0.17"

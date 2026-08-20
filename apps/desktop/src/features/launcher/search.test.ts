@@ -74,9 +74,9 @@ describe("searchLauncher", () => {
     expect(found.indexOf("Отменить запись")).toBeLessThan(found.indexOf("Фоновый буфер"));
   });
 
-  it("на Windows маскировки не существует и в выдаче её нет", () => {
-    expect(titles(searchLauncher("маскировка", SOURCES, "macos"))).toEqual(["Маскировка"]);
-    expect(searchLauncher("маскировка", SOURCES, "windows")).toEqual([]);
+  it("на Windows экранов только для macOS не существует и в выдаче их нет", () => {
+    expect(titles(searchLauncher("доступы", SOURCES, "macos"))).toEqual(["Доступы"]);
+    expect(searchLauncher("доступы", SOURCES, "windows")).toEqual([]);
   });
 
   it("вкладка настроек находится по имени и ведёт на себя", () => {

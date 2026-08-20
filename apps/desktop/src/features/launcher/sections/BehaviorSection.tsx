@@ -1,12 +1,5 @@
-import { SelectItem } from "@/components/ui/select";
-import { ANSWER_STYLES } from "@/ipc/bindings";
-import { ANSWER_STYLE_LABELS } from "@/lib/answer-style";
 import type { SectionProps } from "../contract";
-import { SettingGroup, SettingRow, SettingSelect, SettingSwitch } from "../fields";
-
-const ANSWER_STYLE_LABEL = "Стиль ответа";
-const ANSWER_STYLE_HINT =
-  "Насколько развёрнуто отвечает модель. Меняет указание об объёме в препромпте — сам препромпт при этом остаётся прежним.";
+import { SettingGroup, SettingRow, SettingSwitch } from "../fields";
 
 const TOGGLES = [
   {
@@ -52,21 +45,6 @@ export function BehaviorSection({ draft, set }: SectionProps) {
           />
         </SettingRow>
       ))}
-      <SettingRow label={ANSWER_STYLE_LABEL} hint={ANSWER_STYLE_HINT}>
-        <SettingSelect
-          ariaLabel={ANSWER_STYLE_LABEL}
-          value={draft.answer_style}
-          onValueChange={(v) => {
-            set("answer_style", v);
-          }}
-        >
-          {ANSWER_STYLES.map((style) => (
-            <SelectItem key={style} value={style}>
-              {ANSWER_STYLE_LABELS[style]}
-            </SelectItem>
-          ))}
-        </SettingSelect>
-      </SettingRow>
     </SettingGroup>
   );
 }

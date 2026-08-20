@@ -4,7 +4,6 @@ import {
   MessageSquareText,
   ShieldCheck,
   SlidersHorizontal,
-  VenetianMask,
   type LucideIcon,
 } from "lucide-react";
 import { PLATFORM, type Platform } from "@/lib/platform";
@@ -51,14 +50,6 @@ export const LAUNCHER_SCREENS = [
     label: "Доступы",
     description: "Системные разрешения, без которых часть приложения не работает.",
     icon: ShieldCheck,
-    group: "system",
-    platforms: MACOS_ONLY,
-  },
-  {
-    id: "identity",
-    label: "Маскировка",
-    description: "Имя и иконка, под которыми приложение видно в системе.",
-    icon: VenetianMask,
     group: "system",
     platforms: MACOS_ONLY,
   },

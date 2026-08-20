@@ -6,7 +6,6 @@ import { isPresetFilled, mergePresets } from "@/lib/presets";
 import { isQuickActionFilled } from "@/lib/quick-actions";
 import { ContextLibraryPanel } from "./ContextLibraryPanel";
 import type { LauncherPanelProps, SetSetting } from "./contract";
-import { IdentityPanel } from "./IdentityPanel";
 import { LaunchBar } from "./LaunchBar";
 import { LauncherSearch } from "./LauncherSearch";
 import { DEFAULT_SCREEN, type ScreenId } from "./screens";
@@ -214,11 +213,6 @@ export function LauncherPanel({
             {screen === "presets" && (
               <ScreenShell screen="presets">
                 <PresetsSection presets={draft.prompt_presets} onChange={changePresets} />
-              </ScreenShell>
-            )}
-            {screen === "identity" && (
-              <ScreenShell screen="identity">
-                <IdentityPanel currentIdentityId={settings.identity_id} />
               </ScreenShell>
             )}
           </div>

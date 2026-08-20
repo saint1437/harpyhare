@@ -9,7 +9,6 @@ import type {
   HotkeyBinding,
   AudioOutputDevice,
   EventMap,
-  IdentityInfo,
   QuickAction,
   RecorderState,
   Settings,
@@ -33,7 +32,6 @@ type SameShape<Ours, Generated> = [Ours] extends [Generated]
 const contract = {
   Settings: true satisfies SameShape<Settings, Rust.Settings>,
   OutputDeviceInfo: true satisfies SameShape<AudioOutputDevice, Rust.OutputDeviceInfo>,
-  IdentityInfo: true satisfies SameShape<IdentityInfo, Rust.IdentityInfo>,
   UpdateInfo: true satisfies SameShape<UpdateInfo, Rust.UpdateInfo>,
   RecorderState: true satisfies SameShape<RecorderState, Rust.RecorderState>,
   PromptPreset: true satisfies SameShape<PromptPreset, Rust.PromptPreset>,

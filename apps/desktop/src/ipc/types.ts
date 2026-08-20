@@ -41,11 +41,9 @@ export interface Settings {
   resize_step: number;
   capture_device_uid: string;
   theme: string;
-  answer_style: string;
   scroll_step: number;
   buffer_enabled: boolean;
   buffer_seconds: number;
-  identity_id: string;
   quick_actions: QuickAction[];
   quick_action_attachments: boolean;
 }
@@ -60,12 +58,6 @@ export const DEFAULT_SETTINGS: Settings = {
 export interface AudioOutputDevice {
   uid: string;
   name: string;
-}
-
-export interface IdentityInfo {
-  id: string;
-  displayName: string;
-  iconPngBase64: string;
 }
 
 export type RecorderState = "idle" | "recording" | "transcribing";

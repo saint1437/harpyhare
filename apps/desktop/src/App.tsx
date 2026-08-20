@@ -55,7 +55,6 @@ import type {
   RecorderState,
   Settings,
 } from "@/ipc/types";
-import { answerStyleBlock } from "@/lib/answer-style";
 import { chatRequestOptions, type Chat, type ChatMessage } from "@/lib/chats";
 import { appendTranscript } from "@/lib/composer";
 import { libraryContextBlocks, type ContextLibrary } from "@/lib/context-library";
@@ -95,18 +94,12 @@ function draftImages(chat: Chat): ImagePayload[] {
   return chat.draftAttachments.map((a) => a.payload);
 }
 
-function chatSystemPrompt(
-  presets: PromptPreset[],
-  chat: Chat,
-  library: ContextLibrary,
-  answerStyle: string,
-): string {
+function chatSystemPrompt(presets: PromptPreset[], chat: Chat, library: ContextLibrary): string {
   const context = chat.context.trim();
   return [
     presetText(presets, chat.presetId),
     ...libraryContextBlocks(library, chat.libraryDocIds),
     context === "" ? "" : `${USER_CONTEXT_SYSTEM_HEADER}${context}`,
-    answerStyleBlock(answerStyle, chat.presetId),
   ]
     .filter((s) => s !== "")
     .join(SYSTEM_BLOCKS_SEPARATOR);
@@ -300,20 +293,14 @@ function useSendPipeline(
   streamRef: RefObject<ClaudeStreams>,
   presetsRef: RefObject<PromptPreset[]>,
   libraryRef: RefObject<ContextLibrary>,
-  settingsRef: RefObject<Settings>,
   clearSttError: () => void,
 ): SendPipeline {
   const streamChat = useCallback(
     (chat: Chat, history: ChatMessageDto[]) => {
-      const system = chatSystemPrompt(
-        presetsRef.current,
-        chat,
-        libraryRef.current,
-        settingsRef.current.answer_style,
-      );
+      const system = chatSystemPrompt(presetsRef.current, chat, libraryRef.current);
       void streamRef.current.send(chat.id, history, system, chat.model, chatRequestOptions(chat));
     },
-    [streamRef, presetsRef, libraryRef, settingsRef],
+    [streamRef, presetsRef, libraryRef],
   );
 
   const dispatchSend = useCallback(
@@ -598,7 +585,6 @@ export default function App() {
     streamRef,
     presetsRef,
     libraryRef,
-    settingsRef,
     clearAllErrors,
   );
 
@@ -685,8 +671,8 @@ export default function App() {
   const canTeleprompt = hasAssistantReply || (partial !== null && partial !== "");
   const activeModelMaxInput = models.find((m) => m.id === active.model)?.maxInputTokens ?? 0;
   const activeSystem = useMemo(
-    () => chatSystemPrompt(presets, active, contextLibrary.library, settings.answer_style),
-    [presets, active, contextLibrary.library, settings.answer_style],
+    () => chatSystemPrompt(presets, active, contextLibrary.library),
+    [presets, active, contextLibrary.library],
   );
   const projectedTokens = useProjectedContextTokens(active, activeSystem, activeStreaming);
   const usedTokens = projectedTokens > 0 ? projectedTokens : active.lastInputTokens;

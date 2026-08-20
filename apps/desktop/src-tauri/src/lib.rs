@@ -11,7 +11,6 @@ pub mod error;
 pub mod events;
 pub mod hotkey;
 pub mod hotkeys;
-pub mod identity;
 pub mod llm;
 pub mod platform;
 pub mod permissions;
@@ -71,7 +70,6 @@ fn setup_app(handle: &AppHandle) {
     let models: llm::ModelCatalog = Arc::new(Mutex::new(llm::fallback_models()));
     let stt = app_state::build_stt_client(&settings);
     let llm = app_state::build_llm_client(&settings, Arc::clone(&models));
-    preferences::reapply_identity_if_needed(handle, &settings);
     spawn_startup_warm_up_and_model_fetch(Arc::clone(&stt), Arc::clone(&llm));
     handle.manage(app_state::build_app_state(
         settings,

@@ -12,7 +12,6 @@ const SETTINGS_DEFAULTS_CONSTANT: &str = "SETTINGS_DEFAULTS";
 const MODIFIER_COMBOS_CONSTANT: &str = "MODIFIER_COMBOS";
 const HOTKEY_ACTIONS_CONSTANT: &str = "HOTKEY_ACTIONS";
 const QUICK_ACTION_LIMIT_CONSTANT: &str = "QUICK_ACTION_LIMIT";
-const ANSWER_STYLES_CONSTANT: &str = "ANSWER_STYLES";
 
 pub fn builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new()
@@ -50,8 +49,6 @@ pub fn builder() -> Builder<tauri::Wry> {
             system::check_for_update,
             system::install_update,
             system::get_app_version,
-            system::list_identities,
-            system::set_app_identity,
         ])
         .typ::<crate::error::AppError>()
         .typ::<crate::state::RecorderState>()
@@ -76,7 +73,6 @@ pub fn builder() -> Builder<tauri::Wry> {
         .constant(MODIFIER_COMBOS_CONSTANT, hotkeys::MODIFIER_COMBOS)
         .constant(HOTKEY_ACTIONS_CONSTANT, hotkeys::HOTKEY_ACTIONS)
         .constant(QUICK_ACTION_LIMIT_CONSTANT, settings::QUICK_ACTION_LIMIT as u32)
-        .constant(ANSWER_STYLES_CONSTANT, settings::ANSWER_STYLES)
         .error_handling(ErrorHandlingMode::Throw)
 }
 

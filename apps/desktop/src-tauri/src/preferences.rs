@@ -159,28 +159,3 @@ fn apply_buffer_settings_change(
     }
 }
 
-pub fn reapply_identity_if_needed(app: &AppHandle, settings: &settings::Settings) {
-    if settings.identity_id.is_empty() {
-        return;
-    }
-    let Some(def) = crate::identity::find(&settings.identity_id) else {
-        return;
-    };
-    for (_, w) in app.webview_windows() {
-        let _ = w.set_title(def.display_name);
-    }
-    let running_as_expected = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.file_name().map(|n| n.to_os_string()))
-        .is_some_and(|n| n == def.display_name);
-    if running_as_expected {
-        return;
-    }
-    let app = app.clone();
-    let identity_id = settings.identity_id.clone();
-    tauri::async_runtime::spawn(async move {
-        if let Err(e) = crate::identity::apply(&app, &identity_id).await {
-            eprintln!("[identity] авто-переприменение после обновления не удалось: {e}");
-        }
-    });
-}

@@ -22,7 +22,6 @@ fn defaults_match_spec() {
     assert_eq!(s.capture_device_uid, "");
     assert!(s.buffer_enabled);
     assert_eq!(s.buffer_seconds, 4);
-    assert_eq!(s.identity_id, "");
 }
 
 #[test]
@@ -54,25 +53,6 @@ fn clamp_limits_quick_actions_to_the_digit_row() {
     s.clamp();
     assert_eq!(s.quick_actions.len(), QUICK_ACTION_LIMIT);
     assert_eq!(s.quick_actions.last().unwrap(), &test_quick_action(QUICK_ACTION_LIMIT - 1));
-}
-
-#[test]
-fn clamp_resets_unknown_identity_id() {
-    let mut s = Settings { identity_id: "not-a-real-identity".into(), ..Default::default() };
-    s.clamp();
-    assert_eq!(s.identity_id, "");
-    s.identity_id = "obsidian".into();
-    s.clamp();
-    assert_eq!(s.identity_id, "obsidian");
-}
-
-#[test]
-fn load_missing_identity_id_defaults_empty() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("s.json");
-    std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
-    let s = Settings::load(&path).unwrap();
-    assert_eq!(s.identity_id, "");
 }
 
 #[test]
@@ -210,25 +190,6 @@ fn clamp_resets_unknown_theme() {
     s.theme = "black".into();
     s.clamp();
     assert_eq!(s.theme, "black");
-}
-
-#[test]
-fn clamp_resets_unknown_answer_style() {
-    let mut s = Settings { answer_style: "телеграфный".into(), ..Default::default() };
-    s.clamp();
-    assert_eq!(s.answer_style, super::ANSWER_STYLE_DETAILED);
-    s.answer_style = super::ANSWER_STYLE_CONCISE.into();
-    s.clamp();
-    assert_eq!(s.answer_style, super::ANSWER_STYLE_CONCISE);
-}
-
-#[test]
-fn load_missing_answer_style_keeps_the_detailed_prompts() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("s.json");
-    std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
-    let s = Settings::load(&path).unwrap();
-    assert_eq!(s.answer_style, super::ANSWER_STYLE_DETAILED);
 }
 
 #[test]
