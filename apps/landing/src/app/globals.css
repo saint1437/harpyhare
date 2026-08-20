@@ -1,18 +1,27 @@
 @import "tailwindcss";
 
+/* Poster palette: oxblood ground, cream ink, near-black for hard shadows and
+   full-bleed blocks. The `--app-*` group below is a separate system: it
+   replicates the desktop app's own palette inside the interactive demo and must
+   not be folded into the page tokens. */
 :root {
-  --bg: oklch(0 0 0);
-  --bg-elevated: oklch(0.13 0.004 20);
-  --surface: oklch(0.16 0.004 20);
-  --fg: oklch(0.97 0 0);
-  --fg-muted: oklch(0.7 0.005 20);
-  --fg-subtle: oklch(0.51 0.005 20);
-  --border: oklch(1 0 0 / 8%);
-  --border-strong: oklch(1 0 0 / 15%);
+  --bg: oklch(0.28 0.079 14);
+  --bg-lift: oklch(0.315 0.09 15);
+  --bg-deep: oklch(0.247 0.068 14);
+  --ink: oklch(0.147 0.027 5);
 
-  --primary: oklch(0.54 0.19 22);
-  --primary-hover: oklch(0.6 0.19 22);
-  --primary-fg: oklch(0.98 0.01 30);
+  --fg: oklch(0.979 0.01 39);
+  --fg-muted: oklch(0.979 0.01 39 / 78%);
+  --fg-subtle: oklch(0.979 0.01 39 / 60%);
+
+  --surface: oklch(0.979 0.01 39 / 8%);
+  --border: oklch(0.979 0.01 39 / 18%);
+  --border-strong: oklch(0.979 0.01 39 / 42%);
+
+  --primary: oklch(0.596 0.18 27);
+
+  --shadow-hard: 8px 8px 0 var(--ink);
+  --shadow-hard-lg: 14px 14px 0 var(--ink);
 
   --app-bg: oklch(0.28 0.004 285);
   --app-fg: oklch(0.95 0 0);
@@ -28,15 +37,12 @@
   --app-code: oklch(0 0 0 / 28%);
 
   --hud-shadow: rgb(0 0 0 / 0.7);
-
-  --beam-core: oklch(0.96 0.02 255 / 0.17);
-  --beam-mid: oklch(0.93 0.02 255 / 0.12);
-  --beam-edge: oklch(0.9 0.025 255 / 0.06);
 }
 
 @theme inline {
   --color-bg: var(--bg);
-  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-deep: var(--bg-deep);
+  --color-ink: var(--ink);
   --color-surface: var(--surface);
   --color-fg: var(--fg);
   --color-fg-muted: var(--fg-muted);
@@ -44,8 +50,6 @@
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
   --color-primary: var(--primary);
-  --color-primary-hover: var(--primary-hover);
-  --color-primary-fg: var(--primary-fg);
   --color-app-bg: var(--app-bg);
   --color-app-fg: var(--app-fg);
   --color-app-card: var(--app-card);
@@ -63,11 +67,17 @@
   --text-app-body: 12.5px;
   --text-app-chat: 13.5px;
   --text-app-title: 15px;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Inter", sans-serif;
+  --font-sans: var(--font-golos), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-unbounded), ui-sans-serif, system-ui, sans-serif;
 }
 
 * {
   border-color: var(--border);
+}
+
+html,
+body {
+  overflow-x: clip;
 }
 
 html {
@@ -77,143 +87,74 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--bg);
+  background: var(--bg-deep);
   color: var(--fg);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-section[id] {
-  scroll-margin-top: 4.5rem;
-}
-
-.hero-tint {
-  background: radial-gradient(64% 46% at 50% 0%, oklch(0.42 0.15 22 / 0.14) 0%, transparent 72%);
-}
-
-.moon {
-  position: fixed;
-  top: 60px;
-  right: 4%;
-  z-index: 10;
-  width: clamp(58px, 18vw, 136px);
-  height: clamp(58px, 18vw, 136px);
-  pointer-events: none;
-}
-
-/* lighthouse beam projected from the moon across the page */
-.moon::after {
+/* Ground and grain in one fixed layer: the gradient would otherwise stretch
+   over the whole scroll height and band badly on a page this long. */
+body::before {
   content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 260vmax;
-  height: 130vmax;
-  margin-left: -130vmax;
-  transform: rotate(var(--beam-angle, 0deg));
-  transform-origin: 50% 0;
-  background: conic-gradient(
-    from 143deg at 50% 0,
-    transparent 0deg,
-    var(--beam-edge) 24deg,
-    var(--beam-mid) 46deg,
-    var(--beam-core) 63deg,
-    var(--beam-mid) 80deg,
-    var(--beam-edge) 102deg,
-    transparent 126deg
-  );
-  mask-image: radial-gradient(
-    circle at 50% 0,
-    rgb(0 0 0) 0%,
-    rgb(0 0 0 / 0.95) 14%,
-    rgb(0 0 0 / 0.82) 30%,
-    rgb(0 0 0 / 0.62) 48%,
-    rgb(0 0 0 / 0.4) 64%,
-    rgb(0 0 0 / 0.2) 79%,
-    rgb(0 0 0 / 0.07) 90%,
-    transparent 98%
-  );
-}
-
-/* volumetric mist around the light source */
-.moon-mist {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 150vmax;
-  height: 150vmax;
-  margin: -75vmax 0 0 -75vmax;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    oklch(0.9 0.02 255 / 0.08) 0%,
-    oklch(0.9 0.02 255 / 0.042) 26%,
-    oklch(0.9 0.02 255 / 0.02) 48%,
-    transparent 72%
-  );
-  animation: mist-breathe 12s ease-in-out infinite both;
-}
-
-.moon-disc {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0.92;
-  filter: drop-shadow(0 0 9px oklch(0.9 0.02 255 / 0.4));
-  animation: moon-float 14s ease-in-out infinite both;
-}
-
-@media (min-width: 640px) {
-  .moon {
-    top: 100px;
-    right: 5%;
-  }
-}
-
-@keyframes moon-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-9px);
-  }
-}
-
-.stars {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.055'/%3E%3C/svg%3E")
+      repeat,
+    linear-gradient(170deg, var(--bg-lift) 0%, var(--bg) 42%, var(--bg-deep) 100%);
+  background-size:
+    180px 180px,
+    cover;
 }
 
-.star {
-  position: absolute;
-  animation: star-twinkle 3.6s ease-in-out infinite both;
+section[id] {
+  scroll-margin-top: 5rem;
 }
 
-@keyframes star-twinkle {
-  0%,
-  100% {
-    opacity: 0.25;
-    transform: scale(0.85);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1);
+/* Outlined display type. Without the stroke the text is transparent, so the
+   @supports fallback repaints it solid rather than leaving a blank headline. */
+.text-stroke {
+  color: transparent;
+  -webkit-text-stroke: var(--stroke-w, 1.1px) var(--fg);
+}
+
+@media (min-width: 640px) {
+  .text-stroke {
+    --stroke-w: 1.7px;
   }
 }
 
-@keyframes mist-breathe {
-  0%,
-  100% {
-    transform: scale(1);
+@supports not (-webkit-text-stroke: 1px currentcolor) {
+  .text-stroke {
+    color: var(--fg);
   }
-  50% {
-    transform: scale(1.05);
+}
+
+.shadow-poster {
+  box-shadow: var(--shadow-hard);
+}
+
+.shadow-poster-lg {
+  box-shadow: var(--shadow-hard-lg);
+}
+
+/* The track holds two identical copies of the line, so -50% lands exactly on
+   the seam and the loop is invisible. */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
   }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.marquee-track {
+  animation: marquee 34s linear infinite;
 }
 
 @keyframes eq {
@@ -400,433 +341,6 @@ section[id] {
   animation-delay: 0.15s;
 }
 
-.hare-scene {
-  --hare-cycle: 16s;
-  --hare-delay: 1s;
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 150px;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.hare-bush-back,
-.hare-bush-front,
-.hare-runner,
-.hare-static {
-  position: absolute;
-  bottom: 0;
-}
-
-.hare-bush-back {
-  left: 6%;
-  width: 190px;
-}
-
-.hare-bush-front {
-  left: calc(6% + 80px);
-  width: 150px;
-  z-index: 3;
-  transform-origin: 50% 100%;
-  animation: bush-shake var(--hare-cycle) ease-in-out var(--hare-delay) infinite both;
-}
-
-.hare-runner {
-  left: calc(6% + 97px);
-  bottom: 4px;
-  width: 120px;
-  height: 96px;
-  z-index: 2;
-  animation: hare-x var(--hare-cycle) linear var(--hare-delay) infinite both;
-}
-
-.hare-hop {
-  position: absolute;
-  inset: 0;
-  animation: hare-y var(--hare-cycle) linear var(--hare-delay) infinite both;
-}
-
-.hare-squash {
-  position: absolute;
-  inset: 0;
-  transform-origin: 50% 100%;
-  animation: hare-squash var(--hare-cycle) linear var(--hare-delay) infinite both;
-}
-
-.hare-pose {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-}
-
-.hare-pose-gather {
-  height: 68px;
-  animation: hare-pose-gather var(--hare-cycle) linear var(--hare-delay) infinite both;
-}
-
-.hare-pose-leap {
-  height: 61px;
-  animation: hare-pose-leap var(--hare-cycle) linear var(--hare-delay) infinite both;
-}
-
-.hare-pose-dive {
-  height: 72px;
-  left: 8px;
-  animation: hare-pose-dive var(--hare-cycle) linear var(--hare-delay) infinite both;
-}
-
-.hare-peek {
-  position: absolute;
-  bottom: 0;
-  left: calc(6% + 112px);
-  width: 59px;
-  height: 84px;
-  z-index: 2;
-  animation: hare-peek-rise var(--hare-cycle) linear var(--hare-delay) infinite both;
-}
-
-.hare-peek-front {
-  height: 84px;
-  animation: hare-peek-front var(--hare-cycle) linear var(--hare-delay) infinite both;
-}
-
-.hare-peek-ear {
-  height: 84px;
-  animation: hare-peek-ear var(--hare-cycle) linear var(--hare-delay) infinite both;
-}
-
-.hare-static {
-  display: none;
-  left: calc(6% + 245px);
-  height: 84px;
-}
-
-@keyframes hare-bounce {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(var(--hop-lift, -14px));
-  }
-}
-
-@keyframes hare-x {
-  0% {
-    transform: translateX(110vw);
-  }
-  18% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(0);
-  }
-}
-
-@keyframes hare-y {
-  0% {
-    transform: translateY(0) rotate(5deg);
-    animation-timing-function: cubic-bezier(0.3, 0.55, 0.45, 1);
-  }
-  1.65% {
-    transform: translateY(-42px) rotate(0deg);
-    animation-timing-function: cubic-bezier(0.55, 0, 0.7, 0.4);
-  }
-  3.3% {
-    transform: translateY(0) rotate(-7deg);
-    animation-timing-function: ease-out;
-  }
-  3.62% {
-    transform: translateY(0) rotate(5deg);
-    animation-timing-function: cubic-bezier(0.3, 0.55, 0.45, 1);
-  }
-  5.28% {
-    transform: translateY(-47px) rotate(0deg);
-    animation-timing-function: cubic-bezier(0.55, 0, 0.7, 0.4);
-  }
-  6.93% {
-    transform: translateY(0) rotate(-7deg);
-    animation-timing-function: ease-out;
-  }
-  7.25% {
-    transform: translateY(0) rotate(5deg);
-    animation-timing-function: cubic-bezier(0.3, 0.55, 0.45, 1);
-  }
-  8.91% {
-    transform: translateY(-41px) rotate(0deg);
-    animation-timing-function: cubic-bezier(0.55, 0, 0.7, 0.4);
-  }
-  10.56% {
-    transform: translateY(0) rotate(-7deg);
-    animation-timing-function: ease-out;
-  }
-  10.88% {
-    transform: translateY(0) rotate(5deg);
-    animation-timing-function: cubic-bezier(0.3, 0.55, 0.45, 1);
-  }
-  12.54% {
-    transform: translateY(-44px) rotate(0deg);
-    animation-timing-function: cubic-bezier(0.55, 0, 0.7, 0.4);
-  }
-  14.19% {
-    transform: translateY(0) rotate(-8deg);
-    animation-timing-function: ease-out;
-  }
-  14.55% {
-    transform: translateY(0) rotate(6deg);
-    animation-timing-function: cubic-bezier(0.25, 0.55, 0.4, 1);
-  }
-  15.9% {
-    transform: translateY(-70px) rotate(0deg);
-    animation-timing-function: cubic-bezier(0.55, 0, 0.35, 1);
-  }
-  18.2% {
-    transform: translateY(40px) rotate(-6deg);
-  }
-  100% {
-    transform: translateY(40px) rotate(-6deg);
-  }
-}
-
-@keyframes hare-squash {
-  0% {
-    transform: scale(1.06, 0.93);
-  }
-  1.65% {
-    transform: scale(0.97, 1.04);
-  }
-  3.3% {
-    transform: scale(1.07, 0.91);
-  }
-  3.62% {
-    transform: scale(1.05, 0.94);
-  }
-  5.28% {
-    transform: scale(0.97, 1.04);
-  }
-  6.93% {
-    transform: scale(1.07, 0.91);
-  }
-  7.25% {
-    transform: scale(1.05, 0.94);
-  }
-  8.91% {
-    transform: scale(0.97, 1.04);
-  }
-  10.56% {
-    transform: scale(1.07, 0.91);
-  }
-  10.88% {
-    transform: scale(1.05, 0.94);
-  }
-  12.54% {
-    transform: scale(0.97, 1.04);
-  }
-  14.19% {
-    transform: scale(1.08, 0.9);
-  }
-  14.55% {
-    transform: scale(1.04, 0.96);
-  }
-  15.9% {
-    transform: scale(0.96, 1.05);
-  }
-  18.2%,
-  100% {
-    transform: scale(1, 1);
-  }
-}
-
-@keyframes hare-pose-gather {
-  0% {
-    opacity: 1;
-    animation-timing-function: step-end;
-  }
-  0.9% {
-    opacity: 0;
-    animation-timing-function: step-end;
-  }
-  3% {
-    opacity: 1;
-    animation-timing-function: step-end;
-  }
-  4.1% {
-    opacity: 0;
-    animation-timing-function: step-end;
-  }
-  6.6% {
-    opacity: 1;
-    animation-timing-function: step-end;
-  }
-  7.7% {
-    opacity: 0;
-    animation-timing-function: step-end;
-  }
-  10.2% {
-    opacity: 1;
-    animation-timing-function: step-end;
-  }
-  11.3% {
-    opacity: 0;
-    animation-timing-function: step-end;
-  }
-  13.9% {
-    opacity: 1;
-    animation-timing-function: step-end;
-  }
-  15%,
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes hare-pose-leap {
-  0% {
-    opacity: 0;
-    animation-timing-function: step-end;
-  }
-  0.9% {
-    opacity: 1;
-    animation-timing-function: step-end;
-  }
-  3% {
-    opacity: 0;
-    animation-timing-function: step-end;
-  }
-  4.1% {
-    opacity: 1;
-    animation-timing-function: step-end;
-  }
-  6.6% {
-    opacity: 0;
-    animation-timing-function: step-end;
-  }
-  7.7% {
-    opacity: 1;
-    animation-timing-function: step-end;
-  }
-  10.2% {
-    opacity: 0;
-    animation-timing-function: step-end;
-  }
-  11.3% {
-    opacity: 1;
-    animation-timing-function: step-end;
-  }
-  13.9% {
-    opacity: 0;
-    animation-timing-function: step-end;
-  }
-  15% {
-    opacity: 1;
-    animation-timing-function: step-end;
-  }
-  15.9%,
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes hare-pose-dive {
-  0% {
-    opacity: 0;
-    animation-timing-function: step-end;
-  }
-  15.9%,
-  100% {
-    opacity: 1;
-  }
-}
-
-@keyframes hare-peek-rise {
-  0%,
-  28% {
-    transform: translateY(60px);
-    animation-timing-function: cubic-bezier(0.25, 0.6, 0.35, 1);
-  }
-  31.5% {
-    transform: translateY(-41px);
-    animation-timing-function: ease-out;
-  }
-  32.5% {
-    transform: translateY(-36px);
-  }
-  55% {
-    transform: translateY(-36px);
-    animation-timing-function: cubic-bezier(0.55, 0, 0.8, 0.4);
-  }
-  58%,
-  100% {
-    transform: translateY(60px);
-  }
-}
-
-@keyframes hare-peek-front {
-  0% {
-    opacity: 1;
-    animation-timing-function: step-end;
-  }
-  40% {
-    opacity: 0;
-    animation-timing-function: step-end;
-  }
-  41.5% {
-    opacity: 1;
-    animation-timing-function: step-end;
-  }
-  43% {
-    opacity: 0;
-    animation-timing-function: step-end;
-  }
-  44.5%,
-  100% {
-    opacity: 1;
-  }
-}
-
-@keyframes hare-peek-ear {
-  0% {
-    opacity: 0;
-    animation-timing-function: step-end;
-  }
-  40% {
-    opacity: 1;
-    animation-timing-function: step-end;
-  }
-  41.5% {
-    opacity: 0;
-    animation-timing-function: step-end;
-  }
-  43% {
-    opacity: 1;
-    animation-timing-function: step-end;
-  }
-  44.5%,
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes bush-shake {
-  0%,
-  17.2% {
-    transform: rotate(0deg);
-  }
-  17.8% {
-    transform: rotate(-2.4deg);
-  }
-  18.4% {
-    transform: rotate(1.8deg);
-  }
-  19% {
-    transform: rotate(-1deg);
-  }
-  19.6%,
-  100% {
-    transform: rotate(0deg);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -838,17 +352,7 @@ section[id] {
   .caret,
   .app-shimmer,
   .fade-rise,
-  .moon-disc,
-  .moon-mist,
-  .star,
-  .hare-bush-front {
+  .marquee-track {
     animation: none;
-  }
-  .hare-runner,
-  .hare-peek {
-    display: none;
-  }
-  .hare-static {
-    display: block;
   }
 }

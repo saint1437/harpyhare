@@ -1,56 +1,33 @@
-import {
-  AudioLines,
-  EyeOff,
-  KeyRound,
-  Languages,
-  ScrollText,
-  Sparkles,
-  type LucideIcon,
-} from "lucide-react";
 import type { Dictionary } from "@/i18n/types";
-import { FEATURES_STARS } from "@/lib/stars";
-import { Hare } from "./Hare";
-import { Bush } from "./Scenery";
-import { StarField } from "./Sky";
-
-const FEATURE_ICONS: LucideIcon[] = [AudioLines, Languages, Sparkles, EyeOff, ScrollText, KeyRound];
+import { SectionHeading } from "./SectionHeading";
 
 export function Features({ dict }: { dict: Dictionary }) {
+  const copy = dict.features;
   return (
-    <section id="features" className="relative border-t border-border px-6 py-20 sm:py-24">
-      <div className="mx-auto max-w-5xl">
-        <p className="text-xs font-semibold tracking-[0.18em] text-fg-subtle uppercase">
-          {dict.features.eyebrow}
-        </p>
-        <h2 className="mt-3 max-w-lg text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-          {dict.features.title}
-        </h2>
-
-        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {dict.features.items.map(({ title, text }, index) => {
-            const Icon = FEATURE_ICONS[index] ?? AudioLines;
-            return (
-              <article key={title} className="rounded-2xl border border-border bg-surface/40 p-6">
-                <span className="inline-flex size-10 items-center justify-center rounded-xl bg-primary/15 text-primary">
-                  <Icon className="size-5" strokeWidth={2} aria-hidden />
-                </span>
-                <h3 className="mt-5 text-base font-semibold tracking-tight">{title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-fg-muted">{text}</p>
-              </article>
-            );
-          })}
-        </div>
+    <section id="features" className="px-6 py-20 sm:py-24">
+      <div className="mx-auto max-w-6xl">
+        <SectionHeading title={copy.title} />
+        <ul className="mt-9 border-t-[1.5px] border-border-strong">
+          {copy.items.map(({ title, text }, index) => (
+            <li
+              key={title}
+              className="flex flex-col gap-2 border-b border-border py-5 sm:flex-row sm:items-baseline sm:gap-8 sm:py-6"
+            >
+              <span
+                className="shrink-0 font-display text-[22px] leading-none font-black text-transparent sm:w-16 sm:text-[34px]"
+                style={{ WebkitTextStroke: "1.1px var(--fg)" }}
+                aria-hidden
+              >
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <h3 className="font-display text-[12px] font-bold tracking-[0.04em] uppercase sm:w-[340px] sm:shrink-0 sm:text-[15px]">
+                {title}
+              </h3>
+              <p className="text-[13.5px] leading-relaxed text-fg-muted sm:text-[14.5px]">{text}</p>
+            </li>
+          ))}
+        </ul>
       </div>
-
-      <StarField stars={FEATURES_STARS} />
-      <Bush width={90} className="left-[6%]" />
-      <Hare
-        height={52}
-        idleMs={[7000, 14000]}
-        range={[-24, 150]}
-        className="left-[calc(6%+98px)]"
-      />
-      <Bush variant="front" width={64} className="right-[10%] hidden sm:block" />
     </section>
   );
 }

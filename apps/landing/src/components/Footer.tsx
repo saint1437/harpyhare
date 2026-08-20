@@ -4,14 +4,13 @@ import { LOCALE_HTML_LANG, LOCALE_PATH, type Dictionary } from "@/i18n/types";
 import { RELEASES_PAGE } from "@/lib/release";
 import { Logo } from "./Logo";
 import { PlatformRequirements } from "./PlatformRequirements";
-import { Bush } from "./Scenery";
 
 export function Footer({ dict }: { dict: Dictionary }) {
   const other = otherLocale(dict.locale);
   return (
-    <footer className="relative border-t border-border px-6 py-10">
-      <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 text-sm text-fg-subtle sm:flex-row">
-        <Logo showMark={false} />
+    <footer className="bg-ink px-6 pb-12">
+      <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 border-t border-border pt-8 text-[12.5px] text-fg-subtle sm:flex-row sm:justify-between">
+        <Logo />
         <PlatformRequirements />
         <div className="flex items-center gap-6">
           <Link
@@ -31,8 +30,6 @@ export function Footer({ dict }: { dict: Dictionary }) {
           </a>
         </div>
       </div>
-
-      <Bush variant="front" width={72} className="right-[4%]" />
     </footer>
   );
 }

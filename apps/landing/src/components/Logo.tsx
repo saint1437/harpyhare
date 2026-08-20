@@ -1,12 +1,15 @@
 import { cn } from "@/lib/cn";
+import { SITE_NAME } from "@/lib/site";
 
-export function Logo({ className, showMark = true }: { className?: string; showMark?: boolean }) {
+export function Logo({ className }: { className?: string }) {
   return (
-    <span className={cn("inline-flex items-center gap-2 select-none", className)}>
-      {showMark && (
-        <img src="/logo.png" alt="" aria-hidden draggable={false} className="h-[22px] w-auto" />
+    <span
+      className={cn(
+        "font-display text-[13px] font-bold tracking-[0.06em] text-fg uppercase select-none sm:text-[15px]",
+        className,
       )}
-      <span className="text-[15px] font-semibold tracking-tight text-fg">harpyhare</span>
+    >
+      {SITE_NAME}
     </span>
   );
 }

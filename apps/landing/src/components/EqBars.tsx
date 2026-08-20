@@ -1,6 +1,6 @@
 import { cn } from "@/lib/cn";
 
-const BAR_HEIGHTS = [10, 18, 13, 22, 12];
+const BAR_HEIGHTS = [6, 11, 8, 13, 7];
 
 export function EqBars({
   animated = false,
@@ -14,7 +14,7 @@ export function EqBars({
       {BAR_HEIGHTS.map((height, index) => (
         <span
           key={index}
-          className={cn("w-[3px] rounded-full bg-primary", animated && "eq-bar")}
+          className={cn("w-[2.5px] bg-fg", animated && "eq-bar")}
           style={{
             height: `${height}px`,
             animationDelay: animated ? `${index * 0.12}s` : undefined,

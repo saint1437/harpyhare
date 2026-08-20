@@ -1,37 +1,38 @@
 import type { Dictionary } from "@/i18n/types";
 import type { ReleaseInfo } from "@/lib/release";
-import { CTA_STARS } from "@/lib/stars";
 import { DownloadChoice } from "./DownloadChoice";
-import { HareScene } from "./HareScene";
-import { Bush } from "./Scenery";
-import { StarField } from "./Sky";
 import { VersionNote } from "./VersionNote";
 
-interface CtaSectionProps {
-  dict: Dictionary;
-  release: ReleaseInfo | null;
-}
-
-export function CtaSection({ dict, release }: CtaSectionProps) {
+export function CtaSection({ dict, release }: { dict: Dictionary; release: ReleaseInfo | null }) {
+  const copy = dict.cta;
   return (
-    <section className="relative border-t border-border px-6 pt-20 pb-48 sm:pt-28 sm:pb-52">
-      <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
-        <h2 className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-          {dict.cta.title}
-        </h2>
-        <p className="mt-4 max-w-md text-base leading-relaxed text-pretty text-fg-muted">
-          {dict.cta.text}
-        </p>
-        <DownloadChoice
-          release={release}
-          primaryPrefix={dict.download.primaryPrefix}
-          className="mt-8"
-        />
-        <VersionNote release={release} className="mt-4" />
+    <section className="bg-ink px-6 pt-20 pb-16 sm:pt-24 sm:pb-20">
+      <div className="mx-auto grid max-w-6xl items-center gap-10 lg:grid-cols-12 lg:gap-12">
+        <div className="lg:col-span-7">
+          <h2 className="font-display text-[clamp(1.8rem,7vw,3.5rem)] leading-[1.06] font-black text-balance uppercase">
+            {copy.titlePlain}
+            <span className="text-stroke">{copy.titleOutline}</span>
+          </h2>
+          <p className="mt-5 max-w-lg text-[14.5px] leading-relaxed text-fg-muted sm:text-[15px]">
+            {copy.text}
+          </p>
+          <DownloadChoice
+            release={release}
+            primaryPrefix={dict.download.primaryPrefix}
+            className="mt-8"
+          />
+          <VersionNote release={release} className="mt-4 block" />
+        </div>
+        <div className="lg:col-span-5">
+          <img
+            src="/linocut/hare-leap.svg"
+            alt=""
+            aria-hidden
+            draggable={false}
+            className="block aspect-3/2 w-full border-2 border-fg object-cover shadow-[8px_8px_0_var(--bg)] sm:shadow-[12px_12px_0_var(--bg)]"
+          />
+        </div>
       </div>
-      <StarField stars={CTA_STARS} />
-      <Bush width={115} className="right-[9%] hidden sm:block" />
-      <HareScene />
     </section>
   );
 }

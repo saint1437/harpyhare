@@ -34,20 +34,28 @@ export const en: Dictionary = {
     download: "Download",
   },
   hero: {
-    badge: "A quiet assistant for macOS and Windows",
-    titleTop: "Hears the question.",
-    titleAccent: "Shows the answer.",
-    lead: "Hold a key — harpyhare records the audio from any app, transcribes the speech and shows Claude's answer above every other window. Seconds from question to answer.",
+    badge: "A quiet assistant · macOS + Windows",
+    titleSolid: ["Hears", "the question."],
+    titleOutline: ["Shows", "the answer."],
+    lead: "Hold a key — harpyhare records system audio, transcribes the speech and streams Claude's answer above every other window. A couple of seconds — and the answer is on a screen only you can see.",
     allVersions: "All versions",
   },
   download: {
     primaryPrefix: "Download for",
     unavailable: "All releases on GitHub",
   },
+  marquee: [
+    "Invisible during screen sharing",
+    "Zoom",
+    "Meet",
+    "Interview",
+    "Lecture",
+    "~2 seconds to an answer",
+  ],
   app: demoEn,
   how: {
-    eyebrow: "How it works",
     title: "Three steps to an answer",
+    hint: "hold F9",
     steps: [
       {
         number: "01",
@@ -66,8 +74,35 @@ export const en: Dictionary = {
       },
     ],
   },
+  window: {
+    titlePlain: "The answer lives in a window ",
+    titleOutline: "only you can see",
+    sub: "The window floats above every app and never lands in a screen capture. Opacity, size and hotkeys are all adjustable. Below is a working mock-up — go ahead and click around.",
+    cards: [
+      {
+        title: "Teleprompter mode",
+        text: "One key turns the answer into large text with smooth auto-scroll.",
+      },
+      {
+        title: "Screenshot into the question",
+        text: "A region screenshot goes straight into the chat as an attachment.",
+      },
+      {
+        title: "History and pre-prompts",
+        text: "Parallel chats, pre-prompts and a context library — your résumé always at hand.",
+      },
+    ],
+  },
+  visibility: {
+    title: "What they see",
+    yours: "Your screen",
+    theirs: "Screen share in Zoom / Meet",
+    empty: "Nothing here",
+    sample: "Optimistic locking takes no lock — it reads the row version and checks it on write…",
+    caveat:
+      "The window is marked as protected from capture: in screen recordings and screenshots its place is simply empty. One honest caveat: the pixels are hidden, the process is not — the app is still listed among running processes (as “Audio System”).",
+  },
   features: {
-    eyebrow: "Features",
     title: "What harpyhare does",
     items: [
       {
@@ -97,7 +132,6 @@ export const en: Dictionary = {
     ],
   },
   faq: {
-    eyebrow: "Questions and answers",
     title: "Frequently asked",
     items: [
       {
@@ -133,8 +167,9 @@ export const en: Dictionary = {
     ],
   },
   cta: {
-    title: "Try it on your next call",
-    text: "The app is free — all you need are your own Groq and Anthropic API keys.",
+    titlePlain: "Try it on your next ",
+    titleOutline: "call",
+    text: "The app is free — all you need are your own Groq and Anthropic API keys, or an access code.",
   },
   footer: {
     github: "GitHub",

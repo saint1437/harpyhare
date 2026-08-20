@@ -5,13 +5,12 @@ import {
   Play,
   ShieldCheck,
   SlidersHorizontal,
-  VenetianMask,
   type LucideIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type { LauncherCopy } from "@/i18n/demo-types";
 import { cn } from "@/lib/cn";
-import { ContextsScreen, IdentityScreen, PresetsScreen } from "./ContentScreens";
+import { ContextsScreen, PresetsScreen } from "./ContentScreens";
 import { useCopy } from "./copy";
 import { SettingsScreen } from "./SettingsScreen";
 import { PermissionsScreen, UpdatesScreen } from "./SystemScreens";
@@ -23,14 +22,13 @@ type ScreenId = keyof LauncherCopy["screens"];
 const SCREEN_ICONS: Record<ScreenId, LucideIcon> = {
   contexts: Library,
   presets: MessageSquareText,
-  identity: VenetianMask,
   settings: SlidersHorizontal,
   permissions: ShieldCheck,
   updates: Download,
 };
 
 const SCREEN_GROUPS: Record<"content" | "system", ScreenId[]> = {
-  content: ["contexts", "presets", "identity"],
+  content: ["contexts", "presets"],
   system: ["settings", "permissions", "updates"],
 };
 
@@ -135,7 +133,6 @@ function ScreenContent({
 }) {
   if (id === "contexts") return <ContextsScreen />;
   if (id === "presets") return <PresetsScreen />;
-  if (id === "identity") return <IdentityScreen />;
   if (id === "permissions") return <PermissionsScreen />;
   if (id === "updates") return <UpdatesScreen />;
   return <SettingsScreen theme={theme} onThemeChange={onThemeChange} />;

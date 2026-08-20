@@ -49,8 +49,8 @@ export interface Dictionary {
   };
   hero: {
     badge: string;
-    titleTop: string;
-    titleAccent: string;
+    titleSolid: string[];
+    titleOutline: string[];
     lead: string;
     allVersions: string;
   };
@@ -58,24 +58,38 @@ export interface Dictionary {
     primaryPrefix: string;
     unavailable: string;
   };
+  marquee: string[];
   app: DemoCopy;
   how: {
-    eyebrow: string;
     title: string;
+    hint: string;
     steps: Step[];
   };
+  window: {
+    titlePlain: string;
+    titleOutline: string;
+    sub: string;
+    cards: FeatureCopy[];
+  };
+  visibility: {
+    title: string;
+    yours: string;
+    theirs: string;
+    empty: string;
+    sample: string;
+    caveat: string;
+  };
   features: {
-    eyebrow: string;
     title: string;
     items: FeatureCopy[];
   };
   faq: {
-    eyebrow: string;
     title: string;
     items: FaqItem[];
   };
   cta: {
-    title: string;
+    titlePlain: string;
+    titleOutline: string;
     text: string;
   };
   footer: {

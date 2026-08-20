@@ -1,21 +1,4 @@
-import {
-  Archive,
-  AudioLines,
-  Bot,
-  Check,
-  FilePlus,
-  FileText,
-  FolderPlus,
-  Gamepad2,
-  Gem,
-  MessagesSquare,
-  Monitor,
-  Music,
-  Plus,
-  Shield,
-  Trash2,
-  type LucideIcon,
-} from "lucide-react";
+import { Check, FilePlus, FileText, FolderPlus, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { useCopy } from "./copy";
@@ -129,66 +112,6 @@ export function PresetsScreen() {
           <p className="mt-1.5 text-app-caption leading-relaxed text-app-muted">{preset.text}</p>
         </button>
       ))}
-    </div>
-  );
-}
-
-const IDENTITY_ICONS: LucideIcon[] = [
-  AudioLines,
-  Gem,
-  Music,
-  Shield,
-  MessagesSquare,
-  Bot,
-  Gamepad2,
-  Monitor,
-  Archive,
-];
-
-const IDENTITY_TINTS = [
-  "bg-app-surface-active",
-  "bg-[oklch(0.45_0.14_300)]",
-  "bg-[oklch(0.55_0.16_150)]",
-  "bg-[oklch(0.5_0.13_290)]",
-  "bg-[oklch(0.52_0.14_275)]",
-  "bg-[oklch(0.55_0.13_160)]",
-  "bg-[oklch(0.42_0.05_240)]",
-  "bg-[oklch(0.5_0.12_230)]",
-  "bg-[oklch(0.55_0.11_60)]",
-];
-
-export function IdentityScreen() {
-  const copy = useCopy().launcher.identity;
-  const [current, setCurrent] = useState(0);
-  return (
-    <div className="grid grid-cols-3 gap-2.5">
-      {copy.names.map((name, index) => {
-        const Icon = IDENTITY_ICONS[index] ?? AudioLines;
-        const isActive = index === current;
-        return (
-          <button
-            key={name}
-            type="button"
-            onClick={() => {
-              setCurrent(index);
-            }}
-            className={cn(
-              "flex flex-col items-center gap-2 rounded-xl bg-app-card px-2 py-4 ring-1 transition-colors ring-inset",
-              isActive ? "ring-app-primary/70" : "ring-app-border hover:bg-app-surface",
-            )}
-          >
-            <span
-              className={cn(
-                "grid size-10 place-items-center rounded-[10px] text-app-fg",
-                IDENTITY_TINTS[index] ?? IDENTITY_TINTS[0],
-              )}
-            >
-              <Icon className="size-5" />
-            </span>
-            <span className="min-w-0 truncate text-app-caption text-app-fg">{name}</span>
-          </button>
-        );
-      })}
     </div>
   );
 }

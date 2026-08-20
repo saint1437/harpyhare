@@ -63,7 +63,6 @@ export interface LauncherCopy {
   screens: {
     contexts: ScreenCopy;
     presets: ScreenCopy;
-    identity: ScreenCopy;
     settings: ScreenCopy;
     permissions: ScreenCopy;
     updates: ScreenCopy;
@@ -112,9 +111,6 @@ export interface LauncherCopy {
     add: string;
     activeBadge: string;
     items: PresetCopy[];
-  };
-  identity: {
-    names: string[];
   };
   permissions: {
     group: SettingGroupCopy;

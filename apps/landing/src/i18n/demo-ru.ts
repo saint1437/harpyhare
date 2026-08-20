@@ -84,10 +84,6 @@ export const demoRu: DemoCopy = {
         label: "Пресеты",
         description: "Препромпты: текст, который встаёт в начало системного промпта.",
       },
-      identity: {
-        label: "Маскировка",
-        description: "Имя и иконка, под которыми приложение видно в системе.",
-      },
       settings: {
         label: "Настройки",
         description: "Доступ к API, распознавание речи, клавиши, поведение и вид.",
@@ -178,19 +174,6 @@ export const demoRu: DemoCopy = {
           name: "Созвон с клиентом",
           text: "Формулируй ответ так, чтобы его можно было произнести вслух: без списков терминов, простыми предложениями, с конкретными сроками и следующими шагами.",
         },
-      ],
-    },
-    identity: {
-      names: [
-        "Audio System",
-        "Obsidian",
-        "Spotify",
-        "Proton VPN",
-        "Discord",
-        "Android Studio",
-        "Steam",
-        "DisplayBuddy",
-        "The Unarchiver",
       ],
     },
     permissions: {

@@ -52,9 +52,9 @@ export function AppDemo({ dict }: { dict: Dictionary }) {
 
   return (
     <DemoCopyProvider copy={copy}>
-      <div className="fade-rise fade-rise-late relative mx-auto mt-16 w-full max-w-5xl sm:mt-20">
+      <div className="fade-rise relative mx-auto mt-10 w-full sm:mt-12">
         <div
-          className="relative overflow-hidden rounded-[18px] border border-border-strong bg-app-bg shadow-[0_36px_70px_-22px_var(--hud-shadow)]"
+          className="shadow-poster sm:shadow-poster-lg relative overflow-hidden border-2 border-fg bg-app-bg"
           role="group"
           aria-label={copy.frameLabel}
           data-app-theme={theme}
@@ -86,7 +86,7 @@ export function AppDemo({ dict }: { dict: Dictionary }) {
               }}
               className="absolute inset-0 z-30 grid place-items-center bg-app-bg/80 backdrop-blur-sm"
             >
-              <span className="rounded-full border border-app-border bg-app-card px-4 py-2 text-app-body text-app-fg">
+              <span className="border border-app-border bg-app-card px-4 py-2 text-app-body text-app-fg">
                 {copy.hiddenWindow}
               </span>
             </button>
@@ -94,7 +94,7 @@ export function AppDemo({ dict }: { dict: Dictionary }) {
         </div>
 
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-          <span className="inline-flex items-center gap-1.5 text-xs text-fg-subtle">
+          <span className="inline-flex items-center gap-1.5 font-display text-[9.5px] font-medium tracking-[0.1em] text-fg-subtle uppercase">
             <Mic className="size-3.5" aria-hidden />
             {copy.ask}
           </span>
@@ -105,14 +105,14 @@ export function AppDemo({ dict }: { dict: Dictionary }) {
               onClick={() => {
                 ask(prompt);
               }}
-              className="rounded-full border border-border-strong bg-surface/60 px-3.5 py-1.5 text-[13px] text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+              className="border border-border-strong px-3.5 py-2 text-[12.5px] text-fg-muted transition-colors hover:bg-surface hover:text-fg"
             >
               {prompt.chip}
             </button>
           ))}
         </div>
 
-        <p className="mt-4 text-center text-xs text-balance text-fg-subtle">
+        <p className="mt-4 text-center text-[12px] text-balance text-fg-subtle">
           {copy.caption}
           {copy.disclosure !== null && <> {copy.disclosure}</>}
         </p>

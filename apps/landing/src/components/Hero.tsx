@@ -1,64 +1,93 @@
 import type { Dictionary } from "@/i18n/types";
+import { cn } from "@/lib/cn";
 import { RELEASES_PAGE, type ReleaseInfo } from "@/lib/release";
-import { HERO_STARS } from "@/lib/stars";
-import { AppDemo } from "./app-demo/AppDemo";
 import { DownloadChoice } from "./DownloadChoice";
 import { EqBars } from "./EqBars";
-import { Bush } from "./Scenery";
-import { StarField } from "./Sky";
 import { VersionNote } from "./VersionNote";
 
-interface HeroProps {
-  dict: Dictionary;
-  release: ReleaseInfo | null;
+const PLAQUE = "harpy hare · est. 2026";
+const PERIOD = ".";
+
+/** The closing period stays solid ink while the word itself is outlined — the
+ *  accent the poster leans on. Lines without one simply render outlined. */
+function OutlineLine({ text }: { text: string }) {
+  const period = text.endsWith(PERIOD);
+  return (
+    <span className="block">
+      <span className="text-stroke">{period ? text.slice(0, -1) : text}</span>
+      {period && <span className="text-ink">{PERIOD}</span>}
+    </span>
+  );
 }
 
-export function Hero({ dict, release }: HeroProps) {
+function HeroArt({ className }: { className?: string }) {
   return (
-    <section className="relative overflow-hidden px-6 pt-32 pb-20 sm:pt-40 sm:pb-24">
-      <div
-        className="hero-tint pointer-events-none absolute inset-x-0 top-0 h-[560px]"
+    <div className={cn("relative", className)}>
+      <img
+        src="/linocut/hero-hare.svg"
+        alt=""
         aria-hidden
+        draggable={false}
+        className="shadow-poster sm:shadow-poster-lg block aspect-3/4 w-full border-2 border-fg object-cover"
       />
+      <span className="absolute bottom-5 -left-2 bg-ink px-3 py-2 font-display text-[8.5px] font-medium tracking-[0.14em] uppercase sm:px-4 sm:text-[10px]">
+        {PLAQUE}
+      </span>
+    </div>
+  );
+}
 
-      <div className="fade-rise relative mx-auto flex max-w-3xl flex-col items-center text-center">
-        <span className="inline-flex items-center gap-2.5 rounded-full border border-border-strong bg-surface/60 px-4 py-1.5 text-[13px] font-medium text-fg-muted">
-          <EqBars animated />
-          {dict.hero.badge}
-        </span>
+export function Hero({ dict, release }: { dict: Dictionary; release: ReleaseInfo | null }) {
+  const copy = dict.hero;
+  return (
+    <section className="px-6 pt-24 pb-16 sm:pt-28 sm:pb-20">
+      <div className="mx-auto grid max-w-6xl items-start gap-12 xl:grid-cols-12 xl:gap-10">
+        <div className="fade-rise flex min-w-0 flex-col xl:col-span-8">
+          <span className="inline-flex w-fit max-w-full items-center gap-2.5 border-[1.5px] border-border-strong px-3.5 py-2 font-display text-[9px] font-medium tracking-[0.1em] uppercase sm:px-4 sm:text-[10.5px]">
+            <EqBars animated />
+            <span className="min-w-0">{copy.badge}</span>
+          </span>
 
-        <h1 className="mt-8 text-4xl leading-[1.08] font-semibold tracking-tight text-balance sm:text-6xl">
-          {dict.hero.titleTop}
-          <br />
-          <span className="text-primary">{dict.hero.titleAccent}</span>
-        </h1>
+          <h1 className="mt-6 font-display text-[clamp(1.5rem,9.2vw,4.6rem)] leading-[1] font-black tracking-[-0.015em] uppercase sm:mt-8">
+            {copy.titleSolid.map((line) => (
+              <span key={line} className="block">
+                {line}
+              </span>
+            ))}
+            {copy.titleOutline.map((line) => (
+              <OutlineLine key={line} text={line} />
+            ))}
+          </h1>
 
-        <p className="mt-6 max-w-2xl text-base leading-relaxed text-pretty text-fg-muted sm:text-lg">
-          {dict.hero.lead}
-        </p>
+          <p className="mt-7 max-w-xl text-[15px] leading-relaxed text-pretty text-fg/85 sm:text-[16.5px]">
+            {copy.lead}
+          </p>
 
-        <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-          <DownloadChoice release={release} primaryPrefix={dict.download.primaryPrefix} />
-          <a
-            href={RELEASES_PAGE}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center justify-center rounded-full border border-border-strong px-7 py-3.5 text-base font-medium text-fg-muted transition-colors hover:bg-surface/60 hover:text-fg"
-          >
-            {dict.hero.allVersions}
-          </a>
+          <DownloadChoice
+            release={release}
+            primaryPrefix={dict.download.primaryPrefix}
+            className="mt-8"
+          />
+
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <VersionNote release={release} />
+            <a
+              href={RELEASES_PAGE}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[12.5px] text-fg-subtle underline underline-offset-4 transition-colors hover:text-fg"
+            >
+              {copy.allVersions}
+            </a>
+          </div>
+
+          <HeroArt className="mt-10 xl:hidden" />
         </div>
 
-        <VersionNote release={release} className="mt-4" />
+        <div className="fade-rise fade-rise-late hidden min-w-0 xl:col-span-4 xl:block xl:justify-self-end">
+          <HeroArt />
+        </div>
       </div>
-
-      <AppDemo dict={dict} />
-
-      <StarField stars={HERO_STARS} />
-
-      <Bush variant="front" width={120} className="left-[5%] hidden sm:block" />
-      <Bush variant="back" width={150} className="right-[7%]" />
-      <Bush variant="front" width={95} className="right-[calc(7%+110px)] hidden sm:block" />
     </section>
   );
 }

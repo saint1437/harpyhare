@@ -12,10 +12,9 @@ export function VersionNote({
   release: ReleaseInfo | null;
   className?: string;
 }) {
-  const platform = usePlatform();
-  const requirements = PLATFORM_REQUIREMENTS[platform];
+  const requirements = PLATFORM_REQUIREMENTS[usePlatform()];
   return (
-    <span className={cn("text-sm text-fg-subtle", className)}>
+    <span className={cn("text-[12.5px] text-fg-subtle", className)}>
       {release ? `v${release.version} · ${requirements}` : requirements}
     </span>
   );

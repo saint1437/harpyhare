@@ -85,10 +85,6 @@ export const demoEn: DemoCopy = {
         label: "Pre-prompts",
         description: "Text that goes at the very start of the system prompt.",
       },
-      identity: {
-        label: "Disguise",
-        description: "The name and icon the app shows up under in the system.",
-      },
       settings: {
         label: "Settings",
         description: "API access, speech recognition, keys, behaviour and appearance.",
@@ -182,19 +178,6 @@ export const demoEn: DemoCopy = {
           name: "Client call",
           text: "Phrase the answer so it can be said out loud: no lists of jargon, plain sentences, concrete timelines and next steps.",
         },
-      ],
-    },
-    identity: {
-      names: [
-        "Audio System",
-        "Obsidian",
-        "Spotify",
-        "Proton VPN",
-        "Discord",
-        "Android Studio",
-        "Steam",
-        "DisplayBuddy",
-        "The Unarchiver",
       ],
     },
     permissions: {

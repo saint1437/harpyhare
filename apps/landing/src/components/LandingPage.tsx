@@ -9,7 +9,9 @@ import { Footer } from "./Footer";
 import { Header } from "./Header";
 import { Hero } from "./Hero";
 import { HowItWorks } from "./HowItWorks";
-import { Moon } from "./Moon";
+import { Marquee } from "./Marquee";
+import { VisibilitySection } from "./VisibilitySection";
+import { WindowSection } from "./WindowSection";
 
 const SCRIPT_UNSAFE_CHARACTER = /</g;
 const SCRIPT_SAFE_ESCAPE = "\\u003c";
@@ -26,11 +28,13 @@ export function LandingPage({ locale, release }: { locale: Locale; release: Rele
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData(dict, release)) }}
       />
-      <Moon />
       <Header dict={dict} release={release} />
-      <main id="content">
+      <main id="content" className="overflow-x-clip">
         <Hero dict={dict} release={release} />
+        <Marquee items={dict.marquee} />
         <HowItWorks dict={dict} />
+        <WindowSection dict={dict} />
+        <VisibilitySection dict={dict} />
         <Features dict={dict} />
         <Faq dict={dict} />
         <CtaSection dict={dict} release={release} />

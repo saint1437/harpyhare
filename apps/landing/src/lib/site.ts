@@ -4,7 +4,7 @@ export const SITE_URL = "https://harpyhare.ai";
 
 export const SITE_NAME = "harpyhare";
 
-export const OG_IMAGE_PATH: Record<Locale, string> = { ru: "/og.png", en: "/og-en.png" };
+export const OG_IMAGE_PATH: Record<Locale, string> = { ru: "/og.jpg", en: "/og-en.jpg" };
 
 export const OG_IMAGE_WIDTH = 1200;
 

@@ -1,32 +1,32 @@
 import type { Dictionary } from "@/i18n/types";
-import { HOW_STARS } from "@/lib/stars";
-import { BushWatcher } from "./Scenery";
-import { StarField } from "./Sky";
+import { SectionHeading } from "./SectionHeading";
 
 export function HowItWorks({ dict }: { dict: Dictionary }) {
+  const copy = dict.how;
   return (
-    <section id="how" className="relative border-t border-border px-6 py-20 sm:py-24">
-      <div className="mx-auto max-w-5xl">
-        <p className="text-xs font-semibold tracking-[0.18em] text-fg-subtle uppercase">
-          {dict.how.eyebrow}
-        </p>
-        <h2 className="mt-3 max-w-md text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-          {dict.how.title}
-        </h2>
-
-        <ol className="mt-12 grid gap-10 sm:grid-cols-3 sm:gap-8">
-          {dict.how.steps.map(({ number, title, text }) => (
+    <section id="how" className="px-6 py-20 sm:py-24">
+      <div className="mx-auto max-w-6xl">
+        <SectionHeading title={copy.title} hint={copy.hint} />
+        <ol className="mt-12 grid gap-10 sm:grid-cols-3 sm:gap-10">
+          {copy.steps.map(({ number, title, text }) => (
             <li key={number}>
-              <span className="font-mono text-sm font-medium text-primary">{number}</span>
-              <h3 className="mt-3 text-lg font-semibold tracking-tight">{title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-fg-muted">{text}</p>
+              <span
+                className="block font-display text-[64px] leading-none font-black text-transparent sm:text-[92px]"
+                style={{ WebkitTextStroke: "1.4px var(--fg)" }}
+                aria-hidden
+              >
+                {number}
+              </span>
+              <h3 className="mt-5 font-display text-[13.5px] font-bold tracking-[0.04em] uppercase sm:text-[16.5px]">
+                {title}
+              </h3>
+              <p className="mt-3 text-[14px] leading-relaxed text-fg-muted sm:text-[14.5px]">
+                {text}
+              </p>
             </li>
           ))}
         </ol>
       </div>
-
-      <StarField stars={HOW_STARS} />
-      <BushWatcher className="right-[8%]" />
     </section>
   );
 }
