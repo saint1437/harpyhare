@@ -30,6 +30,7 @@ pub struct App {
     pub preview_html: Mutex<String>,
     pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
     pub update_installing: AtomicBool,
+    pub screenshot_capturing: AtomicBool,
 }
 
 pub struct SttStream {
@@ -52,6 +53,10 @@ pub fn chats_path(app: &AppHandle) -> std::path::PathBuf {
 
 pub fn context_library_path(app: &AppHandle) -> std::path::PathBuf {
     app_data_file(app, CONTEXT_LIBRARY_FILE_NAME)
+}
+
+pub fn chat_images_dir(app: &AppHandle) -> std::path::PathBuf {
+    app_data_file(app, crate::chat_images::IMAGES_DIR_NAME)
 }
 
 pub fn current_settings(app: &AppHandle) -> settings::Settings {
@@ -141,5 +146,6 @@ pub fn build_app_state(
         preview_html: Mutex::new(String::new()),
         pending_update: Mutex::new(None),
         update_installing: AtomicBool::new(false),
+        screenshot_capturing: AtomicBool::new(false),
     }
 }

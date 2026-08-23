@@ -67,8 +67,12 @@ describe("defaultCombo", () => {
   });
 
   it("клавиши без платформенной разницы совпадают", () => {
-    expect(defaultCombo("record", "macos")).toBe(defaultCombo("record", "windows"));
-    expect(defaultCombo("teleprompter", "macos")).toBe(defaultCombo("teleprompter", "windows"));
+    expect(defaultCombo("cancel_recording", "macos")).toBe(
+      defaultCombo("cancel_recording", "windows"),
+    );
+    expect(defaultCombo("teleprompter_pause", "macos")).toBe(
+      defaultCombo("teleprompter_pause", "windows"),
+    );
   });
 
   it("на Windows ни один дефолт не занимает клавишу Win", () => {
@@ -80,7 +84,7 @@ describe("defaultCombo", () => {
 
 describe.each(PLATFORMS)("effectiveCombo (%s)", (platform) => {
   it("без биндинга отдаёт дефолт действия своей платформы", () => {
-    expect(effectiveCombo(NO_BINDINGS, "record", platform)).toBe("F9");
+    expect(effectiveCombo(NO_BINDINGS, "record", platform)).toBe(defaultCombo("record", platform));
     expect(effectiveCombo(NO_BINDINGS, "send", platform)).toBe(defaultCombo("send", platform));
   });
 
@@ -97,7 +101,7 @@ describe("hotkeyGroups на macOS", () => {
     const combos = hotkeyGroups(NO_BINDINGS, "macos")
       .flatMap((g) => g.hints)
       .map((h) => h.combo);
-    expect(combos).toContain("F9");
+    expect(combos).toContain("⌘R");
     expect(combos).toContain("⌘⇧H");
     expect(combos).toContain("⌘ ←→↑↓");
     expect(combos).toContain("⌘⇧ + −");
@@ -111,7 +115,7 @@ describe("hotkeyGroups на macOS", () => {
       .flatMap((g) => g.hints)
       .map((h) => h.combo);
     expect(combos).toContain("⌘⇧X");
-    expect(combos).not.toContain("F9");
+    expect(combos).not.toContain("⌘R");
   });
 });
 
@@ -120,7 +124,7 @@ describe("hotkeyGroups на Windows", () => {
     const combos = hotkeyGroups(NO_BINDINGS, "windows")
       .flatMap((g) => g.hints)
       .map((h) => h.combo);
-    expect(combos).toContain("F9");
+    expect(combos).toContain("Ctrl+R");
     expect(combos).toContain("Ctrl+Shift+H");
     expect(combos).toContain("Ctrl ←→↑↓");
     expect(combos).toContain("Ctrl+Shift + −");

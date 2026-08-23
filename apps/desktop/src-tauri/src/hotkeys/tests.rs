@@ -91,7 +91,8 @@ fn windows_defaults_avoid_the_super_key() {
 
 #[test]
 fn effective_falls_back_to_default_and_prefers_last_binding() {
-    assert_eq!(effective(&[], ACTION_RECORD), "F9");
+    let record_default = action(ACTION_RECORD).expect("record есть в реестре").default_combo;
+    assert_eq!(effective(&[], ACTION_RECORD), record_default.current());
     assert_eq!(effective(&[binding(ACTION_RECORD, "Cmd+Shift+X")], ACTION_RECORD), "Cmd+Shift+X");
     let twice = vec![binding(ACTION_RECORD, "F8"), binding(ACTION_RECORD, "F7")];
     assert_eq!(effective(&twice, ACTION_RECORD), "F7");
@@ -176,19 +177,20 @@ fn normalize_gives_a_combo_to_the_latest_claimant() {
 
 #[test]
 fn normalize_takes_a_combo_away_from_an_untouched_default() {
-    let mut bindings = vec![binding(ACTION_SEND, "F10")];
+    let teleprompter_default = effective(&[], ACTION_TELEPROMPTER);
+    let mut bindings = vec![binding(ACTION_SEND, &teleprompter_default)];
     normalize(&mut bindings);
-    assert_eq!(effective(&bindings, ACTION_SEND), "F10");
+    assert_eq!(effective(&bindings, ACTION_SEND), teleprompter_default);
     assert_eq!(
         effective(&bindings, ACTION_TELEPROMPTER),
         "",
-        "дефолтный владелец F10 теряет сочетание"
+        "дефолтный владелец сочетания теряет его"
     );
 }
 
 #[test]
 fn normalize_leaves_untouched_defaults_out_of_the_list() {
-    let mut bindings = vec![binding(ACTION_RECORD, "F9")];
+    let mut bindings = vec![binding(ACTION_RECORD, &effective(&[], ACTION_RECORD))];
     normalize(&mut bindings);
     assert!(bindings.is_empty(), "совпадающее с дефолтом не хранится");
 }
@@ -197,9 +199,9 @@ fn normalize_leaves_untouched_defaults_out_of_the_list() {
 fn migration_moves_legacy_fields_and_skips_untouched_defaults() {
     let mut raw = serde_json::json!({
         "hotkey": "Cmd+Shift+X",
-        "toggle_hotkey": "Cmd+Shift+H",
-        "screenshot_hotkey": "Cmd+Shift+A",
-        "scroll_modifier": "Alt",
+        "toggle_hotkey": effective(&[], ACTION_TOGGLE_WINDOW),
+        "screenshot_hotkey": "Cmd+Shift+B",
+        "scroll_modifier": effective(&[], ACTION_SCROLL_CHAT),
         "theme": "black",
     });
     migrate_legacy_fields(&mut raw);
@@ -211,7 +213,7 @@ fn migration_moves_legacy_fields_and_skips_untouched_defaults() {
         serde_json::from_value(object.get("hotkeys").cloned().unwrap()).unwrap();
     assert_eq!(
         bindings,
-        vec![binding(ACTION_RECORD, "Cmd+Shift+X"), binding(ACTION_SCREENSHOT, "Cmd+Shift+A")]
+        vec![binding(ACTION_RECORD, "Cmd+Shift+X"), binding(ACTION_SCREENSHOT, "Cmd+Shift+B")]
     );
 }
 

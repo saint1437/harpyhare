@@ -16,6 +16,8 @@ const LAUNCHER_WINDOW_HEIGHT_LOGICAL_PX: f64 = 720.0;
 const LAUNCHER_WINDOW_MIN_WIDTH_LOGICAL_PX: f64 = 520.0;
 const LAUNCHER_WINDOW_MIN_HEIGHT_LOGICAL_PX: f64 = 480.0;
 
+const SCREEN_CAPTURE_HIDE_SETTLE: Duration = Duration::from_millis(120);
+
 const RESIZE_TWEEN_STEPS: u32 = 14;
 const RESIZE_TWEEN_FRAME_INTERVAL: Duration = Duration::from_millis(13);
 const RESIZE_EPSILON_LOGICAL_PX: f64 = 1.0;
@@ -138,14 +140,35 @@ pub fn show_and_focus_prompt(app: &AppHandle) {
     }
 }
 
+fn hide_main(app: &AppHandle) -> Result<(), String> {
+    if let Some(w) = main_window(app) {
+        let _ = w.hide();
+    }
+    Ok(())
+}
+
 pub fn on_toggle_visibility(app: &AppHandle) {
     if let Some(w) = main_window(app) {
         if w.is_visible().unwrap_or(true) {
-            let _ = w.hide();
+            let _ = hide_main(app);
         } else {
             show_and_focus_prompt(app);
         }
     }
+}
+
+pub async fn hide_for_screen_capture(app: &AppHandle) -> bool {
+    let Some(w) = main_window(app) else {
+        return false;
+    };
+    if !w.is_visible().unwrap_or(false) {
+        return false;
+    }
+    if on_main_thread(app, hide_main).await.is_err() {
+        return false;
+    }
+    tokio::time::sleep(SCREEN_CAPTURE_HIDE_SETTLE).await;
+    true
 }
 
 pub fn on_toggle_teleprompter(app: &AppHandle) {
@@ -210,9 +233,7 @@ pub fn close_app(app: AppHandle) {
 #[tauri::command]
 #[specta::specta]
 pub fn hide_main_window(app: AppHandle) {
-    if let Some(w) = main_window(&app) {
-        let _ = w.hide();
-    }
+    let _ = hide_main(&app);
 }
 
 struct ResizeTween {

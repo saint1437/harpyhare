@@ -7,6 +7,19 @@ vi.mock("@/ipc/commands", () => ({
   openExternal: vi.fn(),
 }));
 
+const { dataUrlBuilds } = vi.hoisted(() => ({ dataUrlBuilds: { count: 0 } }));
+
+vi.mock("@/lib/composer", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/composer")>();
+  return {
+    ...actual,
+    imageDataUrl: (image: Parameters<typeof actual.imageDataUrl>[0]) => {
+      dataUrlBuilds.count += 1;
+      return actual.imageDataUrl(image);
+    },
+  };
+});
+
 beforeEach(() => {
   vi.useFakeTimers();
 });
@@ -140,7 +153,7 @@ describe("AnswerPanel — картинки в сообщении пользов�
   const withImage: ChatMessage = {
     role: "user",
     text: "что тут не так?",
-    images: [{ media_type: "image/png", data: "iVBORw0K" }],
+    images: [{ id: "00000000000000aa.png", media_type: "image/png", data: "iVBORw0K" }],
   };
 
   function renderMessages(messages: ChatMessage[]) {
@@ -172,6 +185,30 @@ describe("AnswerPanel — картинки в сообщении пользов�
   it("сообщение без картинок не рисует пустых img", () => {
     const { container } = renderMessages([userMsg]);
     expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("data-URL не пересобирается на каждый кадр стрима", () => {
+    const messages = [withImage];
+    const panel = (partial: string) => (
+      <AnswerPanel
+        messages={messages}
+        partial={partial}
+        streaming
+        scrollModifier="Alt"
+        onTogglePreview={() => undefined}
+        onCopyMessage={() => undefined}
+        onRemoveMessage={() => undefined}
+        onResendMessage={() => undefined}
+      />
+    );
+    const { rerender } = render(panel("от"));
+    const afterFirstFrame = dataUrlBuilds.count;
+    expect(afterFirstFrame).toBeGreaterThan(0);
+
+    rerender(panel("отв"));
+    rerender(panel("ответ"));
+
+    expect(dataUrlBuilds.count).toBe(afterFirstFrame);
   });
 
   it("картинка без текста показывается сама по себе", () => {

@@ -4,6 +4,7 @@ pub mod audio;
 pub mod bindings;
 pub mod capture;
 pub mod chat;
+pub mod chat_images;
 pub mod chats;
 pub mod clipboard;
 pub mod context_import;

@@ -55,7 +55,13 @@ import type {
   RecorderState,
   Settings,
 } from "@/ipc/types";
-import { chatRequestOptions, type Chat, type ChatMessage } from "@/lib/chats";
+import {
+  attachmentImage,
+  chatRequestOptions,
+  type Chat,
+  type ChatImage,
+  type ChatMessage,
+} from "@/lib/chats";
 import { appendTranscript } from "@/lib/composer";
 import { libraryContextBlocks, type ContextLibrary } from "@/lib/context-library";
 import { internalError, isNetworkError, isRetryable, type AppError } from "@/lib/errors";
@@ -82,16 +88,20 @@ const COPY_IMAGE_ERROR_TEXT = "Не удалось скопировать кар
 function historyWithNewUserMessage(
   chat: Chat,
   text: string,
-  images: ImagePayload[],
+  images: ChatImage[],
 ): ChatMessageDto[] {
   return [
-    ...chat.messages.map((m) => ({ role: m.role, text: m.text, images: m.images })),
-    { role: "user", text, images },
+    ...chat.messages.map((m) => ({ role: m.role, text: m.text, images: requestImages(m.images) })),
+    { role: "user", text, images: requestImages(images) },
   ];
 }
 
-function draftImages(chat: Chat): ImagePayload[] {
-  return chat.draftAttachments.map((a) => a.payload);
+function draftImages(chat: Chat): ChatImage[] {
+  return chat.draftAttachments.map(attachmentImage);
+}
+
+function requestImages(images: ChatImage[]): ImagePayload[] {
+  return images.map(({ media_type, data }) => ({ media_type, data }));
 }
 
 function chatSystemPrompt(presets: PromptPreset[], chat: Chat, library: ContextLibrary): string {
@@ -270,7 +280,11 @@ function useProjectedContextTokens(chat: Chat, system: string, streaming: boolea
     queryFn: () => {
       const history: ChatMessageDto[] =
         chat.messages.length > 0
-          ? chat.messages.map((m) => ({ role: m.role, text: m.text, images: m.images }))
+          ? chat.messages.map((m) => ({
+              role: m.role,
+              text: m.text,
+              images: requestImages(m.images),
+            }))
           : [TOKEN_COUNT_PLACEHOLDER_MESSAGE];
       return countChatTokens(history, system, chat.model, chatRequestOptions(chat));
     },
@@ -345,7 +359,7 @@ function useSendPipeline(
       chatsRef.current.truncateMessages(chat.id, kept.length);
       streamChat(
         chat,
-        kept.map((m) => ({ role: m.role, text: m.text, images: m.images })),
+        kept.map((m) => ({ role: m.role, text: m.text, images: requestImages(m.images) })),
       );
     },
     [chatsRef, streamRef, clearSttError, streamChat],

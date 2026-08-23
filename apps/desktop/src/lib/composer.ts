@@ -21,6 +21,7 @@ export interface ImagePayload {
 }
 
 export interface Attachment {
+  id: string;
   payload: ImagePayload;
   preview: string;
 }

@@ -7,15 +7,25 @@ import {
   type RefObject,
   type SetStateAction,
 } from "react";
-import { loadChats, saveChats } from "@/ipc/commands";
+import {
+  loadChatImages,
+  loadChats,
+  pruneChatImages,
+  saveChatImage,
+  saveChats,
+} from "@/ipc/commands";
 import {
   CHAT_LIMIT,
+  chatImageIds,
   chatTitle,
   createChat,
   createChatFrom,
   deserializeChats,
+  hydrateChatImages,
+  NOT_PERSISTED_IMAGE_ID,
   serializeChats,
   type Chat,
+  type ChatImage,
   type ChatPatch,
 } from "@/lib/chats";
 import {
@@ -82,14 +92,25 @@ async function downscaleToJpegDataUrl(file: File, factor: number): Promise<strin
   return canvas.toDataURL(DOWNSCALE_MEDIA_TYPE, DOWNSCALE_JPEG_QUALITY);
 }
 
+async function storedId(payload: ImagePayload): Promise<string> {
+  try {
+    return await saveChatImage(payload.media_type, payload.data);
+  } catch {
+    return NOT_PERSISTED_IMAGE_ID;
+  }
+}
+
+async function attachmentOf(dataUrl: string, mediaType: string): Promise<Attachment> {
+  const payload = toImagePayload(dataUrl, mediaType);
+  return { id: await storedId(payload), payload, preview: dataUrl };
+}
+
 async function fileToAttachment(file: File): Promise<Attachment> {
   const factor = downscaleFactor(file.size);
   if (factor === NO_DOWNSCALE) {
-    const dataUrl = await readAsDataUrl(file);
-    return { payload: toImagePayload(dataUrl, file.type), preview: dataUrl };
+    return attachmentOf(await readAsDataUrl(file), file.type);
   }
-  const dataUrl = await downscaleToJpegDataUrl(file, factor);
-  return { payload: toImagePayload(dataUrl, DOWNSCALE_MEDIA_TYPE), preview: dataUrl };
+  return attachmentOf(await downscaleToJpegDataUrl(file, factor), DOWNSCALE_MEDIA_TYPE);
 }
 
 async function fileToAttachmentOrNull(file: File): Promise<Attachment | null> {
@@ -128,6 +149,24 @@ function useRememberActiveChat(activeId: string, loaded: RefObject<boolean>): vo
   }, [activeId, loaded]);
 }
 
+async function loadStoredChats(
+  isLive: () => boolean,
+  setChats: Dispatch<SetStateAction<Chat[]>>,
+  setActiveId: Dispatch<SetStateAction<string>>,
+  loaded: RefObject<boolean>,
+): Promise<void> {
+  const stored = deserializeChats(await loadChats()) ?? [createChat(1)];
+  const ids = chatImageIds(stored);
+  const images = ids.length === 0 ? [] : await loadChatImages(ids);
+  if (!isLive()) return;
+  const initial = hydrateChatImages(stored, new Map(images.map((i) => [i.id, i.dataBase64])));
+  if (initial[0] === undefined) return;
+  setChats(initial);
+  setActiveId(rememberedActiveId(initial));
+  loaded.current = true;
+  void pruneChatImages(chatImageIds(initial));
+}
+
 function useInitialChatsLoad(
   setChats: Dispatch<SetStateAction<Chat[]>>,
   setActiveId: Dispatch<SetStateAction<string>>,
@@ -135,15 +174,7 @@ function useInitialChatsLoad(
 ): void {
   useEffect(() => {
     let live = true;
-    void loadChats().then((json) => {
-      if (!live) return;
-      const initial = deserializeChats(json) ?? [createChat(1)];
-      const first = initial[0];
-      if (!first) return;
-      setChats(initial);
-      setActiveId(rememberedActiveId(initial));
-      loaded.current = true;
-    });
+    void loadStoredChats(() => live, setChats, setActiveId, loaded);
     return () => {
       live = false;
     };
@@ -164,12 +195,7 @@ function useDebouncedChatsSave(chats: Chat[], loaded: RefObject<boolean>): void 
   }, [chats, loaded]);
 }
 
-function chatWithUserMessage(
-  chat: Chat,
-  index: number,
-  text: string,
-  images: ImagePayload[],
-): Chat {
+function chatWithUserMessage(chat: Chat, index: number, text: string, images: ChatImage[]): Chat {
   const isFirst = chat.messages.length === 0;
   return {
     ...chat,
@@ -182,7 +208,7 @@ function withClearedDraft(chat: Chat): Chat {
   return { ...chat, draft: "", draftAttachments: [] };
 }
 
-function withoutSentAttachments(chat: Chat, images: ImagePayload[]): Chat {
+function withoutSentAttachments(chat: Chat, images: ChatImage[]): Chat {
   return images.length === 0 ? chat : { ...chat, draftAttachments: [] };
 }
 
@@ -198,8 +224,8 @@ export interface ChatsApi {
   addDraftAttachments: (id: string, items: DataTransferItemList) => Promise<void>;
   addDraftImage: (id: string, dataUrl: string, mediaType: string) => Promise<void>;
   removeDraftAttachment: (id: string, index: number) => void;
-  appendUserMessage: (id: string, text: string, images: ImagePayload[]) => void;
-  appendQuickActionMessage: (id: string, text: string, images: ImagePayload[]) => void;
+  appendUserMessage: (id: string, text: string, images: ChatImage[]) => void;
+  appendQuickActionMessage: (id: string, text: string, images: ChatImage[]) => void;
   appendAssistantMessage: (id: string, text: string) => void;
   removeMessage: (id: string, index: number) => void;
   truncateMessages: (id: string, count: number) => void;
@@ -323,7 +349,7 @@ export function useChats(): ChatsApi {
   );
 
   const appendUserTurn = useCallback(
-    (id: string, text: string, images: ImagePayload[], afterAppend: (chat: Chat) => Chat) => {
+    (id: string, text: string, images: ChatImage[], afterAppend: (chat: Chat) => Chat) => {
       setChats((prev) =>
         prev.map((c, i) =>
           c.id === id ? afterAppend(chatWithUserMessage(c, i, text, images)) : c,
@@ -334,14 +360,14 @@ export function useChats(): ChatsApi {
   );
 
   const appendUserMessage = useCallback(
-    (id: string, text: string, images: ImagePayload[]) => {
+    (id: string, text: string, images: ChatImage[]) => {
       appendUserTurn(id, text, images, withClearedDraft);
     },
     [appendUserTurn],
   );
 
   const appendQuickActionMessage = useCallback(
-    (id: string, text: string, images: ImagePayload[]) => {
+    (id: string, text: string, images: ChatImage[]) => {
       appendUserTurn(id, text, images, (c) => withoutSentAttachments(c, images));
     },
     [appendUserTurn],

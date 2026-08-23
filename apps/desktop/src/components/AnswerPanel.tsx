@@ -288,7 +288,7 @@ function EmptyState() {
   );
 }
 
-function MessageImages({ images }: { images: ImagePayload[] }) {
+const MessageImages = memo(function MessageImages({ images }: { images: ImagePayload[] }) {
   if (images.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -302,7 +302,7 @@ function MessageImages({ images }: { images: ImagePayload[] }) {
       ))}
     </div>
   );
-}
+});
 
 function UserBubble({ text, images }: { text: string; images: ImagePayload[] }) {
   return (

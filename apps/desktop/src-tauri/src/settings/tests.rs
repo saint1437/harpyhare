@@ -348,7 +348,47 @@ fn save_creates_parent_directories() {
     let path = dir.path().join("nested/deeper/settings.json");
     Settings::default().save(&path).unwrap();
     assert!(path.exists());
-    assert!(!path.with_extension("tmp").exists());
+    assert_eq!(leftover_tmp_files(path.parent().unwrap()), 0);
+}
+
+fn leftover_tmp_files(dir: &Path) -> usize {
+    std::fs::read_dir(dir)
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == TMP_FILE_EXTENSION))
+        .count()
+}
+
+const PARALLEL_WRITERS: usize = 8;
+
+#[test]
+fn parallel_atomic_writes_to_one_path_all_succeed() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("chats.json");
+    let bodies: Vec<String> = (0..PARALLEL_WRITERS).map(|i| format!("[{i}]")).collect();
+    let target = &path;
+
+    std::thread::scope(|scope| {
+        for body in &bodies {
+            scope.spawn(move || write_atomic_owner_only(target, body).expect("атомарная запись"));
+        }
+    });
+
+    let written = std::fs::read_to_string(&path).expect("файл на месте");
+    assert!(bodies.contains(&written), "{written}");
+    assert_eq!(leftover_tmp_files(dir.path()), 0, "временные файлы за собой убраны");
+}
+
+#[test]
+fn a_failed_write_leaves_no_temporary_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    std::fs::create_dir(&path).unwrap();
+    std::fs::write(path.join("занято"), "").unwrap();
+
+    assert!(write_atomic_owner_only(&path, "[]").is_err(), "поверх непустой папки не переименовать");
+
+    assert_eq!(leftover_tmp_files(dir.path()), 0, "хвост оборванной записи убран за собой");
 }
 
 fn test_preset() -> PromptPreset {

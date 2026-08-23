@@ -162,7 +162,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Удерживайте, пока говорит собеседник.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
-        default_combo: PlatformCombo::shared("F9"),
+        default_combo: primary_combo!("R"),
     },
     HotkeyAction {
         id: ACTION_CANCEL_RECORDING,
@@ -189,7 +189,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Выделенная область уходит вложением в чат.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
-        default_combo: primary_combo!(shift_token!(), "S"),
+        default_combo: primary_combo!(shift_token!(), "A"),
     },
     HotkeyAction {
         id: ACTION_QUICK_ACTION,
@@ -270,7 +270,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Крупный текст ответа поверх экрана.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
-        default_combo: PlatformCombo::shared("F10"),
+        default_combo: primary_combo!(shift_token!(), "T"),
     },
     HotkeyAction {
         id: ACTION_TELEPROMPTER_CLOSE,

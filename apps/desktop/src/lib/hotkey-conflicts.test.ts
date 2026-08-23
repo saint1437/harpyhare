@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { HotkeyBinding } from "@/ipc/types";
 import { assignHotkey, hotkeysConflict, resetHotkey } from "./hotkey-conflicts";
-import { effectiveCombo } from "./hotkeys";
+import { defaultCombo, effectiveCombo } from "./hotkeys";
 
 const NO_BINDINGS: HotkeyBinding[] = [];
 
@@ -47,15 +47,19 @@ describe("hotkeysConflict — зеркало правил из Rust", () => {
 
 describe("assignHotkey", () => {
   it("совпадающее с дефолтом не хранится в биндингах", () => {
-    const { bindings } = assignHotkey(NO_BINDINGS, "record", "F9");
+    const { bindings } = assignHotkey(NO_BINDINGS, "record", defaultCombo("record"));
     expect(bindings).toEqual([]);
-    expect(effectiveCombo(bindings, "record")).toBe("F9");
+    expect(effectiveCombo(bindings, "record")).toBe(defaultCombo("record"));
   });
 
   it("отбирает сочетание у прежнего владельца и называет его", () => {
-    const { bindings, stolenFrom } = assignHotkey(NO_BINDINGS, "send", "F10");
+    const { bindings, stolenFrom } = assignHotkey(
+      NO_BINDINGS,
+      "send",
+      defaultCombo("teleprompter"),
+    );
     expect(stolenFrom).toEqual(["teleprompter"]);
-    expect(effectiveCombo(bindings, "send")).toBe("F10");
+    expect(effectiveCombo(bindings, "send")).toBe(defaultCombo("teleprompter"));
     expect(effectiveCombo(bindings, "teleprompter")).toBe("");
   });
 
@@ -86,15 +90,15 @@ describe("resetHotkey", () => {
     const changed = assignHotkey(NO_BINDINGS, "record", "Cmd+Shift+J").bindings;
     const { bindings } = resetHotkey(changed, "record");
     expect(bindings).toEqual([]);
-    expect(effectiveCombo(bindings, "record")).toBe("F9");
+    expect(effectiveCombo(bindings, "record")).toBe(defaultCombo("record"));
   });
 
   it("возврат дефолта отбирает его у того, кто успел занять", () => {
-    const stolen = assignHotkey(NO_BINDINGS, "send", "F9").bindings;
+    const stolen = assignHotkey(NO_BINDINGS, "send", defaultCombo("record")).bindings;
     expect(effectiveCombo(stolen, "record")).toBe("");
     const { bindings, stolenFrom } = resetHotkey(stolen, "record");
     expect(stolenFrom).toEqual(["send"]);
-    expect(effectiveCombo(bindings, "record")).toBe("F9");
+    expect(effectiveCombo(bindings, "record")).toBe(defaultCombo("record"));
     expect(effectiveCombo(bindings, "send")).toBe("");
   });
 });

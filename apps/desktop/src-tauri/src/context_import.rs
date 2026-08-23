@@ -2,7 +2,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 
-const MEGABYTE: u64 = 1_048_576;
+pub(crate) const MEGABYTE: u64 = 1_048_576;
 pub const TEXT_MAX_BYTES: u64 = MEGABYTE;
 pub const PDF_MAX_BYTES: u64 = 20 * MEGABYTE;
 
@@ -34,7 +34,7 @@ pub fn is_supported_extension(path: &Path) -> bool {
     classify(path).is_some()
 }
 
-fn too_large_message(max_bytes: u64) -> String {
+pub(crate) fn too_large_message(max_bytes: u64) -> String {
     format!("Файл больше {} МБ", max_bytes / MEGABYTE)
 }
 

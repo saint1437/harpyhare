@@ -1,9 +1,12 @@
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(unix)]
 const OWNER_ONLY_FILE_MODE: u32 = 0o600;
-const TMP_FILE_EXTENSION: &str = "tmp";
+pub(crate) const TMP_FILE_EXTENSION: &str = "tmp";
+
+static TMP_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 pub const THEME_GRAY: &str = "gray";
 pub const THEME_BLACK: &str = "black";
@@ -271,7 +274,7 @@ impl Settings {
 
 fn create_owner_only(path: &Path) -> std::io::Result<std::fs::File> {
     let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
+    options.write(true).create_new(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
@@ -281,16 +284,32 @@ fn create_owner_only(path: &Path) -> std::io::Result<std::fs::File> {
 }
 
 pub(crate) fn write_atomic_owner_only(path: &Path, contents: &str) -> std::io::Result<()> {
+    write_atomic_owner_only_bytes(path, contents.as_bytes())
+}
+
+fn unique_tmp_path(path: &Path) -> PathBuf {
+    let sequence = TMP_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(".{}-{sequence}.{TMP_FILE_EXTENSION}", std::process::id()));
+    path.with_file_name(name)
+}
+
+fn write_tmp_file(tmp: &Path, contents: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
+    let mut file = create_owner_only(tmp)?;
+    file.write_all(contents)
+}
+
+pub(crate) fn write_atomic_owner_only_bytes(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let tmp = path.with_extension(TMP_FILE_EXTENSION);
-    {
-        let mut f = create_owner_only(&tmp)?;
-        f.write_all(contents.as_bytes())?;
+    let tmp = unique_tmp_path(path);
+    let outcome = write_tmp_file(&tmp, contents).and_then(|()| std::fs::rename(&tmp, path));
+    if outcome.is_err() {
+        let _ = std::fs::remove_file(&tmp);
     }
-    std::fs::rename(&tmp, path)
+    outcome
 }
 
 #[cfg(test)]

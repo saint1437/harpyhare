@@ -1,6 +1,9 @@
-use base64::Engine;
-use tauri::AppHandle;
+use std::sync::atomic::Ordering;
 
+use base64::Engine;
+use tauri::{AppHandle, Manager};
+
+use crate::app_state::App;
 use crate::error::{AppError, ErrorCode};
 use crate::{events, platform, window};
 
@@ -30,7 +33,35 @@ fn deliver(app: &AppHandle, png: Vec<u8>) {
             data_base64,
         },
     );
-    window::show_and_focus_prompt(app);
+}
+
+struct CaptureSlot(AppHandle);
+
+impl CaptureSlot {
+    fn claim(app: &AppHandle) -> Option<Self> {
+        let busy = app.state::<App>().screenshot_capturing.swap(true, Ordering::SeqCst);
+        (!busy).then(|| Self(app.clone()))
+    }
+}
+
+impl Drop for CaptureSlot {
+    fn drop(&mut self) {
+        self.0.state::<App>().screenshot_capturing.store(false, Ordering::SeqCst);
+    }
+}
+
+fn report_failure(app: &AppHandle, message: String) {
+    eprintln!("{LOG_TAG} {message}");
+    events::screenshot_error(app, AppError { code: ErrorCode::Internal, message });
+}
+
+async fn capture_on_main_thread(app: &AppHandle) -> Result<Option<Vec<u8>>, String> {
+    let (done, wait) = tokio::sync::oneshot::channel();
+    app.run_on_main_thread(move || {
+        let _ = done.send(backend::capture_region());
+    })
+    .map_err(|e| e.to_string())?;
+    wait.await.map_err(|e| e.to_string())?
 }
 
 pub fn on_capture_region(app: &AppHandle) {
@@ -44,21 +75,28 @@ pub fn on_capture_region(app: &AppHandle) {
         );
         return;
     }
-    let app = app.clone();
-    let _ = app.clone().run_on_main_thread(move || match backend::capture_region() {
-        Ok(Some(png)) => deliver(&app, png),
-        Ok(None) => {}
-        Err(message) => {
-            eprintln!("{LOG_TAG} {message}");
-            events::screenshot_error(
-                &app,
-                AppError {
-                    code: ErrorCode::Internal,
-                    message,
-                },
-            );
+    let Some(slot) = CaptureSlot::claim(app) else {
+        return;
+    };
+    tauri::async_runtime::spawn(run_capture(app.clone(), slot));
+}
+
+async fn run_capture(app: AppHandle, _slot: CaptureSlot) {
+    let was_visible = window::hide_for_screen_capture(&app).await;
+    let restore = match capture_on_main_thread(&app).await {
+        Ok(Some(png)) => {
+            deliver(&app, png);
+            true
         }
-    });
+        Ok(None) => was_visible,
+        Err(message) => {
+            report_failure(&app, message);
+            was_visible
+        }
+    };
+    if restore {
+        window::show_and_focus_prompt(&app);
+    }
 }
 
 #[tauri::command]

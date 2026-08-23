@@ -3,16 +3,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const loadChats = vi.fn<() => Promise<string>>();
 const saveChats = vi.fn<(json: string) => Promise<void>>();
+const saveChatImage = vi.fn<(mediaType: string, dataBase64: string) => Promise<string>>();
+const loadChatImages = vi.fn<(ids: string[]) => Promise<{ id: string; dataBase64: string }[]>>();
+const pruneChatImages = vi.fn<(keep: string[]) => Promise<void>>();
 vi.mock("@/ipc/commands", () => ({
   loadChats: () => loadChats(),
   saveChats: (json: string) => saveChats(json),
+  saveChatImage: (mediaType: string, dataBase64: string) => saveChatImage(mediaType, dataBase64),
+  loadChatImages: (ids: string[]) => loadChatImages(ids),
+  pruneChatImages: (keep: string[]) => pruneChatImages(keep),
 }));
 
 import { CHAT_LIMIT } from "@/lib/chats";
 import type { Attachment } from "@/lib/composer";
 import { useChats } from "./useChats";
 
+const IMAGE_ID = "00000000000000aa.png";
+const DRAFT_MARKER = "черновик после сбоя";
+const SAVE_WAIT_MS = 3000;
 const ATTACHMENT: Attachment = {
+  id: IMAGE_ID,
   payload: { media_type: "image/png", data: "AAAA" },
   preview: "data:image/png;base64,AAAA",
 };
@@ -21,11 +31,126 @@ beforeEach(() => {
   vi.useFakeTimers();
   loadChats.mockResolvedValue("");
   saveChats.mockResolvedValue(undefined);
+  saveChatImage.mockResolvedValue(IMAGE_ID);
+  loadChatImages.mockResolvedValue([]);
+  pruneChatImages.mockResolvedValue(undefined);
 });
 afterEach(() => {
   if (vi.isFakeTimers()) vi.runOnlyPendingTimers();
   vi.useRealTimers();
   vi.clearAllMocks();
+});
+
+describe("useChats — картинки переживают перезапуск", () => {
+  const savedChats = JSON.stringify([
+    {
+      id: "c1",
+      title: "Чат 1",
+      messages: [
+        { role: "user", text: "что тут?", images: [{ id: IMAGE_ID, media_type: "image/png" }] },
+      ],
+      draft: "",
+      draftAttachments: [],
+    },
+  ]);
+
+  it("байты подтягиваются с диска по ссылке из chats.json", async () => {
+    loadChats.mockResolvedValue(savedChats);
+    loadChatImages.mockResolvedValue([{ id: IMAGE_ID, dataBase64: "AAAA" }]);
+
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.active.messages.length).toBe(1);
+    });
+
+    expect(loadChatImages).toHaveBeenCalledWith([IMAGE_ID]);
+    expect(result.current.active.messages[0]?.images).toEqual([
+      { id: IMAGE_ID, media_type: "image/png", data: "AAAA" },
+    ]);
+  });
+
+  it("картинка без файла на диске выпадает, а текст сообщения остаётся", async () => {
+    loadChats.mockResolvedValue(savedChats);
+    loadChatImages.mockResolvedValue([]);
+
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.active.messages.length).toBe(1);
+    });
+
+    expect(result.current.active.messages[0]?.images).toEqual([]);
+    expect(result.current.active.messages[0]?.text).toBe("что тут?");
+  });
+
+  it("после загрузки чистит хранилище от картинок, на которые никто не ссылается", async () => {
+    loadChats.mockResolvedValue(savedChats);
+    loadChatImages.mockResolvedValue([{ id: IMAGE_ID, dataBase64: "AAAA" }]);
+
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.active.messages.length).toBe(1);
+    });
+
+    await waitFor(() => {
+      expect(pruneChatImages).toHaveBeenCalledWith([IMAGE_ID]);
+    });
+  });
+
+  it("сбой записи оставляет вложение в сессии, но не в chats.json", async () => {
+    vi.useRealTimers();
+    saveChatImage.mockRejectedValue(new Error("диск недоступен"));
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(1);
+    });
+
+    await act(async () => {
+      await result.current.addDraftImage(
+        result.current.activeId,
+        "data:image/png;base64,AAAA",
+        "image/png",
+      );
+    });
+
+    expect(saveChatImage).toHaveBeenCalledWith("image/png", "AAAA");
+    expect(result.current.active.draftAttachments).toHaveLength(1);
+    expect(result.current.active.draftAttachments[0]?.id).toBe("");
+    expect(result.current.active.draftAttachments[0]?.payload.data).toBe("AAAA");
+
+    act(() => {
+      result.current.patchChat(result.current.activeId, { draft: DRAFT_MARKER });
+    });
+    await waitFor(
+      () => {
+        expect(saveChats.mock.calls.at(-1)?.[0] ?? "").toContain(DRAFT_MARKER);
+      },
+      { timeout: SAVE_WAIT_MS },
+    );
+
+    const saved = JSON.parse(saveChats.mock.calls.at(-1)?.[0] ?? "[]") as {
+      draftAttachments: unknown[];
+    }[];
+    expect(saved[0]?.draftAttachments).toEqual([]);
+  });
+
+  it("вложение записывается на диск и получает оттуда id", async () => {
+    vi.useRealTimers();
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(1);
+    });
+
+    await act(async () => {
+      await result.current.addDraftImage(
+        result.current.activeId,
+        "data:image/png;base64,AAAA",
+        "image/png",
+      );
+    });
+
+    expect(saveChatImage).toHaveBeenCalledWith("image/png", "AAAA");
+    expect(result.current.active.draftAttachments[0]?.id).toBe(IMAGE_ID);
+  });
 });
 
 describe("useChats", () => {
@@ -150,9 +275,13 @@ describe("useChats", () => {
       });
     });
     act(() => {
-      result.current.appendQuickActionMessage(id, "Опиши скриншот", [ATTACHMENT.payload]);
+      result.current.appendQuickActionMessage(id, "Опиши скриншот", [
+        { ...ATTACHMENT.payload, id: IMAGE_ID },
+      ]);
     });
-    expect(result.current.active.messages[0]?.images).toEqual([ATTACHMENT.payload]);
+    expect(result.current.active.messages[0]?.images).toEqual([
+      { ...ATTACHMENT.payload, id: IMAGE_ID },
+    ]);
     expect(result.current.active.draftAttachments).toEqual([]);
     expect(result.current.active.draft).toBe("недописанный промпт");
     expect(result.current.active.title).toBe("Опиши скриншот");

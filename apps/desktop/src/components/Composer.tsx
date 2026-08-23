@@ -150,7 +150,7 @@ function AttachmentList({ attachments, onRemove }: AttachmentListProps) {
     <div className="flex flex-wrap gap-1.5 px-2.5 pb-2">
       {attachments.map((att, i) => (
         <AttachmentChip
-          key={att.preview}
+          key={i}
           attachment={att}
           onRemove={() => {
             onRemove(i);

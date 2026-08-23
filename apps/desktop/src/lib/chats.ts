@@ -1,4 +1,4 @@
-import type { Attachment, ImagePayload } from "@/lib/composer";
+import { type Attachment, type ImagePayload, imageDataUrl } from "@/lib/composer";
 import { DEFAULT_MODEL } from "@/lib/models";
 
 export const CHAT_LIMIT = 6;
@@ -9,10 +9,21 @@ const NO_PRESET_ID = "";
 
 export type Role = "user" | "assistant";
 
+export const NOT_PERSISTED_IMAGE_ID = "";
+
+export interface ChatImage extends ImagePayload {
+  id: string;
+}
+
+interface StoredImageRef {
+  id: string;
+  media_type: string;
+}
+
 export interface ChatMessage {
   role: Role;
   text: string;
-  images: ImagePayload[];
+  images: ChatImage[];
 }
 
 export interface RequestOptions {
@@ -104,7 +115,7 @@ export function chatTitle(firstUserText: string, index: number): string {
 }
 
 export function serializeChats(chats: Chat[]): string {
-  const withoutImages = chats.map((c) => ({
+  const withImageRefs = chats.map((c) => ({
     id: c.id,
     title: c.title,
     titlePinned: c.titlePinned,
@@ -115,18 +126,44 @@ export function serializeChats(chats: Chat[]): string {
     context: c.context,
     libraryDocIds: c.libraryDocIds,
     lastInputTokens: c.lastInputTokens,
-    messages: c.messages.map((m) => ({ role: m.role, text: m.text, images: [] })),
+    messages: c.messages.map((m) => ({
+      role: m.role,
+      text: m.text,
+      images: m.images.filter(isPersisted).map(imageRef),
+    })),
     draft: c.draft,
-    draftAttachments: [],
+    draftAttachments: c.draftAttachments.map(attachmentImage).filter(isPersisted).map(imageRef),
   }));
-  return JSON.stringify(withoutImages);
+  return JSON.stringify(withImageRefs);
+}
+
+function isPersisted(image: ChatImage): boolean {
+  return image.id !== NOT_PERSISTED_IMAGE_ID;
+}
+
+function imageRef(image: ChatImage): StoredImageRef {
+  return { id: image.id, media_type: image.media_type };
+}
+
+export function attachmentImage(attachment: Attachment): ChatImage {
+  return { ...attachment.payload, id: attachment.id };
+}
+
+function restoreImages(raw: unknown): ChatImage[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((value) => {
+    const o = value as Partial<StoredImageRef>;
+    if (typeof o.id !== "string" || o.id === NOT_PERSISTED_IMAGE_ID) return [];
+    if (typeof o.media_type !== "string") return [];
+    return [{ id: o.id, media_type: o.media_type, data: "" }];
+  });
 }
 
 function restoreMessage(m: ChatMessage): ChatMessage {
   return {
     role: m.role === "assistant" ? "assistant" : "user",
     text: typeof m.text === "string" ? m.text : "",
-    images: [],
+    images: restoreImages(m.images),
   };
 }
 
@@ -153,8 +190,46 @@ function restoreChat(c: unknown): Chat {
         : 0,
     messages: Array.isArray(o.messages) ? o.messages.map(restoreMessage) : [],
     draft: typeof o.draft === "string" ? o.draft : NEW_CHAT_DEFAULTS.draft,
-    draftAttachments: [],
+    draftAttachments: restoreImages(o.draftAttachments).map(pendingAttachment),
   };
+}
+
+function imagePayload(image: ChatImage): ImagePayload {
+  return { media_type: image.media_type, data: image.data };
+}
+
+function pendingAttachment(image: ChatImage): Attachment {
+  return { id: image.id, payload: imagePayload(image), preview: "" };
+}
+
+export function chatImageIds(chats: Chat[]): string[] {
+  const ids = new Set<string>();
+  for (const chat of chats) {
+    for (const message of chat.messages) {
+      for (const image of message.images) ids.add(image.id);
+    }
+    for (const attachment of chat.draftAttachments) ids.add(attachment.id);
+  }
+  ids.delete(NOT_PERSISTED_IMAGE_ID);
+  return [...ids];
+}
+
+export function hydrateChatImages(chats: Chat[], dataById: Map<string, string>): Chat[] {
+  return chats.map((chat) => ({
+    ...chat,
+    messages: chat.messages.map((m) => ({ ...m, images: withStoredData(m.images, dataById) })),
+    draftAttachments: withStoredData(chat.draftAttachments.map(attachmentImage), dataById).map(
+      (image) => ({ id: image.id, payload: imagePayload(image), preview: imageDataUrl(image) }),
+    ),
+  }));
+}
+
+function withStoredData(images: ChatImage[], dataById: Map<string, string>): ChatImage[] {
+  return images.flatMap((image) => {
+    if (image.data !== "") return [image];
+    const data = dataById.get(image.id);
+    return data === undefined ? [] : [{ ...image, data }];
+  });
 }
 
 export function deserializeChats(json: string): Chat[] | null {
