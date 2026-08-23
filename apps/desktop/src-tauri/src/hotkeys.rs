@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub const ACTION_RECORD: &str = "record";
+pub const ACTION_AUTO_MODE: &str = "auto_mode";
 pub const ACTION_CANCEL_RECORDING: &str = "cancel_recording";
 pub const ACTION_SEND: &str = "send";
 pub const ACTION_SCREENSHOT: &str = "screenshot";
@@ -163,6 +164,15 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
         default_combo: primary_combo!("R"),
+    },
+    HotkeyAction {
+        id: ACTION_AUTO_MODE,
+        group: "Запись",
+        label: "Автослушание",
+        hint: "Слушает собеседника и вас, пока включено.",
+        kind: HotkeyKind::Combo,
+        scope: HotkeyScope::Global,
+        default_combo: primary_combo!(shift_token!(), "L"),
     },
     HotkeyAction {
         id: ACTION_CANCEL_RECORDING,

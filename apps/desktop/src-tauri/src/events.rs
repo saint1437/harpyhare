@@ -21,6 +21,9 @@ const EVENT_OFFICIAL_PRESETS_UPDATED: &str = "official-presets-updated";
 const EVENT_SCREENSHOT_READY: &str = "screenshot-ready";
 const EVENT_SCREENSHOT_ERROR: &str = "screenshot-error";
 const EVENT_FOCUS_PROMPT: &str = "focus-prompt";
+const EVENT_AUTO_TURN: &str = "auto-turn";
+const EVENT_AUTO_MODE_CHANGED: &str = "auto-mode-changed";
+const EVENT_AUTO_MODE_ERROR: &str = "auto-mode-error";
 
 #[derive(Clone, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -83,6 +86,33 @@ pub struct UpdateProgress {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateDone {
     pub version: String,
+}
+
+#[derive(Clone, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoTurnPayload {
+    pub speaker: crate::auto::Speaker,
+    pub text: String,
+    pub seq: u32,
+    pub at_ms: f64,
+}
+
+#[derive(Clone, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoModeChanged {
+    pub active: bool,
+}
+
+pub fn auto_turn(app: &AppHandle, payload: AutoTurnPayload) {
+    let _ = app.emit(EVENT_AUTO_TURN, payload);
+}
+
+pub fn auto_mode_changed(app: &AppHandle, active: bool) {
+    let _ = app.emit(EVENT_AUTO_MODE_CHANGED, AutoModeChanged { active });
+}
+
+pub fn auto_mode_error(app: &AppHandle, error: AppError) {
+    let _ = app.emit(EVENT_AUTO_MODE_ERROR, error);
 }
 
 pub fn state_changed(app: &AppHandle, state: RecorderState) {

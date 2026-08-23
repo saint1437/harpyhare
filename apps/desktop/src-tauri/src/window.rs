@@ -106,6 +106,7 @@ const GLOBAL_HOTKEYS: &[(&str, GlobalRegistrar, GlobalUnregistrar)] = &[
     (hotkeys::ACTION_RECORD, hotkey::register_ptt, hotkey::unregister_ptt),
     (hotkeys::ACTION_TOGGLE_WINDOW, hotkey::register_toggle, hotkey::unregister_toggle),
     (hotkeys::ACTION_TELEPROMPTER, hotkey::register_teleprompter, hotkey::unregister_teleprompter),
+    (hotkeys::ACTION_AUTO_MODE, hotkey::register_auto_mode, hotkey::unregister_auto_mode),
     (hotkeys::ACTION_SCREENSHOT, hotkey::register_screenshot, hotkey::unregister_screenshot),
     (hotkeys::ACTION_FOCUS_PROMPT, hotkey::register_focus_prompt, hotkey::unregister_focus_prompt),
 ];
@@ -196,13 +197,20 @@ fn swap_to_main_window(app: &AppHandle) -> Result<(), String> {
         let _ = w.destroy();
     }
     let capture_app = app.clone();
+    let start_auto = settings.auto_mode_enabled;
     tauri::async_runtime::spawn_blocking(move || {
         crate::recording::ensure_capture(&capture_app);
+        if start_auto {
+            if let Err(e) = crate::auto::start(&capture_app) {
+                events::auto_mode_error(&capture_app, e);
+            }
+        }
     });
     Ok(())
 }
 
 fn swap_to_launcher_window(app: &AppHandle) -> Result<(), String> {
+    crate::auto::stop(app);
     let settings = current_settings(app);
     unregister_main_window_hotkeys_for(app, &settings);
     create_launcher_window(app, &settings)?;

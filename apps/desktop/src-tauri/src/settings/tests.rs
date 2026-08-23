@@ -472,3 +472,50 @@ fn defaults_struct_uses_the_registry_values() {
     assert_eq!(s.teleprompter_speed, limits::teleprompter::SPEED.default);
     assert_eq!(s.buffer_seconds, limits::capture::BUFFER_SECONDS.default);
 }
+
+#[test]
+fn auto_mode_defaults_are_off_with_speech_paced_bounds() {
+    let s = Settings::default();
+    assert!(!s.auto_mode_enabled);
+    assert!(!s.mic_permission_requested);
+    assert_eq!(s.auto_mic_device_uid, "");
+    assert_eq!(s.auto_silence_ms, limits::capture::AUTO_SILENCE_MS.default);
+    assert_eq!(s.auto_min_utterance_ms, limits::capture::AUTO_MIN_UTTERANCE_MS.default);
+    assert_eq!(s.auto_max_utterance_secs, limits::capture::AUTO_MAX_UTTERANCE_SECS.default);
+}
+
+#[test]
+fn auto_mode_bounds_are_clamped_both_ways() {
+    let mut low = Settings {
+        auto_silence_ms: 0,
+        auto_min_utterance_ms: 0,
+        auto_max_utterance_secs: 0,
+        ..Default::default()
+    };
+    low.clamp();
+    assert_eq!(low.auto_silence_ms, limits::capture::AUTO_SILENCE_MS.min);
+    assert_eq!(low.auto_min_utterance_ms, limits::capture::AUTO_MIN_UTTERANCE_MS.min);
+    assert_eq!(low.auto_max_utterance_secs, limits::capture::AUTO_MAX_UTTERANCE_SECS.min);
+
+    let mut high = Settings {
+        auto_silence_ms: u32::MAX,
+        auto_min_utterance_ms: u32::MAX,
+        auto_max_utterance_secs: u32::MAX,
+        ..Default::default()
+    };
+    high.clamp();
+    assert_eq!(high.auto_silence_ms, limits::capture::AUTO_SILENCE_MS.max);
+    assert_eq!(high.auto_min_utterance_ms, limits::capture::AUTO_MIN_UTTERANCE_MS.max);
+    assert_eq!(high.auto_max_utterance_secs, limits::capture::AUTO_MAX_UTTERANCE_SECS.max);
+}
+
+#[test]
+fn settings_json_without_auto_fields_loads_with_defaults() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
+    let s = Settings::load(&path).unwrap();
+    assert!(!s.auto_mode_enabled);
+    assert_eq!(s.auto_silence_ms, limits::capture::AUTO_SILENCE_MS.default);
+    assert_eq!(s.auto_mic_device_uid, "");
+}

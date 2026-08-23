@@ -5,6 +5,16 @@ type Handler = (payload: unknown) => void;
 const handlers = new Map<string, Handler>();
 const sendToClaude = vi.fn<(...args: unknown[]) => Promise<void>>();
 const cancelStream = vi.fn<(...args: unknown[]) => void>();
+let cancelOutcome: "resolved" | "deferred" | "rejected" = "resolved";
+let releaseCancel: (() => void) | null = null;
+
+function cancelResult(): Promise<void> {
+  if (cancelOutcome === "rejected") return Promise.reject(new Error("ipc down"));
+  if (cancelOutcome === "resolved") return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    releaseCancel = resolve;
+  });
+}
 
 vi.mock("@/ipc/events", () => ({
   onEvent: (name: string, handler: Handler) => {
@@ -18,6 +28,7 @@ vi.mock("@/ipc/commands", () => ({
   sendToClaude: (...args: unknown[]) => sendToClaude(...args),
   cancelStream: (...args: unknown[]) => {
     cancelStream(...args);
+    return cancelResult();
   },
 }));
 
@@ -43,6 +54,8 @@ function runFrames(count: number, dtMs = FRAME_DT_MS) {
 }
 
 beforeEach(() => {
+  cancelOutcome = "resolved";
+  releaseCancel = null;
   frameCallbacks = [];
   frameNow = 0;
   vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
@@ -243,5 +256,187 @@ describe("useClaudeStream (per-chat)", () => {
     emit("llm-error", { chatId: "A", code: "api", message: "сломалось" });
     expect(result.current.error["A"]).toEqual({ code: "api", message: "сломалось" });
     expect(result.current.streaming["A"]).toBeFalsy();
+  });
+});
+
+describe("useClaudeStream — barge-in (abandon)", () => {
+  it("сбрасывает стрим без записи недоговорённого ответа в историю", async () => {
+    const onComplete = vi.fn();
+    const { result } = renderHook(() => useClaudeStream(onComplete));
+    await act(async () => {
+      await result.current.send("c1", [], "sys", "m", { thinking: false, webSearch: false });
+    });
+    emit("llm-delta", { chatId: "c1", delta: "половина отве" });
+    runFrames(3);
+    expect(result.current.streaming["c1"]).toBe(true);
+
+    act(() => {
+      void result.current.abandon("c1");
+    });
+    expect(cancelStream).toHaveBeenCalledWith("c1");
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(result.current.streaming["c1"]).toBe(false);
+    expect(result.current.partial["c1"]).toBeUndefined();
+  });
+
+  it("поздние события отменённого стрима не оживляют его", () => {
+    const onComplete = vi.fn();
+    const { result } = renderHook(() => useClaudeStream(onComplete));
+    act(() => {
+      void result.current.send("c1", [], "sys", "m", { thinking: false, webSearch: false });
+    });
+    act(() => {
+      void result.current.abandon("c1");
+    });
+    emit("llm-delta", { chatId: "c1", delta: "хвост" });
+    emit("llm-done", { chatId: "c1" });
+    runFrames(2);
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(result.current.streaming["c1"]).toBe(false);
+    expect(result.current.partial["c1"]).toBeUndefined();
+  });
+
+  it("новый стрим после сброса начинается с чистого буфера", async () => {
+    const onComplete = vi.fn();
+    const { result } = renderHook(() => useClaudeStream(onComplete));
+    await act(async () => {
+      await result.current.send("c1", [], "sys", "m", { thinking: false, webSearch: false });
+    });
+    emit("llm-delta", { chatId: "c1", delta: "старый ответ" });
+    runFrames(3);
+    act(() => {
+      void result.current.abandon("c1");
+    });
+
+    await act(async () => {
+      await result.current.send("c1", [], "sys", "m", { thinking: false, webSearch: false });
+    });
+    emit("llm-delta", { chatId: "c1", delta: "новый" });
+    runFrames(5);
+    expect(result.current.partial["c1"]).toBe("новый");
+    expect(result.current.streaming["c1"]).toBe(true);
+
+    emit("llm-done", { chatId: "c1" });
+    expect(onComplete).toHaveBeenCalledExactlyOnceWith("c1", "новый");
+  });
+
+  it("сброшенный стрим не оставляет ошибку на чате", () => {
+    const onComplete = vi.fn();
+    const { result } = renderHook(() => useClaudeStream(onComplete));
+    act(() => {
+      void result.current.send("c1", [], "sys", "m", { thinking: false, webSearch: false });
+    });
+    emit("llm-error", { chatId: "c1", code: "api", message: "боль" });
+    act(() => {
+      void result.current.send("c1", [], "sys", "m", { thinking: false, webSearch: false });
+    });
+    act(() => {
+      void result.current.abandon("c1");
+    });
+    expect(result.current.error["c1"]).toBeNull();
+  });
+});
+
+const REQUEST = ["sys", "m", { thinking: false, webSearch: false }] as const;
+
+async function flushMicrotasks() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+describe("useClaudeStream — отмена завершается до нового запроса", () => {
+  it("новый запрос не уходит, пока отмена старого не завершилась", async () => {
+    const { result } = renderHook(() => useClaudeStream(vi.fn()));
+    await act(async () => {
+      await result.current.send("c1", [], ...REQUEST);
+    });
+    expect(sendToClaude).toHaveBeenCalledTimes(1);
+
+    cancelOutcome = "deferred";
+    act(() => {
+      void result.current.abandon("c1");
+    });
+    expect(cancelStream).toHaveBeenCalledExactlyOnceWith("c1");
+
+    act(() => {
+      void result.current.send("c1", [], ...REQUEST);
+    });
+    await flushMicrotasks();
+    expect(sendToClaude).toHaveBeenCalledTimes(1);
+    expect(result.current.streaming["c1"]).toBe(false);
+
+    await act(async () => {
+      releaseCancel?.();
+      await Promise.resolve();
+    });
+    await flushMicrotasks();
+    expect(sendToClaude).toHaveBeenCalledTimes(2);
+    expect(result.current.streaming["c1"]).toBe(true);
+  });
+
+  it("состояние чата сбрасывается сразу, не дожидаясь бэкенда", async () => {
+    const onComplete = vi.fn();
+    const { result } = renderHook(() => useClaudeStream(onComplete));
+    await act(async () => {
+      await result.current.send("c1", [], ...REQUEST);
+    });
+    emit("llm-delta", { chatId: "c1", delta: "половина" });
+    runFrames(3);
+
+    cancelOutcome = "deferred";
+    act(() => {
+      void result.current.abandon("c1");
+    });
+    expect(result.current.streaming["c1"]).toBe(false);
+    expect(result.current.partial["c1"]).toBeUndefined();
+    expect(onComplete).not.toHaveBeenCalled();
+
+    await act(async () => {
+      releaseCancel?.();
+      await Promise.resolve();
+    });
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("сбой отмены не блокирует следующий запрос и не всплывает наружу", async () => {
+    const { result } = renderHook(() => useClaudeStream(vi.fn()));
+    cancelOutcome = "rejected";
+    await act(async () => {
+      await result.current.abandon("c1");
+    });
+    cancelOutcome = "resolved";
+
+    await act(async () => {
+      await result.current.send("c1", [], ...REQUEST);
+    });
+    expect(sendToClaude).toHaveBeenCalledTimes(1);
+    expect(result.current.streaming["c1"]).toBe(true);
+  });
+
+  it("отмена одного чата не задерживает запрос в другом", async () => {
+    const { result } = renderHook(() => useClaudeStream(vi.fn()));
+    cancelOutcome = "deferred";
+    act(() => {
+      void result.current.abandon("c1");
+    });
+
+    await act(async () => {
+      await result.current.send("c2", [], ...REQUEST);
+    });
+    expect(sendToClaude).toHaveBeenCalledTimes(1);
+    expect(result.current.streaming["c2"]).toBe(true);
+  });
+
+  it("после завершённой отмены следующий запрос уходит без ожидания", async () => {
+    const { result } = renderHook(() => useClaudeStream(vi.fn()));
+    await act(async () => {
+      await result.current.abandon("c1");
+    });
+    await act(async () => {
+      await result.current.send("c1", [], ...REQUEST);
+    });
+    expect(sendToClaude).toHaveBeenCalledTimes(1);
   });
 });

@@ -14,6 +14,8 @@ const AUDIO_CAPTURE_PRIVACY_PANE_URL: &str =
     "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture";
 const SCREEN_CAPTURE_PRIVACY_PANE_URL: &str =
     "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
+const MICROPHONE_PRIVACY_PANE_URL: &str =
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
 
 pub fn disable_cursor_autohide_on_typing() {
     unsafe extern "C-unwind" fn keep_cursor_visible() {}
@@ -126,6 +128,10 @@ fn open_with_shell(target: &str) {
 
 pub fn open_audio_capture_privacy_pane() {
     open_with_shell(AUDIO_CAPTURE_PRIVACY_PANE_URL);
+}
+
+pub fn open_microphone_privacy_pane() {
+    open_with_shell(MICROPHONE_PRIVACY_PANE_URL);
 }
 
 pub fn open_screen_capture_privacy_pane() {

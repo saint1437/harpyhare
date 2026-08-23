@@ -44,6 +44,12 @@ export interface Settings {
   scroll_step: number;
   buffer_enabled: boolean;
   buffer_seconds: number;
+  auto_mode_enabled: boolean;
+  auto_mic_device_uid: string;
+  auto_silence_ms: number;
+  auto_min_utterance_ms: number;
+  auto_max_utterance_secs: number;
+  mic_permission_requested: boolean;
   quick_actions: QuickAction[];
   quick_action_attachments: boolean;
 }
@@ -55,9 +61,18 @@ export const DEFAULT_SETTINGS: Settings = {
   quick_actions: [...SETTINGS_DEFAULTS.quick_actions],
 };
 
-export interface AudioOutputDevice {
+export interface AudioDeviceInfo {
   uid: string;
   name: string;
+}
+
+export type Speaker = "interviewer" | "user";
+
+export interface AutoTurn {
+  speaker: Speaker;
+  text: string;
+  seq: number;
+  atMs: number;
 }
 
 export type RecorderState = "idle" | "recording" | "transcribing";
@@ -96,4 +111,7 @@ export interface EventMap {
   "screenshot-ready": { mediaType: string; dataBase64: string };
   "screenshot-error": AppError;
   "focus-prompt": null;
+  "auto-turn": AutoTurn;
+  "auto-mode-changed": { active: boolean };
+  "auto-mode-error": AppError;
 }

@@ -160,6 +160,10 @@ pub fn open_audio_capture_privacy_pane() {
     backend::open_audio_capture_privacy_pane();
 }
 
+pub fn open_microphone_privacy_pane() {
+    backend::open_microphone_privacy_pane();
+}
+
 pub fn open_screen_capture_privacy_pane() {
     backend::open_screen_capture_privacy_pane();
 }

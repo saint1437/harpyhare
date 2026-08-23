@@ -19,6 +19,7 @@ export interface ClaudeStreams {
     options: RequestOptions,
   ) => Promise<void>;
   stop: (chatId: string) => void;
+  abandon: (chatId: string) => Promise<void>;
 }
 
 export function useClaudeStream(
@@ -38,6 +39,26 @@ export function useClaudeStream(
 
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
+
+  const pendingCancel = useRef<Map<string, Promise<void>>>(new Map());
+
+  // A replacement request must not reach the backend before the stream it supersedes has
+  // actually been cancelled — otherwise both are briefly live upstream and the abandoned
+  // one keeps generating (and billing) against a question nobody is waiting on any more.
+  // The wait lives in `send` rather than at the call sites so it cannot be forgotten, and
+  // the stored promise never rejects: a failed cancel must not strand the next turn, and
+  // the fresh `send` re-cancels the old slot on the Rust side anyway.
+  const requestCancel = useCallback((chatId: string) => {
+    const cancelled = Promise.resolve(cancelStream(chatId)).then(
+      () => undefined,
+      () => undefined,
+    );
+    pendingCancel.current.set(chatId, cancelled);
+    void cancelled.then(() => {
+      if (pendingCancel.current.get(chatId) === cancelled) pendingCancel.current.delete(chatId);
+    });
+    return cancelled;
+  }, []);
 
   const frame = useCallback<FrameRequestCallback>((frameTs) => {
     if (active.current.size === 0) {
@@ -154,6 +175,11 @@ export function useClaudeStream(
       model: string,
       options: RequestOptions,
     ) => {
+      // Only yield when a cancellation is genuinely outstanding: an unconditional await
+      // would push `beginStream` a microtask out on every send, so the chat would not
+      // read as busy in the tick that started it.
+      const cancelling = pendingCancel.current.get(chatId);
+      if (cancelling) await cancelling;
       beginStream(chatId);
       try {
         await sendToClaude(messages, chatId, system, model, options);
@@ -167,11 +193,29 @@ export function useClaudeStream(
   const stop = useCallback(
     (chatId: string) => {
       active.current.delete(chatId);
-      void cancelStream(chatId);
+      void requestCancel(chatId);
       commitBufferAndFinish(chatId, false);
     },
-    [commitBufferAndFinish],
+    [commitBufferAndFinish, requestCancel],
   );
 
-  return { partial, streaming, startedAt, error, send, stop };
+  // `stop` keeps what was generated — that is what the Stop button means. A barge-in
+  // means the question it was answering is superseded, so the half-answer is dropped
+  // instead: leaving it would put a reply to a stale question into both the visible
+  // history and the next request's context.
+  // The local reset is synchronous — the chat must stop looking busy the moment the turn
+  // is superseded — while the returned promise settles once the backend has cancelled.
+  const abandon = useCallback(
+    (chatId: string) => {
+      active.current.delete(chatId);
+      const cancelled = requestCancel(chatId);
+      dropPartial(chatId);
+      setStreaming((s) => ({ ...s, [chatId]: false }));
+      setError((e) => ({ ...e, [chatId]: null }));
+      return cancelled;
+    },
+    [dropPartial, requestCancel],
+  );
+
+  return { partial, streaming, startedAt, error, send, stop, abandon };
 }

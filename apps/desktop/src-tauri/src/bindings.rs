@@ -2,8 +2,8 @@ use tauri_specta::{collect_commands, Builder, ErrorHandlingMode};
 
 use crate::settings::{self, SettingsLimits};
 use crate::{
-    chat, clipboard, events, hotkeys, permissions, preferences, recording, screenshot, storage,
-    system, window,
+    auto, chat, clipboard, events, hotkeys, permissions, preferences, recording, screenshot,
+    storage, system, window,
 };
 
 pub const BINDINGS_OUTPUT_PATH: &str = "../src/ipc/bindings.ts";
@@ -31,6 +31,10 @@ pub fn builder() -> Builder<tauri::Wry> {
             storage::read_context_import_file,
             storage::read_context_pdf_bytes,
             recording::retry_transcription,
+            auto::start_auto_mode,
+            auto::stop_auto_mode,
+            auto::auto_mode_active,
+            auto::list_audio_input_devices,
             recording::list_audio_output_devices,
             preferences::get_settings,
             preferences::set_settings,
@@ -64,6 +68,9 @@ pub fn builder() -> Builder<tauri::Wry> {
         .typ::<events::UpdateProgress>()
         .typ::<events::UpdateDone>()
         .typ::<events::ScreenshotReady>()
+        .typ::<events::AutoTurnPayload>()
+        .typ::<events::AutoModeChanged>()
+        .typ::<auto::Speaker>()
         .typ::<permissions::PermissionsStatus>()
         .typ::<permissions::PermissionState>()
         .typ::<permissions::PermissionKind>()

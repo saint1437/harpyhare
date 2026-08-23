@@ -7,7 +7,7 @@ use windows::core::PCWSTR;
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Foundation::{E_ACCESSDENIED, RPC_E_CHANGED_MODE};
 use windows::Win32::Media::Audio::{
-    eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDevice, IMMDeviceEnumerator,
+    eCapture, eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDevice, IMMDeviceEnumerator,
     MMDeviceEnumerator, AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED,
     AUDCLNT_STREAMFLAGS_LOOPBACK, DEVICE_STATE_ACTIVE, WAVEFORMATEX, WAVEFORMATEXTENSIBLE,
 };
@@ -18,9 +18,11 @@ use windows::Win32::System::Com::{
     COINIT_MULTITHREADED, STGM_READ,
 };
 
-use super::{CallbackCtx, CaptureError, DeviceChangeHandler, OutputDeviceInfo, StreamSpec};
+use super::{
+    AudioDeviceInfo, CallbackCtx, CaptureError, DeviceChangeHandler, SourceKind, StreamSpec,
+};
 
-const CAPTURE_THREAD_NAME: &str = "wasapi-loopback";
+const CAPTURE_THREAD_NAME: &str = "wasapi-capture";
 const DEVICE_WATCH_THREAD_NAME: &str = "wasapi-device-watch";
 const DEVICE_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const REFERENCE_TIMES_PER_SECOND: i64 = 10_000_000;
@@ -94,18 +96,25 @@ fn device_name(device: &IMMDevice) -> Result<String, CaptureError> {
     }
 }
 
-fn collect_output_devices() -> Result<Vec<OutputDeviceInfo>, CaptureError> {
+fn data_flow(kind: SourceKind) -> windows::Win32::Media::Audio::EDataFlow {
+    match kind {
+        SourceKind::Output => eRender,
+        SourceKind::Input => eCapture,
+    }
+}
+
+fn collect_devices(kind: SourceKind) -> Result<Vec<AudioDeviceInfo>, CaptureError> {
     let _com = ComGuard::enter()?;
     let devices = unsafe {
         enumerator()?
-            .EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+            .EnumAudioEndpoints(data_flow(kind), DEVICE_STATE_ACTIVE)
             .map_err(backend_error)?
     };
     let count = unsafe { devices.GetCount().map_err(backend_error)? };
     let mut out = Vec::with_capacity(count as usize);
     for index in 0..count {
         let device = unsafe { devices.Item(index).map_err(backend_error)? };
-        out.push(OutputDeviceInfo {
+        out.push(AudioDeviceInfo {
             uid: device_id(&device)?,
             name: device_name(&device)?,
         });
@@ -113,18 +122,25 @@ fn collect_output_devices() -> Result<Vec<OutputDeviceInfo>, CaptureError> {
     Ok(out)
 }
 
-pub fn list_output_devices() -> Vec<OutputDeviceInfo> {
-    match collect_output_devices() {
+pub fn list_devices(kind: SourceKind) -> Vec<AudioDeviceInfo> {
+    match collect_devices(kind) {
         Ok(devices) => devices,
         Err(e) => {
-            eprintln!("список устройств вывода недоступен: {e}");
+            eprintln!("список аудиоустройств недоступен: {e}");
             Vec::new()
         }
     }
 }
 
+fn default_device(
+    enumerator: &IMMDeviceEnumerator,
+    kind: SourceKind,
+) -> Result<IMMDevice, CaptureError> {
+    unsafe { enumerator.GetDefaultAudioEndpoint(data_flow(kind), eConsole) }.map_err(backend_error)
+}
+
 fn default_output_device(enumerator: &IMMDeviceEnumerator) -> Result<IMMDevice, CaptureError> {
-    unsafe { enumerator.GetDefaultAudioEndpoint(eRender, eConsole) }.map_err(backend_error)
+    default_device(enumerator, SourceKind::Output)
 }
 
 fn device_by_id(
@@ -135,18 +151,21 @@ fn device_by_id(
     unsafe { enumerator.GetDevice(PCWSTR(wide.as_ptr())) }.map_err(backend_error)
 }
 
-fn resolve_output_device(
+fn resolve_device(
     enumerator: &IMMDeviceEnumerator,
     uid: Option<&str>,
+    kind: SourceKind,
 ) -> Result<IMMDevice, CaptureError> {
     let Some(uid) = uid else {
-        return default_output_device(enumerator);
+        return default_device(enumerator, kind);
     };
     match device_by_id(enumerator, uid) {
         Ok(device) => Ok(device),
         Err(_) => {
-            eprintln!("устройство захвата {uid:?} не найдено — используется системный вывод");
-            default_output_device(enumerator)
+            eprintln!(
+                "устройство захвата {uid:?} не найдено — используется системное по умолчанию"
+            );
+            default_device(enumerator, kind)
         }
     }
 }
@@ -258,6 +277,7 @@ fn activate_client(device: &IMMDevice) -> Result<(IAudioClient, SampleFormat), C
 
 pub struct Source {
     device_id: String,
+    kind: SourceKind,
 }
 
 pub struct Running {
@@ -270,12 +290,16 @@ impl Drop for Running {
     }
 }
 
-pub fn open(output_device_uid: Option<&str>) -> Result<(Source, StreamSpec), CaptureError> {
+pub fn open(
+    kind: SourceKind,
+    device_uid: Option<&str>,
+) -> Result<(Source, StreamSpec), CaptureError> {
     let _com = ComGuard::enter()?;
     let enumerator = enumerator()?;
-    let device = resolve_output_device(&enumerator, output_device_uid)?;
+    let device = resolve_device(&enumerator, device_uid, kind)?;
     let source = Source {
         device_id: device_id(&device)?,
+        kind,
     };
     let (_client, format) = activate_client(&device)?;
     Ok((source, format.spec()))
@@ -329,13 +353,24 @@ fn poll_interval(client: &IAudioClient) -> Duration {
     Duration::from_nanos(nanos).clamp(MIN_POLL_INTERVAL, MAX_POLL_INTERVAL)
 }
 
-fn open_stream(device_id: &str, spec: &StreamSpec) -> Result<LoopbackStream, CaptureError> {
+fn stream_flags(kind: SourceKind) -> u32 {
+    match kind {
+        SourceKind::Output => AUDCLNT_STREAMFLAGS_LOOPBACK,
+        SourceKind::Input => 0,
+    }
+}
+
+fn open_stream(
+    device_id: &str,
+    kind: SourceKind,
+    spec: &StreamSpec,
+) -> Result<LoopbackStream, CaptureError> {
     let enumerator = enumerator()?;
     let device = device_by_id(&enumerator, device_id)?;
     let (client, format) = activate_client(&device)?;
     if !format.matches(spec) {
         return Err(CaptureError::Backend(
-            "формат устройства вывода изменился — захват пересоздаётся".to_string(),
+            "формат устройства захвата изменился — захват пересоздаётся".to_string(),
         ));
     }
     let mix = MixFormat(unsafe { client.GetMixFormat() }.map_err(backend_error)?);
@@ -343,7 +378,7 @@ fn open_stream(device_id: &str, spec: &StreamSpec) -> Result<LoopbackStream, Cap
     unsafe {
         client.Initialize(
             AUDCLNT_SHAREMODE_SHARED,
-            AUDCLNT_STREAMFLAGS_LOOPBACK,
+            stream_flags(kind),
             buffer_duration,
             0,
             mix.0,
@@ -481,20 +516,24 @@ fn push_silence(ctx: &mut CallbackCtx, scratch: &mut Vec<f32>, samples: usize) {
 fn run_stream(
     stream: &LoopbackStream,
     ctx: &mut CallbackCtx,
-    timeline: &mut Timeline,
+    mut timeline: Option<&mut Timeline>,
     stop: &AtomicBool,
 ) -> Result<(), CaptureError> {
     let mut scratch: Vec<f32> = Vec::new();
     while !stop.load(Ordering::Acquire) {
         let wants_samples = ctx.wants_samples();
-        timeline.gate(wants_samples);
+        if let Some(timeline) = timeline.as_deref_mut() {
+            timeline.gate(wants_samples);
+        }
         let delivered = drain_packets(stream, ctx, &mut scratch, stop)?;
-        timeline.on_frames(delivered);
-        if wants_samples && delivered == 0 {
-            let missing = timeline.missing_frames();
-            if missing > 0 {
-                push_silence(ctx, &mut scratch, timeline.samples_for(missing));
-                timeline.on_frames(missing);
+        if let Some(timeline) = timeline.as_deref_mut() {
+            timeline.on_frames(delivered);
+            if wants_samples && delivered == 0 {
+                let missing = timeline.missing_frames();
+                if missing > 0 {
+                    push_silence(ctx, &mut scratch, timeline.samples_for(missing));
+                    timeline.on_frames(missing);
+                }
             }
         }
         std::thread::sleep(stream.poll_interval);
@@ -515,17 +554,20 @@ fn capture_main(
         )));
         return;
     };
-    let mut timeline = Timeline::new(&spec);
+    // Synthesised silence is a loopback-only need: loopback emits no packets while
+    // nothing renders to the device. A real capture endpoint always delivers packets,
+    // so zero-filling there would double-count samples.
+    let mut timeline = (source.kind == SourceKind::Output).then(|| Timeline::new(&spec));
     let mut announced = false;
 
     while !stop.load(Ordering::Acquire) {
-        match open_stream(&source.device_id, &spec) {
+        match open_stream(&source.device_id, source.kind, &spec) {
             Ok(stream) => {
                 if !announced {
                     announced = true;
                     let _ = ready.send(Ok(()));
                 }
-                if let Err(e) = run_stream(&stream, &mut ctx, &mut timeline, &stop) {
+                if let Err(e) = run_stream(&stream, &mut ctx, timeline.as_mut(), &stop) {
                     eprintln!("поток захвата прерван, переоткрываю: {e}");
                 }
             }

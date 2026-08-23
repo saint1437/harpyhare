@@ -228,3 +228,13 @@ fn migration_keeps_existing_bindings_untouched() {
         serde_json::from_value(raw.get("hotkeys").cloned().unwrap()).unwrap();
     assert_eq!(bindings, vec![binding(ACTION_RECORD, "F6")]);
 }
+
+#[test]
+fn auto_mode_action_is_a_global_combo_with_defaults_on_both_platforms() {
+    let auto = action(ACTION_AUTO_MODE).expect("автослушание есть в реестре");
+    assert_eq!(auto.scope, HotkeyScope::Global);
+    assert_eq!(auto.kind, HotkeyKind::Combo);
+    for (_, pick, _) in PLATFORM_VIEWS {
+        assert!(!pick(&auto.default_combo).is_empty());
+    }
+}

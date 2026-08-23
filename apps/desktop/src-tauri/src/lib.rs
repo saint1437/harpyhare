@@ -1,6 +1,7 @@
 pub mod access;
 pub mod app_state;
 pub mod audio;
+pub mod auto;
 pub mod bindings;
 pub mod capture;
 pub mod chat;

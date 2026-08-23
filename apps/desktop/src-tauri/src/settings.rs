@@ -49,6 +49,9 @@ pub struct SettingsLimits {
     pub teleprompter_speed: Bounds<f64>,
     pub teleprompter_font_size: Bounds<f64>,
     pub buffer_seconds: Bounds<u32>,
+    pub auto_silence_ms: Bounds<u32>,
+    pub auto_min_utterance_ms: Bounds<u32>,
+    pub auto_max_utterance_secs: Bounds<u32>,
 }
 
 impl SettingsLimits {
@@ -64,6 +67,9 @@ impl SettingsLimits {
             teleprompter_speed: limits::teleprompter::SPEED,
             teleprompter_font_size: limits::teleprompter::FONT_SIZE,
             buffer_seconds: limits::capture::BUFFER_SECONDS,
+            auto_silence_ms: limits::capture::AUTO_SILENCE_MS,
+            auto_min_utterance_ms: limits::capture::AUTO_MIN_UTTERANCE_MS,
+            auto_max_utterance_secs: limits::capture::AUTO_MAX_UTTERANCE_SECS,
         }
     }
 }
@@ -100,6 +106,9 @@ pub mod limits {
     pub mod capture {
         use super::Bounds;
         pub const BUFFER_SECONDS: Bounds<u32> = Bounds { default: 4, min: 4, max: 10 };
+        pub const AUTO_SILENCE_MS: Bounds<u32> = Bounds { default: 700, min: 300, max: 2000 };
+        pub const AUTO_MIN_UTTERANCE_MS: Bounds<u32> = Bounds { default: 400, min: 200, max: 3000 };
+        pub const AUTO_MAX_UTTERANCE_SECS: Bounds<u32> = Bounds { default: 30, min: 5, max: 120 };
     }
 }
 
@@ -170,6 +179,12 @@ pub struct Settings {
     pub scroll_step: u32,
     pub buffer_enabled: bool,
     pub buffer_seconds: u32,
+    pub auto_mode_enabled: bool,
+    pub auto_mic_device_uid: String,
+    pub auto_silence_ms: u32,
+    pub auto_min_utterance_ms: u32,
+    pub auto_max_utterance_secs: u32,
+    pub mic_permission_requested: bool,
     pub quick_actions: Vec<QuickAction>,
     pub quick_action_attachments: bool,
 }
@@ -204,6 +219,12 @@ impl Default for Settings {
             scroll_step: limits::chat::SCROLL_STEP.default,
             buffer_enabled: true,
             buffer_seconds: limits::capture::BUFFER_SECONDS.default,
+            auto_mode_enabled: false,
+            auto_mic_device_uid: String::new(),
+            auto_silence_ms: limits::capture::AUTO_SILENCE_MS.default,
+            auto_min_utterance_ms: limits::capture::AUTO_MIN_UTTERANCE_MS.default,
+            auto_max_utterance_secs: limits::capture::AUTO_MAX_UTTERANCE_SECS.default,
+            mic_permission_requested: false,
             quick_actions: seeded_quick_actions(),
             quick_action_attachments: false,
         }
@@ -223,6 +244,11 @@ impl Settings {
         self.teleprompter_font_size =
             limits::teleprompter::FONT_SIZE.clamp(self.teleprompter_font_size);
         self.buffer_seconds = limits::capture::BUFFER_SECONDS.clamp(self.buffer_seconds);
+        self.auto_silence_ms = limits::capture::AUTO_SILENCE_MS.clamp(self.auto_silence_ms);
+        self.auto_min_utterance_ms =
+            limits::capture::AUTO_MIN_UTTERANCE_MS.clamp(self.auto_min_utterance_ms);
+        self.auto_max_utterance_secs =
+            limits::capture::AUTO_MAX_UTTERANCE_SECS.clamp(self.auto_max_utterance_secs);
         if self.theme != THEME_GRAY && self.theme != THEME_BLACK {
             self.theme = defaults::THEME.into();
         }

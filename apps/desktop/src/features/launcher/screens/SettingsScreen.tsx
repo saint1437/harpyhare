@@ -3,6 +3,7 @@ import type { SectionProps } from "../contract";
 import { ScreenShell } from "../ScreenShell";
 import { ApiKeysSection } from "../sections/ApiKeysSection";
 import { AppearanceSection } from "../sections/AppearanceSection";
+import { AutoModeSection } from "../sections/AutoModeSection";
 import { BehaviorSection } from "../sections/BehaviorSection";
 import { HotkeysSection } from "../sections/HotkeysSection";
 import { QuickActionsSection } from "../sections/QuickActionsSection";
@@ -20,7 +21,12 @@ type SettingsScreenProps = SectionProps & {
 export function SettingsScreen({ draft, set, tab, onRedeem, onTabChange }: SettingsScreenProps) {
   const sections: Record<SettingsTabId, ReactNode> = {
     access: <ApiKeysSection draft={draft} set={set} onRedeem={onRedeem} />,
-    speech: <SttSection draft={draft} set={set} />,
+    speech: (
+      <>
+        <SttSection draft={draft} set={set} />
+        <AutoModeSection draft={draft} set={set} />
+      </>
+    ),
     hotkeys: <HotkeysSection draft={draft} set={set} />,
     window: <WindowSection draft={draft} set={set} />,
     "quick-actions": <QuickActionsSection draft={draft} set={set} />,

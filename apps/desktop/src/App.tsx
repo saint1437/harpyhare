@@ -10,6 +10,7 @@ import {
   type RefObject,
 } from "react";
 import { AnswerPanel } from "@/components/AnswerPanel";
+import { AutoModeIndicator } from "@/components/AutoModeIndicator";
 import { ChatTabs } from "@/components/ChatTabs";
 import { Composer } from "@/components/Composer";
 import { ConnectivityOverlay } from "@/components/ConnectivityOverlay";
@@ -20,6 +21,7 @@ import { ScreenShareIndicator } from "@/components/ScreenShareIndicator";
 import { StatusBar, type ContextUsage, type StatusBarProps } from "@/components/StatusBar";
 import { Teleprompter } from "@/components/Teleprompter";
 import { UpdateDialog } from "@/components/UpdateDialog";
+import { useAutoMode, type AutoModeApi } from "@/hooks/useAutoMode";
 import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
 import { useConnectivity } from "@/hooks/useConnectivity";
@@ -55,6 +57,7 @@ import type {
   RecorderState,
   Settings,
 } from "@/ipc/types";
+import { planDispatch } from "@/lib/auto-turns";
 import {
   attachmentImage,
   chatRequestOptions,
@@ -83,6 +86,7 @@ const USER_CONTEXT_SYSTEM_HEADER = "Контекст от пользовател
 const SYSTEM_BLOCKS_SEPARATOR = "\n\n";
 
 const settingsSaveErrorText = (err: string) => `Ошибка сохранения настроек: ${err}`;
+const NOOP = () => undefined;
 const COPY_IMAGE_ERROR_TEXT = "Не удалось скопировать картинку в буфер обмена";
 
 function historyWithNewUserMessage(
@@ -298,6 +302,7 @@ function useProjectedContextTokens(chat: Chat, system: string, streaming: boolea
 interface SendPipeline {
   dispatchSend: (rawText: string) => void;
   dispatchQuickAction: (prompt: string, withAttachments: boolean) => void;
+  dispatchAutoTurn: (text: string) => boolean;
   doSend: () => void;
   resendFromMessage: (index: number) => void;
 }
@@ -345,6 +350,24 @@ function useSendPipeline(
     [chatsRef, streamRef, clearSttError, streamChat],
   );
 
+  const dispatchAutoTurn = useCallback(
+    (text: string) => {
+      const chat = chatsRef.current.active;
+      const streaming = streamRef.current.streaming[chat.id] === true;
+      const { interrupt, send } = planDispatch(text, streaming);
+      if (!send) return false;
+      // Fire-and-forget is safe here only because `send` awaits the cancellation this
+      // starts; the replacement request cannot outrun it.
+      if (interrupt) void streamRef.current.abandon(chat.id);
+      clearSttError();
+      const trimmed = text.trim();
+      chatsRef.current.appendAutoTurnMessage(chat.id, trimmed);
+      streamChat(chat, historyWithNewUserMessage(chat, trimmed, []));
+      return true;
+    },
+    [chatsRef, streamRef, clearSttError, streamChat],
+  );
+
   const doSend = useCallback(() => {
     dispatchSend(chatsRef.current.active.draft);
   }, [dispatchSend, chatsRef]);
@@ -365,11 +388,12 @@ function useSendPipeline(
     [chatsRef, streamRef, clearSttError, streamChat],
   );
 
-  return { dispatchSend, dispatchQuickAction, doSend, resendFromMessage };
+  return { dispatchSend, dispatchQuickAction, dispatchAutoTurn, doSend, resendFromMessage };
 }
 
 interface AppHeaderProps {
   state: RecorderState;
+  autoMode: AutoModeApi;
   error: AppError | null;
   hotkeys: HotkeyBinding[];
   updater: UpdaterApi;
@@ -388,6 +412,7 @@ interface AppHeaderProps {
 
 function AppHeader({
   state,
+  autoMode,
   error,
   hotkeys,
   updater,
@@ -406,6 +431,7 @@ function AppHeader({
   return (
     <StatusBar
       state={state}
+      autoListening={autoMode.active}
       error={error?.message ?? null}
       toggleHotkey={effectiveCombo(hotkeys, "toggle_window")}
       contextUsage={contextUsage}
@@ -431,6 +457,11 @@ function AppHeader({
       }
       actions={
         <>
+          <AutoModeIndicator
+            active={autoMode.active}
+            combo={effectiveCombo(hotkeys, "auto_mode")}
+            onToggle={autoMode.toggle}
+          />
           <ScreenShareIndicator visible={screenShareVisible} onToggle={onToggleScreenShare} />
           {canTeleprompt && (
             <IconButton title="Суфлёр" onClick={onOpenTeleprompter}>
@@ -574,10 +605,12 @@ export default function App() {
   );
   const screenshot = useRegionScreenshot(onScreenshotImage);
   const clearScreenshotError = screenshot.clearError;
+  const clearAutoModeErrorRef = useRef<() => void>(NOOP);
   const clearAllErrors = useCallback(() => {
     clearError();
     clearScreenshotError();
-  }, [clearError, clearScreenshotError]);
+    clearAutoModeErrorRef.current();
+  }, [clearError, clearScreenshotError, clearAutoModeErrorRef]);
 
   const onAssistantDone = useCallback(
     (chatId: string, text: string) => {
@@ -594,13 +627,14 @@ export default function App() {
   const stream = useClaudeStream(onAssistantDone);
   const streamRef = useLatestRef(stream);
 
-  const { dispatchSend, dispatchQuickAction, doSend, resendFromMessage } = useSendPipeline(
-    chatsRef,
-    streamRef,
-    presetsRef,
-    libraryRef,
-    clearAllErrors,
-  );
+  const { dispatchSend, dispatchQuickAction, dispatchAutoTurn, doSend, resendFromMessage } =
+    useSendPipeline(chatsRef, streamRef, presetsRef, libraryRef, clearAllErrors);
+
+  const autoMode = useAutoMode(dispatchAutoTurn);
+  const clearAutoModeError = autoMode.clearError;
+  useEffect(() => {
+    clearAutoModeErrorRef.current = clearAutoModeError;
+  }, [clearAutoModeError]);
 
   useTranscription(
     useCallback(
@@ -671,7 +705,8 @@ export default function App() {
   const active = chats.active;
   const activeId = chats.activeId;
   const activeStreaming = !!stream.streaming[activeId];
-  const error: AppError | null = sttError ?? screenshot.error ?? stream.error[activeId] ?? null;
+  const error: AppError | null =
+    sttError ?? autoMode.error ?? screenshot.error ?? stream.error[activeId] ?? null;
   const partial = activeStreaming ? (stream.partial[activeId] ?? "") : null;
   const reportNetworkError = connectivity.reportNetworkError;
   useEffect(() => {
@@ -746,6 +781,7 @@ export default function App() {
       <div className="flex shrink-0 flex-col gap-2.5" style={{ width: chatColumnWidth }}>
         <AppHeader
           state={state}
+          autoMode={autoMode}
           error={error}
           hotkeys={settings.hotkeys}
           updater={updater}

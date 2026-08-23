@@ -12,7 +12,7 @@ use crate::app_state::{
     build_capture, cancel_stt_stream, current_settings, llm_provider, stt_engine, App, SttStream,
 };
 use crate::error::{AppError, ErrorCode};
-use crate::{audio, capture, events, hotkey, state, stt};
+use crate::{audio, auto, capture, events, hotkey, state, stt};
 
 #[cfg(target_os = "macos")]
 const ERR_NO_CAPTURE: (ErrorCode, &str) = (
@@ -89,6 +89,10 @@ fn rebuild_capture_now(app: &AppHandle) {
 }
 
 pub fn on_ptt_pressed(app: &AppHandle) {
+    if auto::is_active(app) {
+        events::stt_error(app, auto::recorder_busy_error());
+        return;
+    }
     let st = app.state::<App>();
     if st.capture_rebuild_pending.swap(false, Ordering::SeqCst) {
         rebuild_capture_now(app);
@@ -353,7 +357,7 @@ pub async fn retry_transcription(app: AppHandle) {
 
 #[tauri::command]
 #[specta::specta]
-pub fn list_audio_output_devices() -> Vec<capture::OutputDeviceInfo> {
-    capture::list_output_devices()
+pub fn list_audio_output_devices() -> Vec<capture::AudioDeviceInfo> {
+    capture::list_devices(capture::SourceKind::Output)
 }
 

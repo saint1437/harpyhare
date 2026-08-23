@@ -47,7 +47,20 @@ impl crate::error::CodedError for CaptureError {
 }
 
 pub type ChunkSink = Box<dyn FnMut(&[f32]) + Send>;
+pub type SegmentSink = Box<dyn FnMut(Vec<f32>) + Send>;
 pub type DeviceChangeHandler = Box<dyn Fn() + Send + Sync>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+pub enum SourceKind {
+    Output,
+    Input,
+}
+
+struct Segmenting {
+    segmenter: audio::SpeechSegmenter,
+    sink: SegmentSink,
+}
 
 pub struct StreamSpec {
     pub sample_rate: u32,
@@ -65,12 +78,14 @@ struct Shared {
     recording: AtomicBool,
     buffering: AtomicBool,
     stop_requested: AtomicBool,
+    shutdown: AtomicBool,
     produced: AtomicU64,
     dropped: AtomicU64,
     sample_rate: u32,
     channels: usize,
     session: Mutex<Session>,
     rolling: Mutex<audio::RollingBuffer>,
+    segmenting: Mutex<Option<Segmenting>>,
     cv: Condvar,
 }
 
@@ -96,28 +111,32 @@ impl CallbackCtx {
     }
 }
 
-pub struct SystemAudioCapture {
+pub struct AudioCapture {
     shared: Arc<Shared>,
     _running: backend::Running,
 }
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
-pub struct OutputDeviceInfo {
+pub struct AudioDeviceInfo {
     pub uid: String,
     pub name: String,
 }
 
-pub fn list_output_devices() -> Vec<OutputDeviceInfo> {
-    backend::list_output_devices()
+pub fn list_devices(kind: SourceKind) -> Vec<AudioDeviceInfo> {
+    backend::list_devices(kind)
 }
 
 pub fn watch_default_output_device(on_change: DeviceChangeHandler) {
     backend::watch_default_output_device(on_change);
 }
 
-impl SystemAudioCapture {
-    pub fn new(output_device_uid: Option<&str>, buffer_secs: u64) -> Result<Self, CaptureError> {
-        let (source, spec) = backend::open(output_device_uid)?;
+impl AudioCapture {
+    pub fn new(
+        kind: SourceKind,
+        device_uid: Option<&str>,
+        buffer_secs: u64,
+    ) -> Result<Self, CaptureError> {
+        let (source, spec) = backend::open(kind, device_uid)?;
 
         let ring = HeapRb::<f32>::new(spec.sample_rate as usize * spec.channels * RING_SECONDS);
         let (prod, cons) = ring.split();
@@ -125,12 +144,14 @@ impl SystemAudioCapture {
             recording: AtomicBool::new(false),
             buffering: AtomicBool::new(false),
             stop_requested: AtomicBool::new(false),
+            shutdown: AtomicBool::new(false),
             produced: AtomicU64::new(0),
             dropped: AtomicU64::new(0),
             sample_rate: spec.sample_rate,
             channels: spec.channels,
             session: Mutex::new(Session::Idle),
             rolling: Mutex::new(audio::RollingBuffer::new(buffer_secs)),
+            segmenting: Mutex::new(None),
             cv: Condvar::new(),
         });
         let ctx = Box::new(CallbackCtx {
@@ -210,6 +231,28 @@ impl SystemAudioCapture {
     pub fn set_buffer_capacity_secs(&self, secs: u64) {
         self.shared.rolling.lock().unwrap().set_capacity_secs(secs);
     }
+
+    pub fn start_segmenting(&self, bounds: audio::SegmenterBounds, sink: SegmentSink) {
+        let segmenter = audio::SpeechSegmenter::new(bounds);
+        *self.shared.segmenting.lock().unwrap() = Some(Segmenting { segmenter, sink });
+    }
+
+    pub fn stop_segmenting(&self) {
+        *self.shared.segmenting.lock().unwrap() = None;
+    }
+}
+
+// Without this a dropped capture would leak its consumer thread forever. That used
+// to happen at most once per device rebuild; the auto-mode toggle drops the
+// microphone capture every time it is switched off.
+impl Drop for AudioCapture {
+    fn drop(&mut self) {
+        self.shared.shutdown.store(true, Ordering::Release);
+        self.shared.stop_requested.store(true, Ordering::Release);
+        *self.shared.segmenting.lock().unwrap() = None;
+        let _wake = self.shared.session.lock().unwrap();
+        self.shared.cv.notify_all();
+    }
 }
 
 struct Scratch {
@@ -233,16 +276,24 @@ enum ConsumerWork {
     Buffering,
 }
 
-fn wait_for_work(shared: &Shared) -> ConsumerWork {
+enum ConsumerNext {
+    Work(ConsumerWork),
+    Shutdown,
+}
+
+fn wait_for_work(shared: &Shared) -> ConsumerNext {
     let mut s = shared.session.lock().unwrap();
     loop {
+        if shared.shutdown.load(Ordering::Acquire) {
+            return ConsumerNext::Shutdown;
+        }
         if let Session::Start(sink) = &mut *s {
             let sink = sink.take();
             *s = Session::Running;
-            return ConsumerWork::Session(sink);
+            return ConsumerNext::Work(ConsumerWork::Session(sink));
         }
         if shared.buffering.load(Ordering::Acquire) {
-            return ConsumerWork::Buffering;
+            return ConsumerNext::Work(ConsumerWork::Buffering);
         }
         s = shared.cv.wait(s).unwrap();
     }
@@ -252,8 +303,13 @@ fn consumer_main(shared: &Shared, mut ring: HeapCons<f32>) {
     let mut scratch = Scratch::new();
     loop {
         match wait_for_work(shared) {
-            ConsumerWork::Session(sink) => run_ptt_session(shared, &mut ring, &mut scratch, sink),
-            ConsumerWork::Buffering => run_buffering(shared, &mut ring, &mut scratch),
+            ConsumerNext::Shutdown => return,
+            ConsumerNext::Work(ConsumerWork::Session(sink)) => {
+                run_ptt_session(shared, &mut ring, &mut scratch, sink)
+            }
+            ConsumerNext::Work(ConsumerWork::Buffering) => {
+                run_buffering(shared, &mut ring, &mut scratch)
+            }
         }
     }
 }
@@ -402,6 +458,19 @@ fn finish_buffered_session(
     shared.cv.notify_all();
 }
 
+// The `segmenting` lock is taken only after `session` and `rolling` are released.
+// Calling the sink while holding the lock is deliberate: it never touches `Shared`,
+// it only bumps auto-mode counters and spawns a task.
+fn feed_segmenter(shared: &Shared, chunk: &[f32]) {
+    let mut guard = shared.segmenting.lock().unwrap();
+    let Some(state) = guard.as_mut() else {
+        return;
+    };
+    for segment in state.segmenter.push(chunk) {
+        (state.sink)(segment);
+    }
+}
+
 fn run_buffering(shared: &Shared, ring: &mut HeapCons<f32>, scratch: &mut Scratch) {
     let mut resampler = match audio::StreamResampler::new(shared.sample_rate) {
         Ok(rs) => rs,
@@ -416,6 +485,9 @@ fn run_buffering(shared: &Shared, ring: &mut HeapCons<f32>, scratch: &mut Scratc
 
     loop {
         if session.is_none() {
+            if shared.shutdown.load(Ordering::Acquire) {
+                return;
+            }
             if !shared.buffering.load(Ordering::Acquire) {
                 shared.rolling.lock().unwrap().clear();
                 return;
@@ -440,6 +512,7 @@ fn run_buffering(shared: &Shared, ring: &mut HeapCons<f32>, scratch: &mut Scratc
                 if shared.buffering.load(Ordering::Acquire) {
                     shared.rolling.lock().unwrap().push_chunk(&chunk);
                 }
+                feed_segmenter(shared, &chunk);
                 if let Some(sess) = session.as_mut() {
                     sess.out.extend_from_slice(&chunk);
                     if let Some(sink) = sess.sink.as_mut() {

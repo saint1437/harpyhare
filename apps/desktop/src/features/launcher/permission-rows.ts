@@ -1,4 +1,4 @@
-import { AudioLines, Monitor, type LucideIcon } from "lucide-react";
+import { AudioLines, Mic, Monitor, type LucideIcon } from "lucide-react";
 import type { PermissionKind } from "@/ipc/bindings";
 
 export interface PermissionRow {
@@ -16,6 +16,13 @@ export const PERMISSION_ROWS: PermissionRow[] = [
     purpose: "Приложение слышит собеседника и расшифровывает речь. Без него запускать нечего.",
     icon: AudioLines,
     required: true,
+  },
+  {
+    kind: "microphone",
+    title: "Микрофон",
+    purpose: "Нужен автослушанию, чтобы отделить вашу речь от речи собеседника.",
+    icon: Mic,
+    required: false,
   },
   {
     kind: "screen",

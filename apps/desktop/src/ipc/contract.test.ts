@@ -7,7 +7,8 @@ import type { PromptPreset } from "@/lib/presets";
 import type * as Rust from "./bindings";
 import type {
   HotkeyBinding,
-  AudioOutputDevice,
+  AudioDeviceInfo,
+  AutoTurn,
   EventMap,
   QuickAction,
   RecorderState,
@@ -31,7 +32,7 @@ type SameShape<Ours, Generated> = [Ours] extends [Generated]
 
 const contract = {
   Settings: true satisfies SameShape<Settings, Rust.Settings>,
-  OutputDeviceInfo: true satisfies SameShape<AudioOutputDevice, Rust.OutputDeviceInfo>,
+  AudioDeviceInfo: true satisfies SameShape<AudioDeviceInfo, Rust.AudioDeviceInfo>,
   UpdateInfo: true satisfies SameShape<UpdateInfo, Rust.UpdateInfo>,
   RecorderState: true satisfies SameShape<RecorderState, Rust.RecorderState>,
   PromptPreset: true satisfies SameShape<PromptPreset, Rust.PromptPreset>,
@@ -46,6 +47,9 @@ const contract = {
   UpdateProgress: true satisfies SameShape<EventMap["update-progress"], Rust.UpdateProgress>,
   UpdateDone: true satisfies SameShape<EventMap["update-done"], Rust.UpdateDone>,
   ScreenshotReady: true satisfies SameShape<EventMap["screenshot-ready"], Rust.ScreenshotReady>,
+  AutoTurn: true satisfies SameShape<AutoTurn, Rust.AutoTurnPayload>,
+  Speaker: true satisfies SameShape<AutoTurn["speaker"], Rust.Speaker>,
+  AutoModeChanged: true satisfies SameShape<EventMap["auto-mode-changed"], Rust.AutoModeChanged>,
   HotkeyBinding: true satisfies SameShape<HotkeyBinding, Rust.HotkeyBinding>,
   QuickAction: true satisfies SameShape<QuickAction, Rust.QuickAction>,
   PlatformCombo: true satisfies SameShape<Record<Platform, string>, Rust.PlatformCombo>,

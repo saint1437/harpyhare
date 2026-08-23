@@ -56,6 +56,8 @@ pub fn set_settings(
     rebuild_changed_api_clients(&st, &old, &new_settings);
     apply_screen_share_visibility_change(&app, &old, &new_settings);
     apply_buffer_settings_change(&app, &old, &new_settings);
+    let auto_device_changed = crate::auto::device_changed(&old, &new_settings);
+    let auto_bounds_changed = crate::auto::bounds_changed(&old, &new_settings);
     let capture_device_changed = old.capture_device_uid != new_settings.capture_device_uid;
     new_settings
         .save(&settings_path(&app))
@@ -63,6 +65,11 @@ pub fn set_settings(
     *st.settings.lock().unwrap() = new_settings.clone();
     if capture_device_changed {
         request_capture_rebuild(&app);
+    }
+    if auto_device_changed {
+        restart_auto_mode_off_thread(&app);
+    } else if auto_bounds_changed {
+        crate::auto::reapply_bounds(&app);
     }
     Ok(new_settings)
 }
@@ -145,6 +152,17 @@ fn apply_screen_share_visibility_change(
     }
 }
 
+// Opening a capture device is slow — the WASAPI thread start alone waits up to five
+// seconds — and `set_settings` is a synchronous command, so the rebuild must not run
+// on its thread. Same reason `launch_main_window` builds its capture in spawn_blocking.
+fn restart_auto_mode_off_thread(app: &AppHandle) {
+    if !crate::auto::is_active(app) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || crate::auto::restart(&app));
+}
+
 fn apply_buffer_settings_change(
     app: &AppHandle,
     old: &settings::Settings,
@@ -153,9 +171,10 @@ fn apply_buffer_settings_change(
     if old.buffer_enabled == new.buffer_enabled && old.buffer_seconds == new.buffer_seconds {
         return;
     }
+    let auto_holds_the_stream = crate::auto::is_active(app);
     if let Some(c) = app.state::<App>().capture.lock().unwrap().as_ref() {
         c.set_buffer_capacity_secs(new.buffer_seconds.into());
-        c.set_buffering(new.buffer_enabled);
+        c.set_buffering(new.buffer_enabled || auto_holds_the_stream);
     }
 }
 

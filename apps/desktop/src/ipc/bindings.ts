@@ -19,7 +19,11 @@ export const commands = {
 	readContextImportFile: (path: string) => __TAURI_INVOKE<string>("read_context_import_file", { path }),
 	readContextPdfBytes: (dataBase64: string) => __TAURI_INVOKE<string>("read_context_pdf_bytes", { dataBase64 }),
 	retryTranscription: () => __TAURI_INVOKE<void>("retry_transcription"),
-	listAudioOutputDevices: () => __TAURI_INVOKE<OutputDeviceInfo[]>("list_audio_output_devices"),
+	startAutoMode: () => __TAURI_INVOKE<null>("start_auto_mode"),
+	stopAutoMode: () => __TAURI_INVOKE<void>("stop_auto_mode"),
+	autoModeActive: () => __TAURI_INVOKE<boolean>("auto_mode_active"),
+	listAudioInputDevices: () => __TAURI_INVOKE<AudioDeviceInfo[]>("list_audio_input_devices"),
+	listAudioOutputDevices: () => __TAURI_INVOKE<AudioDeviceInfo[]>("list_audio_output_devices"),
 	getSettings: () => __TAURI_INVOKE<Settings>("get_settings"),
 	setSettings: (newSettings: Settings) => __TAURI_INVOKE<Settings>("set_settings", { newSettings }),
 	getOfficialPresets: () => __TAURI_INVOKE<PromptPreset[]>("get_official_presets"),
@@ -47,20 +51,36 @@ export const commands = {
 };
 
 /* Constants */
-export const HOTKEY_ACTIONS = [{"defaultCombo":{"macos":"Cmd+R","windows":"Ctrl+R"},"group":"Запись","hint":"Удерживайте, пока говорит собеседник.","id":"record","kind":"combo","label":"Записать системный звук","scope":"global"},{"defaultCombo":{"macos":"Escape","windows":"Escape"},"group":"Запись","hint":"Слушается только пока идёт запись.","id":"cancel_recording","kind":"combo","label":"Отменить запись","scope":"recording"},{"defaultCombo":{"macos":"Cmd+Enter","windows":"Ctrl+Enter"},"group":"Отправка","hint":"Работает из любого места окна, не только из поля ввода.","id":"send","kind":"combo","label":"Отправить","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+A","windows":"Ctrl+Shift+A"},"group":"Отправка","hint":"Выделенная область уходит вложением в чат.","id":"screenshot","kind":"combo","label":"Снимок области экрана","scope":"global"},{"defaultCombo":{"macos":"Cmd","windows":"Ctrl"},"group":"Отправка","hint":"Модификатор с цифрой: 1…9 по порядку кнопок.","id":"quick_action","kind":"modifier_digits","label":"Быстрое действие","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+D","windows":"Ctrl+Shift+D"},"group":"Отправка","hint":"Поднимает окно и ставит каретку в конец текста.","id":"focus_prompt","kind":"combo","label":"Сфокусировать поле ввода","scope":"global"},{"defaultCombo":{"macos":"Cmd+Shift+H","windows":"Ctrl+Shift+H"},"group":"Окно","hint":"Работает, даже когда окно спрятано.","id":"toggle_window","kind":"combo","label":"Скрыть или показать","scope":"global"},{"defaultCombo":{"macos":"Cmd","windows":"Ctrl"},"group":"Окно","hint":"Модификатор со стрелками.","id":"move_window","kind":"modifier_arrows","label":"Передвинуть","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift","windows":"Ctrl+Shift"},"group":"Окно","hint":"Модификатор со стрелками.","id":"resize_window","kind":"modifier_arrows","label":"Изменить размер","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift","windows":"Ctrl+Shift"},"group":"Окно","hint":"Модификатор с плюсом и минусом.","id":"opacity","kind":"modifier_plus_minus","label":"Прозрачность","scope":"hud"},{"defaultCombo":{"macos":"Alt","windows":"Alt"},"group":"Чат","hint":"Модификатор со стрелками вверх и вниз.","id":"scroll_chat","kind":"modifier_arrows","label":"Скролл переписки","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+N","windows":"Ctrl+Shift+N"},"group":"Чат","hint":"Новый чат с параметрами текущего, без сообщений.","id":"duplicate_chat","kind":"combo","label":"Дубликат чата","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+T","windows":"Ctrl+Shift+T"},"group":"Чат","hint":"Крупный текст ответа поверх экрана.","id":"teleprompter","kind":"combo","label":"Суфлёр","scope":"global"},{"defaultCombo":{"macos":"Escape","windows":"Escape"},"group":"Суфлёр","hint":"Слушается только пока суфлёр открыт.","id":"teleprompter_close","kind":"combo","label":"Закрыть суфлёр","scope":"teleprompter"},{"defaultCombo":{"macos":"Space","windows":"Space"},"group":"Суфлёр","hint":"Останавливает автопрокрутку.","id":"teleprompter_pause","kind":"combo","label":"Пауза суфлёра","scope":"teleprompter"}] as const;
+export const HOTKEY_ACTIONS = [{"defaultCombo":{"macos":"Cmd+R","windows":"Ctrl+R"},"group":"Запись","hint":"Удерживайте, пока говорит собеседник.","id":"record","kind":"combo","label":"Записать системный звук","scope":"global"},{"defaultCombo":{"macos":"Cmd+Shift+L","windows":"Ctrl+Shift+L"},"group":"Запись","hint":"Слушает собеседника и вас, пока включено.","id":"auto_mode","kind":"combo","label":"Автослушание","scope":"global"},{"defaultCombo":{"macos":"Escape","windows":"Escape"},"group":"Запись","hint":"Слушается только пока идёт запись.","id":"cancel_recording","kind":"combo","label":"Отменить запись","scope":"recording"},{"defaultCombo":{"macos":"Cmd+Enter","windows":"Ctrl+Enter"},"group":"Отправка","hint":"Работает из любого места окна, не только из поля ввода.","id":"send","kind":"combo","label":"Отправить","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+A","windows":"Ctrl+Shift+A"},"group":"Отправка","hint":"Выделенная область уходит вложением в чат.","id":"screenshot","kind":"combo","label":"Снимок области экрана","scope":"global"},{"defaultCombo":{"macos":"Cmd","windows":"Ctrl"},"group":"Отправка","hint":"Модификатор с цифрой: 1…9 по порядку кнопок.","id":"quick_action","kind":"modifier_digits","label":"Быстрое действие","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+D","windows":"Ctrl+Shift+D"},"group":"Отправка","hint":"Поднимает окно и ставит каретку в конец текста.","id":"focus_prompt","kind":"combo","label":"Сфокусировать поле ввода","scope":"global"},{"defaultCombo":{"macos":"Cmd+Shift+H","windows":"Ctrl+Shift+H"},"group":"Окно","hint":"Работает, даже когда окно спрятано.","id":"toggle_window","kind":"combo","label":"Скрыть или показать","scope":"global"},{"defaultCombo":{"macos":"Cmd","windows":"Ctrl"},"group":"Окно","hint":"Модификатор со стрелками.","id":"move_window","kind":"modifier_arrows","label":"Передвинуть","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift","windows":"Ctrl+Shift"},"group":"Окно","hint":"Модификатор со стрелками.","id":"resize_window","kind":"modifier_arrows","label":"Изменить размер","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift","windows":"Ctrl+Shift"},"group":"Окно","hint":"Модификатор с плюсом и минусом.","id":"opacity","kind":"modifier_plus_minus","label":"Прозрачность","scope":"hud"},{"defaultCombo":{"macos":"Alt","windows":"Alt"},"group":"Чат","hint":"Модификатор со стрелками вверх и вниз.","id":"scroll_chat","kind":"modifier_arrows","label":"Скролл переписки","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+N","windows":"Ctrl+Shift+N"},"group":"Чат","hint":"Новый чат с параметрами текущего, без сообщений.","id":"duplicate_chat","kind":"combo","label":"Дубликат чата","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+T","windows":"Ctrl+Shift+T"},"group":"Чат","hint":"Крупный текст ответа поверх экрана.","id":"teleprompter","kind":"combo","label":"Суфлёр","scope":"global"},{"defaultCombo":{"macos":"Escape","windows":"Escape"},"group":"Суфлёр","hint":"Слушается только пока суфлёр открыт.","id":"teleprompter_close","kind":"combo","label":"Закрыть суфлёр","scope":"teleprompter"},{"defaultCombo":{"macos":"Space","windows":"Space"},"group":"Суфлёр","hint":"Останавливает автопрокрутку.","id":"teleprompter_pause","kind":"combo","label":"Пауза суфлёра","scope":"teleprompter"}] as const;
 
 export const MODIFIER_COMBOS = {"macos":["Cmd","Ctrl","Alt","Cmd+Shift","Ctrl+Shift","Alt+Shift"],"windows":["Ctrl","Alt","Ctrl+Shift","Alt+Shift"]} as const;
 
 export const QUICK_ACTION_LIMIT = 9 as const;
 
-export const SETTINGS_DEFAULTS = {"access_token":"","anthropic_api_key":"","audio_permission_requested":false,"auto_preview_html":true,"auto_send":false,"buffer_enabled":true,"buffer_seconds":4,"capture_device_uid":"","chat_font_size":13.5,"groq_api_key":"","hotkeys":[],"move_step":20,"prompt_presets":[],"quick_action_attachments":false,"quick_actions":[{"id":"detail","prompt":"Расскажи более подробно.","title":"Подробнее"},{"id":"brief","prompt":"Ответь короче, только суть.","title":"Короче"},{"id":"code","prompt":"Покажи пример кода.","title":"Пример кода"}],"resize_step":20,"screen_permission_requested":false,"screen_share_visible":false,"scroll_step":120,"skipped_version":"","stt_language":"ru","stt_translate":false,"teleprompter_font_size":28.0,"teleprompter_resume":true,"teleprompter_speed":40.0,"theme":"gray","window_height":680.0,"window_opacity":0.9,"window_width":960.0} as const;
+export const SETTINGS_DEFAULTS = {"access_token":"","anthropic_api_key":"","audio_permission_requested":false,"auto_max_utterance_secs":30,"auto_mic_device_uid":"","auto_min_utterance_ms":400,"auto_mode_enabled":false,"auto_preview_html":true,"auto_send":false,"auto_silence_ms":700,"buffer_enabled":true,"buffer_seconds":4,"capture_device_uid":"","chat_font_size":13.5,"groq_api_key":"","hotkeys":[],"mic_permission_requested":false,"move_step":20,"prompt_presets":[],"quick_action_attachments":false,"quick_actions":[{"id":"detail","prompt":"Расскажи более подробно.","title":"Подробнее"},{"id":"brief","prompt":"Ответь короче, только суть.","title":"Короче"},{"id":"code","prompt":"Покажи пример кода.","title":"Пример кода"}],"resize_step":20,"screen_permission_requested":false,"screen_share_visible":false,"scroll_step":120,"skipped_version":"","stt_language":"ru","stt_translate":false,"teleprompter_font_size":28.0,"teleprompter_resume":true,"teleprompter_speed":40.0,"theme":"gray","window_height":680.0,"window_opacity":0.9,"window_width":960.0} as const;
 
-export const SETTINGS_LIMITS = {"bufferSeconds":{"default":4,"max":10,"min":4},"chatFontSize":{"default":13.5,"max":20.0,"min":10.0},"moveStep":{"default":20,"max":200,"min":1},"resizeStep":{"default":20,"max":200,"min":1},"scrollStep":{"default":120,"max":1000,"min":10},"teleprompterFontSize":{"default":28.0,"max":48.0,"min":20.0},"teleprompterSpeed":{"default":40.0,"max":150.0,"min":10.0},"windowHeight":{"default":680.0,"max":1100.0,"min":520.0},"windowOpacity":{"default":0.9,"max":1.0,"min":0.2},"windowWidth":{"default":960.0,"max":1600.0,"min":300.0}} as const;
+export const SETTINGS_LIMITS = {"autoMaxUtteranceSecs":{"default":30,"max":120,"min":5},"autoMinUtteranceMs":{"default":400,"max":3000,"min":200},"autoSilenceMs":{"default":700,"max":2000,"min":300},"bufferSeconds":{"default":4,"max":10,"min":4},"chatFontSize":{"default":13.5,"max":20.0,"min":10.0},"moveStep":{"default":20,"max":200,"min":1},"resizeStep":{"default":20,"max":200,"min":1},"scrollStep":{"default":120,"max":1000,"min":10},"teleprompterFontSize":{"default":28.0,"max":48.0,"min":20.0},"teleprompterSpeed":{"default":40.0,"max":150.0,"min":10.0},"windowHeight":{"default":680.0,"max":1100.0,"min":520.0},"windowOpacity":{"default":0.9,"max":1.0,"min":0.2},"windowWidth":{"default":960.0,"max":1600.0,"min":300.0}} as const;
 
 /* Types */
 export type AppError = {
 	code: ErrorCode,
 	message: string,
+};
+
+export type AudioDeviceInfo = {
+	uid: string,
+	name: string,
+};
+
+export type AutoModeChanged = {
+	active: boolean,
+};
+
+export type AutoTurnPayload = {
+	speaker: Speaker,
+	text: string,
+	seq: number,
+	atMs: number | null,
 };
 
 export type ChatMessage = {
@@ -124,18 +144,14 @@ export type ModelInfo = {
 	maxInputTokens: number,
 };
 
-export type OutputDeviceInfo = {
-	uid: string,
-	name: string,
-};
-
-export type PermissionKind = "audio" | "screen";
+export type PermissionKind = "audio" | "screen" | "microphone";
 
 export type PermissionState = "unknown" | "granted" | "denied";
 
 export type PermissionsStatus = {
 	audio: PermissionState,
 	screen: PermissionState,
+	microphone: PermissionState,
 };
 
 export type PlatformCombo = {
@@ -202,9 +218,17 @@ export type Settings = {
 	scroll_step?: number,
 	buffer_enabled?: boolean,
 	buffer_seconds?: number,
+	auto_mode_enabled?: boolean,
+	auto_mic_device_uid?: string,
+	auto_silence_ms?: number,
+	auto_min_utterance_ms?: number,
+	auto_max_utterance_secs?: number,
+	mic_permission_requested?: boolean,
 	quick_actions?: QuickAction[],
 	quick_action_attachments?: boolean,
 };
+
+export type Speaker = "interviewer" | "user";
 
 export type StoredImage = {
 	id: string,

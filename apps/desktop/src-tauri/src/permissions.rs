@@ -17,6 +17,7 @@ pub enum PermissionState {
 pub enum PermissionKind {
     Audio,
     Screen,
+    Microphone,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
@@ -24,9 +25,11 @@ pub enum PermissionKind {
 pub struct PermissionsStatus {
     pub audio: PermissionState,
     pub screen: PermissionState,
+    pub microphone: PermissionState,
 }
 
 pub const AUDIO_REQUIRES_PERMISSION: bool = cfg!(target_os = "macos");
+pub const MICROPHONE_REQUIRES_PERMISSION: bool = true;
 
 pub fn state_from_granted(granted: bool) -> PermissionState {
     if granted {
@@ -49,6 +52,20 @@ fn audio_state(app: &AppHandle) -> PermissionState {
     state_from_granted(recording::ensure_capture(app))
 }
 
+fn microphone_state(app: &AppHandle) -> PermissionState {
+    if app.state::<App>().mic_capture.lock().unwrap().is_some() {
+        return PermissionState::Granted;
+    }
+    if !current_settings(app).mic_permission_requested {
+        return PermissionState::Unknown;
+    }
+    state_from_granted(probe_microphone(app))
+}
+
+fn probe_microphone(app: &AppHandle) -> bool {
+    crate::app_state::build_mic_capture(&current_settings(app)).is_ok()
+}
+
 fn screen_state(app: &AppHandle) -> PermissionState {
     if platform::screen_capture_access() {
         return PermissionState::Granted;
@@ -66,6 +83,7 @@ fn mark_requested(app: &AppHandle, kind: PermissionKind) -> Result<(), String> {
     let flag = match kind {
         PermissionKind::Audio => &mut settings.audio_permission_requested,
         PermissionKind::Screen => &mut settings.screen_permission_requested,
+        PermissionKind::Microphone => &mut settings.mic_permission_requested,
     };
     if *flag {
         return Ok(());
@@ -84,6 +102,7 @@ pub fn permissions_status(app: AppHandle) -> PermissionsStatus {
     PermissionsStatus {
         audio: audio_state(&app),
         screen: screen_state(&app),
+        microphone: microphone_state(&app),
     }
 }
 
@@ -102,6 +121,10 @@ pub fn request_permission(app: AppHandle, kind: PermissionKind) -> Result<Permis
             mark_requested(&app, kind)?;
             Ok(state_from_granted(platform::request_screen_capture_access()))
         }
+        PermissionKind::Microphone => {
+            mark_requested(&app, kind)?;
+            Ok(state_from_granted(probe_microphone(&app)))
+        }
     }
 }
 
@@ -111,6 +134,7 @@ pub fn open_permission_settings(kind: PermissionKind) {
     match kind {
         PermissionKind::Audio => platform::open_audio_capture_privacy_pane(),
         PermissionKind::Screen => platform::open_screen_capture_privacy_pane(),
+        PermissionKind::Microphone => platform::open_microphone_privacy_pane(),
     }
 }
 

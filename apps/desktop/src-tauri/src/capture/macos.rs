@@ -4,7 +4,9 @@ use cidre::{
     ns, os,
 };
 
-use super::{CallbackCtx, CaptureError, DeviceChangeHandler, OutputDeviceInfo, StreamSpec};
+use super::{
+    AudioDeviceInfo, CallbackCtx, CaptureError, DeviceChangeHandler, SourceKind, StreamSpec,
+};
 
 const OS_STATUS_ILLEGAL_OPERATION: i32 = i32::from_be_bytes(*b"!hog");
 const SAMPLE_BYTES: usize = std::mem::size_of::<f32>();
@@ -19,32 +21,46 @@ fn from_os(err: os::Error) -> CaptureError {
     }
 }
 
-pub struct Source {
-    tap: ca::TapGuard,
-    device: ca::AggregateDevice,
+pub enum Source {
+    Tap {
+        tap: ca::TapGuard,
+        device: ca::AggregateDevice,
+    },
+    Device(ca::Device),
 }
 
-pub struct Running {
-    _started: ca::hardware::StartedDevice<ca::AggregateDevice>,
-    _tap: ca::TapGuard,
-    _ctx: Box<CallbackCtx>,
+// Field order inside each variant is drop order, and it is load-bearing:
+// the C callback holds a pointer to `_ctx`, so `_ctx` must die last.
+pub enum Running {
+    Tap {
+        _started: ca::hardware::StartedDevice<ca::AggregateDevice>,
+        _tap: ca::TapGuard,
+        _ctx: Box<CallbackCtx>,
+    },
+    Device {
+        _started: ca::hardware::StartedDevice<ca::Device>,
+        _ctx: Box<CallbackCtx>,
+    },
 }
 
 unsafe impl Send for Running {}
 
-fn device_has_output(device: &ca::Device) -> bool {
-    device.output_asbd().is_ok()
+fn device_serves(device: &ca::Device, kind: SourceKind) -> bool {
+    match kind {
+        SourceKind::Output => device.output_asbd().is_ok(),
+        SourceKind::Input => device.input_asbd().is_ok(),
+    }
 }
 
-pub fn list_output_devices() -> Vec<OutputDeviceInfo> {
+pub fn list_devices(kind: SourceKind) -> Vec<AudioDeviceInfo> {
     let Ok(devices) = ca::System::devices() else {
         return Vec::new();
     };
     devices
         .iter()
-        .filter(|d| device_has_output(d))
+        .filter(|d| device_serves(d, kind))
         .filter_map(|d| {
-            Some(OutputDeviceInfo {
+            Some(AudioDeviceInfo {
                 uid: d.uid().ok()?.to_string(),
                 name: d.name().ok()?.to_string(),
             })
@@ -52,46 +68,69 @@ pub fn list_output_devices() -> Vec<OutputDeviceInfo> {
         .collect()
 }
 
-fn find_output_device_by_uid(uid: &str) -> Option<ca::Device> {
+fn find_device_by_uid(uid: &str, kind: SourceKind) -> Option<ca::Device> {
     let devices = ca::System::devices().ok()?;
     devices
         .into_iter()
-        .find(|d| device_has_output(d) && d.uid().map(|u| u.to_string() == uid).unwrap_or(false))
+        .find(|d| device_serves(d, kind) && d.uid().map(|u| u.to_string() == uid).unwrap_or(false))
 }
 
-fn resolve_output_device(uid: Option<&str>) -> Result<ca::Device, CaptureError> {
+fn default_device(kind: SourceKind) -> Result<ca::Device, CaptureError> {
+    match kind {
+        SourceKind::Output => ca::System::default_output_device(),
+        SourceKind::Input => ca::System::default_input_device(),
+    }
+    .map_err(from_os)
+}
+
+fn resolve_device(uid: Option<&str>, kind: SourceKind) -> Result<ca::Device, CaptureError> {
     if let Some(uid) = uid {
-        if let Some(device) = find_output_device_by_uid(uid) {
+        if let Some(device) = find_device_by_uid(uid, kind) {
             return Ok(device);
         }
-        eprintln!("устройство захвата {uid:?} не найдено — используется системный вывод");
+        eprintln!("устройство захвата {uid:?} не найдено — используется системное по умолчанию");
     }
-    ca::System::default_output_device().map_err(from_os)
+    default_device(kind)
 }
 
 fn stream_spec(asbd: &cat::audio::StreamBasicDesc) -> Result<StreamSpec, CaptureError> {
+    let channels = asbd.channels_per_frame as usize;
+    let interleaved = !asbd.format_flags.contains(cat::audio::FormatFlags::IS_NON_INTERLEAVED);
     if !asbd.format_flags.contains(cat::audio::FormatFlags::IS_FLOAT)
-        || asbd.format_flags.contains(cat::audio::FormatFlags::IS_NON_INTERLEAVED)
+        || !(interleaved || channels == 1)
         || asbd.bits_per_channel != F32_BITS_PER_CHANNEL
     {
         return Err(CaptureError::Backend(format!(
-            "неожиданный формат tap: format_flags={:#010x}, bits_per_channel={}",
-            asbd.format_flags.0, asbd.bits_per_channel
+            "неожиданный формат источника: format_flags={:#010x}, bits_per_channel={}, channels={}",
+            asbd.format_flags.0, asbd.bits_per_channel, channels
         )));
     }
     Ok(StreamSpec {
         sample_rate: asbd.sample_rate as u32,
-        channels: asbd.channels_per_frame as usize,
+        channels,
     })
 }
 
-pub fn open(output_device_uid: Option<&str>) -> Result<(Source, StreamSpec), CaptureError> {
+pub fn open(kind: SourceKind, device_uid: Option<&str>) -> Result<(Source, StreamSpec), CaptureError> {
+    if kind == SourceKind::Input {
+        return open_input(device_uid);
+    }
+    open_output_tap(device_uid)
+}
+
+fn open_input(device_uid: Option<&str>) -> Result<(Source, StreamSpec), CaptureError> {
+    let device = resolve_device(device_uid, SourceKind::Input)?;
+    let spec = stream_spec(&device.input_asbd().map_err(from_os)?)?;
+    Ok((Source::Device(device), spec))
+}
+
+fn open_output_tap(output_device_uid: Option<&str>) -> Result<(Source, StreamSpec), CaptureError> {
     let tap_desc = ca::TapDesc::with_stereo_global_tap_excluding_processes(&ns::Array::new());
     let tap = tap_desc.create_process_tap().map_err(from_os)?;
     let tap_uid = tap.uid().map_err(from_os)?;
     let spec = stream_spec(&tap.asbd().map_err(from_os)?)?;
 
-    let output_device = resolve_output_device(output_device_uid)?;
+    let output_device = resolve_device(output_device_uid, SourceKind::Output)?;
     let output_uid = output_device.uid().map_err(from_os)?;
     let sub_device =
         cf::DictionaryOf::with_keys_values(&[sub_keys::uid()], &[output_uid.as_type_ref()]);
@@ -121,20 +160,33 @@ pub fn open(output_device_uid: Option<&str>) -> Result<(Source, StreamSpec), Cap
     );
     let device = ca::AggregateDevice::with_desc(&dict).map_err(from_os)?;
 
-    Ok((Source { tap, device }, spec))
+    Ok((Source::Tap { tap, device }, spec))
 }
 
 pub fn start(source: Source, mut ctx: Box<CallbackCtx>) -> Result<Running, CaptureError> {
-    let Source { tap, device } = source;
-    let proc_id = device
-        .create_io_proc_id(io_proc, Some(ctx.as_mut()))
-        .map_err(from_os)?;
-    let started = ca::device_start(device, Some(proc_id)).map_err(from_os)?;
-    Ok(Running {
-        _started: started,
-        _tap: tap,
-        _ctx: ctx,
-    })
+    match source {
+        Source::Tap { tap, device } => {
+            let proc_id = device
+                .create_io_proc_id(io_proc, Some(ctx.as_mut()))
+                .map_err(from_os)?;
+            let started = ca::device_start(device, Some(proc_id)).map_err(from_os)?;
+            Ok(Running::Tap {
+                _started: started,
+                _tap: tap,
+                _ctx: ctx,
+            })
+        }
+        Source::Device(device) => {
+            let proc_id = device
+                .create_io_proc_id(io_proc, Some(ctx.as_mut()))
+                .map_err(from_os)?;
+            let started = ca::device_start(device, Some(proc_id)).map_err(from_os)?;
+            Ok(Running::Device {
+                _started: started,
+                _ctx: ctx,
+            })
+        }
+    }
 }
 
 extern "C" fn io_proc(

@@ -15,6 +15,7 @@ export interface ContextUsage {
 
 export interface StatusBarProps {
   state: RecorderState;
+  autoListening: boolean;
   error: string | null;
   toggleHotkey: string;
   tabs: ReactNode;
@@ -51,14 +52,20 @@ function ContextUsageGauge({ usage }: { usage: ContextUsage }) {
   );
 }
 
-function indicatorProps(state: RecorderState, showError: boolean): EqBarsProps {
+function indicatorProps(
+  state: RecorderState,
+  autoListening: boolean,
+  showError: boolean,
+): EqBarsProps {
   if (state === "recording") return { animated: true, barClass: "bg-recording" };
   if (state === "transcribing") return { animated: true, barClass: "bg-primary" };
+  if (autoListening) return { animated: true, barClass: "bg-recording" };
   return { animated: false, barClass: showError ? "bg-destructive" : "bg-muted-foreground/50" };
 }
 
 export function StatusBar({
   state,
+  autoListening,
   error,
   toggleHotkey,
   tabs,
@@ -80,7 +87,7 @@ export function StatusBar({
       >
         <Minus />
       </IconButton>
-      <EqBars {...indicatorProps(state, showError)} />
+      <EqBars {...indicatorProps(state, autoListening, showError)} />
       {tabs}
       <span
         title={showError ? error : undefined}

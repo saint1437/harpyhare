@@ -16,6 +16,10 @@ const RESAMPLE_CHUNK: usize = 1024;
 const RESAMPLE_OUT_CAPACITY_HEADROOM: usize = 16;
 const FINISH_ZERO_FILL_MAX_ROUNDS: usize = 1000;
 
+const SEGMENT_FRAME_MS: usize = 10;
+const SEGMENT_LEAD_IN_MS: usize = 200;
+const SEGMENT_TAIL_KEEP_MS: usize = 120;
+
 const WAV_HEADER_LEN: usize = 44;
 const WAV_UNKNOWN_SIZE: u32 = 0xFFFF_FFFF;
 const WAV_FMT_CHUNK_SIZE: u32 = 16;
@@ -97,6 +101,133 @@ impl RollingBuffer {
         if overflow > 0 {
             self.buf.drain(..overflow);
         }
+    }
+}
+
+pub fn samples_for_ms(ms: usize) -> usize {
+    ms * TARGET_SAMPLE_RATE as usize / 1000
+}
+
+pub fn samples_for_secs(secs: usize) -> usize {
+    secs * TARGET_SAMPLE_RATE as usize
+}
+
+pub struct SegmenterBounds {
+    pub silence_ms: usize,
+    pub min_utterance_ms: usize,
+    pub max_utterance_secs: usize,
+}
+
+pub struct SpeechSegmenter {
+    frame: usize,
+    silence_samples: usize,
+    min_samples: usize,
+    max_samples: usize,
+    lead_in_capacity: usize,
+    tail_keep_samples: usize,
+    pending: Vec<f32>,
+    lead_in: std::collections::VecDeque<f32>,
+    utterance: Vec<f32>,
+    trailing_silence: usize,
+    speaking: bool,
+}
+
+impl SpeechSegmenter {
+    pub fn new(bounds: SegmenterBounds) -> Self {
+        let frame = samples_for_ms(SEGMENT_FRAME_MS).max(1);
+        Self {
+            frame,
+            silence_samples: samples_for_ms(bounds.silence_ms).max(frame),
+            min_samples: samples_for_ms(bounds.min_utterance_ms),
+            max_samples: samples_for_secs(bounds.max_utterance_secs).max(frame),
+            lead_in_capacity: samples_for_ms(SEGMENT_LEAD_IN_MS),
+            tail_keep_samples: samples_for_ms(SEGMENT_TAIL_KEEP_MS),
+            pending: Vec::with_capacity(frame),
+            lead_in: std::collections::VecDeque::new(),
+            utterance: Vec::new(),
+            trailing_silence: 0,
+            speaking: false,
+        }
+    }
+
+    pub fn push(&mut self, chunk: &[f32]) -> Vec<Vec<f32>> {
+        let mut ready = Vec::new();
+        let mut rest = chunk;
+        while !rest.is_empty() {
+            let want = self.frame - self.pending.len();
+            let take = want.min(rest.len());
+            self.pending.extend_from_slice(&rest[..take]);
+            rest = &rest[take..];
+            if self.pending.len() < self.frame {
+                break;
+            }
+            let frame = std::mem::replace(&mut self.pending, Vec::with_capacity(self.frame));
+            if let Some(segment) = self.consume_frame(&frame) {
+                ready.push(segment);
+            }
+        }
+        ready
+    }
+
+    pub fn flush(&mut self) -> Option<Vec<f32>> {
+        let pending = std::mem::take(&mut self.pending);
+        if self.speaking && !pending.is_empty() {
+            self.utterance.extend_from_slice(&pending);
+        }
+        self.lead_in.clear();
+        if !self.speaking {
+            return None;
+        }
+        self.finish_utterance()
+    }
+
+    fn consume_frame(&mut self, frame: &[f32]) -> Option<Vec<f32>> {
+        if !self.speaking {
+            if is_silence(frame) {
+                self.remember_lead_in(frame);
+                return None;
+            }
+            self.speaking = true;
+            self.utterance.extend(self.lead_in.drain(..));
+        }
+        self.utterance.extend_from_slice(frame);
+        if is_silence(frame) {
+            self.trailing_silence += frame.len();
+        } else {
+            self.trailing_silence = 0;
+        }
+        if self.trailing_silence >= self.silence_samples {
+            return self.finish_utterance();
+        }
+        if self.utterance.len() >= self.max_samples {
+            return Some(self.cut_long_utterance());
+        }
+        None
+    }
+
+    fn remember_lead_in(&mut self, frame: &[f32]) {
+        if self.lead_in_capacity == 0 {
+            return;
+        }
+        self.lead_in.extend(frame);
+        let overflow = self.lead_in.len().saturating_sub(self.lead_in_capacity);
+        if overflow > 0 {
+            self.lead_in.drain(..overflow);
+        }
+    }
+
+    fn finish_utterance(&mut self) -> Option<Vec<f32>> {
+        let mut segment = std::mem::take(&mut self.utterance);
+        let trim = self.trailing_silence.saturating_sub(self.tail_keep_samples);
+        segment.truncate(segment.len().saturating_sub(trim));
+        self.speaking = false;
+        self.trailing_silence = 0;
+        (segment.len() >= self.min_samples).then_some(segment)
+    }
+
+    fn cut_long_utterance(&mut self) -> Vec<f32> {
+        self.trailing_silence = 0;
+        std::mem::take(&mut self.utterance)
     }
 }
 

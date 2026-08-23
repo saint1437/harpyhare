@@ -2,13 +2,18 @@ import { useCallback, useEffect, useState } from "react";
 import type { PermissionKind, PermissionsStatus } from "@/ipc/bindings";
 import { openPermissionSettings, permissionsStatus, requestPermission } from "@/ipc/commands";
 
-const UNKNOWN_STATUS: PermissionsStatus = { audio: "unknown", screen: "unknown" };
+const UNKNOWN_STATUS: PermissionsStatus = {
+  audio: "unknown",
+  screen: "unknown",
+  microphone: "unknown",
+};
 
 export interface PermissionsApi {
   status: PermissionsStatus;
   loaded: boolean;
   audioOk: boolean;
   screenOk: boolean;
+  microphoneOk: boolean;
   allOk: boolean;
   needsAttention: boolean;
   pending: PermissionKind | null;
@@ -50,6 +55,7 @@ export function usePermissions(): PermissionsApi {
     loaded,
     audioOk: status.audio === "granted",
     screenOk: status.screen === "granted",
+    microphoneOk: status.microphone === "granted",
     allOk: status.audio === "granted" && status.screen === "granted",
     needsAttention: status.audio !== "granted" || status.screen === "unknown",
     pending,

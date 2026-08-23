@@ -7,7 +7,7 @@ use std::sync::{
 use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
 
-use crate::{access, capture, llm, settings, state, stt};
+use crate::{access, auto, capture, chat, llm, settings, state, stt};
 
 const SETTINGS_FILE_NAME: &str = "settings.json";
 const CHATS_FILE_NAME: &str = "chats.json";
@@ -17,9 +17,11 @@ pub struct App {
     pub settings: Mutex<settings::Settings>,
     pub official_presets: Mutex<Vec<settings::PromptPreset>>,
     pub recorder: Mutex<state::RecorderState>,
-    pub capture: Mutex<Option<capture::SystemAudioCapture>>,
+    pub capture: Mutex<Option<capture::AudioCapture>>,
+    pub mic_capture: Mutex<Option<capture::AudioCapture>>,
+    pub auto: auto::AutoState,
     pub last_recording: Mutex<Option<Vec<f32>>>,
-    pub llm_cancel: Mutex<HashMap<String, CancellationToken>>,
+    pub llm_cancel: Mutex<HashMap<String, chat::LlmStreamSlot>>,
     pub stt: Mutex<Arc<dyn stt::SttEngine>>,
     pub llm: Mutex<Arc<dyn llm::LlmProvider>>,
     pub stt_stream: Mutex<Option<SttStream>>,
@@ -77,13 +79,27 @@ pub fn cancel_stt_stream(app: &AppHandle) {
     }
 }
 
-pub fn build_capture(settings: &settings::Settings) -> Option<capture::SystemAudioCapture> {
-    let uid = if settings.capture_device_uid.is_empty() {
-        None
-    } else {
-        Some(settings.capture_device_uid.as_str())
-    };
-    match capture::SystemAudioCapture::new(uid, settings.buffer_seconds.into()) {
+fn optional_uid(uid: &str) -> Option<&str> {
+    (!uid.is_empty()).then_some(uid)
+}
+
+pub fn build_mic_capture(
+    settings: &settings::Settings,
+) -> Result<capture::AudioCapture, capture::CaptureError> {
+    capture::AudioCapture::new(
+        capture::SourceKind::Input,
+        optional_uid(&settings.auto_mic_device_uid),
+        settings.buffer_seconds.into(),
+    )
+}
+
+pub fn build_capture(settings: &settings::Settings) -> Option<capture::AudioCapture> {
+    let uid = optional_uid(&settings.capture_device_uid);
+    match capture::AudioCapture::new(
+        capture::SourceKind::Output,
+        uid,
+        settings.buffer_seconds.into(),
+    ) {
         Ok(c) => {
             c.set_buffering(settings.buffer_enabled);
             Some(c)
@@ -124,7 +140,7 @@ pub fn build_llm_client(
 pub fn build_app_state(
     settings: settings::Settings,
     official_presets: Vec<settings::PromptPreset>,
-    capture: Option<capture::SystemAudioCapture>,
+    capture: Option<capture::AudioCapture>,
     stt: Arc<dyn stt::SttEngine>,
     llm: Arc<dyn llm::LlmProvider>,
     models: llm::ModelCatalog,
@@ -147,5 +163,7 @@ pub fn build_app_state(
         pending_update: Mutex::new(None),
         update_installing: AtomicBool::new(false),
         screenshot_capturing: AtomicBool::new(false),
+        mic_capture: Mutex::new(None),
+        auto: auto::AutoState::default(),
     }
 }

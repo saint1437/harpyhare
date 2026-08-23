@@ -208,6 +208,10 @@ function withClearedDraft(chat: Chat): Chat {
   return { ...chat, draft: "", draftAttachments: [] };
 }
 
+function keepDraft(chat: Chat): Chat {
+  return chat;
+}
+
 function withoutSentAttachments(chat: Chat, images: ChatImage[]): Chat {
   return images.length === 0 ? chat : { ...chat, draftAttachments: [] };
 }
@@ -226,6 +230,7 @@ export interface ChatsApi {
   removeDraftAttachment: (id: string, index: number) => void;
   appendUserMessage: (id: string, text: string, images: ChatImage[]) => void;
   appendQuickActionMessage: (id: string, text: string, images: ChatImage[]) => void;
+  appendAutoTurnMessage: (id: string, text: string) => void;
   appendAssistantMessage: (id: string, text: string) => void;
   removeMessage: (id: string, index: number) => void;
   truncateMessages: (id: string, count: number) => void;
@@ -373,6 +378,13 @@ export function useChats(): ChatsApi {
     [appendUserTurn],
   );
 
+  const appendAutoTurnMessage = useCallback(
+    (id: string, text: string) => {
+      appendUserTurn(id, text, [], keepDraft);
+    },
+    [appendUserTurn],
+  );
+
   const appendAssistantMessage = useCallback(
     (id: string, text: string) => {
       patch(id, (c) => ({
@@ -420,6 +432,7 @@ export function useChats(): ChatsApi {
     removeDraftAttachment,
     appendUserMessage,
     appendQuickActionMessage,
+    appendAutoTurnMessage,
     appendAssistantMessage,
     removeMessage,
     truncateMessages,

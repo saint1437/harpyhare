@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { SelectItem } from "@/components/ui/select";
 import { SETTINGS_LIMITS } from "@/ipc/bindings";
 import { listAudioOutputDevices } from "@/ipc/commands";
-import type { AudioOutputDevice } from "@/ipc/types";
+import type { AudioDeviceInfo } from "@/ipc/types";
 import { queryKeys } from "@/lib/query-client";
 import type { SectionProps } from "../contract";
 import { SettingGroup, SettingRow, SettingSelect, SettingSlider, SettingSwitch } from "../fields";
@@ -25,7 +25,7 @@ const BUFFER_SECONDS_STEP = 1;
 
 const AUDIO_DEVICES_STALE_MS = 30 * 1000;
 
-function useAudioOutputDevices(): AudioOutputDevice[] {
+function useAudioOutputDevices(): AudioDeviceInfo[] {
   const { data } = useQuery({
     queryKey: queryKeys.audioDevices,
     queryFn: listAudioOutputDevices,
@@ -34,7 +34,7 @@ function useAudioOutputDevices(): AudioOutputDevice[] {
   return data ?? [];
 }
 
-function withSavedDevice(devices: AudioOutputDevice[], savedUid: string): AudioOutputDevice[] {
+function withSavedDevice(devices: AudioDeviceInfo[], savedUid: string): AudioDeviceInfo[] {
   if (savedUid === "" || devices.some((d) => d.uid === savedUid)) return devices;
   return [...devices, { uid: savedUid, name: CAPTURE_DEVICE_MISSING_LABEL }];
 }

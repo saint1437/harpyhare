@@ -23,7 +23,8 @@ use crate::window::main_window;
 
 const KEY_PRESSED_MASK: u16 = 0x8000;
 const SWALLOW_EVENT: LRESULT = LRESULT(1);
-const AUDIO_PRIVACY_PANE_URL: PCWSTR = w!("ms-settings:privacy-microphone");
+const AUDIO_PRIVACY_PANE_URL: PCWSTR = w!("ms-settings:sound");
+const MICROPHONE_PRIVACY_PANE_URL: PCWSTR = w!("ms-settings:privacy-microphone");
 const SCREEN_PRIVACY_PANE_URL: PCWSTR = w!("ms-settings:privacy");
 const SHELL_OPEN_VERB: PCWSTR = w!("open");
 
@@ -142,6 +143,10 @@ fn open_with_shell(target: PCWSTR) {
 
 pub fn open_audio_capture_privacy_pane() {
     open_with_shell(AUDIO_PRIVACY_PANE_URL);
+}
+
+pub fn open_microphone_privacy_pane() {
+    open_with_shell(MICROPHONE_PRIVACY_PANE_URL);
 }
 
 pub fn open_screen_capture_privacy_pane() {
