@@ -1,107 +1,112 @@
 # harpyhare — landing
 
-Маркетинговый сайт-одностраничник для приложения harpyhare. **Next.js 16 (App Router) + React 19 +
-Tailwind v4**, две языковые версии, без собственного бэкенда.
+The marketing single-page site for the harpyhare app. **Next.js 16 (App Router) + React 19 +
+Tailwind v4**, two language versions, no backend of its own.
 
-## Разработка
+## Development
 
 ```bash
-# из корня монорепо
-npx nx dev landing        # dev-сервер (http://localhost:3000)
-npx nx build landing      # прод-сборка → apps/landing/.next
-npx nx test landing       # юнит-тесты чистой логики
+# from the monorepo root
+npx nx dev landing        # dev server (http://localhost:3000)
+npx nx build landing      # production build → apps/landing/.next
+npx nx test landing       # unit tests for the pure logic
 
-# либо из этой папки
+# or from this folder
 cd apps/landing && npm run dev
-npm run start             # прод-сервер поверх собранного .next
+npm run start             # production server on top of the built .next
 ```
 
-## Маршруты и локали
+## Routes and locales
 
-| URL   | Локаль  | Файл                       |
+| URL   | Locale  | File                       |
 | ----- | ------- | -------------------------- |
-| `/`   | русский | `src/app/(ru)/page.tsx`    |
+| `/`   | Russian | `src/app/(ru)/page.tsx`    |
 | `/en` | English | `src/app/(en)/en/page.tsx` |
 
-Обе группы маршрутов — **самостоятельные root-лейауты** (`app/(ru)/layout.tsx` и
-`app/(en)/layout.tsx`), потому что `<html lang>` у них разный, а Next разрешает несколько корневых
-лейаутов только через route groups. Общий каркас `<html>/<body>` со skip-ссылкой живёт в
-`components/RootHtml.tsx`, чтобы группы не расходились.
+Both route groups are **independent root layouts** (`app/(ru)/layout.tsx` and
+`app/(en)/layout.tsx`), because their `<html lang>` differs and Next allows multiple root layouts
+only through route groups. The shared `<html>/<body>` shell with the skip link lives in
+`components/RootHtml.tsx` so the groups cannot drift apart.
 
-Тексты страницы — в `src/i18n/{ru,en}.ts`, форма словаря описана типом `Dictionary`
-(`src/i18n/types.ts`): добавил ключ — обе локали обязаны его заполнить, иначе `tsc` падает.
-Компоненты секций строк не содержат вовсе, всё приходит пропом `dict`.
+The page copy lives in `src/i18n/{ru,en}.ts`, and the dictionary's shape is described by the
+`Dictionary` type (`src/i18n/types.ts`): add a key and both locales must fill it in, otherwise
+`tsc` fails. The section components contain no strings at all — everything arrives through the
+`dict` prop.
 
-Тексты **макета приложения** — отдельная ветка того же словаря: `src/i18n/demo-{ru,en}.ts` по типу
-`DemoCopy` (`src/i18n/demo-types.ts`), включая содержимое чатов, голосовые вопросы и записанные
-ответы. Внутрь макета они попадают не пропами, а контекстом (`components/app-demo/copy.tsx`,
-`useCopy()`): протаскивать копирайт через восемь уровней вёрстки дороже, чем один провайдер на
-корне демо. Исключение — `useDemoRun(copy)`: хук вызывается в самом `AppDemo`, то есть снаружи
-провайдера, поэтому копию получает аргументом.
+The copy for the **app mockup** is a separate branch of the same dictionary:
+`src/i18n/demo-{ru,en}.ts` typed as `DemoCopy` (`src/i18n/demo-types.ts`), including the chat
+contents, the spoken questions and the recorded answers. It reaches the mockup through context
+rather than props (`components/app-demo/copy.tsx`, `useCopy()`): threading the copy through eight
+levels of markup costs more than one provider at the root of the demo. The exception is
+`useDemoRun(copy)`: the hook is called inside `AppDemo` itself, i.e. outside the provider, so it
+takes the copy as an argument.
 
-Макет переведён целиком, но **на английской странице под ним стоит оговорка**
-(`copy.disclosure`): само приложение пока поставляется с русским интерфейсом, и посетитель не
-должен считать иначе. Появится локализация в приложении — оговорку убрать.
+The mockup is fully translated, but **the English page carries a disclosure underneath it**
+(`copy.disclosure`): the app itself still ships with a Russian interface, and the visitor must not
+be led to believe otherwise. Once the app is localised, remove the disclosure.
 
-## Как подтягивается версия
+## How the version is pulled in
 
-Последний релиз `screenfriskofficial/harpyhare-releases` берётся **на сервере при сборке и раз в 30
-минут заново** (`fetch` c `next: { revalidate }` в `src/lib/release-server.ts`; `revalidate`
-страницы задан литералом рядом — Next требует статически анализируемое значение). Поэтому номер
-версии и прямые ссылки на установщики лежат прямо в HTML: их видит поисковик, и кнопка не мигает
-состоянием загрузки.
+The latest release of `screenfriskofficial/harpyhare-releases` is fetched **on the server at build
+time and again every 30 minutes** (`fetch` with `next: { revalidate }` in
+`src/lib/release-server.ts`; the page's `revalidate` is a literal right next to it — Next requires a
+statically analysable value). That is why the version number and the direct installer links sit
+right in the HTML: search engines see them, and the button never flashes a loading state.
 
-- `src/lib/platform.ts` — платформы, подписи, требования и чистая `detectPlatform`. Покрыт тестами.
-- `src/lib/release.ts` — разбор ответа API, выбор установщика (`pickPlatformAsset`: macOS — `.dmg`,
-  Windows — `-setup.exe`, затем `.msi`, затем `.exe`; ассеты апдейтера отсеиваются). Покрыт тестами.
-- `src/lib/release-server.ts` — сам фетч; при любой ошибке возвращает `null`, и кнопки ведут на
-  страницу релизов.
-- `src/hooks/usePlatform.ts` — единственное место, где читается `navigator`. Серверный рендер всегда
-  отдаёт macOS, на клиенте порядок кнопок правится под ОС посетителя; поэтому
-  `DownloadChoice`/`DownloadButton`/`VersionNote`/`PlatformRequirements` — клиентские, а секции
-  вокруг них серверные.
+- `src/lib/platform.ts` — platforms, labels, requirements and the pure `detectPlatform`. Covered by tests.
+- `src/lib/release.ts` — parsing the API response and picking the installer (`pickPlatformAsset`:
+  macOS — `.dmg`; Windows — `-setup.exe`, then `.msi`, then `.exe`; updater assets are filtered
+  out). Covered by tests.
+- `src/lib/release-server.ts` — the fetch itself; on any error it returns `null` and the buttons
+  lead to the releases page.
+- `src/hooks/usePlatform.ts` — the only place that reads `navigator`. Server rendering always
+  returns macOS; on the client the button order is adjusted to the visitor's OS. That is why
+  `DownloadChoice`/`DownloadButton`/`VersionNote`/`PlatformRequirements` are client components while
+  the sections around them are server ones.
 
-**Новый релиз приложения появляется на сайте сам** — редеплой не нужен, максимум через 30 минут.
+**A new app release shows up on the site by itself** — no redeploy is needed, within 30 minutes at most.
 
 ## SEO
 
-Всё, что отдаётся поисковику, собирается из словаря — руками теги не дублируются:
+Everything served to search engines is assembled from the dictionary — no tag is duplicated by hand:
 
 - `src/lib/metadata.ts` — `title`/`description`/`keywords`, canonical, `hreflang` (`ru`, `en`,
-  `x-default`), Open Graph и Twitter-карточка, директивы для роботов. Абсолютные URL строит
+  `x-default`), Open Graph and the Twitter card, robot directives. Absolute URLs are built from
   `metadataBase` + `src/lib/site.ts`.
-- `src/lib/structured-data.ts` — JSON-LD одним `@graph`: `Organization`, `WebSite`, `WebPage`,
-  `SoftwareApplication` (версия и ссылка на скачивание — из живого релиза, `offers` = 0) и
-  `FAQPage`. Разметка FAQ обязана совпадать с видимым текстом секции `components/Faq.tsx` — обе
-  стороны берут `dict.faq.items`, так что расхождение невозможно by design.
-- `src/app/sitemap.ts`, `src/app/robots.ts`, `src/app/manifest.ts` — генерируются Next, домен один
-  на всех (`SITE_URL`).
-- `public/og.png` и `public/og-en.png` (1200×630) — картинки для соцсетей; **PNG, а не SVG**:
-  Twitter и Facebook SVG-превью не рендерят.
-- Декоративные спрайты зайца и кустов помечены `loading="lazy"`: React 19 иначе выписывает им
-  `<link rel="preload">` в `<head>`, и десяток картинок конкурирует с LCP-текстом.
+- `src/lib/structured-data.ts` — JSON-LD as a single `@graph`: `Organization`, `WebSite`, `WebPage`,
+  `SoftwareApplication` (version and download link from the live release, `offers` = 0) and
+  `FAQPage`. The FAQ markup must match the visible text of the `components/Faq.tsx` section — both
+  sides read `dict.faq.items`, so a mismatch is impossible by design.
+- `src/app/sitemap.ts`, `src/app/robots.ts`, `src/app/manifest.ts` — generated by Next, with one
+  domain shared by all of them (`SITE_URL`).
+- `public/og.png` and `public/og-en.png` (1200×630) — the social images; **PNG, not SVG**: Twitter
+  and Facebook do not render SVG previews.
+- The decorative hare and bush sprites are marked `loading="lazy"`: otherwise React 19 emits a
+  `<link rel="preload">` for them in `<head>`, and a dozen images compete with the LCP text.
 
-Домен — константа `SITE_URL` в `src/lib/site.ts`. **Переезд на другой домен — правка одной строки**,
-всё остальное (canonical, OG, sitemap, robots, JSON-LD) выводится из неё.
+The domain is the `SITE_URL` constant in `src/lib/site.ts`. **Moving to another domain is a
+one-line change** — everything else (canonical, OG, sitemap, robots, JSON-LD) is derived from it.
 
-## Деплой (Vercel)
+## Deployment (Vercel)
 
-Корневой `vercel.json`: `framework: nextjs`, `buildCommand: npx nx build landing`,
-`outputDirectory: apps/landing/.next`. Root Directory проекта в Vercel — корень репозитория (`./`).
-Пуш в `main` → автодеплой. Если Vercel не подхватит вложенный `.next`, альтернатива — выставить Root
-Directory `apps/landing` и убрать `buildCommand`/`outputDirectory` из `vercel.json` (зависимости
-Vercel всё равно ставит из корня, воркспейсы npm он понимает).
+The root `vercel.json`: `framework: nextjs`, `buildCommand: npx nx build landing`,
+`outputDirectory: apps/landing/.next`. The project's Root Directory in Vercel is the repository root
+(`./`). A push to `main` triggers an automatic deploy. If Vercel fails to pick up the nested
+`.next`, the alternative is to set Root Directory to `apps/landing` and drop
+`buildCommand`/`outputDirectory` from `vercel.json` (Vercel installs the dependencies from the root
+anyway — it understands npm workspaces).
 
-Опционально не пересобирать, когда лендинг не затронут: Settings → Git → Ignored Build Step →
-`npx nx-ignore landing`.
+Optionally, to skip rebuilds when the landing page is untouched: Settings → Git → Ignored Build Step
+→ `npx nx-ignore landing`.
 
-## Палитра
+## Palette
 
-Сайт **только тёмный**, фон — чистый чёрный; светлой темы нет и переключателя тем нет. Прежняя
-схема со сменой дня и ночи по скроллу (переменные `--day`/`--night`, солнце, облака) удалена
-целиком: остались луна с лучом (угол луча по-прежнему ведёт скролл, `components/Moon.tsx`) и
-звёздные поля `StarField` в каждой секции — их координаты лежат в `src/lib/stars.ts`
-фиксированными списками, а не генерируются случайно, иначе серверная и клиентская разметка
-разъедутся. Фирменный красный (oxblood) сохранён. Токены — в `src/app/globals.css`
-(`@theme inline`); отдельная группа `--app-*` — палитра макета приложения, она на шаг светлее фона
-страницы, чтобы окно читалось на чёрном.
+The site is **dark only**, the background is pure black; there is no light theme and no theme
+toggle. The former scheme that shifted between day and night on scroll (the `--day`/`--night`
+variables, the sun, the clouds) has been removed entirely: what remains is the moon with its beam
+(scroll still drives the beam's angle, `components/Moon.tsx`) and the `StarField` star fields in
+every section — their coordinates live in `src/lib/stars.ts` as fixed lists rather than being
+generated randomly, otherwise the server and client markup would diverge. The signature red
+(oxblood) is kept. The tokens live in `src/app/globals.css` (`@theme inline`); the separate `--app-*`
+group is the app mockup's palette, one step lighter than the page background so the window reads
+against the black.

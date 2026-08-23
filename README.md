@@ -1,60 +1,60 @@
 # harpyhare
 
-Монорепозиторий (Nx + npm workspaces) с двумя приложениями.
+Monorepo (Nx + npm workspaces) holding two applications.
 
 ```
 apps/
-  desktop/    # harpyhare — Tauri 2 приложение для macOS и Windows (продукт). См. apps/desktop/README.md
-  landing/    # лендинг со скачиванием (Vite + React + Tailwind). См. apps/landing/README.md
+  desktop/    # harpyhare — Tauri 2 app for macOS and Windows (the product). See apps/desktop/README.md
+  landing/    # download landing page (Vite + React + Tailwind). See apps/landing/README.md
 ```
 
-Каждое приложение самодостаточно (свои `package.json`, tsconfig, eslint, prettier, vite).
-Nx определяет проекты из npm-workspaces и выводит таргеты из их `package.json`-скриптов —
-никаких `project.json`.
+Each app is self-contained (its own `package.json`, tsconfig, eslint, prettier, vite).
+Nx derives the projects from the npm workspaces and the targets from their `package.json`
+scripts — there are no `project.json` files.
 
-## Старт
+## Getting started
 
 ```bash
-npm install                       # установить все воркспейсы (один общий node_modules)
+npm install                       # install every workspace (one shared node_modules)
 
-# приложение (Rust + фронтенд, hot reload)
+# the app (Rust + frontend, hot reload)
 cd apps/desktop && npm run tauri dev
 
-# лендинг
-npx nx dev landing                # или: cd apps/landing && npm run dev
+# the landing page
+npx nx dev landing                # or: cd apps/landing && npm run dev
 ```
 
-## Оркестрация (из корня)
+## Orchestration (from the repo root)
 
 ```bash
 npx nx build desktop              # nx <target> <project>: build | lint | typecheck | test
-npx nx run-many -t build          # для всех проектов
+npx nx run-many -t build          # for every project
 npx nx run-many -t lint typecheck test
-npx nx affected -t lint typecheck --uncommitted   # только изменённые проекты
+npx nx affected -t lint typecheck --uncommitted   # only the projects that changed
 
-npm run knip                      # мёртвый код/зависимости (workspace-aware, см. knip.json)
-npm run format                    # prettier по всему репо
+npm run knip                      # dead code/dependencies (workspace-aware, see knip.json)
+npm run format                    # prettier across the whole repo
 ```
 
-Пре-коммит (husky): `lint-staged` (prettier по застейдженным) → `nx affected -t typecheck
+Pre-commit (husky): `lint-staged` (prettier over staged files) → `nx affected -t typecheck
 lint` → `knip`.
 
-## Релиз приложения
+## Releasing the app
 
-Из `apps/desktop`:
+From `apps/desktop`:
 
 ```bash
-cd apps/desktop && npm run release -- 0.5.0 --notes "Что нового"
+cd apps/desktop && npm run release -- 0.5.0 --notes "What's new"
 ```
 
-Собирает подписанный бандл платформы, на которой запущен, публикует GitHub-релиз в
-`screenfriskofficial/harpyhare-releases`, бампит версию, коммитит и ставит тег. Второй платформе
-нужен свой прогон на её машине — он доливает артефакты и сливает `latest.json` (подробности —
-`apps/desktop/README.md`). Лендинг подхватит новую версию автоматически (тянет её из последнего
-релиза в рантайме) и сам предложит нужный установщик по ОС посетителя.
+This builds a signed bundle for the platform it runs on, publishes a GitHub release to
+`screenfriskofficial/harpyhare-releases`, bumps the version, commits and tags. The second platform
+needs its own run on its own machine — that run adds its artifacts and merges `latest.json`
+(details in `apps/desktop/README.md`). The landing page picks the new version up on its own (it
+reads the latest release at runtime) and offers the right installer for the visitor's OS.
 
 ## CI
 
-`.github/workflows/ci.yml`: линтеры и тесты фронтенда на ubuntu, сборка установщика под Windows на
-windows-latest (собрать её на macOS нельзя) — там же проверяется, что сгенерированный
-`src/ipc/bindings.ts` совпадает с закоммиченным.
+`.github/workflows/ci.yml`: frontend linters and tests on ubuntu, the Windows installer build on
+windows-latest (it cannot be built on macOS) — that job also checks that the generated
+`src/ipc/bindings.ts` matches the committed one.

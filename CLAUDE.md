@@ -2,58 +2,58 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Что это
+## What this is
 
-Монорепозиторий **harpyhare** (Nx + npm workspaces, один общий `node_modules`): десктоп-приложение (macOS + Windows) и его лендинг.
+The **harpyhare** monorepo (Nx + npm workspaces, one shared `node_modules`): a desktop app (macOS + Windows) and its landing page.
 
-| Проект          | Что это                                                                          | Своя документация                                     |
+| Project         | What it is                                                                       | Its own documentation                                 |
 | --------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `apps/desktop`  | Продукт: Tauri 2 + Rust-бэкенд + React 19. Системный звук → STT → ответ Claude    | **`apps/desktop/CLAUDE.md`** (подробно) + `README.md` |
-| `apps/landing`  | Одностраничный сайт со скачиванием (Next.js 16 App Router + React + Tailwind)     | `apps/landing/README.md`                              |
+| `apps/desktop`  | The product: Tauri 2 + Rust backend + React 19. System audio → STT → Claude reply | **`apps/desktop/CLAUDE.md`** (in depth) + `README.md` |
+| `apps/landing`  | Single-page download site (Next.js 16 App Router + React + Tailwind)              | `apps/landing/README.md`                              |
 
-**Работаешь внутри `apps/desktop` — читай `apps/desktop/CLAUDE.md`.** Там вся архитектура приложения, инварианты Rust⇄TS-контракта, правила палитры и десятки «почему так, а не иначе». Этот файл — только про монорепо в целом.
+**Working inside `apps/desktop`? Read `apps/desktop/CLAUDE.md`.** That file holds the whole app architecture, the Rust⇄TS contract invariants, the palette rules and dozens of "why this way and not the other". This file covers only the monorepo as a whole.
 
-Nx выводит проекты из npm-workspaces, а таргеты — из их `package.json`-скриптов; файлов `project.json` нет и заводить их не надо.
+Nx derives the projects from the npm workspaces and the targets from their `package.json` scripts; there are no `project.json` files and none should be added.
 
-## Команды
+## Commands
 
 ```bash
-npm install                                       # все воркспейсы разом
+npm install                                       # every workspace at once
 
-npx nx dev landing                                # лендинг (Next.js, http://localhost:3000)
-cd apps/desktop && npm run tauri dev              # приложение целиком (Rust + фронт) — единственный способ увидеть UI
+npx nx dev landing                                # landing page (Next.js, http://localhost:3000)
+cd apps/desktop && npm run tauri dev              # the whole app (Rust + frontend) — the only way to see the UI
 
-npx nx <target> <project>                         # build | lint | typecheck | test для одного проекта
-npm run build | lint | typecheck | test           # то же самое для всех (nx run-many)
-npx nx affected -t lint typecheck --uncommitted   # только затронутые проекты
+npx nx <target> <project>                         # build | lint | typecheck | test for one project
+npm run build | lint | typecheck | test           # the same for all of them (nx run-many)
+npx nx affected -t lint typecheck --uncommitted   # only the affected projects
 
-npm run knip                                      # мёртвый код и зависимости, workspace-aware (knip.json)
-npm run format                                    # prettier по всему репо
-npm run presets:publish                           # config/presets.json → публичный блоб (нужен BLOB_READ_WRITE_TOKEN в .env.local)
+npm run knip                                      # dead code and dependencies, workspace-aware (knip.json)
+npm run format                                    # prettier across the whole repo
+npm run presets:publish                           # config/presets.json → public blob (needs BLOB_READ_WRITE_TOKEN in .env.local)
 ```
 
-Тесты — vitest в каждом проекте: `cd apps/desktop && npx vitest run src/hooks/useChats.test.ts` (один файл), `npx vitest run` (все). Rust-тесты живут отдельно: `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib`.
+Tests are vitest per project: `cd apps/desktop && npx vitest run src/hooks/useChats.test.ts` (one file), `npx vitest run` (all of them). The Rust tests live separately: `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib`.
 
-**Pre-commit (husky)** прогоняет три шага: `lint-staged` (prettier по застейдженным) → `nx affected -t typecheck lint --uncommitted` → `knip`. То есть коммит падает и от мёртвого экспорта, а не только от типов.
+**Pre-commit (husky)** runs three steps: `lint-staged` (prettier over staged files) → `nx affected -t typecheck lint --uncommitted` → `knip`. Which means a commit fails on a dead export too, not only on types.
 
-**CI — `.github/workflows/ci.yml`** (push в main **и в теги `v*`**, PR, ручной запуск): job на ubuntu гоняет `nx run-many -t typecheck lint test` + `knip`, job на macos-latest — `cargo test`, `git diff --exit-code apps/desktop/src/ipc/bindings.ts` и `clippy -D warnings`, job на windows-latest — `clippy --all-targets -D warnings`, а NSIS-установщик (артефакт `windows-installer`) собирает **только на теге `v*` и по `workflow_dispatch`**: job-level `BUILD_INSTALLER` гейтит и шаг сборки, и `upload-artifact`, на обычных пушах в main и на PR от Windows остаётся один clippy. Мотив — сборка стоила 7м33с из 13м55с всей джобы, а компиляцию под Windows и так держит clippy; **цена осознанна**: поломку именно бандлинга (конфиг NSIS, иконки, WebView2-бутстраппер) CI ловит теперь на теге или по ручному запуску, а не на коммите. **Windows-половину проверяет только CI**: установщик под Windows на macOS не собирается. **Тесты на windows-раннере не гоняются**: тестовый бинарь не стартует (`STATUS_ENTRYPOINT_NOT_FOUND` ещё до первого теста) — похоже на известную граблю крейта с `crate-type = ["cdylib", …]`; компиляцию тестов там держит `clippy --all-targets`, а прогон и сверку контракта — macos-job. `Swatinem/rust-cache` в обеих джобах **восстанавливается везде, включая PR, но сохраняется только с main и с тегов** (`save-if`): запись кэша на windows-раннере занимала 2м49с против 23с на macOS — упаковка тысяч мелких файлов на NTFS; теги в условии намеренно, иначе релизная сборка (она идёт только на теге) каждый раз шла бы вхолодную. Первым шагом windows-джоба выводит workspace, `~/.cargo`, `~/.rustup` и `cargo.exe`/`rustc.exe`/`link.exe` из-под Defender (`continue-on-error`: не хватило прав на раннере — CI от этого падать не должен): один и тот же `clippy --all-targets` шёл 16с на macOS против 1м13с на Windows, и разница — антивирусное сканирование мелких файлов, которыми сыплют cargo и npm. Подпись апдейтера в CI включается, только если задан секрет `TAURI_SIGNING_PRIVATE_KEY`.
+**CI — `.github/workflows/ci.yml`** (push to main **and to `v*` tags**, PRs, manual dispatch): the ubuntu job runs `nx run-many -t typecheck lint test` + `knip`; the macos-latest job runs `cargo test`, `git diff --exit-code apps/desktop/src/ipc/bindings.ts` and `clippy -D warnings`; the windows-latest job runs `clippy --all-targets -D warnings`; and the NSIS installer (artifact `windows-installer`) is built **only on a `v*` tag and on `workflow_dispatch`**: a job-level `BUILD_INSTALLER` gates both the build step and `upload-artifact`, so ordinary pushes to main and PRs get nothing from Windows but clippy. The reason: the build cost 7m33s out of the job's 13m55s, and clippy already covers compilation on Windows. **The price is accepted knowingly**: a break in bundling specifically (NSIS config, icons, the WebView2 bootstrapper) is now caught on a tag or a manual run, not on a commit. **Only CI checks the Windows half**: the Windows installer cannot be built on macOS. **Tests do not run on the windows runner**: the test binary fails to start (`STATUS_ENTRYPOINT_NOT_FOUND` before the first test) — this looks like the known crate gotcha with `crate-type = ["cdylib", …]`; test compilation there is covered by `clippy --all-targets`, while the run itself and the contract check are the macos job's. `Swatinem/rust-cache` in both jobs **restores everywhere, PRs included, but saves only from main and from tags** (`save-if`): writing the cache took 2m49s on the windows runner against 23s on macOS — packing thousands of small files on NTFS; tags are in that condition on purpose, otherwise the release build (which only ever runs on a tag) would start cold every time. The windows job's first step excludes the workspace, `~/.cargo`, `~/.rustup` and `cargo.exe`/`rustc.exe`/`link.exe` from Defender (`continue-on-error`: if the runner lacks the rights, CI must not fail over it): the very same `clippy --all-targets` took 16s on macOS against 1m13s on Windows, and the difference is antivirus scanning of the small files cargo and npm scatter everywhere. Updater signing in CI turns on only when the `TAURI_SIGNING_PRIVATE_KEY` secret is set.
 
-## Что связывает проекты
+## What ties the projects together
 
-Приложения не импортируют код друг друга — общего пакета нет. Связей ровно три, и все они неочевидны из структуры папок:
+The apps do not import each other's code — there is no shared package. There are exactly three links, and none of them is obvious from the folder layout:
 
-1. **`config/presets.json` — один файл, два потребителя.** Его вшивает Rust (`include_str!` в `remote_presets.rs`, фолбэк, когда сеть недоступна) и импортирует фронт (`lib/presets.ts`). Правка формата ломает обе стороны сразу; публикация в блоб (`npm run presets:publish`) перекрывает вшитую копию в рантайме.
+1. **`config/presets.json` — one file, two consumers.** Rust embeds it (`include_str!` in `remote_presets.rs`, the fallback for when the network is unavailable) and the frontend imports it (`lib/presets.ts`). Changing the format breaks both sides at once; publishing to the blob (`npm run presets:publish`) overrides the embedded copy at runtime.
 
-2. **Репозиторий релизов `screenfriskofficial/harpyhare-releases`.** `apps/desktop/scripts/release.mjs` публикует туда подписанный бандл и `latest.json`; апдейтер приложения тянет оттуда обновления, а лендинг спрашивает у GitHub Releases API последнюю версию **на сервере** (ISR, ревалидация раз в 30 минут — версия и ссылки попадают в HTML) и подбирает установщик под ОС посетителя по суффиксу имени ассета (`apps/landing/src/lib/release.ts`: `.dmg` против `-setup.exe`, апдейтерные `.nsis.zip`/`.app.tar.gz`/`.sig` и `latest.json` отсеиваются). Поэтому смена имени ассета в релиз-скрипте ломает и апдейтер, и кнопку «Скачать» на сайте. **Релиз двухплатформенный:** первый прогон создаёт релиз и тег, второй (тот же тег) версию не бампает, доливает свои ассеты и вливает свою платформу в существующий `latest.json` (`darwin-aarch64` / `windows-x86_64`). Второй прогон необязательно гнать на Windows-машине: `npm run release -- X.Y.Z --windows-setup <путь>` доливает Windows с mac, подписывая тем же ключом `-setup.exe` из артефактов CI-джобы windows (подпись апдейтера — minisign по байтам файла, хост сборки для неё безразличен). **Платформу нельзя оставлять невписанной в `latest.json`**: апдейтер на ней не «не находит обновлений», а реджектит `check()` с `TargetsNotFound` при каждом вызове, независимо от версии пользователя — механизм и следы бага в `apps/desktop/CLAUDE.md`.
+2. **The release repository `screenfriskofficial/harpyhare-releases`.** `apps/desktop/scripts/release.mjs` publishes the signed bundle and `latest.json` there; the app's updater pulls updates from it, and the landing page asks the GitHub Releases API for the latest version **on the server** (ISR, revalidating every 30 minutes — the version and the links end up in the HTML) and picks the installer for the visitor's OS by the asset name suffix (`apps/landing/src/lib/release.ts`: `.dmg` against `-setup.exe`; the updater's `.nsis.zip`/`.app.tar.gz`/`.sig` and `latest.json` are filtered out). So renaming an asset in the release script breaks both the updater and the site's "Download" button. **The release is two-platform:** the first run creates the release and the tag; the second (same tag) does not bump the version, adds its own assets and merges its platform into the existing `latest.json` (`darwin-aarch64` / `windows-x86_64`). The second run does not have to happen on a Windows machine: `npm run release -- X.Y.Z --windows-setup <path>` adds Windows from a mac, signing the `-setup.exe` from the windows CI job's artifacts with the same key (updater signing is minisign over the file's bytes, so the build host is irrelevant to it). **A platform must never be left out of `latest.json`**: the updater there does not simply "find no updates" — it rejects `check()` with `TargetsNotFound` on every call, regardless of the user's version. The mechanism and the traces of that bug are in `apps/desktop/CLAUDE.md`.
 
-3. **Прокси `screenfriskofficial/itech-relay`** (Cloudflare Worker, отдельный репозиторий) — через него идут запросы приложения в режиме кода доступа. Его инварианты описаны в `apps/desktop/CLAUDE.md`.
+3. **The proxy `screenfriskofficial/itech-relay`** (a Cloudflare Worker, separate repository) — the app's requests go through it in access-code mode. Its invariants are described in `apps/desktop/CLAUDE.md`.
 
 ## knip
 
-`knip.json` задаёт точки входа явно, потому что автоопределение здесь врёт: у desktop это `src/launcher.tsx` и `src/index.css` (второе окно приложения и Tailwind-слой), из проверки исключены `src/components/ui/**` (примитивы shadcn, часть добавлена впрок) и `src/ipc/bindings.ts` (генерируется из Rust). Добавляя окно или генерируемый артефакт, правь `knip.json` — иначе pre-commit будет ругаться на «мёртвый» код, который на самом деле живой. У landing своей секции нет намеренно: точки входа App Router (`page.tsx`, `layout.tsx`, `sitemap.ts`, `robots.ts`, `manifest.ts`) находит плагин knip для Next.js.
+`knip.json` declares the entry points explicitly, because auto-detection lies here: for desktop they are `src/launcher.tsx` and `src/index.css` (the app's second window and the Tailwind layer), while `src/components/ui/**` (shadcn primitives, some added ahead of need) and `src/ipc/bindings.ts` (generated from Rust) are excluded from the check. When you add a window or a generated artifact, update `knip.json` — otherwise pre-commit will complain about "dead" code that is in fact alive. Landing has no section of its own on purpose: the App Router entry points (`page.tsx`, `layout.tsx`, `sitemap.ts`, `robots.ts`, `manifest.ts`) are found by knip's Next.js plugin.
 
-## Прочее
+## Odds and ends
 
-- `docs/` в корне пустая; проектная история живёт в `apps/desktop/docs/superpowers/{specs,plans}`.
-- Корневые `dist/` и `src-tauri/` — артефакты, оставшиеся до разделения на воркспейсы: они в `.gitignore` и в сборке не участвуют. Настоящий Tauri-крейт — `apps/desktop/src-tauri`.
-- `.env` и `.env.local` в корне: первый — фолбэк ключей API для dev-сборки приложения, второй — токен публикации пресетов. Оба гитигнорятся.
+- The root `docs/` is empty; project history lives in `apps/desktop/docs/superpowers/{specs,plans}`.
+- The root `dist/` and `src-tauri/` are leftovers from before the split into workspaces: they are in `.gitignore` and take no part in the build. The real Tauri crate is `apps/desktop/src-tauri`.
+- `.env` and `.env.local` in the root: the first is the API-key fallback for the app's dev build, the second is the presets publishing token. Both are gitignored.
