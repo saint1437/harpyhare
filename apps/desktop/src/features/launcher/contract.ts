@@ -1,9 +1,16 @@
 import type { ContextLibraryApi } from "@/hooks/useContextLibrary";
 import type { UpdaterApi } from "@/hooks/useUpdater";
 import type { Settings, UpdateInfo } from "@/ipc/types";
+import type { ScreenId } from "./screens";
+import type { SettingsTabId } from "./settings-tabs";
 import type { LauncherReadiness } from "./useLauncherReadiness";
 
 export type SetSetting = <K extends keyof Settings>(key: K, value: Settings[K]) => void;
+
+export interface LauncherDestination {
+  screen: ScreenId;
+  tab?: SettingsTabId;
+}
 
 export interface SectionProps {
   draft: Settings;

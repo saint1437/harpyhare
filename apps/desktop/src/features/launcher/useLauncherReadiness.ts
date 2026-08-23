@@ -26,6 +26,10 @@ export interface LauncherReadiness {
   ready: boolean;
 }
 
+export function canLaunch(readiness: LauncherReadiness, launching: boolean): boolean {
+  return readiness.ready && !readiness.checking && !launching;
+}
+
 export function useLauncherReadiness(settings: Settings): LauncherReadiness {
   const missingKeys = useMemo(() => missingApiKeys(settings), [settings]);
   const permissions = usePermissions();

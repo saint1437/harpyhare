@@ -2,7 +2,7 @@ import { AccessCodeForm } from "@/components/AccessCodeForm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { openExternal } from "@/ipc/commands";
-import { apiKeyInfo, type ApiKeyId } from "@/lib/api-keys";
+import { API_ACCESS_TITLE, apiKeyInfo, type ApiKeyId } from "@/lib/api-keys";
 import type { SectionProps } from "../contract";
 import { SettingBlock, SettingGroup, SettingRow } from "../fields";
 
@@ -19,7 +19,7 @@ export function ApiKeysSection({ draft, set, onRedeem }: ApiKeysSectionProps) {
   if (draft.access_token.trim() !== "") {
     return (
       <SettingGroup
-        title="Доступ к API"
+        title={API_ACCESS_TITLE}
         description="Запросы идут через общий доступ по коду, свои ключи не используются."
       >
         <SettingRow label="Код доступа активен" hint="Отвязка вернёт запросы на ваши ключи API.">
@@ -39,7 +39,7 @@ export function ApiKeysSection({ draft, set, onRedeem }: ApiKeysSectionProps) {
 
   return (
     <SettingGroup
-      title="Доступ к API"
+      title={API_ACCESS_TITLE}
       description="Нужен код доступа либо пара своих ключей API — иначе запускать нечего."
     >
       <SettingBlock label="Код доступа" hint="Быстрый путь: заводить ключи не нужно.">

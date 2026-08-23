@@ -2,13 +2,14 @@ import {
   Download,
   Library,
   MessageSquareText,
+  Rocket,
   ShieldCheck,
   SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import { PLATFORM, type Platform } from "@/lib/platform";
 
-export const SCREEN_GROUPS = ["content", "system"] as const;
+export const SCREEN_GROUPS = ["start", "content", "system"] as const;
 
 export type ScreenGroup = (typeof SCREEN_GROUPS)[number];
 
@@ -24,6 +25,13 @@ interface ScreenMeta {
 const MACOS_ONLY: readonly Platform[] = ["macos"];
 
 export const LAUNCHER_SCREENS = [
+  {
+    id: "start",
+    label: "Старт",
+    description: "Что нужно сделать до запуска. Остальное уже настроено по умолчанию.",
+    icon: Rocket,
+    group: "start",
+  },
   {
     id: "contexts",
     label: "Контексты",
@@ -64,7 +72,7 @@ export const LAUNCHER_SCREENS = [
 
 export type ScreenId = (typeof LAUNCHER_SCREENS)[number]["id"];
 
-export const DEFAULT_SCREEN: ScreenId = "settings";
+export const DEFAULT_SCREEN: ScreenId = "start";
 
 function availableOn(screen: ScreenMeta, platform: Platform): boolean {
   return screen.platforms?.includes(platform) ?? true;
@@ -76,4 +84,8 @@ export function screenGroup(group: ScreenGroup, platform: Platform = PLATFORM) {
 
 export function screenMeta(id: ScreenId) {
   return LAUNCHER_SCREENS.find((s) => s.id === id) ?? LAUNCHER_SCREENS[0];
+}
+
+export function screenVisible(id: ScreenId, platform: Platform = PLATFORM): boolean {
+  return availableOn(screenMeta(id), platform);
 }

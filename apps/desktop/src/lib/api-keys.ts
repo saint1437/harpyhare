@@ -1,3 +1,5 @@
+export const API_ACCESS_TITLE = "Доступ к API";
+
 export type ApiKeyId = "anthropic" | "groq";
 
 export interface ApiKeyInfo {

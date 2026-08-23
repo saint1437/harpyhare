@@ -1,4 +1,4 @@
-import { ChevronRight, Play } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { EqBars } from "@/components/EqBars";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { useWindowDrag } from "@/hooks/useWindowDrag";
 import { BRAND_NAME } from "@/lib/brand";
 import { PLATFORM } from "@/lib/platform";
 import { cn } from "@/lib/utils";
+import { LaunchButton } from "./LaunchButton";
 import type { LauncherBlocker, LauncherReadiness } from "./useLauncherReadiness";
 
 const MACOS_TRAFFIC_LIGHTS_CLASS = PLATFORM === "macos" ? "pl-16" : "";
@@ -112,15 +113,7 @@ export function LaunchBar({
             onGoToBlocker={onGoToBlocker}
           />
         </div>
-        <Button
-          size="compact"
-          className="gap-1.5"
-          disabled={launching || readiness.checking || !readiness.ready}
-          onClick={onLaunch}
-        >
-          <Play className="size-3" aria-hidden />
-          {launching ? "Запускаю…" : "Запустить"}
-        </Button>
+        <LaunchButton readiness={readiness} launching={launching} onLaunch={onLaunch} />
       </div>
     </header>
   );

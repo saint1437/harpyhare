@@ -5,12 +5,13 @@ import type { Settings } from "@/ipc/types";
 import { isPresetFilled, mergePresets } from "@/lib/presets";
 import { isQuickActionFilled } from "@/lib/quick-actions";
 import { ContextLibraryPanel } from "./ContextLibraryPanel";
-import type { LauncherPanelProps, SetSetting } from "./contract";
+import type { LauncherDestination, LauncherPanelProps, SetSetting } from "./contract";
 import { LaunchBar } from "./LaunchBar";
 import { LauncherSearch } from "./LauncherSearch";
 import { DEFAULT_SCREEN, type ScreenId } from "./screens";
 import { PermissionsScreen } from "./screens/PermissionsScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
+import { StartScreen } from "./screens/StartScreen";
 import { UpdatesScreen, type CheckState } from "./screens/UpdatesScreen";
 import { ScreenShell } from "./ScreenShell";
 import { PresetsSection, type PresetsUpdate } from "./sections/PresetsSection";
@@ -19,11 +20,6 @@ import { Sidebar, type SidebarNotice } from "./Sidebar";
 
 const RISE_STEP_MS = 50;
 const AUTOSAVE_DEBOUNCE_MS = 600;
-
-export interface LauncherDestination {
-  screen: ScreenId;
-  tab?: SettingsTabId;
-}
 
 function riseDelay(order: number): CSSProperties {
   return { animationDelay: `${String(order * RISE_STEP_MS)}ms` };
@@ -93,16 +89,6 @@ export function LauncherPanel({
     setScreen(target);
     if (tab !== undefined) setSettingsTab(tab);
   };
-
-  const landed = useRef(false);
-  useEffect(() => {
-    if (landed.current || readiness.checking) return;
-    landed.current = true;
-    const blocker = readiness.blockers[0];
-    if (!blocker) return;
-    setScreen(blocker.screen);
-    if (blocker.tab !== undefined) setSettingsTab(blocker.tab);
-  }, [readiness.checking, readiness.blockers]);
 
   useEffect(() => {
     setDraft((d) =>
@@ -192,6 +178,17 @@ export function LauncherPanel({
             key={screen}
             className="flex min-h-0 min-w-0 flex-1 animate-in duration-150 fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none"
           >
+            {screen === "start" && (
+              <StartScreen
+                readiness={readiness}
+                launching={launching}
+                onRedeem={onRedeem}
+                onNavigate={goTo}
+                onLaunch={() => {
+                  onLaunch(normalizeDraft(draft));
+                }}
+              />
+            )}
             {screen === "settings" && (
               <SettingsScreen
                 draft={draft}

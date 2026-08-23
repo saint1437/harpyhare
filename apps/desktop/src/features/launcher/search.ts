@@ -3,7 +3,7 @@ import { API_KEY_IDS, apiKeyInfo } from "@/lib/api-keys";
 import { hotkeyAction, type HotkeyActionId } from "@/lib/hotkeys";
 import { PLATFORM, type Platform } from "@/lib/platform";
 import { PERMISSION_ROWS } from "./permission-rows";
-import { SCREEN_GROUPS, screenGroup, screenMeta, type ScreenId } from "./screens";
+import { SCREEN_GROUPS, screenGroup, screenMeta, screenVisible, type ScreenId } from "./screens";
 import { SETTINGS_TABS, settingsTabMeta, type SettingsTabId } from "./settings-tabs";
 
 export interface SearchHit {
@@ -185,8 +185,7 @@ function tabHits(): SearchHit[] {
 }
 
 function permissionHits(platform: Platform): SearchHit[] {
-  const visible = screenGroup("system", platform).some((s) => s.id === PERMISSIONS_SCREEN);
-  if (!visible) return [];
+  if (!screenVisible(PERMISSIONS_SCREEN, platform)) return [];
   return PERMISSION_ROWS.map((row) => ({
     id: hitId(PERMISSION_HIT, row.kind),
     title: row.title,
