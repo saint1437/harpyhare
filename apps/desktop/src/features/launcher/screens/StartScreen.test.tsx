@@ -5,6 +5,11 @@ import type { PermissionsStatus } from "@/ipc/bindings";
 import { apiKeyInfo } from "@/lib/api-keys";
 import type { LauncherDestination } from "../contract";
 import type { LauncherReadiness } from "../useLauncherReadiness";
+vi.mock("@/ipc/events", () => ({ onEvent: () => () => undefined }));
+vi.mock("@/ipc/commands", () => ({
+  checkAudioSource: () => Promise.resolve({ heard: true, peak: 0.3, text: "проверка" }),
+}));
+
 import { StartScreen } from "./StartScreen";
 
 const ACCESS_STEP = "Доступ к API";
@@ -40,6 +45,7 @@ function readiness(overrides: Partial<LauncherReadiness> = {}): LauncherReadines
   return {
     missingKeys: [],
     permissions: permissionsApi(ALL_GRANTED),
+    autoModeEnabled: false,
     blockers: [],
     checking: false,
     ready: true,
@@ -159,6 +165,19 @@ describe("StartScreen", () => {
     const { onNavigate } = renderScreen({});
     fireEvent.click(step(AUDIO_STEP).getByText("Все доступы"));
     expect(onNavigate).toHaveBeenCalledExactlyOnceWith({ screen: "permissions", tab: undefined });
+  });
+
+  it("проверка звука стоит рядом с шагами: доступ выдан — ещё не значит, что слышно", () => {
+    renderScreen({});
+    expect(screen.getByText("Проверка звука")).not.toBeNull();
+    expect(screen.getByText("Системный звук")).not.toBeNull();
+    expect(screen.queryByText("Микрофон")).toBeNull();
+  });
+
+  it("при автослушании появляются и микрофонный шаг, и его проверка", () => {
+    renderScreen({ readiness: readiness({ autoModeEnabled: true }) });
+    expect(screen.getByRole("group", { name: "Микрофон" })).not.toBeNull();
+    expect(screen.getAllByText("Микрофон").length).toBeGreaterThan(1);
   });
 
   it("«Все настройки» уводит на экран настроек, ничего не выбирая за пользователя", () => {

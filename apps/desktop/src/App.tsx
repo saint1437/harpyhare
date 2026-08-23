@@ -11,6 +11,7 @@ import {
 } from "react";
 import { AnswerPanel } from "@/components/AnswerPanel";
 import { AutoModeIndicator } from "@/components/AutoModeIndicator";
+import { AutoTranscript } from "@/components/AutoTranscript";
 import { ChatTabs } from "@/components/ChatTabs";
 import { Composer } from "@/components/Composer";
 import { ConnectivityOverlay } from "@/components/ConnectivityOverlay";
@@ -630,7 +631,7 @@ export default function App() {
   const { dispatchSend, dispatchQuickAction, dispatchAutoTurn, doSend, resendFromMessage } =
     useSendPipeline(chatsRef, streamRef, presetsRef, libraryRef, clearAllErrors);
 
-  const autoMode = useAutoMode(dispatchAutoTurn);
+  const autoMode = useAutoMode(dispatchAutoTurn, settings.auto_reply_instant);
   const clearAutoModeError = autoMode.clearError;
   useEffect(() => {
     clearAutoModeErrorRef.current = clearAutoModeError;
@@ -819,6 +820,17 @@ export default function App() {
           }}
           onResendMessage={resendFromMessage}
         />
+
+        {autoMode.active && (
+          <AutoTranscript
+            turns={autoMode.turns}
+            submittedThrough={autoMode.submittedThrough}
+            pendingCount={autoMode.pending.length}
+            instant={settings.auto_reply_instant}
+            answerCombo={effectiveCombo(settings.hotkeys, "auto_answer")}
+            onAnswer={autoMode.answer}
+          />
+        )}
 
         <AppComposer
           chats={chats}

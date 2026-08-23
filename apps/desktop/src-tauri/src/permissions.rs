@@ -52,7 +52,7 @@ fn audio_state(app: &AppHandle) -> PermissionState {
     state_from_granted(recording::ensure_capture(app))
 }
 
-fn microphone_state(app: &AppHandle) -> PermissionState {
+pub fn microphone_state(app: &AppHandle) -> PermissionState {
     if app.state::<App>().mic_capture.lock().unwrap().is_some() {
         return PermissionState::Granted;
     }
@@ -77,7 +77,7 @@ fn screen_state(app: &AppHandle) -> PermissionState {
     }
 }
 
-fn mark_requested(app: &AppHandle, kind: PermissionKind) -> Result<(), String> {
+pub fn mark_requested(app: &AppHandle, kind: PermissionKind) -> Result<(), String> {
     let st = app.state::<App>();
     let mut settings = st.settings.lock().unwrap().clone();
     let flag = match kind {

@@ -45,6 +45,7 @@ export interface Settings {
   buffer_enabled: boolean;
   buffer_seconds: number;
   auto_mode_enabled: boolean;
+  auto_reply_instant: boolean;
   auto_mic_device_uid: string;
   auto_silence_ms: number;
   auto_min_utterance_ms: number;
@@ -114,4 +115,6 @@ export interface EventMap {
   "auto-turn": AutoTurn;
   "auto-mode-changed": { active: boolean };
   "auto-mode-error": AppError;
+  "auto-answer": null;
+  "audio-level": { level: number };
 }

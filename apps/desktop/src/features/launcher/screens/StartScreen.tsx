@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import type { PermissionsApi } from "@/hooks/usePermissions";
 import type { PermissionKind } from "@/ipc/bindings";
 import { cn } from "@/lib/utils";
+import { AudioCheckCard } from "../AudioCheckCard";
 import type { LauncherDestination } from "../contract";
 import { SettingGroup } from "../fields";
 import { LaunchButton } from "../LaunchButton";
@@ -186,6 +187,8 @@ export function StartScreen({
           </StepView>
         ))}
       </SettingGroup>
+
+      <AudioCheckCard autoModeEnabled={readiness.autoModeEnabled} />
 
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5 rounded-lg bg-card px-3 py-2.5 shadow-raise ring-1 ring-border ring-inset">
         <p className="min-w-40 flex-1 text-caption text-muted-foreground">{DEFAULTS_NOTE}</p>

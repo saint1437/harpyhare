@@ -72,6 +72,23 @@ pub fn register_auto_mode(app: &AppHandle, hotkey: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+pub fn register_auto_answer(app: &AppHandle, hotkey: &str) -> Result<(), String> {
+    let shortcut = parse_hotkey(hotkey).ok_or_else(|| unparseable_hotkey_error(hotkey))?;
+    app.global_shortcut()
+        .on_shortcut(shortcut, |app, _shortcut, event| {
+            if event.state == ShortcutState::Pressed {
+                crate::events::auto_answer(app);
+            }
+        })
+        .map_err(|e| e.to_string())
+}
+
+pub fn unregister_auto_answer(app: &AppHandle, hotkey: &str) {
+    if let Some(shortcut) = parse_hotkey(hotkey) {
+        let _ = app.global_shortcut().unregister(shortcut);
+    }
+}
+
 pub fn unregister_auto_mode(app: &AppHandle, hotkey: &str) {
     if let Some(shortcut) = parse_hotkey(hotkey) {
         let _ = app.global_shortcut().unregister(shortcut);

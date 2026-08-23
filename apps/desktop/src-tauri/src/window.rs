@@ -107,6 +107,7 @@ const GLOBAL_HOTKEYS: &[(&str, GlobalRegistrar, GlobalUnregistrar)] = &[
     (hotkeys::ACTION_TOGGLE_WINDOW, hotkey::register_toggle, hotkey::unregister_toggle),
     (hotkeys::ACTION_TELEPROMPTER, hotkey::register_teleprompter, hotkey::unregister_teleprompter),
     (hotkeys::ACTION_AUTO_MODE, hotkey::register_auto_mode, hotkey::unregister_auto_mode),
+    (hotkeys::ACTION_AUTO_ANSWER, hotkey::register_auto_answer, hotkey::unregister_auto_answer),
     (hotkeys::ACTION_SCREENSHOT, hotkey::register_screenshot, hotkey::unregister_screenshot),
     (hotkeys::ACTION_FOCUS_PROMPT, hotkey::register_focus_prompt, hotkey::unregister_focus_prompt),
 ];

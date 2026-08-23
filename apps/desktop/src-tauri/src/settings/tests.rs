@@ -477,6 +477,10 @@ fn defaults_struct_uses_the_registry_values() {
 fn auto_mode_defaults_are_off_with_speech_paced_bounds() {
     let s = Settings::default();
     assert!(!s.auto_mode_enabled);
+    // Ответ по умолчанию ручной: режим слушает и расшифровывает, но в чат
+    // ничего не уходит, пока не нажали. Молчаливая трата токенов по умолчанию —
+    // не то, чем должно встречать приложение на чистой установке.
+    assert!(!s.auto_reply_instant);
     assert!(!s.mic_permission_requested);
     assert_eq!(s.auto_mic_device_uid, "");
     assert_eq!(s.auto_silence_ms, limits::capture::AUTO_SILENCE_MS.default);
@@ -516,6 +520,7 @@ fn settings_json_without_auto_fields_loads_with_defaults() {
     std::fs::write(&path, r#"{"auto_send":true}"#).unwrap();
     let s = Settings::load(&path).unwrap();
     assert!(!s.auto_mode_enabled);
+    assert!(!s.auto_reply_instant);
     assert_eq!(s.auto_silence_ms, limits::capture::AUTO_SILENCE_MS.default);
     assert_eq!(s.auto_mic_device_uid, "");
 }

@@ -16,6 +16,7 @@ function readiness(overrides: Partial<LauncherReadiness> = {}): LauncherReadines
   return {
     missingKeys: [],
     permissions,
+    autoModeEnabled: false,
     blockers: [],
     checking: false,
     ready: true,
@@ -76,6 +77,24 @@ describe("startSteps", () => {
     expect(step(readiness(), "access").screen).toBe("settings");
     expect(step(readiness(), "access").tab).toBe("access");
     expect(step(readiness(), "audio").screen).toBe("permissions");
+  });
+
+  it("микрофон появляется шагом только при включённом автослушании", () => {
+    expect(ids(readiness())).toEqual(["access", "audio"]);
+    expect(ids(readiness({ autoModeEnabled: true }))).toEqual(["access", "audio", "microphone"]);
+  });
+
+  it("не выданный микрофон держит шаг открытым — автослушание без него не поднимется", () => {
+    const denied = withStatus({ audio: "granted", screen: "granted", microphone: "denied" });
+    const r = { ...denied, autoModeEnabled: true };
+    expect(step(r, "microphone").state).toBe("todo");
+    expect(stepsLeft(startSteps(r, "macos"))).toBe(1);
+  });
+
+  it("выданный микрофон закрывает шаг", () => {
+    const r = { ...withStatus(ALL_GRANTED), autoModeEnabled: true };
+    expect(step(r, "microphone").state).toBe("done");
+    expect(stepsLeft(startSteps(r, "macos"))).toBe(0);
   });
 
   it("всё готово — незакрытых шагов не остаётся", () => {

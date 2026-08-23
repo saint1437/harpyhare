@@ -4,6 +4,7 @@ pub const ACTION_RECORD: &str = "record";
 pub const ACTION_AUTO_MODE: &str = "auto_mode";
 pub const ACTION_CANCEL_RECORDING: &str = "cancel_recording";
 pub const ACTION_SEND: &str = "send";
+pub const ACTION_AUTO_ANSWER: &str = "auto_answer";
 pub const ACTION_SCREENSHOT: &str = "screenshot";
 pub const ACTION_QUICK_ACTION: &str = "quick_action";
 pub const ACTION_FOCUS_PROMPT: &str = "focus_prompt";
@@ -191,6 +192,15 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Hud,
         default_combo: primary_combo!("Enter"),
+    },
+    HotkeyAction {
+        id: ACTION_AUTO_ANSWER,
+        group: "Отправка",
+        label: "Ответить на услышанное",
+        hint: "Отправляет накопленную расшифровку. Слушается и когда окно не в фокусе.",
+        kind: HotkeyKind::Combo,
+        scope: HotkeyScope::Global,
+        default_combo: primary_combo!(shift_token!(), "Enter"),
     },
     HotkeyAction {
         id: ACTION_SCREENSHOT,

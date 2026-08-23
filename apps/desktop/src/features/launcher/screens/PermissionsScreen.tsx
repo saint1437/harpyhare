@@ -3,7 +3,7 @@ import type { PermissionsApi } from "@/hooks/usePermissions";
 import type { PermissionState } from "@/ipc/bindings";
 import { cn } from "@/lib/utils";
 import { SettingGroup } from "../fields";
-import { PERMISSION_ROWS, type PermissionRow } from "../permission-rows";
+import { permissionNeedLabel, PERMISSION_ROWS, type PermissionRow } from "../permission-rows";
 import { ScreenShell } from "../ScreenShell";
 
 const STATE_LABEL: Record<PermissionState, string> = {
@@ -52,7 +52,7 @@ function PermissionRowView({
           <span className="text-body">{row.title}</span>
           <StatusChip state={state} />
           <span className="text-hint text-muted-foreground/80">
-            {row.required ? "обязателен" : "необязателен"}
+            {permissionNeedLabel(row.need)}
           </span>
         </div>
         <p className="min-h-9 text-caption text-muted-foreground">{row.purpose}</p>

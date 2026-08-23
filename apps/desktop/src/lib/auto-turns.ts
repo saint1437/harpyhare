@@ -9,6 +9,10 @@ const SPEAKER_LABEL: Record<Speaker, string> = {
   user: "Я",
 };
 
+export function speakerLabel(speaker: Speaker): string {
+  return SPEAKER_LABEL[speaker];
+}
+
 const LABEL_SEPARATOR = ": ";
 const BLOCK_SEPARATOR = "\n";
 const SAME_SPEAKER_SEPARATOR = " ";
@@ -72,14 +76,29 @@ export function planDispatch(text: string, streaming: boolean): TurnDispatch {
   return { interrupt: streaming, send: true };
 }
 
+function planFrom(fresh: AutoTurn[]): SubmissionPlan | null {
+  const newest = fresh[fresh.length - 1];
+  if (newest === undefined) return null;
+  const text = renderTurns(fresh);
+  if (text.trim() === "") return null;
+  return { text, throughSeq: newest.seq };
+}
+
 export function planSubmission(
   turns: AutoTurn[],
   submittedThroughSeq: number,
 ): SubmissionPlan | null {
   const fresh = turnsAfter(turns, submittedThroughSeq);
-  const newest = fresh[fresh.length - 1];
-  if (newest?.speaker !== "interviewer") return null;
-  const text = renderTurns(fresh);
-  if (text.trim() === "") return null;
-  return { text, throughSeq: newest.seq };
+  if (fresh[fresh.length - 1]?.speaker !== "interviewer") return null;
+  return planFrom(fresh);
+}
+
+// Ручной ответ отправляет всё услышанное с прошлого раза: нажали сами, и ждать
+// реплики интервьюера, как в мгновенном режиме, здесь нечего — иначе кнопка
+// молчала бы ровно там, где её нажимают чаще всего: после своей же фразы.
+export function planManualSubmission(
+  turns: AutoTurn[],
+  submittedThroughSeq: number,
+): SubmissionPlan | null {
+  return planFrom(turnsAfter(turns, submittedThroughSeq));
 }

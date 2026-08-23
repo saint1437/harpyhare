@@ -24,6 +24,8 @@ const EVENT_FOCUS_PROMPT: &str = "focus-prompt";
 const EVENT_AUTO_TURN: &str = "auto-turn";
 const EVENT_AUTO_MODE_CHANGED: &str = "auto-mode-changed";
 const EVENT_AUTO_MODE_ERROR: &str = "auto-mode-error";
+const EVENT_AUTO_ANSWER: &str = "auto-answer";
+const EVENT_AUDIO_LEVEL: &str = "audio-level";
 
 #[derive(Clone, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -103,6 +105,12 @@ pub struct AutoModeChanged {
     pub active: bool,
 }
 
+#[derive(Clone, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioLevel {
+    pub level: f32,
+}
+
 pub fn auto_turn(app: &AppHandle, payload: AutoTurnPayload) {
     let _ = app.emit(EVENT_AUTO_TURN, payload);
 }
@@ -113,6 +121,17 @@ pub fn auto_mode_changed(app: &AppHandle, active: bool) {
 
 pub fn auto_mode_error(app: &AppHandle, error: AppError) {
     let _ = app.emit(EVENT_AUTO_MODE_ERROR, error);
+}
+
+// Хоткей ответа глобальный, а накопленные реплики живут во фронтенде: бэкенд
+// только сообщает о нажатии, решение «что именно отправить» остаётся там же,
+// где лежит расшифровка.
+pub fn auto_answer(app: &AppHandle) {
+    let _ = app.emit(EVENT_AUTO_ANSWER, ());
+}
+
+pub fn audio_level(app: &AppHandle, level: f32) {
+    let _ = app.emit(EVENT_AUDIO_LEVEL, AudioLevel { level });
 }
 
 pub fn state_changed(app: &AppHandle, state: RecorderState) {

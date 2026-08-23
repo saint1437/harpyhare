@@ -2,7 +2,7 @@ import { KeyRound, type LucideIcon } from "lucide-react";
 import type { PermissionKind } from "@/ipc/bindings";
 import { API_ACCESS_TITLE, missingKeysNotice } from "@/lib/api-keys";
 import { PLATFORM, type Platform } from "@/lib/platform";
-import { PERMISSION_ROWS } from "./permission-rows";
+import { requiredPermissionRows } from "./permission-rows";
 import { screenVisible, type ScreenId } from "./screens";
 import type { SettingsTabId } from "./settings-tabs";
 import type { LauncherReadiness } from "./useLauncherReadiness";
@@ -43,11 +43,12 @@ function accessStep(readiness: LauncherReadiness): StartStep {
 
 /**
  * Обязательные доступы — из реестра `PERMISSION_ROWS`, а не по имени: пометят
- * обязательным ещё один — он сам встанет в шаги старта.
+ * нужным ещё один — он сам встанет в шаги старта. Набор зависит от настроек:
+ * микрофон нужен только автослушанию, поэтому и спрашивается только при нём.
  */
 function permissionSteps(readiness: LauncherReadiness, platform: Platform): StartStep[] {
   if (!screenVisible(PERMISSIONS_SCREEN, platform)) return [];
-  return PERMISSION_ROWS.filter((row) => row.required).map((row) => ({
+  return requiredPermissionRows(readiness.autoModeEnabled).map((row) => ({
     id: row.kind,
     title: row.title,
     hint: row.purpose,

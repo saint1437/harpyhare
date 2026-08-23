@@ -10,6 +10,7 @@ function readiness(overrides: Partial<LauncherReadiness> = {}): LauncherReadines
   return {
     missingKeys: [],
     permissions: PERMISSIONS_STUB,
+    autoModeEnabled: false,
     blockers: [],
     checking: false,
     ready: true,

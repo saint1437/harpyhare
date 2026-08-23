@@ -25,6 +25,8 @@ vi.mock("@/ipc/commands", () => ({
 import { useAutoMode } from "./useAutoMode";
 
 const SUBMIT_DEBOUNCE_MS = 900;
+const INSTANT = true;
+const MANUAL = false;
 
 function emit(name: string, payload: unknown) {
   act(() => {
@@ -52,9 +54,14 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("useAutoMode", () => {
+describe("useAutoMode — мгновенный режим", () => {
   it("копит реплики по порядку независимо от порядка прихода", () => {
-    const { result } = renderHook(() => useAutoMode(vi.fn(() => true)));
+    const { result } = renderHook(() =>
+      useAutoMode(
+        vi.fn(() => true),
+        INSTANT,
+      ),
+    );
     emit("auto-turn", turn(1, "user", "второй"));
     emit("auto-turn", turn(0, "interviewer", "первый"));
     expect(result.current.turns.map((t) => t.seq)).toEqual([0, 1]);
@@ -62,7 +69,7 @@ describe("useAutoMode", () => {
 
   it("отправляет вопрос интервьюера после паузы", () => {
     const onSubmit = vi.fn(() => true);
-    renderHook(() => useAutoMode(onSubmit));
+    renderHook(() => useAutoMode(onSubmit, INSTANT));
     emit("auto-turn", turn(0, "interviewer", "Что такое GC?"));
     expect(onSubmit).not.toHaveBeenCalled();
     settle();
@@ -71,7 +78,7 @@ describe("useAutoMode", () => {
 
   it("склеивает разорванный вопрос в одну отправку", () => {
     const onSubmit = vi.fn(() => true);
-    renderHook(() => useAutoMode(onSubmit));
+    renderHook(() => useAutoMode(onSubmit, INSTANT));
     emit("auto-turn", turn(0, "interviewer", "Что такое"));
     act(() => {
       vi.advanceTimersByTime(SUBMIT_DEBOUNCE_MS / 2);
@@ -83,7 +90,7 @@ describe("useAutoMode", () => {
 
   it("не отправляет речь пользователя саму по себе", () => {
     const onSubmit = vi.fn(() => true);
-    renderHook(() => useAutoMode(onSubmit));
+    renderHook(() => useAutoMode(onSubmit, INSTANT));
     emit("auto-turn", turn(0, "user", "Думаю вслух."));
     settle();
     expect(onSubmit).not.toHaveBeenCalled();
@@ -91,7 +98,7 @@ describe("useAutoMode", () => {
 
   it("прикладывает ответ пользователя к следующему вопросу и не повторяет отправленное", () => {
     const onSubmit = vi.fn(() => true);
-    renderHook(() => useAutoMode(onSubmit));
+    renderHook(() => useAutoMode(onSubmit, INSTANT));
     emit("auto-turn", turn(0, "interviewer", "Что такое GC?"));
     settle();
     emit("auto-turn", turn(1, "user", "Сборщик мусора."));
@@ -106,7 +113,7 @@ describe("useAutoMode", () => {
 
   it("повтор той же реплики не даёт второй отправки", () => {
     const onSubmit = vi.fn(() => true);
-    renderHook(() => useAutoMode(onSubmit));
+    renderHook(() => useAutoMode(onSubmit, INSTANT));
     emit("auto-turn", turn(0, "interviewer", "Вопрос?"));
     settle();
     emit("auto-turn", turn(0, "interviewer", "Вопрос?"));
@@ -116,7 +123,7 @@ describe("useAutoMode", () => {
 
   it("выключение режима чистит накопленное, и следующая сессия начинается с нуля", () => {
     const onSubmit = vi.fn(() => true);
-    const { result } = renderHook(() => useAutoMode(onSubmit));
+    const { result } = renderHook(() => useAutoMode(onSubmit, INSTANT));
     emit("auto-mode-changed", { active: true });
     emit("auto-turn", turn(7, "interviewer", "Старый вопрос?"));
     emit("auto-mode-changed", { active: false });
@@ -132,7 +139,12 @@ describe("useAutoMode", () => {
   });
 
   it("тумблер стартует и останавливает потоки на бэкенде", async () => {
-    const { result } = renderHook(() => useAutoMode(vi.fn(() => true)));
+    const { result } = renderHook(() =>
+      useAutoMode(
+        vi.fn(() => true),
+        INSTANT,
+      ),
+    );
     act(() => {
       result.current.toggle();
     });
@@ -150,7 +162,12 @@ describe("useAutoMode", () => {
 
   it("отказ старта показывается кодом ошибки, а не текстом", async () => {
     startAutoMode.mockRejectedValueOnce({ code: "permission", message: "Нет микрофона" });
-    const { result } = renderHook(() => useAutoMode(vi.fn(() => true)));
+    const { result } = renderHook(() =>
+      useAutoMode(
+        vi.fn(() => true),
+        INSTANT,
+      ),
+    );
     act(() => {
       result.current.toggle();
     });
@@ -164,14 +181,19 @@ describe("useAutoMode", () => {
   });
 
   it("ошибка распознавания приходит событием", () => {
-    const { result } = renderHook(() => useAutoMode(vi.fn(() => true)));
+    const { result } = renderHook(() =>
+      useAutoMode(
+        vi.fn(() => true),
+        INSTANT,
+      ),
+    );
     emit("auto-mode-error", { code: "network", message: "Нет сети" });
     expect(result.current.error).toEqual({ code: "network", message: "Нет сети" });
   });
 
   it("не считает реплику отправленной, пока чат занят стримом", () => {
     const onSubmit = vi.fn(() => false);
-    renderHook(() => useAutoMode(onSubmit));
+    renderHook(() => useAutoMode(onSubmit, INSTANT));
     emit("auto-turn", turn(0, "interviewer", "Вопрос?"));
     settle();
     expect(onSubmit).toHaveBeenCalledExactlyOnceWith("Вопрос?");
@@ -184,7 +206,7 @@ describe("useAutoMode", () => {
 
   it("речь пользователя поверх идущего ответа не запускает вторую отправку", () => {
     const onSubmit = vi.fn(() => true);
-    renderHook(() => useAutoMode(onSubmit));
+    renderHook(() => useAutoMode(onSubmit, INSTANT));
     emit("auto-turn", turn(0, "interviewer", "Что такое GC?"));
     settle();
     expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -197,7 +219,7 @@ describe("useAutoMode", () => {
 
   it("следующий вопрос интервьюера отправляется, даже если предыдущий ответ ещё идёт", () => {
     const onSubmit = vi.fn(() => true);
-    renderHook(() => useAutoMode(onSubmit));
+    renderHook(() => useAutoMode(onSubmit, INSTANT));
     emit("auto-turn", turn(0, "interviewer", "Первый?"));
     settle();
     emit("auto-turn", turn(1, "interviewer", "Второй?"));
@@ -207,11 +229,94 @@ describe("useAutoMode", () => {
 
   it("размонтирование гасит отложенную отправку", () => {
     const onSubmit = vi.fn(() => true);
-    const { unmount } = renderHook(() => useAutoMode(onSubmit));
+    const { unmount } = renderHook(() => useAutoMode(onSubmit, INSTANT));
     emit("auto-turn", turn(0, "interviewer", "Вопрос?"));
     unmount();
     act(() => {
       vi.advanceTimersByTime(SUBMIT_DEBOUNCE_MS * 3);
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+describe("useAutoMode — ручной режим", () => {
+  it("реплики копятся, но сами в чат не уходят", () => {
+    const onSubmit = vi.fn(() => true);
+    const { result } = renderHook(() => useAutoMode(onSubmit, MANUAL));
+    emit("auto-turn", turn(0, "interviewer", "Что такое GC?"));
+    settle();
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(result.current.pending.map((t) => t.seq)).toEqual([0]);
+  });
+
+  it("ответ по кнопке отправляет всё услышанное, включая собственную речь", () => {
+    const onSubmit = vi.fn(() => true);
+    const { result } = renderHook(() => useAutoMode(onSubmit, MANUAL));
+    emit("auto-turn", turn(0, "interviewer", "Что такое GC?"));
+    emit("auto-turn", turn(1, "user", "Сборщик мусора."));
+    act(() => {
+      result.current.answer();
+    });
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith(
+      "Интервьюер: Что такое GC?\nЯ: Сборщик мусора.",
+    );
+    expect(result.current.pending).toEqual([]);
+  });
+
+  it("своя реплика последней не мешает ответить — в мгновенном режиме она бы отправку не запустила", () => {
+    const onSubmit = vi.fn(() => true);
+    const { result } = renderHook(() => useAutoMode(onSubmit, MANUAL));
+    emit("auto-turn", turn(0, "user", "Я всё сказал."));
+    act(() => {
+      result.current.answer();
+    });
+    // Разметка остаётся: без метки модель приняла бы мою же реплику за вопрос.
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith("Я: Я всё сказал.");
+  });
+
+  it("глобальный хоткей ответа делает то же, что кнопка", () => {
+    const onSubmit = vi.fn(() => true);
+    renderHook(() => useAutoMode(onSubmit, MANUAL));
+    emit("auto-turn", turn(0, "interviewer", "Вопрос?"));
+    emit("auto-answer", null);
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith("Вопрос?");
+  });
+
+  it("отправленное не уходит вторым разом", () => {
+    const onSubmit = vi.fn(() => true);
+    const { result } = renderHook(() => useAutoMode(onSubmit, MANUAL));
+    emit("auto-turn", turn(0, "interviewer", "Вопрос?"));
+    act(() => {
+      result.current.answer();
+    });
+    act(() => {
+      result.current.answer();
+    });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("занятый стримом чат не съедает реплику: она уходит следующим ответом", () => {
+    const onSubmit = vi.fn(() => false);
+    const { result } = renderHook(() => useAutoMode(onSubmit, MANUAL));
+    emit("auto-turn", turn(0, "interviewer", "Вопрос?"));
+    act(() => {
+      result.current.answer();
+    });
+    expect(result.current.pending.map((t) => t.seq)).toEqual([0]);
+
+    onSubmit.mockReturnValue(true);
+    act(() => {
+      result.current.answer();
+    });
+    expect(onSubmit).toHaveBeenLastCalledWith("Вопрос?");
+    expect(result.current.pending).toEqual([]);
+  });
+
+  it("пустая очередь — ответ ничего не отправляет", () => {
+    const onSubmit = vi.fn(() => true);
+    const { result } = renderHook(() => useAutoMode(onSubmit, MANUAL));
+    act(() => {
+      result.current.answer();
     });
     expect(onSubmit).not.toHaveBeenCalled();
   });

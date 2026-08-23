@@ -46,14 +46,17 @@ describe("PermissionsScreen", () => {
     expect(row(MICROPHONE_ROW).getByText("нет доступа")).not.toBeNull();
   });
 
-  it("микрофон показан необязательным доступом", () => {
+  it("строка говорит, для чего доступ нужен, а не просто «обязателен ли»", () => {
     render(
       <PermissionsScreen
         permissions={api({ audio: "granted", screen: "granted", microphone: "unknown" })}
       />,
     );
-    expect(row(MICROPHONE_ROW).getByText("необязателен")).not.toBeNull();
+    // Микрофон не нужен приложению вообще, но нужен автослушанию жёстко — на
+    // «необязателен» пользователь и пропускал его, а потом режим не поднимался.
+    expect(row(MICROPHONE_ROW).getByText("нужен автослушанию")).not.toBeNull();
     expect(row(SYSTEM_AUDIO_ROW).getByText("обязателен")).not.toBeNull();
+    expect(row(SCREEN_ROW).getByText("необязателен")).not.toBeNull();
   });
 
   it("«Выдать» запрашивает именно тот доступ, у строки которого нажали", () => {

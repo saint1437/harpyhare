@@ -4,6 +4,7 @@ import {
   insertTurn,
   NO_TURN_SUBMITTED,
   planDispatch,
+  planManualSubmission,
   planSubmission,
   renderTurns,
   turnsAfter,
@@ -126,5 +127,31 @@ describe("planDispatch", () => {
   it("пустой текст не отправляется и ничего не прерывает", () => {
     expect(planDispatch("   ", true)).toEqual({ interrupt: false, send: false });
     expect(planDispatch("", false)).toEqual({ interrupt: false, send: false });
+  });
+});
+
+describe("planManualSubmission", () => {
+  it("отправляет всё несданное, чья бы реплика ни была последней", () => {
+    const turns = [turn(0, "interviewer", "Вопрос?"), turn(1, "user", "Мой ответ.")];
+    expect(planManualSubmission(turns, NO_TURN_SUBMITTED)).toEqual({
+      text: "Интервьюер: Вопрос?\nЯ: Мой ответ.",
+      throughSeq: 1,
+    });
+  });
+
+  it("там, где мгновенный режим промолчал бы, ручной отвечает", () => {
+    const turns = [turn(0, "user", "Договорил.")];
+    expect(planSubmission(turns, NO_TURN_SUBMITTED)).toBeNull();
+    expect(planManualSubmission(turns, NO_TURN_SUBMITTED)?.throughSeq).toBe(0);
+  });
+
+  it("сдавать нечего — плана нет", () => {
+    expect(planManualSubmission([], NO_TURN_SUBMITTED)).toBeNull();
+    const turns = [turn(0, "interviewer", "Вопрос?")];
+    expect(planManualSubmission(turns, 0)).toBeNull();
+  });
+
+  it("пустой текст не уходит в чат", () => {
+    expect(planManualSubmission([turn(0, "interviewer", "   ")], NO_TURN_SUBMITTED)).toBeNull();
   });
 });

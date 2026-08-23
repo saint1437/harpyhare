@@ -69,6 +69,18 @@ export function AutoModeSection({ draft, set }: SectionProps) {
           }}
         />
       </SettingRow>
+      <SettingRow
+        label="Отвечать без нажатия"
+        hint="Иначе ответ уходит по клавише — вы решаете, на что отвечать."
+      >
+        <SettingSwitch
+          ariaLabel="Отвечать без нажатия"
+          checked={draft.auto_reply_instant}
+          onCheckedChange={(v) => {
+            set("auto_reply_instant", v);
+          }}
+        />
+      </SettingRow>
       <MicrophoneRow draft={draft} set={set} />
       <SettingRow label="Пауза до конца реплики" hint="Столько тишины считается концом фразы.">
         <SettingSlider

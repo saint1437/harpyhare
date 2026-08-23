@@ -5,12 +5,15 @@ use tauri::{AppHandle, Manager};
 
 use crate::app_state::{build_mic_capture, current_settings, stt_engine, App};
 use crate::error::{AppError, ErrorCode};
+use crate::permissions::{self, PermissionState};
 use crate::{audio, capture, events, recording, settings, state};
 
 const MAX_IN_FLIGHT_PER_SPEAKER: u32 = 2;
 
 const ERR_RECORDER_BUSY: &str = "Идёт запись по клавише — дождитесь её окончания";
 const ERR_NO_SYSTEM_CAPTURE: &str = "Захват системного звука недоступен";
+const ERR_NO_MICROPHONE: &str =
+    "Нет доступа к микрофону — без него не отделить вашу речь от речи собеседника";
 const ERR_AUTO_MODE_ACTIVE: &str = "Включено автослушание — выключите его для записи по клавише";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
@@ -143,6 +146,12 @@ pub fn start(app: &AppHandle) -> Result<(), AppError> {
     if !recording::ensure_capture(app) {
         claimed();
         return Err(AppError::new(ErrorCode::Permission, ERR_NO_SYSTEM_CAPTURE));
+    }
+    // Отказ в микрофоне — это отказ, а не «ещё не спрашивали»: Unknown пропускаем,
+    // чтобы системный запрос показался при первом включении.
+    if permissions::microphone_state(app) == PermissionState::Denied {
+        claimed();
+        return Err(AppError::new(ErrorCode::Permission, ERR_NO_MICROPHONE));
     }
     let settings = current_settings(app);
     let mic = match build_mic_capture(&settings) {
