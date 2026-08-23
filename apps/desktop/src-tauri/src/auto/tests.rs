@@ -81,3 +81,22 @@ fn unrelated_settings_touch_neither_path() {
     assert!(!device_changed(&old, &unrelated));
     assert!(!bounds_changed(&old, &unrelated));
 }
+
+#[test]
+fn microphone_denial_speaks_about_the_microphone_not_about_system_audio() {
+    // У CaptureError::PermissionDenied текст общий («системного звука»), а отказ
+    // здесь всегда микрофонный — подменять сообщение обязаны мы.
+    let err = microphone_error(&capture::CaptureError::PermissionDenied);
+    assert_eq!(err.code, ErrorCode::Permission);
+    assert_eq!(err.message, ERR_NO_MICROPHONE);
+}
+
+#[test]
+fn unclear_microphone_failure_keeps_the_original_core_audio_text() {
+    let raw = "Core Audio: os::Error { raw: 1852797029 }";
+    let err = microphone_error(&capture::CaptureError::Backend(raw.into()));
+    assert_eq!(err.code, ErrorCode::Internal);
+    // Подсказка — что проверять, хвост — чем это было на самом деле.
+    assert!(err.message.starts_with(ERR_MICROPHONE_UNAVAILABLE));
+    assert!(err.message.contains(raw));
+}

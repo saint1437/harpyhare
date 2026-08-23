@@ -8,13 +8,17 @@ use super::{
     AudioDeviceInfo, CallbackCtx, CaptureError, DeviceChangeHandler, SourceKind, StreamSpec,
 };
 
-const OS_STATUS_ILLEGAL_OPERATION: i32 = i32::from_be_bytes(*b"!hog");
+// '!hog' — kAudioDevicePermissionsError, единственный код, по которому отказ TCC
+// узнаётся однозначно. Родственный 'nope' (kAudioHardwareIllegalOperationError)
+// сюда НЕ добавлен намеренно: им же отвечает устройство, которое просто сейчас
+// не в том состоянии, и одинаковый ответ на оба увёл бы диагностику в отказ доступа.
+const OS_STATUS_DEVICE_PERMISSIONS: i32 = i32::from_be_bytes(*b"!hog");
 const SAMPLE_BYTES: usize = std::mem::size_of::<f32>();
 const F32_BITS_PER_CHANNEL: u32 = (SAMPLE_BYTES * 8) as u32;
 const AGGREGATE_DEVICE_NAME: &cf::String = cf::str!(c"audio-system-tap");
 
 fn from_os(err: os::Error) -> CaptureError {
-    if err.0.get() == OS_STATUS_ILLEGAL_OPERATION {
+    if err.0.get() == OS_STATUS_DEVICE_PERMISSIONS {
         CaptureError::PermissionDenied
     } else {
         CaptureError::Backend(format!("Core Audio: {err}"))

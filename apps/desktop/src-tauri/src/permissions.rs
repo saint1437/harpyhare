@@ -52,7 +52,7 @@ fn audio_state(app: &AppHandle) -> PermissionState {
     state_from_granted(recording::ensure_capture(app))
 }
 
-pub fn microphone_state(app: &AppHandle) -> PermissionState {
+fn microphone_state(app: &AppHandle) -> PermissionState {
     if app.state::<App>().mic_capture.lock().unwrap().is_some() {
         return PermissionState::Granted;
     }
