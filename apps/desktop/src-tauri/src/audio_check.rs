@@ -71,6 +71,7 @@ fn start_system(app: &AppHandle) -> Result<(), AppError> {
     if !recording::ensure_capture(app) {
         return Err(AppError::new(ErrorCode::Permission, ERR_NO_SYSTEM_CAPTURE));
     }
+    let buffer_enabled = current_settings(app).buffer_enabled;
     let st = app.state::<App>();
     let mut guard = st.capture.lock().unwrap();
     let Some(capture) = guard.as_mut() else {
@@ -79,7 +80,13 @@ fn start_system(app: &AppHandle) -> Result<(), AppError> {
     // Фоновый буфер выключается на время проверки: иначе в неё попал бы хвост,
     // записанный ДО нажатия, и «слышно» значило бы «было слышно когда-то».
     capture.set_buffering(false);
-    capture.start(Some(level_sink(app.clone()))).map_err(|e| AppError::from(&e))
+    if let Err(e) = capture.start(Some(level_sink(app.clone()))) {
+        // Сорвавшийся старт обязан вернуть буфер сам: `stop_system` в этом случае
+        // не вызовут, и преролл PTT остался бы выключенным до перезапуска — молча.
+        capture.set_buffering(buffer_enabled);
+        return Err(AppError::from(&e));
+    }
+    Ok(())
 }
 
 fn stop_system(app: &AppHandle) -> Result<Vec<f32>, AppError> {
