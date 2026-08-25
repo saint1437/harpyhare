@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RecorderState } from "@/ipc/types";
-import { answerArrival, orbState } from "./orb";
+import { answerArrival, orbState, transcriptArrival } from "./orb";
 
 const base = {
   state: "idle" as RecorderState,
@@ -53,5 +53,22 @@ describe("answerArrival", () => {
   it("развёрнутое окно ничего не делает", () => {
     expect(answerArrival({ ...base, collapsed: false })).toBe("ignore");
     expect(answerArrival({ ...base, collapsed: false, chatId: "b" })).toBe("ignore");
+  });
+});
+
+describe("transcriptArrival", () => {
+  // Записал вопрос — и ничего не произошло: поля ввода у клубка не видно,
+  // расшифровка легла в невидимый черновик. Это потерянная работа.
+  it("расшифровка, которая не уйдёт сама, разворачивает окно", () => {
+    expect(transcriptArrival({ collapsed: true, autoSend: false })).toBe("expand");
+  });
+
+  // При автоотправке вопрос уходит сам, и окно раскроется на готовом ответе.
+  it("при автоотправке окно не дёргается дважды", () => {
+    expect(transcriptArrival({ collapsed: true, autoSend: true })).toBe("ignore");
+  });
+
+  it("развёрнутое окно ничего не делает", () => {
+    expect(transcriptArrival({ collapsed: false, autoSend: false })).toBe("ignore");
   });
 });

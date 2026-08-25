@@ -41,6 +41,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { useTranscription } from "@/hooks/useTranscription";
 import { useUpdater, type UpdaterApi } from "@/hooks/useUpdater";
 import { useWindowControls } from "@/hooks/useWindowControls";
+import { SETTINGS_LIMITS } from "@/ipc/bindings";
 import {
   closeApp,
   countChatTokens,
@@ -75,7 +76,7 @@ import { effectiveCombo } from "@/lib/hotkeys";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
 import { imagePngBase64, messageCopyImage, messageCopyText } from "@/lib/message-clipboard";
 import type { ModelInfo } from "@/lib/models";
-import { answerArrival, orbState } from "@/lib/orb";
+import { answerArrival, orbState, transcriptArrival } from "@/lib/orb";
 import { mergePresets, presetText, type PromptPreset } from "@/lib/presets";
 import { queryKeys } from "@/lib/query-client";
 import { filledQuickActions } from "@/lib/quick-actions";
@@ -249,22 +250,29 @@ function useWindowFrameSync(
 
 function useNativeResizeSync(
   previewOpen: boolean,
-  collapsed: boolean,
+  collapsedRef: RefObject<boolean>,
   ready: boolean,
   nativeSizeRef: RefObject<LogicalWindowSize>,
   guardUntilRef: RefObject<number>,
   applyNativeWindowSize: (width: number, height: number) => void,
 ): void {
   const previewOpenRef = useLatestRef(previewOpen);
-  // Свёрнутое окно — 72×72; без этого гейта размер клубка уехал бы в
-  // window_width/height и стал бы «сохранённым размером» HUD.
-  const collapsedRef = useLatestRef(collapsed);
   const readyRef = useLatestRef(ready);
   const applyRef = useLatestRef(applyNativeWindowSize);
   useEffect(() => {
     let pending = 0;
     const stop = onWindowResized((size) => {
       if (collapsedRef.current) return;
+      // И независимо от любых гейтов: HUD не опускается ниже своего минимума,
+      // поэтому кадр меньше него физически не может быть размером, который
+      // выбрал пользователь. Без этой проверки кламп превращал 72px клубка в
+      // минимальные 300×520, и они оседали как сохранённый размер окна.
+      if (
+        size.width < SETTINGS_LIMITS.windowWidth.min ||
+        size.height < SETTINGS_LIMITS.windowHeight.min
+      ) {
+        return;
+      }
       nativeSizeRef.current = size;
       if (!readyRef.current) return;
       if (Date.now() < guardUntilRef.current) return;
@@ -578,9 +586,19 @@ export default function App() {
   // Свёрнутость живёт в Rust: глобальный хоткей обрабатывается там же, и окно
   // меняет только Rust. Здесь мы её лишь отражаем.
   const [collapsed, setCollapsed] = useState(false);
+  const collapsedRef = useRef(false);
+  const resizeGuardUntilRef = useRef(0);
   useEffect(
     () =>
       onEvent("collapsed-changed", ({ collapsed: next }) => {
+        // Ref и гард ставятся СИНХРОННО, а не через состояние React. Событие
+        // приходит из Rust раньше первого кадра твина, а состояние обновится
+        // только к следующему рендеру — и кадры успевали проскочить мимо гейта
+        // в useNativeResizeSync, из-за чего промежуточный размер оседал в
+        // настройках как «сохранённый». Это и есть тот случайно меняющийся
+        // размер окна.
+        collapsedRef.current = next;
+        resizeGuardUntilRef.current = Date.now() + PROGRAMMATIC_RESIZE_GUARD_MS;
         setCollapsed(next);
       }),
     [],
@@ -596,8 +614,20 @@ export default function App() {
    * фоновом чате по-прежнему зовёт точкой на клубке.
    */
   const [unreadAnswer, setUnreadAnswer] = useState(false);
-  const collapsedRef = useLatestRef(collapsed);
   const activeChatRef = useLatestRef(chats.activeId);
+  const autoSendRef = useLatestRef(settings.auto_send);
+  useEffect(
+    () =>
+      onEvent("transcript-ready", () => {
+        if (
+          transcriptArrival({ collapsed: collapsedRef.current, autoSend: autoSendRef.current }) ===
+          "expand"
+        ) {
+          void setWindowCollapsed(false, false);
+        }
+      }),
+    [autoSendRef],
+  );
   useEffect(
     () =>
       onEvent("llm-done", ({ chatId }) => {
@@ -621,7 +651,6 @@ export default function App() {
     useSttFeedback(state);
   const { previewHtml, previewOpen, openPreview, togglePreview, closePreview } = usePreviewPanel();
   const nativeSizeRef = useRef<LogicalWindowSize>({ width: 0, height: 0 });
-  const resizeGuardUntilRef = useRef(0);
   useWindowFrameSync(
     settings.window_width,
     settings.window_height,
@@ -632,7 +661,7 @@ export default function App() {
   );
   useNativeResizeSync(
     previewOpen,
-    collapsed,
+    collapsedRef,
     !settingsLoading,
     nativeSizeRef,
     resizeGuardUntilRef,

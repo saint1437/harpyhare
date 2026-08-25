@@ -43,3 +43,18 @@ export function answerArrival(input: {
   if (!input.collapsed) return "ignore";
   return input.chatId === input.activeChatId ? "expand" : "notify";
 }
+
+/**
+ * Расшифровка, которая не уйдёт сама, ждёт человека — а поля ввода у клубка
+ * не видно вовсе. Записать вопрос и не увидеть ничего — это потерянная работа,
+ * поэтому такой случай разворачивает окно.
+ *
+ * При включённой автоотправке разворачивать нечего: вопрос уходит сам, и окно
+ * раскроется на готовом ответе. Дёргать его дважды незачем.
+ */
+export function transcriptArrival(input: {
+  collapsed: boolean;
+  autoSend: boolean;
+}): "expand" | "ignore" {
+  return input.collapsed && !input.autoSend ? "expand" : "ignore";
+}
