@@ -22,7 +22,7 @@ import { PresetsSection, type PresetsUpdate } from "./sections/PresetsSection";
 import { DEFAULT_SETTINGS_TAB, type SettingsTabId } from "./settings-tabs";
 import { Sidebar, type SidebarNotice } from "./Sidebar";
 import type { SaveState } from "./StatusObject";
-import { panelProps } from "./useRovingTabs";
+import { panelId, panelProps } from "./useRovingTabs";
 
 const RECORD_ACTION = "record";
 const RISE_STEP_MS = 50;
@@ -222,6 +222,13 @@ export function LauncherPanel({
           <span className="min-w-0 text-body text-danger">{error}</span>
         </div>
       )}
+
+      <a
+        href={`#${panelId(screen)}`}
+        className="sr-only rounded-md bg-elevated px-3 py-1.5 text-body text-fg shadow-pop focus:not-sr-only focus:absolute focus:top-10 focus:left-5 focus:z-40"
+      >
+        К содержимому экрана
+      </a>
 
       <div className="flex min-h-0 min-w-0 flex-1 gap-3 md:gap-4">
         <div className="launcher-rise flex min-h-0" style={riseDelay(1)}>

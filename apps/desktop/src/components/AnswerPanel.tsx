@@ -20,12 +20,17 @@ import { openExternal } from "@/ipc/commands";
 import type { ChatMessage } from "@/lib/chats";
 import { imageDataUrl, type ImagePayload } from "@/lib/composer";
 import { matchesModifier, parseModifier } from "@/lib/hotkey-modifier";
+import { formatCombo, hotkeyAction } from "@/lib/hotkeys";
 import { isMessageCopyable } from "@/lib/message-clipboard";
 import { splitStableTail } from "@/lib/stream-markdown";
 import { cn } from "@/lib/utils";
 
 export interface AnswerPanelProps {
   messages: ChatMessage[];
+  /** Комбинация записи из реестра: пустой чат — единственное место, где её
+   *  можно показать в тот момент, когда она нужна. Экран, где она описана,
+   *  уничтожается ровно при запуске HUD. */
+  recordCombo: string;
   chatId?: string;
   partial: string | null;
   streaming: boolean;
@@ -38,6 +43,7 @@ export interface AnswerPanelProps {
   onResendMessage: (index: number) => void;
 }
 
+const RECORD_ACTION = "record";
 const FALLBACK_SCROLL_STEP_PX = 120;
 
 const NEAR_BOTTOM_PX = 40;
@@ -275,14 +281,25 @@ function useStickToBottom() {
   return { scrollRef, showJump, onScroll, resetToBottom, syncJump };
 }
 
-function EmptyState() {
+function EmptyState({ recordCombo }: { recordCombo: string }) {
   return (
     <div className="grid h-full place-items-center">
-      <div className="flex flex-col items-center gap-2.5 text-center">
+      <div className="flex max-w-72 flex-col items-center gap-2.5 text-center">
         <span className="grid size-9 place-items-center rounded-lg bg-surface ring-1 ring-inset ring-line">
           <MessagesSquare className="size-4 text-fg-subtle" aria-hidden />
         </span>
-        <span className="text-body text-fg-subtle">Чат появится здесь</span>
+        {recordCombo === "" ? (
+          <span className="text-body text-fg-subtle">
+            Клавиша записи не назначена — задайте её в настройках.
+          </span>
+        ) : (
+          <>
+            <span className="rounded-md bg-surface px-2 py-1 font-mono text-body font-semibold text-fg ring-1 ring-inset ring-line">
+              {formatCombo(recordCombo)}
+            </span>
+            <span className="text-body text-fg-subtle">{hotkeyAction(RECORD_ACTION).hint}</span>
+          </>
+        )}
       </div>
     </div>
   );
@@ -390,6 +407,7 @@ function ChatMessages({
 
 export function AnswerPanel({
   messages,
+  recordCombo,
   chatId,
   partial,
   streaming,
@@ -436,7 +454,7 @@ export function AnswerPanel({
           className="flex min-h-0 w-full flex-col gap-2.5 overflow-y-auto pr-1.5"
         >
           {empty ? (
-            <EmptyState />
+            <EmptyState recordCombo={recordCombo} />
           ) : (
             <ChatMessages
               messages={messages}

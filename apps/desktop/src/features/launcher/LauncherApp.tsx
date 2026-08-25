@@ -66,9 +66,18 @@ export function LauncherApp() {
     })();
   };
 
+  // Скелет повторяет реальную раскладку: полноэкранное «Загрузка…» сменялось
+  // совсем другой геометрией, и окно заметно перестраивалось на глазах.
   if (loading)
     return (
-      <div className="grid h-screen place-items-center text-body text-fg-subtle">Загрузка…</div>
+      <div className="flex h-screen flex-col gap-2.5 px-4 pt-0 pb-4 sm:px-5" aria-busy>
+        <div className="h-9 shrink-0" />
+        <div className="flex min-h-0 flex-1 gap-3 md:gap-4">
+          <div className="w-10 shrink-0 rounded-md bg-surface min-[900px]:w-40" />
+          <div className="min-h-0 flex-1 rounded-lg bg-surface ring-1 ring-inset ring-line" />
+        </div>
+        <span className="sr-only">Загрузка…</span>
+      </div>
     );
 
   if (!settings.onboarding_done || replayOnboarding) {

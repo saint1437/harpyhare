@@ -40,6 +40,7 @@ describe("AnswerPanel — подсветка кода", () => {
     const { container } = render(
       <AnswerPanel
         messages={[assistant]}
+        recordCombo="Cmd+R"
         partial={null}
         streaming={false}
         scrollModifier="Alt"
@@ -64,6 +65,7 @@ describe("AnswerPanel — подсветка кода", () => {
     const { container } = render(
       <AnswerPanel
         messages={[assistant]}
+        recordCombo="Cmd+R"
         partial={null}
         streaming={false}
         scrollModifier="Alt"
@@ -85,6 +87,7 @@ describe("AnswerPanel — подсветка кода", () => {
     const { container, getByText } = render(
       <AnswerPanel
         messages={[assistant]}
+        recordCombo="Cmd+R"
         partial={null}
         streaming={false}
         scrollModifier="Alt"
@@ -104,6 +107,7 @@ describe("AnswerPanel — индикатор ожидания", () => {
     const { getByText } = render(
       <AnswerPanel
         messages={[userMsg]}
+        recordCombo="Cmd+R"
         partial=""
         streaming={true}
         scrollModifier="Alt"
@@ -120,6 +124,7 @@ describe("AnswerPanel — индикатор ожидания", () => {
     const { queryByText } = render(
       <AnswerPanel
         messages={[userMsg]}
+        recordCombo="Cmd+R"
         partial="Привет"
         streaming={true}
         scrollModifier="Alt"
@@ -136,6 +141,7 @@ describe("AnswerPanel — индикатор ожидания", () => {
     const { queryByText } = render(
       <AnswerPanel
         messages={[userMsg]}
+        recordCombo="Cmd+R"
         partial={null}
         streaming={false}
         scrollModifier="Alt"
@@ -160,6 +166,7 @@ describe("AnswerPanel — картинки в сообщении пользов�
     return render(
       <AnswerPanel
         messages={messages}
+        recordCombo="Cmd+R"
         partial={null}
         streaming={false}
         scrollModifier="Alt"
@@ -192,6 +199,7 @@ describe("AnswerPanel — картинки в сообщении пользов�
     const panel = (partial: string) => (
       <AnswerPanel
         messages={messages}
+        recordCombo="Cmd+R"
         partial={partial}
         streaming
         scrollModifier="Alt"

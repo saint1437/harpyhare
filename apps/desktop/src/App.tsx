@@ -828,6 +828,7 @@ export default function App() {
         />
 
         <AnswerPanel
+          recordCombo={effectiveCombo(settings.hotkeys, "record")}
           messages={active.messages}
           chatId={activeId}
           partial={partial}

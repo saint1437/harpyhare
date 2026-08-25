@@ -1,5 +1,4 @@
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { lazy, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import type { UpdaterApi } from "@/hooks/useUpdater";
 import type { UpdateProgress } from "@/ipc/types";
@@ -7,11 +6,12 @@ import { BRAND_NAME } from "@/lib/brand";
 import { SettingBlock, SettingGroup, SettingRow } from "../fields";
 import { ScreenShell } from "../ScreenShell";
 
+const ReleaseNotes = lazy(() => import("../ReleaseNotes"));
+
 export type CheckState = "idle" | "checking" | "latest" | { failure: string };
 
 const MIB = 1024 * 1024;
 const PERCENT_MAX = 100;
-const REMARK_PLUGINS = [remarkGfm];
 
 function downloadPercent(progress: UpdateProgress | null): number | null {
   if (progress && progress.total !== null && progress.total > 0) {
@@ -91,7 +91,9 @@ export function UpdatesScreen({
           {updater.info.notes !== "" && (
             <SettingBlock label="Что нового">
               <div className="prose-answer max-h-56 overflow-y-auto rounded-lg bg-surface px-3 py-2 text-body leading-relaxed text-fg-subtle ring-1 ring-inset ring-line">
-                <Markdown remarkPlugins={REMARK_PLUGINS}>{updater.info.notes}</Markdown>
+                <Suspense fallback={null}>
+                  <ReleaseNotes notes={updater.info.notes} />
+                </Suspense>
               </div>
             </SettingBlock>
           )}
