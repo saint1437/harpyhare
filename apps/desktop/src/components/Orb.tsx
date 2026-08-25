@@ -1,4 +1,4 @@
-import { useWindowDrag } from "@/hooks/useWindowDrag";
+import { useOrbDrag } from "@/hooks/useOrbDrag";
 import { listeningAnnouncement, type ListeningState } from "@/lib/listening";
 import { cn } from "@/lib/utils";
 import { LiveRegion } from "./LiveRegion";
@@ -52,20 +52,21 @@ const LABEL: Record<OrbState, string> = {
 };
 
 export function Orb({ state, onExpand }: { state: OrbState; onExpand: () => void }) {
-  const onDragMouseDown = useWindowDrag();
+  const drag = useOrbDrag(onExpand);
   return (
-    <div
-      className="grid h-screen w-screen place-items-center bg-transparent"
-      onMouseDown={onDragMouseDown}
-    >
+    <div className="grid h-screen w-screen place-items-center bg-transparent">
       <LiveRegion message={state === "answer" ? "Ответ готов" : listeningAnnouncement(state)} />
       <button
         type="button"
         title={LABEL[state]}
         aria-label={LABEL[state]}
-        onClick={onExpand}
+        {...drag}
         className={cn(
-          "relative grid size-14 place-items-center rounded-full bg-elevated shadow-modal ring-1 ring-line outline-none",
+          // Ни тёмного канта, ни shadow-modal: 64px размытия в окне 80px
+          // обрезалось краем и читалось как чёрная рамка, а кант --line на
+          // произвольном фоне выглядел просто чёрной обводкой. Кромка теперь
+          // светлая и своя, тень — маленькая и помещается в поле окна.
+          "orb-face relative grid size-14 place-items-center rounded-full bg-elevated outline-none",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus focus-visible:outline-solid",
         )}
       >

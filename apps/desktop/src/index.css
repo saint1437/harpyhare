@@ -373,6 +373,31 @@ svg.lucide {
   animation: listening-breath var(--dur-listening) var(--ease-out) infinite;
 }
 
+/* Кромка клубка светлая, а не тёмная: он висит над произвольным содержимым
+   чужих окон, и тёмный кант читается там как обводка, а не как край объекта.
+   Тень маленькая — окно всего на 12px шире кружка, и всё, что не помещается,
+   обрезается краем окна. */
+.orb-face {
+  box-shadow:
+    inset 0 0 0 1px oklch(1 0 0 / 14%),
+    0 3px 10px -2px oklch(0 0 0 / 45%);
+}
+
+:root[data-theme="light"] .orb-face,
+:root:not([data-theme="dark"]) .orb-face {
+  box-shadow:
+    inset 0 0 0 1px oklch(0 0 0 / 10%),
+    0 3px 10px -2px oklch(0 0 0 / 22%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .orb-face {
+    box-shadow:
+      inset 0 0 0 1px oklch(1 0 0 / 14%),
+      0 3px 10px -2px oklch(0 0 0 / 45%);
+  }
+}
+
 /* Клубок: пока идёт распознавание, кольцо превращается в дугу и вращается.
    Это keyframes, а не transition — то же правило, по которому живут .eq-bar и
    .thinking-shimmer в прозрачном окне. */
