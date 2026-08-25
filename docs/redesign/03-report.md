@@ -1,6 +1,6 @@
 # 03 — Report
 
-Branch `redesign/launcher-v2`, 8 commits on top of `caf41b3`. Scope delivered: the desktop launcher
+Branch `redesign/launcher-v2`, 10 commits on top of `caf41b3`. Scope delivered: the desktop launcher
 and the colour system for the whole desktop app. The landing site is byte-identical.
 
 ---
@@ -43,6 +43,37 @@ possible at all.
 | 4 · Launcher | `c766886` | Status object; sidebar labels; real tabs; draft adopts the clamp; Windows dead end; search index |
 | 5 · HUD | `6f9d898` | Five capture states with words; a real pause; opaque status pill; live region; quit |
 | 6 · Polish | `741bfad` | Empty state teaches the hotkey; lazy release notes; loading skeleton; skip link |
+| 7 · Orb | `1b09056` | Collapse-to-ball replaces hiding; HUD top bar regrouped |
+
+### The orb, and the top bar (stage 7 — `1b09056`)
+
+Added after the first review round, on your call.
+
+**The top bar** held up to **13 controls at identical visual weight** — window, capture, tabs, context,
+tools, all in one strip. The problem was never density (960px is ample); it was that nothing was
+grouped, so there was nothing for the eye to land on. Now only the capture status keeps a surface — it
+is the one thing that must be glanceable — the tools are muted with colour reserved for the two state
+indicators, and the window controls sit behind a hairline in the background.
+
+**Collapse replaces hiding.** A hidden window answered nothing, and "another app is focused" is exactly
+the scenario push-to-talk exists for — so this closes the P0 that §5 of this report had listed as a
+follow-up. The window now shrinks to a 72×72 ball that stays always-on-top and stays cut out of a screen
+share, and reports four things: capture (aqua ring, the same slow breath), work (a neutral spinning
+arc), an answer finished but unread (an accent dot that calls you back), and error (a red ring).
+
+**How, with no new dependencies:** the existing Rust resize tween (14 frames × 13 ms, ease-out, via
+`run_on_main_thread`) drives the window; the circle is CSS *inside* that box with a transparent margin,
+so the native corner clip never reaches it and neither platform needs a special case. Dragging is the
+existing `startWindowDrag`.
+
+**The one real trap:** a window cannot go below its own `min_inner_size`. The minimum is lowered before
+collapsing and restored only *after* the expand tween — restore it first and the window snaps to the
+minimum before it can grow. And `useNativeResizeSync` now skips the collapsed state, or 72×72 would have
+been persisted into `window_width/height` as the HUD's "saved size".
+
+`hide_main_window` was removed from both sides: collapse replaces hiding entirely, so it would have been
+exactly the dead contract surface I criticised `close_app` for. The internal `hide_main` stays — the
+region screenshot still uses it.
 
 ---
 
@@ -127,7 +158,7 @@ push-to-talk alone. A live region. A quit button.
 | `cargo clippy --release` | ✅ clean (a stale pre-move absolute path in the cache needed `cargo clean -p tauri --release` first — unrelated to these changes) |
 | `knip` | ✅ clean |
 | `npm run build` | ✅ |
-| `npm run tauri build` | ✅ `.app` built, linked and **signed**, zero warnings, 1m41s. ❌ **DMG step failed** — `bundle_dmg.sh` drives Finder via AppleScript and this shell lacks Automation permission. Environmental, after every code step succeeded. |
+| `npm run tauri build` | ✅ **full bundle: `.app`, signed, `.dmg`, and the updater `.tar.gz`**, zero warnings. (A first attempt failed at `bundle_dmg.sh`; it succeeded on the next run, so that was transient — a stale mounted volume — not an environment limit as I first reported.) |
 | `nx build landing` | ✅ **60 output files, byte-identical to baseline**; `git diff` shows `apps/landing` untouched |
 | Palette validator | ✅ **356 checks across 4 scopes** (light/dark × HUD/launcher), AA + sRGB gamut |
 | Token validator | ✅ every colour utility resolves (28 tokens, 4 shadows) |
@@ -154,9 +185,8 @@ crashing. Verified both migrations by unit test and against your real profile: `
 **Could not:** drive or observe the UI. `screencapture` returns *"could not create image from display"*
 and `osascript` reports *"not allowed assistive access"* — this shell has neither Screen Recording nor
 Automation permission. So **no screenshots, no click-through, no visual confirmation of the new
-layouts, and no manual dark/light toggle or resize test.** The DMG bundling failure has the same root
-cause. Granting Terminal those two permissions in System Settings → Privacy & Security would unblock
-all of it.
+layouts, and no manual dark/light toggle or resize test.** Granting Terminal those two permissions in
+System Settings → Privacy & Security would unblock all of it.
 
 **A disclosure about your data.** During verification I moved your app-data directory aside and back
 several times. Your settings were migrated in place by the new build at some point in the session, which
