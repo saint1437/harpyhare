@@ -33,6 +33,9 @@ pub struct App {
     pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
     pub update_installing: AtomicBool,
     pub screenshot_capturing: AtomicBool,
+    /// Свёрнут ли HUD в клубок. Живёт в Rust, потому что глобальный хоткей
+    /// сворачивания обрабатывается здесь же, а окно меняет только Rust.
+    pub window_collapsed: AtomicBool,
 }
 
 pub struct SttStream {
@@ -163,6 +166,7 @@ pub fn build_app_state(
         pending_update: Mutex::new(None),
         update_installing: AtomicBool::new(false),
         screenshot_capturing: AtomicBool::new(false),
+        window_collapsed: AtomicBool::new(false),
         mic_capture: Mutex::new(None),
         auto: auto::AutoState::default(),
     }

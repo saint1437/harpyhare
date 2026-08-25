@@ -26,6 +26,7 @@ const EVENT_AUTO_MODE_CHANGED: &str = "auto-mode-changed";
 const EVENT_AUTO_MODE_ERROR: &str = "auto-mode-error";
 const EVENT_AUTO_ANSWER: &str = "auto-answer";
 const EVENT_AUDIO_LEVEL: &str = "audio-level";
+const EVENT_COLLAPSED_CHANGED: &str = "collapsed-changed";
 
 #[derive(Clone, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -128,6 +129,15 @@ pub fn auto_mode_error(app: &AppHandle, error: AppError) {
 // где лежит расшифровка.
 pub fn auto_answer(app: &AppHandle) {
     let _ = app.emit(EVENT_AUTO_ANSWER, ());
+}
+
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub struct CollapsedChanged {
+    pub collapsed: bool,
+}
+
+pub fn collapsed_changed(app: &AppHandle, collapsed: bool) {
+    let _ = app.emit(EVENT_COLLAPSED_CHANGED, CollapsedChanged { collapsed });
 }
 
 pub fn audio_level(app: &AppHandle, level: f32) {

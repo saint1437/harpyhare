@@ -32,7 +32,7 @@ export const commands = {
 	redeemAccessCode: (code: string, idempotencyKey: string) => __TAURI_INVOKE<null>("redeem_access_code", { code, idempotencyKey }),
 	setWindowSize: (width: number | null, height: number | null) => __TAURI_INVOKE<void>("set_window_size", { width, height }),
 	closeApp: () => __TAURI_INVOKE<void>("close_app"),
-	hideMainWindow: () => __TAURI_INVOKE<void>("hide_main_window"),
+	setWindowCollapsed: (collapsed: boolean) => __TAURI_INVOKE<void>("set_window_collapsed", { collapsed }),
 	launchMainWindow: () => __TAURI_INVOKE<null>("launch_main_window"),
 	stopMainWindow: () => __TAURI_INVOKE<null>("stop_main_window"),
 	captureRegionScreenshot: () => __TAURI_INVOKE<void>("capture_region_screenshot"),
@@ -105,6 +105,10 @@ export type ChatMessage = {
 	role: string,
 	text: string,
 	images?: ImageAttachment[],
+};
+
+export type CollapsedChanged = {
+	collapsed: boolean,
 };
 
 export type ErrorCode = "network" | "badApiKey" | "badAccessCode" | "retryable" | "api" | "cancelled" | "permission" | "silence" | "internal";

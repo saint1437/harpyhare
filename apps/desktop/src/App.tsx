@@ -17,6 +17,7 @@ import { Composer } from "@/components/Composer";
 import { ConnectivityOverlay } from "@/components/ConnectivityOverlay";
 import { HotkeysPopover } from "@/components/HotkeysPopover";
 import { IconButton } from "@/components/IconButton";
+import { Orb } from "@/components/Orb";
 import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
 import { ScreenShareIndicator } from "@/components/ScreenShareIndicator";
 import { StatusBar, type ContextUsage, type StatusBarProps } from "@/components/StatusBar";
@@ -42,9 +43,9 @@ import { useUpdater, type UpdaterApi } from "@/hooks/useUpdater";
 import { useWindowControls } from "@/hooks/useWindowControls";
 import {
   closeApp,
-  hideMainWindow,
   countChatTokens,
   retryTranscription,
+  setWindowCollapsed,
   setWindowSize,
   startWindowDrag,
   stopMainWindow,
@@ -74,6 +75,7 @@ import { effectiveCombo } from "@/lib/hotkeys";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
 import { imagePngBase64, messageCopyImage, messageCopyText } from "@/lib/message-clipboard";
 import type { ModelInfo } from "@/lib/models";
+import { orbState } from "@/lib/orb";
 import { mergePresets, presetText, type PromptPreset } from "@/lib/presets";
 import { queryKeys } from "@/lib/query-client";
 import { filledQuickActions } from "@/lib/quick-actions";
@@ -247,17 +249,22 @@ function useWindowFrameSync(
 
 function useNativeResizeSync(
   previewOpen: boolean,
+  collapsed: boolean,
   ready: boolean,
   nativeSizeRef: RefObject<LogicalWindowSize>,
   guardUntilRef: RefObject<number>,
   applyNativeWindowSize: (width: number, height: number) => void,
 ): void {
   const previewOpenRef = useLatestRef(previewOpen);
+  // Свёрнутое окно — 72×72; без этого гейта размер клубка уехал бы в
+  // window_width/height и стал бы «сохранённым размером» HUD.
+  const collapsedRef = useLatestRef(collapsed);
   const readyRef = useLatestRef(ready);
   const applyRef = useLatestRef(applyNativeWindowSize);
   useEffect(() => {
     let pending = 0;
     const stop = onWindowResized((size) => {
+      if (collapsedRef.current) return;
       nativeSizeRef.current = size;
       if (!readyRef.current) return;
       if (Date.now() < guardUntilRef.current) return;
@@ -273,7 +280,7 @@ function useNativeResizeSync(
       stop();
       cancelAnimationFrame(pending);
     };
-  }, [nativeSizeRef, guardUntilRef, previewOpenRef, readyRef, applyRef]);
+  }, [nativeSizeRef, guardUntilRef, previewOpenRef, collapsedRef, readyRef, applyRef]);
 }
 
 const TOKEN_COUNT_PLACEHOLDER_MESSAGE: ChatMessageDto = { role: "user", text: ".", images: [] };
@@ -446,7 +453,7 @@ function AppHeader({
       contextUsage={contextUsage}
       update={updateBadge(updater, onOpenUpdate)}
       onStop={onStop}
-      onHide={() => void hideMainWindow()}
+      onCollapse={() => void setWindowCollapsed(true)}
       tabs={
         <ChatTabs
           chats={chats.chats}
@@ -568,6 +575,29 @@ export default function App() {
   const updater = useUpdater();
 
   const [updateOpen, setUpdateOpen] = useState(false);
+  // Свёрнутость живёт в Rust: глобальный хоткей обрабатывается там же, и окно
+  // меняет только Rust. Здесь мы её лишь отражаем.
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(
+    () =>
+      onEvent("collapsed-changed", ({ collapsed: next }) => {
+        setCollapsed(next);
+      }),
+    [],
+  );
+  // Ответ, дописанный пока окно было клубком, должен уметь позвать обратно.
+  const [unreadAnswer, setUnreadAnswer] = useState(false);
+  const collapsedRef = useLatestRef(collapsed);
+  useEffect(
+    () =>
+      onEvent("llm-done", () => {
+        if (collapsedRef.current) setUnreadAnswer(true);
+      }),
+    [collapsedRef],
+  );
+  useEffect(() => {
+    if (!collapsed) setUnreadAnswer(false);
+  }, [collapsed]);
   const [teleprompterOpen, setTeleprompterOpen] = useState(false);
   const teleprompterResumeRef = useRef({ text: "", offset: 0 });
 
@@ -586,6 +616,7 @@ export default function App() {
   );
   useNativeResizeSync(
     previewOpen,
+    collapsed,
     !settingsLoading,
     nativeSizeRef,
     resizeGuardUntilRef,
@@ -792,6 +823,21 @@ export default function App() {
   const onShellDragStart = useCallback((event: MouseEvent<HTMLElement>) => {
     if (event.button === 0 && event.target === event.currentTarget) void startWindowDrag();
   }, []);
+
+  if (collapsed)
+    return (
+      <Orb
+        state={orbState({
+          state,
+          autoListening: autoMode.active,
+          bufferEnabled: settings.buffer_enabled,
+          hasError: error !== null,
+          streaming: activeStreaming,
+          answerReady: unreadAnswer,
+        })}
+        onExpand={() => void setWindowCollapsed(false)}
+      />
+    );
 
   return (
     <div

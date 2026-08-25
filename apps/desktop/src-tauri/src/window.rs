@@ -22,6 +22,16 @@ const RESIZE_TWEEN_STEPS: u32 = 14;
 const RESIZE_TWEEN_FRAME_INTERVAL: Duration = Duration::from_millis(13);
 const RESIZE_EPSILON_LOGICAL_PX: f64 = 1.0;
 
+/// Окно клубка. Больше самого кружка: круг рисуется в CSS с прозрачным полем,
+/// поэтому нативное скругление углов (22px на macOS, системное на Windows)
+/// до него не дотягивается и трогать его не нужно.
+const COLLAPSED_SIZE_LOGICAL_PX: f64 = 72.0;
+
+/// Твин длится RESIZE_TWEEN_STEPS кадров; минимальный размер возвращаем уже
+/// после него — иначе окно щёлкнет в минимум раньше, чем успеет вырасти.
+const MIN_SIZE_RESTORE_DELAY: Duration =
+    Duration::from_millis((RESIZE_TWEEN_STEPS as u64 + 4) * 13);
+
 pub fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(MAIN_WINDOW_LABEL)
 }
@@ -151,14 +161,55 @@ fn hide_main(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Хоткей больше не прячет окно, а сворачивает его в клубок: спрятанное окно
+/// не отвечало на вопрос «меня сейчас слышно?», а именно в этом сценарии —
+/// когда сфокусировано чужое приложение — push-to-talk и задуман работать.
 pub fn on_toggle_visibility(app: &AppHandle) {
-    if let Some(w) = main_window(app) {
-        if w.is_visible().unwrap_or(true) {
-            let _ = hide_main(app);
-        } else {
-            show_and_focus_prompt(app);
-        }
+    let collapsed = app.state::<App>().window_collapsed.load(Ordering::SeqCst);
+    set_collapsed(app, !collapsed);
+}
+
+fn min_size(width: f64, height: f64) -> tauri::LogicalSize<f64> {
+    tauri::LogicalSize::new(width, height)
+}
+
+pub fn set_collapsed(app: &AppHandle, collapsed: bool) {
+    let Some(w) = main_window(app) else {
+        return;
+    };
+    let state = app.state::<App>();
+    if state.window_collapsed.swap(collapsed, Ordering::SeqCst) == collapsed {
+        return;
     }
+    events::collapsed_changed(app, collapsed);
+
+    if collapsed {
+        // Минимум надо опустить ДО твина: окно физически не может стать меньше
+        // своего min_inner_size, и без этого клубок просто не сожмётся.
+        let _ = w.set_min_size(Some(min_size(
+            COLLAPSED_SIZE_LOGICAL_PX,
+            COLLAPSED_SIZE_LOGICAL_PX,
+        )));
+        set_window_size(app.clone(), COLLAPSED_SIZE_LOGICAL_PX, COLLAPSED_SIZE_LOGICAL_PX);
+        return;
+    }
+
+    let settings = current_settings(app);
+    set_window_size(app.clone(), settings.window_width, settings.window_height);
+    let restore = w.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(MIN_SIZE_RESTORE_DELAY);
+        let _ = restore.set_min_size(Some(min_size(
+            settings::limits::window::WIDTH.min,
+            settings::limits::window::HEIGHT.min,
+        )));
+    });
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_window_collapsed(app: AppHandle, collapsed: bool) {
+    set_collapsed(&app, collapsed);
 }
 
 pub async fn hide_for_screen_capture(app: &AppHandle) -> bool {
@@ -239,12 +290,6 @@ pub async fn stop_main_window(app: AppHandle) -> Result<(), String> {
 #[specta::specta]
 pub fn close_app(app: AppHandle) {
     app.exit(0);
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn hide_main_window(app: AppHandle) {
-    let _ = hide_main(&app);
 }
 
 struct ResizeTween {

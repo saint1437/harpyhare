@@ -44,7 +44,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             preferences::redeem_access_code,
             window::set_window_size,
             window::close_app,
-            window::hide_main_window,
+            window::set_window_collapsed,
             window::launch_main_window,
             window::stop_main_window,
             screenshot::capture_region_screenshot,
@@ -72,6 +72,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         .typ::<events::AutoTurnPayload>()
         .typ::<events::AutoModeChanged>()
         .typ::<events::AudioLevel>()
+        .typ::<events::CollapsedChanged>()
         .typ::<auto::Speaker>()
         .typ::<permissions::PermissionsStatus>()
         .typ::<permissions::PermissionState>()

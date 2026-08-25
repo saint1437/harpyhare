@@ -118,5 +118,6 @@ export interface EventMap {
   "auto-mode-changed": { active: boolean };
   "auto-mode-error": AppError;
   "auto-answer": null;
+  "collapsed-changed": { collapsed: boolean };
   "audio-level": { level: number };
 }

@@ -1,4 +1,4 @@
-import { ArrowDownCircle, Minus, Power, Square } from "lucide-react";
+import { ArrowDownCircle, Minimize2, Power, Square } from "lucide-react";
 import type { ReactNode } from "react";
 import { IconButton } from "@/components/IconButton";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,7 @@ export interface StatusBarProps {
   contextUsage: ContextUsage | null;
   update: { version: string; busy: boolean; onOpen: () => void } | null;
   onStop: () => void;
-  onHide: () => void;
+  onCollapse: () => void;
   onTogglePause: () => void;
   onQuit: () => void;
 }
@@ -68,7 +68,7 @@ export function StatusBar({
   contextUsage,
   update,
   onStop,
-  onHide,
+  onCollapse,
   onTogglePause,
   onQuit,
 }: StatusBarProps) {
@@ -85,13 +85,6 @@ export function StatusBar({
 
   return (
     <header className="flex min-h-7 items-center gap-2" onMouseDown={onDragMouseDown}>
-      <IconButton
-        title={`Скрыть окно — вернуть: ${formatCombo(toggleHotkey)}`}
-        aria-label="Скрыть окно"
-        onClick={onHide}
-      >
-        <Minus />
-      </IconButton>
       <LiveRegion message={showError ? error : listeningAnnouncement(listening)} />
       <ListeningStatus
         value={listening}
@@ -101,10 +94,24 @@ export function StatusBar({
       />
       {tabs}
       <span className="min-w-0 flex-1" />
+      {/* Инструменты приглушены и стоят вместе; цвет остаётся только у
+          индикаторов состояния внутри `actions`. */}
       <div className="flex shrink-0 items-center gap-0.5">
         {contextUsage && <ContextUsageGauge usage={contextUsage} />}
         {actions}
         {update && <UpdateBadge update={update} />}
+      </div>
+
+      {/* Управление окном — за волоском и на задний план: это самое редкое,
+          что тут есть, а весило столько же, сколько всё остальное. */}
+      <div className="ml-1 flex shrink-0 items-center gap-0.5 border-l border-line pl-1.5">
+        <IconButton
+          title={`Свернуть в клубок — вернуть: ${formatCombo(toggleHotkey)}`}
+          aria-label="Свернуть в клубок"
+          onClick={onCollapse}
+        >
+          <Minimize2 />
+        </IconButton>
         <IconButton title="Стоп — вернуться в лаунчер" onClick={onStop}>
           <Square />
         </IconButton>

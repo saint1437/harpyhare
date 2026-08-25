@@ -373,6 +373,21 @@ svg.lucide {
   animation: listening-breath var(--dur-listening) var(--ease-out) infinite;
 }
 
+/* Клубок: пока идёт распознавание, кольцо превращается в дугу и вращается.
+   Это keyframes, а не transition — то же правило, по которому живут .eq-bar и
+   .thinking-shimmer в прозрачном окне. */
+@keyframes orb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.orb-spin {
+  animation: orb-spin 1.1s linear infinite;
+  mask-image: conic-gradient(#000 0deg 110deg, transparent 110deg 360deg);
+  -webkit-mask-image: conic-gradient(#000 0deg 110deg, transparent 110deg 360deg);
+}
+
 .eq-bar {
   transform-origin: center;
   animation: eq 1.1s ease-in-out infinite;
@@ -420,6 +435,7 @@ svg.lucide {
   }
   .launcher-rise,
   .listening-breath,
+  .orb-spin,
   .eq-bar,
   .thinking-shimmer {
     animation: none !important;

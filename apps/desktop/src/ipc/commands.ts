@@ -13,7 +13,7 @@ export const {
   copyImageToClipboard,
   getAppVersion,
   getOfficialPresets,
-  hideMainWindow,
+  setWindowCollapsed,
   installUpdate,
   launchMainWindow,
   listAudioOutputDevices,
