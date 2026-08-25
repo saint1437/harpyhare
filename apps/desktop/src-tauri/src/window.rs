@@ -75,6 +75,7 @@ pub fn create_launcher_window(app: &AppHandle, settings: &settings::Settings) ->
     )
     .resizable(true)
     .center()
+    .shadow(false)
     // No .theme(): on macOS tao turns that into an app-wide `[NSApp setAppearance:]`
     // that is never reset, so both `Window::theme()` and the webview's
     // `prefers-color-scheme` would report a value the user never chose.
@@ -102,6 +103,10 @@ fn create_main_window(app: &AppHandle, settings: &settings::Settings) -> Result<
     )
     .transparent(true)
     .decorations(false)
+    // Нативная тень рисуется по границам ОКНА, а не по тому, что внутри. В
+    // прозрачном безрамочном окне это тёмный прямоугольный ореол вокруг
+    // содержимого; глубину даёт CSS, где она следует настоящей форме.
+    .shadow(false)
     .always_on_top(true)
     .visible_on_all_workspaces(true)
     .content_protected(!settings.screen_share_visible)
@@ -183,12 +188,6 @@ pub fn set_collapsed(app: &AppHandle, collapsed: bool) {
         return;
     }
     events::collapsed_changed(app, collapsed);
-
-    // Нативную тень окна на время клубка выключаем. Она рисуется по границам
-    // ОКНА, а не по кружку внутри, — то есть вокруг прозрачного квадрата 80×80
-    // появляется тёмный прямоугольный ореол, который и читается как «чёрная
-    // обводка». Своя тень у кружка есть в CSS.
-    let _ = w.set_shadow(!collapsed);
 
     if collapsed {
         // Минимум надо опустить ДО твина: окно физически не может стать меньше
