@@ -26,3 +26,20 @@ export function orbState(input: {
   if (input.answerReady) return "answer";
   return listening;
 }
+
+/** Что делать с клубком, когда дописан ответ. */
+export type AnswerArrival = "expand" | "notify" | "ignore";
+
+/**
+ * Разворачивает только ответ в АКТИВНОМ чате: чаты идут параллельно, и
+ * развернуться на чат, где ничего не изменилось, значит соврать. Ответ в фоновом
+ * чате зовёт точкой на клубке и ждёт, пока на него переключатся.
+ */
+export function answerArrival(input: {
+  collapsed: boolean;
+  chatId: string;
+  activeChatId: string;
+}): AnswerArrival {
+  if (!input.collapsed) return "ignore";
+  return input.chatId === input.activeChatId ? "expand" : "notify";
+}

@@ -75,7 +75,7 @@ import { effectiveCombo } from "@/lib/hotkeys";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
 import { imagePngBase64, messageCopyImage, messageCopyText } from "@/lib/message-clipboard";
 import type { ModelInfo } from "@/lib/models";
-import { orbState } from "@/lib/orb";
+import { answerArrival, orbState } from "@/lib/orb";
 import { mergePresets, presetText, type PromptPreset } from "@/lib/presets";
 import { queryKeys } from "@/lib/query-client";
 import { filledQuickActions } from "@/lib/quick-actions";
@@ -453,7 +453,7 @@ function AppHeader({
       contextUsage={contextUsage}
       update={updateBadge(updater, onOpenUpdate)}
       onStop={onStop}
-      onCollapse={() => void setWindowCollapsed(true)}
+      onCollapse={() => void setWindowCollapsed(true, false)}
       tabs={
         <ChatTabs
           chats={chats.chats}
@@ -585,15 +585,31 @@ export default function App() {
       }),
     [],
   );
-  // Ответ, дописанный пока окно было клубком, должен уметь позвать обратно.
+  /**
+   * Дописанный ответ разворачивает окно сам — но БЕЗ клавиатурного фокуса:
+   * окно alwaysOnTop, то есть развернувшись оно уже видно, а отнимать
+   * клавиатуру у чужого приложения без просьбы нельзя (то же основание, по
+   * которому готовая расшифровка намеренно не поднимает окно).
+   *
+   * Разворачивает только ответ в АКТИВНОМ чате: чаты идут параллельно, и
+   * развернуться на чат, где ничего не изменилось, значит соврать. Ответ в
+   * фоновом чате по-прежнему зовёт точкой на клубке.
+   */
   const [unreadAnswer, setUnreadAnswer] = useState(false);
   const collapsedRef = useLatestRef(collapsed);
+  const activeChatRef = useLatestRef(chats.activeId);
   useEffect(
     () =>
-      onEvent("llm-done", () => {
-        if (collapsedRef.current) setUnreadAnswer(true);
+      onEvent("llm-done", ({ chatId }) => {
+        const arrival = answerArrival({
+          collapsed: collapsedRef.current,
+          chatId,
+          activeChatId: activeChatRef.current,
+        });
+        if (arrival === "expand") void setWindowCollapsed(false, false);
+        if (arrival === "notify") setUnreadAnswer(true);
       }),
-    [collapsedRef],
+    [collapsedRef, activeChatRef],
   );
   useEffect(() => {
     if (!collapsed) setUnreadAnswer(false);
@@ -835,7 +851,7 @@ export default function App() {
           streaming: activeStreaming,
           answerReady: unreadAnswer,
         })}
-        onExpand={() => void setWindowCollapsed(false)}
+        onExpand={() => void setWindowCollapsed(false, true)}
       />
     );
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RecorderState } from "@/ipc/types";
-import { orbState } from "./orb";
+import { answerArrival, orbState } from "./orb";
 
 const base = {
   state: "idle" as RecorderState,
@@ -34,5 +34,24 @@ describe("orbState", () => {
     expect(orbState({ ...base, bufferEnabled: true })).toBe("armed");
     expect(orbState(base)).toBe("off");
     expect(orbState({ ...base, hasError: true })).toBe("error");
+  });
+});
+
+describe("answerArrival", () => {
+  const base = { collapsed: true, chatId: "a", activeChatId: "a" };
+
+  it("дописанный ответ в активном чате разворачивает окно", () => {
+    expect(answerArrival(base)).toBe("expand");
+  });
+
+  // Чаты идут параллельно: развернуться на чат, где ничего не изменилось,
+  // значит соврать. Такой ответ зовёт точкой и ждёт переключения.
+  it("ответ в фоновом чате только зовёт точкой", () => {
+    expect(answerArrival({ ...base, chatId: "b" })).toBe("notify");
+  });
+
+  it("развёрнутое окно ничего не делает", () => {
+    expect(answerArrival({ ...base, collapsed: false })).toBe("ignore");
+    expect(answerArrival({ ...base, collapsed: false, chatId: "b" })).toBe("ignore");
   });
 });

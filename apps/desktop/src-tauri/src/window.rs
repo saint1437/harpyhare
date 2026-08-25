@@ -172,14 +172,14 @@ fn hide_main(app: &AppHandle) -> Result<(), String> {
 /// когда сфокусировано чужое приложение — push-to-talk и задуман работать.
 pub fn on_toggle_visibility(app: &AppHandle) {
     let collapsed = app.state::<App>().window_collapsed.load(Ordering::SeqCst);
-    set_collapsed(app, !collapsed);
+    set_collapsed(app, !collapsed, true);
 }
 
 fn min_size(width: f64, height: f64) -> tauri::LogicalSize<f64> {
     tauri::LogicalSize::new(width, height)
 }
 
-pub fn set_collapsed(app: &AppHandle, collapsed: bool) {
+pub fn set_collapsed(app: &AppHandle, collapsed: bool, focus: bool) {
     let Some(w) = main_window(app) else {
         return;
     };
@@ -205,8 +205,15 @@ pub fn set_collapsed(app: &AppHandle, collapsed: bool) {
     // вырастает, но ключевым не становится, и набранное уходит мимо. Каретку в
     // поле ставит эффект на фронтенде — событие focus-prompt здесь пришло бы
     // раньше, чем композер успел смонтироваться.
+    //
+    // Но клавиатурный фокус забирает только РУЧНОЙ разворот. Окно и так
+    // alwaysOnTop, то есть автоматически развернувшись оно уже видно, а отнимать
+    // клавиатуру у чужого приложения без просьбы — ровно то, из-за чего готовая
+    // расшифровка намеренно не поднимает окно (см. deliver_transcript).
     let _ = w.show();
-    let _ = w.set_focus();
+    if focus {
+        let _ = w.set_focus();
+    }
 
     let settings = current_settings(app);
     set_window_size(app.clone(), settings.window_width, settings.window_height);
@@ -222,8 +229,8 @@ pub fn set_collapsed(app: &AppHandle, collapsed: bool) {
 
 #[tauri::command]
 #[specta::specta]
-pub fn set_window_collapsed(app: AppHandle, collapsed: bool) {
-    set_collapsed(&app, collapsed);
+pub fn set_window_collapsed(app: AppHandle, collapsed: bool, focus: bool) {
+    set_collapsed(&app, collapsed, focus);
 }
 
 pub async fn hide_for_screen_capture(app: &AppHandle) -> bool {
