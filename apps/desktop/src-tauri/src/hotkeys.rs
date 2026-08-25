@@ -178,8 +178,8 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
     HotkeyAction {
         id: ACTION_CANCEL_RECORDING,
         group: "Запись",
-        label: "Отменить запись",
-        hint: "Слушается только пока идёт запись.",
+        label: "Отменить запись или ответ",
+        hint: "Пока идёт запись — отменяет её, пока генерируется ответ — останавливает его.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Recording,
         default_combo: PlatformCombo::shared("Escape"),

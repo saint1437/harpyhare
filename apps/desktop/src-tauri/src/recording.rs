@@ -72,10 +72,20 @@ pub fn rebuild_capture(app: &AppHandle) -> bool {
 }
 
 pub fn ensure_capture(app: &AppHandle) -> bool {
-    if app.state::<App>().capture.lock().unwrap().is_some() {
+    if capture_stalled(app) == Some(false) {
         return true;
     }
     rebuild_capture(app)
+}
+
+// A stalled capture is alive as an object and dead as a stream: its backend can no
+// longer reopen the device with the spec this capture was built for. Rebuilding is the
+// only cure, so the lock is released before `rebuild_capture` takes it again. `None` =
+// there is no capture at all, which is a different story and a different policy.
+fn capture_stalled(app: &AppHandle) -> Option<bool> {
+    let st = app.state::<App>();
+    let guard = st.capture.lock().unwrap();
+    guard.as_ref().map(|c| c.is_stalled())
 }
 
 fn rebuild_capture_now(app: &AppHandle) {
@@ -94,7 +104,7 @@ pub fn on_ptt_pressed(app: &AppHandle) {
         return;
     }
     let st = app.state::<App>();
-    if st.capture_rebuild_pending.swap(false, Ordering::SeqCst) {
+    if st.capture_rebuild_pending.swap(false, Ordering::SeqCst) || capture_stalled(app) == Some(true) {
         rebuild_capture_now(app);
     }
     if st.capture.lock().unwrap().is_none() {
@@ -190,6 +200,14 @@ pub fn on_ptt_released(app: &AppHandle) {
         .on(state::Event::PttReleased { duration_secs: secs });
     hotkey::unregister_cancel(app, &hotkey::cancel_combo(app));
     finish_recording(app, action);
+}
+
+/// Тот же путь, что и у глобального хоткея, но вызываемый из окна: глобальная
+/// регистрация может не встать, а отменять запись всё равно нужно.
+#[tauri::command]
+#[specta::specta]
+pub fn cancel_recording(app: AppHandle) {
+    on_cancel(&app);
 }
 
 pub fn on_cancel(app: &AppHandle) {

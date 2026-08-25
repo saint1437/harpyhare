@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { hotkeyAction } from "@/lib/hotkeys";
 import { searchLauncher, type SearchHit, type SearchSources } from "./search";
 
 const SOURCES: SearchSources = {
@@ -67,11 +68,15 @@ describe("searchLauncher", () => {
   });
 
   it("совпадение в заголовке важнее совпадения в пояснении", () => {
+    // Подписи берём из реестра, а не литералами: он единственный источник,
+    // и переименование действия не должно ронять тест вместе с кодом.
+    const record = hotkeyAction("record").label;
+    const cancel = hotkeyAction("cancel_recording").label;
     const found = titles(searchLauncher("запис", SOURCES));
-    expect(found[0]).toBe("Записать системный звук");
-    expect(found).toContain("Отменить запись");
+    expect(found[0]).toBe(record);
+    expect(found).toContain(cancel);
     expect(found).toContain("Фоновый буфер");
-    expect(found.indexOf("Отменить запись")).toBeLessThan(found.indexOf("Фоновый буфер"));
+    expect(found.indexOf(cancel)).toBeLessThan(found.indexOf("Фоновый буфер"));
   });
 
   it("на Windows экранов только для macOS не существует и в выдаче их нет", () => {

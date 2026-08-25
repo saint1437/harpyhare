@@ -24,6 +24,7 @@ import { StatusBar, type ContextUsage, type StatusBarProps } from "@/components/
 import { Teleprompter } from "@/components/Teleprompter";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { useAutoMode, type AutoModeApi } from "@/hooks/useAutoMode";
+import { useCancelKey, cancellable } from "@/hooks/useCancelKey";
 import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
 import { useConnectivity } from "@/hooks/useConnectivity";
@@ -43,6 +44,7 @@ import { useUpdater, type UpdaterApi } from "@/hooks/useUpdater";
 import { useWindowControls } from "@/hooks/useWindowControls";
 import { SETTINGS_LIMITS } from "@/ipc/bindings";
 import {
+  cancelRecording,
   closeApp,
   countChatTokens,
   retryTranscription,
@@ -790,6 +792,17 @@ export default function App() {
   const active = chats.active;
   const activeId = chats.activeId;
   const activeStreaming = !!stream.streaming[activeId];
+  const stopActiveStream = useCallback(() => {
+    stream.stop(chatsRef.current.activeId);
+  }, [stream, chatsRef]);
+  // Пока открыт суфлёр, Escape принадлежит ему — своё действие в реестре.
+  useCancelKey(
+    effectiveCombo(settings.hotkeys, "cancel_recording"),
+    promptCoveredByOverlay ? null : cancellable(state === "recording", activeStreaming),
+    () => void cancelRecording(),
+    stopActiveStream,
+  );
+
   const error: AppError | null =
     sttError ?? autoMode.error ?? screenshot.error ?? stream.error[activeId] ?? null;
   const partial = activeStreaming ? (stream.partial[activeId] ?? "") : null;

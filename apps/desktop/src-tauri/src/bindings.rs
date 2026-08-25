@@ -31,6 +31,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             storage::read_context_import_file,
             storage::read_context_pdf_bytes,
             recording::retry_transcription,
+            recording::cancel_recording,
             auto::start_auto_mode,
             auto::stop_auto_mode,
             auto::auto_mode_active,

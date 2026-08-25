@@ -135,15 +135,26 @@ pub fn unregister_focus_prompt(app: &AppHandle, hotkey: &str) {
     }
 }
 
+/// Отмена регистрируется глобально на время записи, но именно ГЛОБАЛЬНО она
+/// может и не встать: у сочетания без модификаторов шансов меньше всего, а ОС
+/// вправе отказать без объяснений. Раньше отказ глушился через `let _` — и
+/// Escape просто молча ничего не делал, ровно как забытое действие в
+/// `GLOBAL_HOTKEYS`. Теперь отказ хотя бы виден в stderr, а окно всё равно
+/// слушает то же сочетание своим обработчиком.
 pub fn register_cancel(app: &AppHandle, hotkey: &str) {
-    if let Some(shortcut) = parse_hotkey(hotkey) {
-        let _ = app
-            .global_shortcut()
-            .on_shortcut(shortcut, |app, _shortcut, event| {
-                if event.state == ShortcutState::Pressed {
-                    defer(app, recording::on_cancel);
-                }
-            });
+    let Some(shortcut) = parse_hotkey(hotkey) else {
+        eprintln!("[hotkey] отмена: не разобрал сочетание {hotkey}");
+        return;
+    };
+    if let Err(e) = app
+        .global_shortcut()
+        .on_shortcut(shortcut, |app, _shortcut, event| {
+            if event.state == ShortcutState::Pressed {
+                defer(app, recording::on_cancel);
+            }
+        })
+    {
+        eprintln!("[hotkey] отмена {hotkey} не зарегистрирована глобально: {e}");
     }
 }
 

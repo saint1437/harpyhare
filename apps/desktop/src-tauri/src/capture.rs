@@ -79,6 +79,7 @@ struct Shared {
     buffering: AtomicBool,
     stop_requested: AtomicBool,
     shutdown: AtomicBool,
+    stalled: AtomicBool,
     produced: AtomicU64,
     dropped: AtomicU64,
     sample_rate: u32,
@@ -145,6 +146,7 @@ impl AudioCapture {
             buffering: AtomicBool::new(false),
             stop_requested: AtomicBool::new(false),
             shutdown: AtomicBool::new(false),
+            stalled: AtomicBool::new(false),
             produced: AtomicU64::new(0),
             dropped: AtomicU64::new(0),
             sample_rate: spec.sample_rate,
@@ -210,6 +212,15 @@ impl AudioCapture {
                 }
             }
         }
+    }
+
+    // A backend whose stream cannot be reopened with the spec this capture was built
+    // for (the endpoint's mix format changed, the device was taken away) raises this
+    // flag instead of dying: the ring and the resampler are sized for the old spec, so
+    // only a full rebuild can fix it. Nothing polls the flag — `recording.rs` checks it
+    // at the entry points, the same lazy policy as `capture_rebuild_pending`.
+    pub fn is_stalled(&self) -> bool {
+        self.shared.stalled.load(Ordering::Acquire)
     }
 
     pub fn recording_secs(&self) -> f32 {

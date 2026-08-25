@@ -7,6 +7,7 @@ import { type ChatMessageDto, type Settings, type UpdateInfo } from "./types";
 const IDEMPOTENCY_STORAGE_PREFIX = "redeem-idem:";
 
 export const {
+  cancelRecording,
   cancelStream,
   captureRegionScreenshot,
   closeApp,

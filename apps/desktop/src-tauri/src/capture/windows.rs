@@ -563,6 +563,7 @@ fn capture_main(
     while !stop.load(Ordering::Acquire) {
         match open_stream(&source.device_id, source.kind, &spec) {
             Ok(stream) => {
+                ctx.shared.stalled.store(false, Ordering::Release);
                 if !announced {
                     announced = true;
                     let _ = ready.send(Ok(()));
@@ -576,6 +577,12 @@ fn capture_main(
                     let _ = ready.send(Err(e));
                     return;
                 }
+                // Retrying alone is not enough: a changed mix format (a new sample rate on
+                // the endpoint, a headset that switched profile) fails `format.matches(spec)`
+                // on EVERY reopen — the spec is frozen at `AudioCapture::new`. Without the
+                // flag the thread spins here once a second forever and the app records pure
+                // silence with nothing in the UI to show for it.
+                ctx.shared.stalled.store(true, Ordering::Release);
                 eprintln!("не удалось переоткрыть захват: {e}");
             }
         }
