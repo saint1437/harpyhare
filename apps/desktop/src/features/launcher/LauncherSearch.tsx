@@ -58,7 +58,7 @@ export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
   return (
     <div className="relative min-w-0 flex-1">
       <Search
-        className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground"
+        className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-fg-subtle"
         aria-hidden
       />
       <Input
@@ -115,13 +115,13 @@ export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
           id={LIST_ID}
           aria-label={PLACEHOLDER}
           data-no-drag
-          className="absolute top-full right-0 left-0 z-20 mt-1.5 max-h-80 animate-in overflow-y-auto rounded-lg border bg-popover p-1 shadow-pop duration-150 fade-in-0 slide-in-from-top-1 motion-reduce:animate-none"
+          className="absolute top-full right-0 left-0 z-20 mt-1.5 max-h-80 animate-in overflow-y-auto rounded-lg border bg-elevated p-1 shadow-pop duration-150 fade-in-0 slide-in-from-top-1 motion-reduce:animate-none"
           onMouseDown={(e) => {
             e.preventDefault();
           }}
         >
           {shown.length === 0 && (
-            <p className="px-2 py-1.5 text-caption text-muted-foreground">{EMPTY_NOTE}</p>
+            <p className="px-2 py-1.5 text-caption text-fg-subtle">{EMPTY_NOTE}</p>
           )}
           {shown.map((hit, index) => (
             <button
@@ -131,7 +131,7 @@ export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
               role="option"
               aria-selected={index === activeIndex}
               className={cn(
-                "flex w-full items-center gap-3 rounded-sm px-2 py-1 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+                "flex w-full items-center gap-3 rounded-sm px-2 py-1 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-focus",
                 index === activeIndex
                   ? "bg-surface-active"
                   : "hover:bg-surface active:bg-surface-active",
@@ -143,14 +143,14 @@ export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
                 choose(hit);
               }}
             >
-              <span className="min-w-0 flex-1 truncate text-body text-foreground">{hit.title}</span>
-              <span className="max-w-[45%] shrink-0 truncate text-hint text-muted-foreground">
+              <span className="min-w-0 flex-1 truncate text-body text-fg">{hit.title}</span>
+              <span className="max-w-[45%] shrink-0 truncate text-hint text-fg-subtle">
                 {hit.breadcrumb}
               </span>
             </button>
           ))}
           {hits.length > shown.length && (
-            <p className="mt-1 border-t border-border px-2 py-1.5 text-hint text-muted-foreground">
+            <p className="mt-1 border-t border-line px-2 py-1.5 text-hint text-fg-subtle">
               {overflowNote(shown.length, hits.length)}
             </p>
           )}

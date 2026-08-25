@@ -62,10 +62,10 @@ function QuickActionRow({
             onChange({ title: e.target.value });
           }}
         />
-        <span className="min-w-10 shrink-0 text-right font-mono text-caption text-muted-foreground tabular-nums">
+        <span className="min-w-10 shrink-0 text-right font-mono text-caption text-fg-subtle tabular-nums">
           {combo}
         </span>
-        <IconButton title={REMOVE_TITLE} className="hover:text-destructive" onClick={onRemove}>
+        <IconButton title={REMOVE_TITLE} className="hover:text-danger" onClick={onRemove}>
           <Trash2 />
         </IconButton>
       </div>
@@ -140,7 +140,7 @@ export function QuickActionsSection({ draft, set }: SectionProps) {
       </SettingRow>
 
       {actions.length === 0 && (
-        <p className="px-3 py-2.5 text-caption text-muted-foreground">{EMPTY_NOTE}</p>
+        <p className="px-3 py-2.5 text-caption text-fg-subtle">{EMPTY_NOTE}</p>
       )}
       {actions.map((quickAction, index) => (
         <QuickActionRow
@@ -161,7 +161,7 @@ export function QuickActionsSection({ draft, set }: SectionProps) {
           {ADD_LABEL}
         </Button>
         {atLimit && (
-          <span className="text-caption text-muted-foreground">
+          <span className="text-caption text-fg-subtle">
             Больше не поместится: цифр всего {QUICK_ACTION_LIMIT}.
           </span>
         )}

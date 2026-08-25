@@ -77,7 +77,7 @@ describe("AutoTranscript", () => {
     });
     const sent = screen.getByText(/Первый\?/).closest("li");
     const fresh = screen.getByText(/Второй\?/).closest("li");
-    expect(sent?.className).toContain("text-muted-foreground");
-    expect(fresh?.className).toContain("text-foreground");
+    expect(sent?.className).toContain("text-fg-subtle");
+    expect(fresh?.className).toContain("text-fg");
   });
 });

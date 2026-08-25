@@ -1,100 +1,303 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&);
+/* ─────────────────────────────────────────────────────────────────────────────
+   TOKENS — the single source of truth for colour in the desktop app.
+
+   Structure:
+     :root                                   light theme (the default)
+     @media (prefers-color-scheme: dark)     dark, unless the user forced light
+       :root:not([data-theme="light"])
+     :root[data-theme="dark"]                dark, forced
+     body.launcher                           the launcher's own, deeper surfaces
+
+   `:root` carries the HUD's surfaces; `body.launcher` re-bases the four surface
+   steps only. That single seam is why one stylesheet serves two windows.
+
+   Every value is measured, not eyeballed: scripts/check-contrast.mjs asserts
+   AA (4.5:1 text, 3:1 non-text) for both themes and both windows, and asserts
+   every token sits inside the sRGB gamut. It runs in `npm test`.
+   ───────────────────────────────────────────────────────────────────────────── */
 
 :root {
   --app-opacity: 0.9;
   --chat-font-size: 13.5px;
-
   --radius: 0.5rem;
+  --window-radius: 22px;
 
-  --background: oklch(0.25 0.005 285);
-  --foreground: oklch(0.95 0 0);
-  --card: oklch(0.29 0.005 285);
-  --card-foreground: oklch(0.95 0 0);
-  --popover: oklch(0.3 0.005 285);
-  --popover-foreground: oklch(0.95 0 0);
-  --muted: oklch(0.33 0.005 285);
-  --muted-foreground: oklch(0.71 0.008 285);
+  color-scheme: light;
 
-  --primary: oklch(0.47 0.17 18);
-  --primary-foreground: oklch(0.97 0.01 30);
-  --secondary: oklch(0.33 0.005 285);
-  --secondary-foreground: oklch(0.95 0 0);
-  --accent: oklch(0.35 0.02 18);
-  --accent-foreground: oklch(0.95 0 0);
-  --destructive: oklch(0.6 0.21 27);
-  --destructive-foreground: oklch(0.97 0.01 30);
+  /* surfaces — HUD */
+  --base: oklch(0.968 0.005 40);
+  --surface: oklch(0.9925 0.003 40);
+  --elevated: oklch(0.995 0.002 40);
+  --inset: oklch(0.925 0.008 40);
+  --surface-active: oklch(0.945 0.006 40);
+  --overlay: oklch(0.25 0.01 40 / 45%);
+  --scrim-chip: oklch(0.25 0.01 40 / 62%);
+  --on-scrim: oklch(0.985 0.004 40);
+  --surface-preview: oklch(0.995 0.002 40);
 
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.58 0.14 18);
+  /* lines */
+  --line: oklch(0.88 0.008 40);
+  --line-strong: oklch(0.598 0.012 40);
 
-  --surface: oklch(1 0 0 / 6%);
-  --surface-active: oklch(1 0 0 / 11%);
-  --code-surface: oklch(0 0 0 / 30%);
-  --recording: oklch(0.62 0.2 18);
+  /* text */
+  --fg: oklch(0.245 0.012 40);
+  --fg-muted: oklch(0.44 0.012 40);
+  --fg-subtle: oklch(0.508 0.012 40);
+  --fg-invert: oklch(0.985 0.004 40);
+
+  /* accent — the brand oxblood. One job: the primary action. */
+  --accent: oklch(0.475 0.165 20);
+  --accent-hover: oklch(0.415 0.16 20);
+  --accent-subtle: oklch(0.935 0.026 20);
+  --accent-on: oklch(0.985 0.006 30);
+  --accent-mark: oklch(0.43 0.165 20);
+
+  /* state — `listening` means exactly one thing: audio is being captured now. */
+  --listening: oklch(0.498 0.085 200);
+  --listening-dim: oklch(0.598 0.08 200);
+  --processing: var(--fg-muted);
+  --success: oklch(0.49 0.136 150);
+  --warning: oklch(0.545 0.113 80);
+  --danger: oklch(0.48 0.185 30);
+  --danger-on: oklch(0.985 0.004 40);
+
+  --focus: oklch(0.52 0.106 232);
+
+  /* elevation — tinted per theme; on light a soft warm grey, on dark a black
+     shadow plus a top inner light. */
+  --elev-btn: 0 1px 2px 0 oklch(0.245 0.012 40 / 14%);
+  --elev-raise: 0 1px 2px 0 oklch(0.245 0.012 40 / 8%);
+  --elev-pop:
+    0 12px 32px -8px oklch(0.245 0.012 40 / 18%), 0 4px 12px -4px oklch(0.245 0.012 40 / 12%);
+  --elev-modal:
+    0 24px 64px -16px oklch(0.245 0.012 40 / 24%), 0 8px 24px -8px oklch(0.245 0.012 40 / 16%);
+
+  /* syntax — re-derived from the palette's own hues so highlighted code sits
+     inside the system rather than beside it. */
+  --syn-comment: oklch(0.6 0.012 40);
+  --syn-keyword: oklch(0.47 0.15 20);
+  --syn-string: oklch(0.47 0.11 150);
+  --syn-number: oklch(0.5 0.104 80);
+  --syn-fn: oklch(0.48 0.098 232);
+  --syn-attr: oklch(0.5 0.085 200);
+  --syn-code-fg: oklch(0.3 0.012 40);
 }
 
-:root[data-theme="black"] {
-  --background: oklch(0.16 0.005 285);
-  --card: oklch(0.2 0.005 285);
-  --popover: oklch(0.21 0.005 285);
-  --muted: oklch(0.23 0.005 285);
-  --muted-foreground: oklch(0.68 0.008 285);
-  --secondary: oklch(0.23 0.005 285);
-  --accent: oklch(0.25 0.02 18);
-  --border: oklch(1 0 0 / 9%);
-  --input: oklch(1 0 0 / 11%);
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --base: oklch(0.235 0.005 40);
+    --surface: oklch(0.285 0.006 40);
+    --elevated: oklch(0.32 0.007 40);
+    --inset: oklch(0.185 0.005 40);
+    --surface-active: oklch(0.345 0.008 40);
+    --overlay: oklch(0.11 0.004 40 / 72%);
+    --scrim-chip: oklch(0.11 0.004 40 / 78%);
+    --on-scrim: oklch(0.985 0.004 40);
+    --on-scrim: oklch(0.985 0.004 40);
+    --surface-preview: oklch(0.995 0.002 40);
+
+    --line: oklch(0.315 0.006 40);
+    --line-strong: oklch(0.592 0.01 40);
+
+    --fg: oklch(0.955 0.006 40);
+    --fg-muted: oklch(0.79 0.008 40);
+    --fg-subtle: oklch(0.695 0.008 40);
+    --fg-invert: oklch(0.2 0.01 40);
+
+    --accent: oklch(0.55 0.16 20);
+    --accent-hover: oklch(0.495 0.15 20);
+    --accent-subtle: oklch(0.285 0.055 20);
+    --accent-on: oklch(0.98 0.008 30);
+    --accent-mark: oklch(0.68 0.15 20);
+
+    --listening: oklch(0.775 0.11 200);
+    --listening-dim: oklch(0.6 0.085 200);
+    --success: oklch(0.715 0.15 150);
+    --warning: oklch(0.845 0.135 80);
+    --danger: oklch(0.72 0.175 30);
+    --danger-on: oklch(0.2 0.01 40);
+
+    --focus: oklch(0.75 0.115 232);
+
+    --elev-btn: inset 0 1px 0 oklch(1 0 0 / 12%), 0 1px 2px 0 oklch(0 0 0 / 30%);
+    --elev-raise: inset 0 1px 0 oklch(1 0 0 / 4%), 0 1px 2px 0 oklch(0 0 0 / 20%);
+    --elev-pop:
+      inset 0 1px 0 oklch(1 0 0 / 5%), 0 12px 32px -8px oklch(0 0 0 / 50%),
+      0 4px 12px -4px oklch(0 0 0 / 32%);
+    --elev-modal:
+      inset 0 1px 0 oklch(1 0 0 / 6%), 0 24px 64px -16px oklch(0 0 0 / 55%),
+      0 8px 24px -8px oklch(0 0 0 / 35%);
+
+    --syn-comment: oklch(0.62 0.01 40);
+    --syn-keyword: oklch(0.75 0.13 20);
+    --syn-string: oklch(0.78 0.12 150);
+    --syn-number: oklch(0.83 0.12 80);
+    --syn-fn: oklch(0.78 0.1 232);
+    --syn-attr: oklch(0.79 0.09 200);
+    --syn-code-fg: oklch(0.88 0.008 40);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --base: oklch(0.235 0.005 40);
+  --surface: oklch(0.285 0.006 40);
+  --elevated: oklch(0.32 0.007 40);
+  --inset: oklch(0.185 0.005 40);
+  --surface-active: oklch(0.345 0.008 40);
+  --overlay: oklch(0.11 0.004 40 / 72%);
+  --scrim-chip: oklch(0.11 0.004 40 / 78%);
+  --on-scrim: oklch(0.985 0.004 40);
+  --surface-preview: oklch(0.995 0.002 40);
+
+  --line: oklch(0.315 0.006 40);
+  --line-strong: oklch(0.592 0.01 40);
+
+  --fg: oklch(0.955 0.006 40);
+  --fg-muted: oklch(0.79 0.008 40);
+  --fg-subtle: oklch(0.695 0.008 40);
+  --fg-invert: oklch(0.2 0.01 40);
+
+  --accent: oklch(0.55 0.16 20);
+  --accent-hover: oklch(0.495 0.15 20);
+  --accent-subtle: oklch(0.285 0.055 20);
+  --accent-on: oklch(0.98 0.008 30);
+  --accent-mark: oklch(0.68 0.15 20);
+
+  --listening: oklch(0.775 0.11 200);
+  --listening-dim: oklch(0.6 0.085 200);
+  --success: oklch(0.715 0.15 150);
+  --warning: oklch(0.845 0.135 80);
+  --danger: oklch(0.72 0.175 30);
+  --danger-on: oklch(0.2 0.01 40);
+
+  --focus: oklch(0.75 0.115 232);
+
+  --elev-btn: inset 0 1px 0 oklch(1 0 0 / 12%), 0 1px 2px 0 oklch(0 0 0 / 30%);
+  --elev-raise: inset 0 1px 0 oklch(1 0 0 / 4%), 0 1px 2px 0 oklch(0 0 0 / 20%);
+  --elev-pop:
+    inset 0 1px 0 oklch(1 0 0 / 5%), 0 12px 32px -8px oklch(0 0 0 / 50%),
+    0 4px 12px -4px oklch(0 0 0 / 32%);
+  --elev-modal:
+    inset 0 1px 0 oklch(1 0 0 / 6%), 0 24px 64px -16px oklch(0 0 0 / 55%),
+    0 8px 24px -8px oklch(0 0 0 / 35%);
+
+  --syn-comment: oklch(0.62 0.01 40);
+  --syn-keyword: oklch(0.75 0.13 20);
+  --syn-string: oklch(0.78 0.12 150);
+  --syn-number: oklch(0.83 0.12 80);
+  --syn-fn: oklch(0.78 0.1 232);
+  --syn-attr: oklch(0.79 0.09 200);
+  --syn-code-fg: oklch(0.88 0.008 40);
+}
+
+/* The launcher is opaque and sits deeper than the HUD, so it re-bases the four
+   surface steps only. `--elevated` stays ABOVE `--surface`: that gap is the
+   elevation of menus and popovers over the form's cards. Equalise them and a
+   dropdown dissolves into the card it hangs over. */
+body.launcher {
+  --window-radius: 0px;
+  --base: oklch(0.955 0.006 40);
+  --surface: oklch(0.99 0.004 40);
+  --elevated: oklch(0.995 0.002 40);
+  --inset: oklch(0.925 0.008 40);
+  --surface-active: oklch(0.925 0.006 40);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body.launcher {
+    --base: oklch(0.17 0.005 40);
+    --surface: oklch(0.215 0.006 40);
+    --elevated: oklch(0.258 0.007 40);
+    --inset: oklch(0.14 0.005 40);
+    --surface-active: oklch(0.3 0.008 40);
+  }
+}
+
+:root[data-theme="dark"] body.launcher {
+  --base: oklch(0.17 0.005 40);
+  --surface: oklch(0.215 0.006 40);
+  --elevated: oklch(0.258 0.007 40);
+  --inset: oklch(0.14 0.005 40);
+  --surface-active: oklch(0.3 0.008 40);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
+  --color-base: var(--base);
   --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+  --color-inset: var(--inset);
   --color-surface-active: var(--surface-active);
-  --color-code-surface: var(--code-surface);
-  --color-recording: var(--recording);
+  --color-overlay: var(--overlay);
+  --color-scrim-chip: var(--scrim-chip);
+  --color-on-scrim: var(--on-scrim);
+  --color-surface-preview: var(--surface-preview);
+
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-fg-invert: var(--fg-invert);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-accent-on: var(--accent-on);
+  --color-accent-mark: var(--accent-mark);
+
+  --color-listening: var(--listening);
+  --color-listening-dim: var(--listening-dim);
+  --color-processing: var(--processing);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-danger-on: var(--danger-on);
+
+  --color-focus: var(--focus);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-window: var(--window-radius);
+
   --font-sans:
     ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui,
     sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
   --text-hint: 10.5px;
   --text-caption: 11.5px;
-  --text-body: 12.5px;
-  --text-title: 15px;
+  --text-body: 13px;
+  --text-title: 16px;
+  --text-display: 22px;
   --text-chat: var(--chat-font-size);
-  --window-radius: 22px;
-  --shadow-btn: inset 0 1px 0 oklch(1 0 0 / 12%), 0 1px 2px 0 oklch(0 0 0 / 30%);
-  --shadow-raise: inset 0 1px 0 oklch(1 0 0 / 4%), 0 1px 2px 0 oklch(0 0 0 / 20%);
-  --shadow-pop:
-    inset 0 1px 0 oklch(1 0 0 / 5%), 0 12px 32px -8px oklch(0 0 0 / 50%),
-    0 4px 12px -4px oklch(0 0 0 / 32%);
-  --shadow-modal:
-    inset 0 1px 0 oklch(1 0 0 / 6%), 0 24px 64px -16px oklch(0 0 0 / 55%),
-    0 8px 24px -8px oklch(0 0 0 / 35%);
+
+  --shadow-btn: var(--elev-btn);
+  --shadow-raise: var(--elev-raise);
+  --shadow-pop: var(--elev-pop);
+  --shadow-modal: var(--elev-modal);
+}
+
+/* Motion. UI feedback is 200ms or less; the two long values are the window
+   entry cascade and the listening breath, which are not feedback. The numeric
+   Tailwind duration utilities in the markup mirror these on purpose. */
+:root {
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-instant: 100ms;
+  --dur-fast: 150ms;
+  --dur-slow: 200ms;
+  --dur-enter: 380ms;
+  --dur-listening: 2200ms;
 }
 
 html,
@@ -105,31 +308,32 @@ body {
 }
 
 body {
-  color: var(--foreground);
-  color-scheme: dark;
+  color: var(--fg);
 }
 
 body.launcher {
-  background: var(--background) !important;
+  background: var(--base) !important;
   overflow: hidden;
-  --window-radius: 0px;
-  --background: oklch(0.17 0.005 285);
-  --card: oklch(0.21 0.005 285);
-  --popover: oklch(0.245 0.006 285);
-  --surface: oklch(0.25 0.006 285);
-  --surface-active: oklch(0.3 0.007 285);
-  --border: oklch(1 0 0 / 8%);
-  --input: oklch(1 0 0 / 10%);
-  --ring: oklch(0.74 0.1 245);
 }
 
-:root[data-theme="black"] body.launcher {
-  --background: oklch(0.12 0.005 285);
-  --card: oklch(0.16 0.005 285);
-  --popover: oklch(0.19 0.006 285);
-  --surface: oklch(0.2 0.006 285);
-  --surface-active: oklch(0.25 0.007 285);
+#root {
+  height: 100vh;
 }
+
+.app-shell {
+  background-color: color-mix(in oklch, var(--base) calc(var(--app-opacity) * 100%), transparent);
+}
+
+* {
+  border-color: var(--line);
+  cursor: default !important;
+}
+
+svg.lucide {
+  stroke-width: 1.75;
+}
+
+/* ── Motion ───────────────────────────────────────────────────────────────── */
 
 @keyframes launcher-rise {
   from {
@@ -143,37 +347,86 @@ body.launcher {
 }
 
 .launcher-rise {
-  animation: launcher-rise 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: launcher-rise var(--dur-enter) var(--ease-out) both;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .launcher-rise,
-  .eq-bar,
-  .thinking-shimmer {
-    animation: none;
+/* The listening breath: one slow expansion, not a blink. A continuous keyframe
+   animation, never a transition — the WKWebView artefact that bans hover
+   opacity transitions in the transparent window comes from a compositing layer
+   being promoted and then collapsing, which a continuously-running animation never does. */
+@keyframes listening-breath {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  70% {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.35);
+    opacity: 0;
   }
 }
 
-#root {
-  height: 100vh;
+.listening-breath {
+  animation: listening-breath var(--dur-listening) var(--ease-out) infinite;
 }
 
-.app-shell {
-  background-color: color-mix(
-    in oklch,
-    var(--background) calc(var(--app-opacity) * 100%),
-    transparent
-  );
+.eq-bar {
+  transform-origin: center;
+  animation: eq 1.1s ease-in-out infinite;
 }
 
-* {
-  border-color: var(--border);
-  cursor: default !important;
+@keyframes eq {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
 }
 
-svg.lucide {
-  stroke-width: 1.75;
+.thinking-shimmer {
+  background: linear-gradient(90deg, var(--fg-subtle) 40%, var(--fg) 50%, var(--fg-subtle) 60%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: thinking-shimmer 2s linear infinite;
 }
+
+@keyframes thinking-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/* Every animation, not only ours: tw-animate-css ships no guard of its own, and
+   the Radix primitives animate through it. The listening state does not depend
+   on this block — it keeps a solid ring and the word «Слушаю». */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .launcher-rise,
+  .listening-breath,
+  .eq-bar,
+  .thinking-shimmer {
+    animation: none !important;
+  }
+}
+
+/* ── Answer prose ─────────────────────────────────────────────────────────── */
 
 .prose-answer > :first-child {
   margin-top: 0;
@@ -188,7 +441,7 @@ svg.lucide {
   margin: 1em 0 0.4em;
   font-weight: 600;
   line-height: 1.3;
-  color: var(--foreground);
+  color: var(--fg);
 }
 .prose-answer h1 {
   font-size: 1.25em;
@@ -208,13 +461,13 @@ svg.lucide {
   margin: 0.2em 0;
 }
 .prose-answer li::marker {
-  color: var(--primary);
+  color: var(--fg-subtle);
 }
 .prose-answer code {
   padding: 1.5px 5px;
   border-radius: var(--radius-sm);
-  background: color-mix(in oklch, var(--primary) 14%, transparent);
-  color: oklch(0.8 0.09 18);
+  background: var(--inset);
+  color: var(--syn-keyword);
   font-family: var(--font-mono);
   font-size: 0.89em;
 }
@@ -222,19 +475,19 @@ svg.lucide {
   margin: 0.6em 0 0.8em;
   padding: 10px 12px;
   border-radius: var(--radius-md);
-  background: var(--code-surface);
-  border: 1px solid var(--border);
+  background: var(--inset);
+  border: 1px solid var(--line);
   overflow-x: auto;
 }
 .prose-answer pre code {
   padding: 0;
   background: none;
-  color: oklch(0.85 0.01 285);
+  color: var(--syn-code-fg);
 }
 
 .prose-answer .hljs-comment,
 .prose-answer .hljs-quote {
-  color: oklch(0.6 0.01 285);
+  color: var(--syn-comment);
   font-style: italic;
 }
 .prose-answer .hljs-keyword,
@@ -242,12 +495,12 @@ svg.lucide {
 .prose-answer .hljs-tag,
 .prose-answer .hljs-name,
 .prose-answer .hljs-meta {
-  color: oklch(0.72 0.14 15);
+  color: var(--syn-keyword);
 }
 .prose-answer .hljs-string,
 .prose-answer .hljs-regexp,
 .prose-answer .hljs-addition {
-  color: oklch(0.76 0.09 140);
+  color: var(--syn-string);
 }
 .prose-answer .hljs-number,
 .prose-answer .hljs-literal,
@@ -255,12 +508,12 @@ svg.lucide {
 .prose-answer .hljs-type,
 .prose-answer .hljs-class,
 .prose-answer .hljs-title.class_ {
-  color: oklch(0.79 0.1 70);
+  color: var(--syn-number);
 }
 .prose-answer .hljs-title,
 .prose-answer .hljs-title.function_,
 .prose-answer .hljs-section {
-  color: oklch(0.8 0.06 220);
+  color: var(--syn-fn);
 }
 .prose-answer .hljs-attr,
 .prose-answer .hljs-attribute,
@@ -269,10 +522,10 @@ svg.lucide {
 .prose-answer .hljs-property,
 .prose-answer .hljs-selector-class,
 .prose-answer .hljs-selector-id {
-  color: oklch(0.8 0.05 320);
+  color: var(--syn-attr);
 }
 .prose-answer .hljs-deletion {
-  color: oklch(0.68 0.16 20);
+  color: var(--danger);
 }
 .prose-answer .hljs-emphasis {
   font-style: italic;
@@ -283,8 +536,8 @@ svg.lucide {
 .prose-answer blockquote {
   margin: 0.6em 0;
   padding: 2px 0 2px 11px;
-  border-left: 2px solid var(--primary);
-  color: var(--muted-foreground);
+  border-left: 2px solid var(--line-strong);
+  color: var(--fg-subtle);
 }
 .prose-answer table {
   border-collapse: collapse;
@@ -293,18 +546,18 @@ svg.lucide {
 .prose-answer th,
 .prose-answer td {
   padding: 4px 9px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   font-size: 0.93em;
 }
 .prose-answer th {
-  color: var(--foreground);
-  background: oklch(1 0 0 / 4%);
+  color: var(--fg);
+  background: var(--surface-active);
 }
 .prose-answer hr {
   border: 0;
   height: 1px;
   margin: 1em 0;
-  background: var(--border);
+  background: var(--line);
 }
 
 @layer utilities {
@@ -317,44 +570,6 @@ svg.lucide {
   }
 }
 
-.eq-bar {
-  transform-origin: center;
-  animation: eq 1.1s ease-in-out infinite;
-}
-
-@keyframes eq {
-  0%,
-  100% {
-    transform: scaleY(0.35);
-  }
-  50% {
-    transform: scaleY(1);
-  }
-}
-
-.thinking-shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--muted-foreground) 40%,
-    var(--foreground) 50%,
-    var(--muted-foreground) 60%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: thinking-shimmer 2s linear infinite;
-}
-
-@keyframes thinking-shimmer {
-  from {
-    background-position: 100% 0;
-  }
-  to {
-    background-position: -100% 0;
-  }
-}
-
 ::-webkit-scrollbar {
   width: 4px;
   height: 4px;
@@ -363,11 +578,11 @@ svg.lucide {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: oklch(1 0 0 / 14%);
+  background: var(--line-strong);
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: oklch(1 0 0 / 28%);
+  background: var(--fg-subtle);
 }
 ::-webkit-scrollbar-corner {
   background: transparent;

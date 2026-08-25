@@ -42,7 +42,7 @@ export function SettingsScreen({ draft, set, tab, onRedeem, onTabChange }: Setti
           key={tab}
           className="flex min-w-0 flex-1 animate-in flex-col gap-3 duration-150 fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none"
         >
-          <p className="text-caption text-muted-foreground">{settingsTabMeta(tab).description}</p>
+          <p className="text-caption text-fg-subtle">{settingsTabMeta(tab).description}</p>
           {sections[tab]}
         </div>
       </div>

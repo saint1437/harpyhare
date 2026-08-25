@@ -33,12 +33,9 @@ function summary(steps: StartStep[]): string {
 
 function StateChip({ state }: { state: StartStepState }) {
   return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 text-caption text-muted-foreground">
+    <span className="inline-flex shrink-0 items-center gap-1.5 text-caption text-fg-subtle">
       <span
-        className={cn(
-          "size-1.5 rounded-full",
-          state === "done" ? "bg-primary" : "bg-muted-foreground/40",
-        )}
+        className={cn("size-1.5 rounded-full", state === "done" ? "bg-success" : "bg-fg-subtle")}
         aria-hidden
       />
       {STATE_LABEL[state]}
@@ -56,7 +53,7 @@ function StepView({ step, children }: { step: StartStep; children: ReactNode }) 
       className="grid grid-cols-[1.25rem_minmax(0,1fr)] items-start gap-x-3 px-3 py-2.5"
     >
       <Icon
-        className={cn("mt-0.5 size-4.5", done ? "text-primary" : "text-muted-foreground")}
+        className={cn("mt-0.5 size-4.5", done ? "text-success" : "text-fg-subtle")}
         aria-hidden
       />
       <div className="flex min-w-0 flex-col gap-1.5">
@@ -64,7 +61,7 @@ function StepView({ step, children }: { step: StartStep; children: ReactNode }) 
           <span className="text-body">{step.title}</span>
           <StateChip state={step.state} />
         </div>
-        <p className="text-caption text-muted-foreground">{step.hint}</p>
+        <p className="text-caption text-fg-subtle">{step.hint}</p>
         {children}
       </div>
     </div>
@@ -190,8 +187,8 @@ export function StartScreen({
 
       <AudioCheckCard autoModeEnabled={readiness.autoModeEnabled} />
 
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5 rounded-lg bg-card px-3 py-2.5 shadow-raise ring-1 ring-border ring-inset">
-        <p className="min-w-40 flex-1 text-caption text-muted-foreground">{DEFAULTS_NOTE}</p>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5 rounded-lg bg-surface px-3 py-2.5 shadow-raise ring-1 ring-inset ring-line">
+        <p className="min-w-40 flex-1 text-caption text-fg-subtle">{DEFAULTS_NOTE}</p>
         <div className="flex shrink-0 items-center gap-1.5">
           <Button
             variant="ghost"

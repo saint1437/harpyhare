@@ -45,13 +45,13 @@ function DownloadProgress({ updater }: { updater: UpdaterApi }) {
         <div
           className={
             percent === null
-              ? "h-full w-full animate-pulse rounded-full bg-primary/60"
-              : "h-full rounded-full bg-primary transition-[width]"
+              ? "h-full w-full animate-pulse rounded-full bg-accent/60"
+              : "h-full rounded-full bg-accent transition-[width]"
           }
           style={percent === null ? undefined : { width: `${String(percent)}%` }}
         />
       </div>
-      <span className="font-mono text-caption text-muted-foreground tabular-nums">
+      <span className="font-mono text-caption text-fg-subtle tabular-nums">
         {progressCaption(updater, percent)}
       </span>
     </div>
@@ -90,7 +90,7 @@ export function UpdatesScreen({
         >
           {updater.info.notes !== "" && (
             <SettingBlock label="Что нового">
-              <div className="prose-answer max-h-56 overflow-y-auto rounded-lg bg-surface px-3 py-2 text-body leading-relaxed text-muted-foreground ring-1 ring-border ring-inset">
+              <div className="prose-answer max-h-56 overflow-y-auto rounded-lg bg-surface px-3 py-2 text-body leading-relaxed text-fg-subtle ring-1 ring-inset ring-line">
                 <Markdown remarkPlugins={REMARK_PLUGINS}>{updater.info.notes}</Markdown>
               </div>
             </SettingBlock>
@@ -104,9 +104,7 @@ export function UpdatesScreen({
 
           {updater.status === "error" && updater.error !== null && (
             <SettingBlock label="Ошибка установки">
-              <span className="text-body whitespace-pre-wrap text-destructive">
-                {updater.error}
-              </span>
+              <span className="text-body whitespace-pre-wrap text-danger">{updater.error}</span>
             </SettingBlock>
           )}
 

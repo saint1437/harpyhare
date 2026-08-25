@@ -42,15 +42,15 @@ function SidebarItem({
         onSelect(id);
       }}
       className={cn(
-        "group relative flex items-center justify-center rounded-md px-0 py-2 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+        "group relative flex items-center justify-center rounded-md px-0 py-2 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-focus",
         active
-          ? "bg-surface-active text-foreground"
-          : "text-muted-foreground hover:bg-surface hover:text-foreground active:bg-surface-active",
+          ? "bg-surface-active text-fg"
+          : "text-fg-subtle hover:bg-surface hover:text-fg active:bg-surface-active",
       )}
     >
       {active && (
         <span
-          className="absolute top-1/2 left-0 h-4 w-0.5 -translate-y-1/2 rounded-full bg-primary"
+          className="absolute top-1/2 left-0 h-4 w-0.5 -translate-y-1/2 rounded-full bg-accent-mark"
           aria-hidden
         />
       )}
@@ -59,7 +59,7 @@ function SidebarItem({
         <span
           className={cn(
             "absolute top-1 right-1 size-1.5 rounded-full",
-            notice.kind === "blocker" ? "bg-destructive" : "bg-primary",
+            notice.kind === "blocker" ? "bg-danger" : "bg-accent-mark",
           )}
           aria-hidden
         />

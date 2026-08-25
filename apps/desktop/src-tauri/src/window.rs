@@ -64,7 +64,9 @@ pub fn create_launcher_window(app: &AppHandle, settings: &settings::Settings) ->
     )
     .resizable(true)
     .center()
-    .theme(Some(tauri::Theme::Dark))
+    // No .theme(): on macOS tao turns that into an app-wide `[NSApp setAppearance:]`
+    // that is never reset, so both `Window::theme()` and the webview's
+    // `prefers-color-scheme` would report a value the user never chose.
     .content_protected(!settings.screen_share_visible)
     .build()
     .map_err(|e| e.to_string())?;

@@ -51,8 +51,8 @@ export function StolenNote({ editor, group }: { editor: HotkeyEditor; group?: st
   const victim = hotkeyAction(editor.stolen.from);
   return (
     <div className="flex items-center gap-2 bg-surface px-3 py-2">
-      <Info className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-      <p className="text-caption text-foreground">
+      <Info className="size-3.5 shrink-0 text-fg-subtle" aria-hidden />
+      <p className="text-caption text-fg">
         {formatCombo(editor.stolen.combo)} снят у действия «{victim.label}» — оно осталось без
         хоткея.
       </p>

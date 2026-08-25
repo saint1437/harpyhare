@@ -30,7 +30,7 @@ function PresetRow({
     <div className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 transition-colors hover:bg-surface/50">
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="truncate text-body">{preset.name.trim() || UNNAMED_PRESET_LABEL}</span>
-        <span className="line-clamp-1 text-caption text-muted-foreground">
+        <span className="line-clamp-1 text-caption text-fg-subtle">
           {lengthLabel(preset.text)}
           {preset.text.trim() === "" ? "" : ` · ${preset.text.trim()}`}
         </span>
@@ -39,7 +39,7 @@ function PresetRow({
         <IconButton title="Изменить пресет" onClick={onEdit}>
           <Pencil />
         </IconButton>
-        <IconButton title="Удалить пресет" className="hover:text-destructive" onClick={onRemove}>
+        <IconButton title="Удалить пресет" className="hover:text-danger" onClick={onRemove}>
           <Trash2 />
         </IconButton>
       </div>
@@ -118,7 +118,7 @@ export function PresetsSection({
         {presets.length === 0 && (
           <div className="flex flex-col items-start gap-2 px-3 py-4">
             <span className="text-body">Пока ни одного пресета</span>
-            <span className="max-w-prose text-caption text-muted-foreground">
+            <span className="max-w-prose text-caption text-fg-subtle">
               Пресет — заготовка роли: «отвечай кратко и по делу», «ты интервьюер по Go», «переводи
               ответ на английский». В чате его можно переключить в любой момент.
             </span>
@@ -170,7 +170,7 @@ export function PresetsSection({
         {official.map((preset) => (
           <div key={preset.id} className="flex min-w-0 flex-col gap-0.5 px-3 py-2">
             <span className="truncate text-body">{preset.name}</span>
-            <span className="line-clamp-1 text-caption text-muted-foreground">{preset.text}</span>
+            <span className="line-clamp-1 text-caption text-fg-subtle">{preset.text}</span>
           </div>
         ))}
       </SettingGroup>

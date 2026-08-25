@@ -41,6 +41,8 @@ export interface Settings {
   resize_step: number;
   capture_device_uid: string;
   theme: string;
+  onboarding_done: boolean;
+  copy_results_to_clipboard: boolean;
   scroll_step: number;
   buffer_enabled: boolean;
   buffer_seconds: number;

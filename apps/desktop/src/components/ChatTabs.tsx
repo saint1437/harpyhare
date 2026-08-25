@@ -80,17 +80,17 @@ function ChatTab({
       title={title || `Чат ${String(number)}`}
       aria-label={closeOnClick ? `Закрыть чат ${String(number)}` : `Чат ${String(number)}`}
       className={cn(
-        "group relative grid size-6.5 shrink-0 place-items-center rounded-md font-mono text-caption transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+        "group relative grid size-6.5 shrink-0 place-items-center rounded-md font-mono text-caption transition-colors outline-none focus-visible:ring-2 focus-visible:ring-focus",
         isActive
-          ? "bg-surface-active text-foreground ring-1 ring-border ring-inset"
-          : "text-muted-foreground hover:bg-surface hover:text-foreground active:bg-surface-active",
+          ? "bg-surface-active text-fg ring-1 ring-inset ring-line"
+          : "text-fg-subtle hover:bg-surface hover:text-fg active:bg-surface-active",
       )}
     >
       <span className={cn("tabular-nums", closeOnClick && "group-hover:hidden")}>{number}</span>
       {closeOnClick && <X className="hidden size-3.5 group-hover:block" />}
       {isStreaming && (
         <span
-          className="absolute -top-0.5 -right-0.5 size-1.5 animate-pulse rounded-full bg-primary"
+          className="absolute -top-0.5 -right-0.5 size-1.5 animate-pulse rounded-full bg-accent-mark"
           aria-hidden
         />
       )}

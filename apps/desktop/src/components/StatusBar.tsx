@@ -42,12 +42,12 @@ function ContextUsageGauge({ usage }: { usage: ContextUsage }) {
         <span
           className={cn(
             "block h-full rounded-full transition-[width] duration-300",
-            percent >= CONTEXT_USAGE_WARN_PERCENT ? "bg-destructive" : "bg-muted-foreground/60",
+            percent >= CONTEXT_USAGE_WARN_PERCENT ? "bg-danger" : "bg-fg-subtle/60",
           )}
           style={{ width: `${String(Math.max(CONTEXT_GAUGE_MIN_FILL_PERCENT, percent))}%` }}
         />
       </span>
-      <span className="text-hint text-muted-foreground tabular-nums">{percent}%</span>
+      <span className="text-hint text-fg-subtle tabular-nums">{percent}%</span>
     </div>
   );
 }
@@ -57,10 +57,10 @@ function indicatorProps(
   autoListening: boolean,
   showError: boolean,
 ): EqBarsProps {
-  if (state === "recording") return { animated: true, barClass: "bg-recording" };
-  if (state === "transcribing") return { animated: true, barClass: "bg-primary" };
-  if (autoListening) return { animated: true, barClass: "bg-recording" };
-  return { animated: false, barClass: showError ? "bg-destructive" : "bg-muted-foreground/50" };
+  if (state === "recording") return { animated: true, barClass: "bg-listening" };
+  if (state === "transcribing") return { animated: true, barClass: "bg-processing" };
+  if (autoListening) return { animated: true, barClass: "bg-listening" };
+  return { animated: false, barClass: showError ? "bg-danger" : "bg-fg-subtle/50" };
 }
 
 export function StatusBar({
@@ -91,7 +91,7 @@ export function StatusBar({
       {tabs}
       <span
         title={showError ? error : undefined}
-        className="min-w-0 flex-1 truncate text-caption text-destructive"
+        className="min-w-0 flex-1 truncate text-caption text-danger"
       >
         {showError ? error : ""}
       </span>
@@ -116,9 +116,9 @@ function UpdateBadge({ update }: { update: NonNullable<StatusBarProps["update"]>
       onClick={update.onOpen}
       aria-label={availableTitle}
       title={update.busy ? `Обновление до ${update.version}…` : availableTitle}
-      className="font-mono text-muted-foreground tabular-nums"
+      className="font-mono text-fg-subtle tabular-nums"
     >
-      <ArrowDownCircle className={cn("text-primary", update.busy && "animate-pulse")} />
+      <ArrowDownCircle className={cn("text-accent-mark", update.busy && "animate-pulse")} />
       {update.version}
     </Button>
   );

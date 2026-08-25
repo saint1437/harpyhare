@@ -198,7 +198,7 @@ function RowActions({
           <Pencil className="size-3.5" />
         </IconButton>
       )}
-      <IconButton title={removeTitle} className="size-6 hover:text-destructive" onClick={onRemove}>
+      <IconButton title={removeTitle} className="size-6 hover:text-danger" onClick={onRemove}>
         <Trash2 className="size-3.5" />
       </IconButton>
     </div>
@@ -233,14 +233,12 @@ function DocRow({
         dragging && "opacity-40",
       )}
     >
-      <GripVertical className="size-3.5 shrink-0 text-muted-foreground/35 transition-colors group-hover:text-muted-foreground" />
+      <GripVertical className="size-3.5 shrink-0 text-fg-subtle/35 transition-colors group-hover:text-fg-subtle" />
       <RowIconBadge>
-        <FileText className="size-3.5 text-muted-foreground" />
+        <FileText className="size-3.5 text-fg-subtle" />
       </RowIconBadge>
       <span className="min-w-0 flex-1 truncate text-body">{doc.name}</span>
-      <span className="shrink-0 text-hint text-muted-foreground">
-        {formatChars(doc.text.length)}
-      </span>
+      <span className="shrink-0 text-hint text-fg-subtle">{formatChars(doc.text.length)}</span>
       <RowActions
         onEdit={onEdit}
         editTitle="Редактировать"
@@ -267,7 +265,7 @@ function FolderHeader({
   return (
     <div className="group flex items-center gap-2 px-1.5 py-1">
       <RowIconBadge>
-        <Folder className="size-3.5 text-muted-foreground" />
+        <Folder className="size-3.5 text-fg-subtle" />
       </RowIconBadge>
       {editing ? (
         <Input
@@ -292,7 +290,7 @@ function FolderHeader({
       ) : (
         <>
           <span className="min-w-0 truncate text-body font-medium">{name}</span>
-          <span className="shrink-0 rounded-full bg-surface px-1.5 py-px text-hint text-muted-foreground">
+          <span className="shrink-0 rounded-full bg-surface px-1.5 py-px text-hint text-fg-subtle">
             {docCount}
           </span>
           <span className="flex-1" />
@@ -327,7 +325,7 @@ function DocEditor({
   onCancel: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-lg bg-card p-3 shadow-raise ring-1 ring-border ring-inset">
+    <div className="flex flex-col gap-2 rounded-lg bg-surface p-3 shadow-raise ring-1 ring-inset ring-line">
       <SectionLabel>{draft.id === null ? "Новый материал" : "Материал"}</SectionLabel>
       <div className="flex gap-2">
         <Input
@@ -367,7 +365,7 @@ function DocEditor({
         className="max-h-56 overflow-y-auto"
       />
       <div className="flex items-center justify-between">
-        <span className="text-hint text-muted-foreground">{formatChars(draft.text.length)}</span>
+        <span className="text-hint text-fg-subtle">{formatChars(draft.text.length)}</span>
         <div className="flex gap-2">
           <Button variant="ghost" size="sm" onClick={onCancel}>
             Отмена
@@ -387,16 +385,16 @@ function EmptyDropZone({ onPick }: { onPick: () => void }) {
       type="button"
       onClick={onPick}
       {...{ [DROP_FOLDER_ATTR]: ROOT_FOLDER_ID }}
-      className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-7 text-center transition-colors outline-none hover:border-foreground/30 hover:bg-surface focus-visible:ring-2 focus-visible:ring-ring/60"
+      className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-7 text-center transition-colors outline-none hover:border-fg/30 hover:bg-surface focus-visible:ring-2 focus-visible:ring-focus"
     >
-      <span className="grid size-9 place-items-center rounded-lg bg-surface ring-1 ring-border ring-inset">
-        <Upload className="size-4 text-muted-foreground" />
+      <span className="grid size-9 place-items-center rounded-lg bg-surface ring-1 ring-inset ring-line">
+        <Upload className="size-4 text-fg-subtle" />
       </span>
-      <span className="text-body text-foreground">
+      <span className="text-body text-fg">
         Перетащи .md, .txt или .pdf из {FILE_MANAGER_LABEL[PLATFORM]} — или нажми, чтобы выбрать
         файлы
       </span>
-      <span className="text-caption text-muted-foreground">
+      <span className="text-caption text-fg-subtle">
         Материалы можно добавлять и текстом — кнопка «Материал»
       </span>
     </button>
@@ -447,7 +445,7 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-caption text-muted-foreground">
+        <span className="text-caption text-fg-subtle">
           {librarySummary(library.docs.length, library.folders.length)}
         </span>
         <div className="flex items-center gap-1">
@@ -489,7 +487,7 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
         />
       </div>
 
-      {importError !== null && <p className="text-caption text-destructive">{importError}</p>}
+      {importError !== null && <p className="text-caption text-danger">{importError}</p>}
 
       {docDraft && (
         <DocEditor
@@ -515,14 +513,14 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
             {...{ [DROP_FOLDER_ATTR]: ROOT_FOLDER_ID }}
             className={cn(
               "flex flex-col gap-0.5 rounded-lg p-1 transition-colors",
-              dropTarget === ROOT_FOLDER_ID && "bg-primary/5 ring-1 ring-primary/40",
+              dropTarget === ROOT_FOLDER_ID && "bg-accent/10 ring-1 ring-accent/40",
             )}
           >
             {library.folders.length > 0 && (
               <SectionLabel className="px-1.5 pt-0.5 pb-1">Без папки</SectionLabel>
             )}
             {roots.length === 0 && (
-              <p className="px-1.5 pb-1 text-caption text-muted-foreground">
+              <p className="px-1.5 pb-1 text-caption text-fg-subtle">
                 Перетащи файлы сюда, чтобы добавить без папки
               </p>
             )}
@@ -554,8 +552,8 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
               key={folder.id}
               {...{ [DROP_FOLDER_ATTR]: folder.id }}
               className={cn(
-                "flex flex-col gap-0.5 rounded-lg bg-card p-1.5 shadow-raise ring-1 ring-border transition-colors ring-inset",
-                dropTarget === folder.id && "bg-primary/5 ring-primary/40",
+                "flex flex-col gap-0.5 rounded-lg bg-surface p-1.5 shadow-raise ring-1 ring-inset ring-line transition-colors",
+                dropTarget === folder.id && "bg-accent/10 ring-accent/40",
               )}
             >
               <FolderHeader
@@ -570,7 +568,7 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
               />
               <div className="ml-4 flex flex-col gap-0.5 border-l pl-2">
                 {docs.length === 0 && (
-                  <p className="px-1.5 py-1 text-caption text-muted-foreground">
+                  <p className="px-1.5 py-1 text-caption text-fg-subtle">
                     Пусто — перетащи файлы сюда
                   </p>
                 )}

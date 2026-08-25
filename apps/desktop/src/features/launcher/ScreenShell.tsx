@@ -14,13 +14,8 @@ export function ScreenShell({
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-2.5">
       <header className="flex min-h-7 items-center gap-2.5">
-        <h2 className="shrink-0 text-title font-semibold tracking-tight text-foreground">
-          {meta.label}
-        </h2>
-        <p
-          title={meta.description}
-          className="min-w-0 flex-1 truncate text-caption text-muted-foreground"
-        >
+        <h2 className="shrink-0 text-title font-semibold tracking-tight text-fg">{meta.label}</h2>
+        <p title={meta.description} className="min-w-0 flex-1 truncate text-caption text-fg-subtle">
           {meta.description}
         </p>
         {actions !== undefined && (

@@ -20,10 +20,10 @@ export function SettingGroup({
       <header className="flex flex-col gap-0.5 px-1">
         <SectionLabel>{title}</SectionLabel>
         {description !== undefined && (
-          <p className="text-caption text-muted-foreground/90">{description}</p>
+          <p className="text-caption text-fg-subtle/90">{description}</p>
         )}
       </header>
-      <div className="divide-y divide-border overflow-hidden rounded-lg bg-card shadow-raise ring-1 ring-border ring-inset">
+      <div className="divide-y divide-line overflow-hidden rounded-lg bg-surface shadow-raise ring-1 ring-inset ring-line">
         {children}
       </div>
     </section>
@@ -44,10 +44,10 @@ export function SettingRow({
   return (
     <div className="grid min-h-9 grid-cols-[minmax(0,1fr)_14rem] items-center gap-x-4 px-3 py-2">
       <div className="min-w-0">
-        <Label htmlFor={htmlFor} className="text-body font-normal text-foreground">
+        <Label htmlFor={htmlFor} className="text-body font-normal text-fg">
           {label}
         </Label>
-        {hint !== undefined && <p className="mt-0.5 text-caption text-muted-foreground">{hint}</p>}
+        {hint !== undefined && <p className="mt-0.5 text-caption text-fg-subtle">{hint}</p>}
       </div>
       <div className="flex min-w-0 items-center justify-end">{children}</div>
     </div>
@@ -66,8 +66,8 @@ export function SettingBlock({
   return (
     <div className="flex flex-col gap-1.5 px-3 py-2.5">
       <div className="min-w-0">
-        <span className="text-body text-foreground">{label}</span>
-        {hint !== undefined && <p className="mt-0.5 text-caption text-muted-foreground">{hint}</p>}
+        <span className="text-body text-fg">{label}</span>
+        {hint !== undefined && <p className="mt-0.5 text-caption text-fg-subtle">{hint}</p>}
       </div>
       {children}
     </div>
@@ -145,7 +145,7 @@ export function SettingSlider({
       />
       <span
         className={cn(
-          "w-12 shrink-0 text-right font-mono text-caption text-muted-foreground tabular-nums",
+          "w-12 shrink-0 text-right font-mono text-caption text-fg-subtle tabular-nums",
           disabled && "opacity-50",
         )}
       >

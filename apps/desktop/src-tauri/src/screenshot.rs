@@ -24,7 +24,9 @@ const NO_PERMISSION_MESSAGE: &str =
     "Нет разрешения «Запись экрана». Выдай его в системных настройках и повтори.";
 
 fn deliver(app: &AppHandle, png: Vec<u8>) {
-    crate::clipboard::write_png(app, &png);
+    if crate::app_state::current_settings(app).copy_results_to_clipboard {
+        crate::clipboard::write_png(app, &png);
+    }
     let data_base64 = base64::engine::general_purpose::STANDARD.encode(&png);
     events::screenshot_ready(
         app,

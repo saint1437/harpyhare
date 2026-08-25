@@ -58,9 +58,9 @@ export const MODIFIER_COMBOS = {"macos":["Cmd","Ctrl","Alt","Cmd+Shift","Ctrl+Sh
 
 export const QUICK_ACTION_LIMIT = 9 as const;
 
-export const SETTINGS_DEFAULTS = {"access_token":"","anthropic_api_key":"","audio_permission_requested":false,"auto_max_utterance_secs":30,"auto_mic_device_uid":"","auto_min_utterance_ms":400,"auto_mode_enabled":false,"auto_preview_html":true,"auto_reply_instant":false,"auto_send":false,"auto_silence_ms":700,"buffer_enabled":true,"buffer_seconds":4,"capture_device_uid":"","chat_font_size":13.5,"groq_api_key":"","hotkeys":[],"mic_permission_requested":false,"move_step":20,"prompt_presets":[],"quick_action_attachments":false,"quick_actions":[{"id":"detail","prompt":"Расскажи более подробно.","title":"Подробнее"},{"id":"brief","prompt":"Ответь короче, только суть.","title":"Короче"},{"id":"code","prompt":"Покажи пример кода.","title":"Пример кода"}],"resize_step":20,"screen_permission_requested":false,"screen_share_visible":false,"scroll_step":120,"skipped_version":"","stt_language":"ru","stt_translate":false,"teleprompter_font_size":28.0,"teleprompter_resume":true,"teleprompter_speed":40.0,"theme":"gray","window_height":680.0,"window_opacity":0.9,"window_width":960.0} as const;
+export const SETTINGS_DEFAULTS = {"access_token":"","anthropic_api_key":"","audio_permission_requested":false,"auto_max_utterance_secs":30,"auto_mic_device_uid":"","auto_min_utterance_ms":400,"auto_mode_enabled":false,"auto_preview_html":true,"auto_reply_instant":false,"auto_send":false,"auto_silence_ms":700,"buffer_enabled":true,"buffer_seconds":4,"capture_device_uid":"","chat_font_size":13.5,"copy_results_to_clipboard":true,"groq_api_key":"","hotkeys":[],"mic_permission_requested":false,"move_step":20,"onboarding_done":false,"prompt_presets":[],"quick_action_attachments":false,"quick_actions":[{"id":"detail","prompt":"Расскажи более подробно.","title":"Подробнее"},{"id":"brief","prompt":"Ответь короче, только суть.","title":"Короче"},{"id":"code","prompt":"Покажи пример кода.","title":"Пример кода"}],"resize_step":20,"screen_permission_requested":false,"screen_share_visible":false,"scroll_step":120,"skipped_version":"","stt_language":"ru","stt_translate":false,"teleprompter_font_size":28.0,"teleprompter_resume":true,"teleprompter_speed":40.0,"theme":"system","window_height":680.0,"window_opacity":0.9,"window_width":960.0} as const;
 
-export const SETTINGS_LIMITS = {"autoMaxUtteranceSecs":{"default":30,"max":120,"min":5},"autoMinUtteranceMs":{"default":400,"max":3000,"min":200},"autoSilenceMs":{"default":700,"max":2000,"min":300},"bufferSeconds":{"default":4,"max":10,"min":4},"chatFontSize":{"default":13.5,"max":20.0,"min":10.0},"moveStep":{"default":20,"max":200,"min":1},"resizeStep":{"default":20,"max":200,"min":1},"scrollStep":{"default":120,"max":1000,"min":10},"teleprompterFontSize":{"default":28.0,"max":48.0,"min":20.0},"teleprompterSpeed":{"default":40.0,"max":150.0,"min":10.0},"windowHeight":{"default":680.0,"max":1100.0,"min":520.0},"windowOpacity":{"default":0.9,"max":1.0,"min":0.2},"windowWidth":{"default":960.0,"max":1600.0,"min":300.0}} as const;
+export const SETTINGS_LIMITS = {"autoMaxUtteranceSecs":{"default":30,"max":120,"min":5},"autoMinUtteranceMs":{"default":400,"max":3000,"min":200},"autoSilenceMs":{"default":700,"max":2000,"min":300},"bufferSeconds":{"default":4,"max":10,"min":4},"chatFontSize":{"default":13.5,"max":20.0,"min":10.0},"moveStep":{"default":20,"max":200,"min":1},"resizeStep":{"default":20,"max":200,"min":1},"scrollStep":{"default":120,"max":1000,"min":10},"teleprompterFontSize":{"default":28.0,"max":48.0,"min":20.0},"teleprompterSpeed":{"default":40.0,"max":150.0,"min":10.0},"windowHeight":{"default":680.0,"max":1100.0,"min":520.0},"windowOpacity":{"default":0.9,"max":1.0,"min":0.75},"windowWidth":{"default":960.0,"max":1600.0,"min":300.0}} as const;
 
 /* Types */
 export type AppError = {
@@ -245,6 +245,8 @@ export type Settings = {
 	mic_permission_requested?: boolean,
 	quick_actions?: QuickAction[],
 	quick_action_attachments?: boolean,
+	onboarding_done?: boolean,
+	copy_results_to_clipboard?: boolean,
 };
 
 export type Speaker = "interviewer" | "user";

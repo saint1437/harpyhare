@@ -117,7 +117,7 @@ export function Teleprompter({
   }, [onClose, closeCombo, pauseCombo]);
 
   return (
-    <div className="absolute inset-0 z-50 flex flex-col bg-black/85 backdrop-blur-sm">
+    <div className="absolute inset-0 z-50 flex flex-col bg-overlay backdrop-blur-sm">
       <div className="relative min-h-0 flex-1">
         <div
           ref={scrollRef}
@@ -126,14 +126,14 @@ export function Teleprompter({
           style={{ maskImage: EDGE_FADE, WebkitMaskImage: EDGE_FADE }}
         >
           <div
-            className="mx-auto max-w-[26ch] px-8 text-center leading-[1.7] font-medium tracking-wide whitespace-pre-wrap text-foreground/90"
+            className="mx-auto max-w-[26ch] px-8 text-center leading-[1.7] font-medium tracking-wide whitespace-pre-wrap text-fg/90"
             style={{ fontSize, paddingTop: "46vh", paddingBottom: "54vh" }}
           >
             {text || EMPTY_HINT}
           </div>
         </div>
         <div
-          className="pointer-events-none absolute inset-x-0 top-1/2 h-16 -translate-y-1/2 bg-primary/5"
+          className="pointer-events-none absolute inset-x-0 top-1/2 h-16 -translate-y-1/2 bg-accent/10"
           aria-hidden
         />
       </div>
@@ -192,11 +192,11 @@ function Stepper({
   onInc: () => void;
 }) {
   return (
-    <div className="flex items-center gap-0.5 rounded-lg bg-surface px-0.5 ring-1 ring-border ring-inset">
+    <div className="flex items-center gap-0.5 rounded-lg bg-surface px-0.5 ring-1 ring-inset ring-line">
       <IconButton title={`${label} −`} onClick={onDec}>
         <Minus />
       </IconButton>
-      <span className="w-14 text-center font-mono text-caption text-muted-foreground tabular-nums">
+      <span className="w-14 text-center font-mono text-caption text-fg-subtle tabular-nums">
         {label} {value}
       </span>
       <IconButton title={`${label} +`} onClick={onInc}>

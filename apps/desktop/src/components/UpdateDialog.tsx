@@ -76,7 +76,7 @@ export function UpdateDialog({
 
         <div className="grid gap-3 py-1">
           {currentVersion !== "" && (
-            <span className="font-mono text-caption text-muted-foreground">
+            <span className="font-mono text-caption text-fg-subtle">
               {currentVersion} → {info.version}
             </span>
           )}
@@ -86,7 +86,7 @@ export function UpdateDialog({
           {busy && <DownloadProgress status={status} progress={progress} />}
 
           {status === "error" && error !== null && (
-            <span className="text-body whitespace-pre-wrap text-destructive">{error}</span>
+            <span className="text-body whitespace-pre-wrap text-danger">{error}</span>
           )}
         </div>
 
@@ -107,7 +107,7 @@ export function UpdateDialog({
 
 function ReleaseNotes({ notes }: { notes: string }) {
   return (
-    <div className="prose-answer max-h-48 overflow-y-auto rounded-lg bg-surface px-3 py-2 text-body leading-relaxed text-foreground/90 ring-1 ring-border ring-inset">
+    <div className="prose-answer max-h-48 overflow-y-auto rounded-lg bg-surface px-3 py-2 text-body leading-relaxed text-fg/90 ring-1 ring-inset ring-line">
       <Markdown remarkPlugins={REMARK_PLUGINS}>{notes}</Markdown>
     </div>
   );
@@ -127,13 +127,13 @@ function DownloadProgress({
         <div
           className={
             percent === null
-              ? "h-full w-full animate-pulse rounded-full bg-primary/60"
-              : "h-full rounded-full bg-primary transition-[width]"
+              ? "h-full w-full animate-pulse rounded-full bg-accent/60"
+              : "h-full rounded-full bg-accent transition-[width]"
           }
           style={percent === null ? undefined : { width: `${percent}%` }}
         />
       </div>
-      <span className="font-mono text-caption text-muted-foreground tabular-nums">
+      <span className="font-mono text-caption text-fg-subtle tabular-nums">
         {progressCaption(status, percent, progress)}
       </span>
     </div>

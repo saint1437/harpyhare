@@ -50,7 +50,7 @@ export function AccessCodeForm({ onRedeem, autoFocus }: AccessCodeFormProps) {
           {submitting ? "Активация…" : "Активировать"}
         </Button>
       </div>
-      {error !== null && <span className="text-caption text-destructive">{error}</span>}
+      {error !== null && <span className="text-caption text-danger">{error}</span>}
     </div>
   );
 }

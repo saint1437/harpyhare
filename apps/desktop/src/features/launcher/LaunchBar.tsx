@@ -38,8 +38,8 @@ function StatusLine({
     <span
       className={cn(
         "size-1.5 shrink-0 rounded-full",
-        busy && "bg-muted-foreground/40",
-        !busy && (blocker ? "bg-destructive" : "bg-primary"),
+        busy && "bg-fg-subtle/40",
+        !busy && (blocker ? "bg-danger" : "bg-success"),
       )}
       aria-hidden
     />
@@ -50,7 +50,7 @@ function StatusLine({
       <Button
         variant="ghost"
         size="compact"
-        className="min-w-0 gap-2 text-muted-foreground"
+        className="min-w-0 gap-2 text-fg-subtle"
         onClick={() => {
           onGoToBlocker(blocker);
         }}
@@ -59,13 +59,13 @@ function StatusLine({
         <span className="truncate" title={text}>
           {text}
         </span>
-        <ChevronRight className="size-3 shrink-0 text-muted-foreground/70" aria-hidden />
+        <ChevronRight className="size-3 shrink-0 text-fg-subtle/70" aria-hidden />
       </Button>
     );
   }
 
   return (
-    <span className="inline-flex h-6.5 min-w-0 items-center gap-2 px-2 text-caption text-muted-foreground">
+    <span className="inline-flex h-6.5 min-w-0 items-center gap-2 px-2 text-caption text-fg-subtle">
       {dot}
       <span className="truncate" title={text}>
         {text}
@@ -96,8 +96,8 @@ export function LaunchBar({
       className={cn("flex h-9 shrink-0 items-center gap-3", MACOS_TRAFFIC_LIGHTS_CLASS)}
     >
       <div className="flex shrink-0 items-center gap-2">
-        <EqBars animated={launching} barClass="bg-primary" />
-        <h1 className="font-mono text-hint font-semibold tracking-wider text-foreground/55 uppercase">
+        <EqBars animated={launching} barClass="bg-accent-mark" />
+        <h1 className="font-mono text-hint font-semibold tracking-wider text-fg/55 uppercase">
           {BRAND_NAME}
         </h1>
       </div>

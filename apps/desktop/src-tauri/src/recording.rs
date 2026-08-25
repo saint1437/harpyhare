@@ -284,7 +284,9 @@ async fn finish_transcribe(app: AppHandle, samples: Vec<f32>) {
 
 fn deliver_transcript(app: &AppHandle, text: String) {
     use tauri_plugin_clipboard_manager::ClipboardExt;
-    let _ = app.clipboard().write_text(text.clone());
+    if current_settings(app).copy_results_to_clipboard {
+        let _ = app.clipboard().write_text(text.clone());
+    }
     events::transcript_ready(app, text);
     events::focus_prompt(app);
     finish_transcription(app, Ok(()));

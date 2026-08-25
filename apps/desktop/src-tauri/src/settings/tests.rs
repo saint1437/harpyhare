@@ -143,7 +143,7 @@ fn load_missing_window_size_defaults() {
     assert_eq!(s.window_height, 680.0);
     assert_eq!(s.resize_step, 20);
     assert_eq!(s.capture_device_uid, "");
-    assert_eq!(s.theme, "gray");
+    assert_eq!(s.theme, defaults::THEME);
     assert_eq!(s.scroll_step, 120);
 }
 
@@ -186,10 +186,47 @@ fn clamp_resolves_hotkey_collisions_in_favour_of_the_latest_binding() {
 fn clamp_resets_unknown_theme() {
     let mut s = Settings { theme: "neon".into(), ..Default::default() };
     s.clamp();
-    assert_eq!(s.theme, "gray");
-    s.theme = "black".into();
-    s.clamp();
-    assert_eq!(s.theme, "black");
+    assert_eq!(s.theme, defaults::THEME);
+    for accepted in [THEME_SYSTEM, THEME_LIGHT, THEME_DARK] {
+        s.theme = accepted.into();
+        s.clamp();
+        assert_eq!(s.theme, accepted);
+    }
+    // The retired pair must not survive clamping — they are migrated on load,
+    // and anything that reaches clamp still holding one is a bug.
+    for retired in [LEGACY_THEME_GRAY, LEGACY_THEME_BLACK] {
+        s.theme = retired.into();
+        s.clamp();
+        assert_eq!(s.theme, defaults::THEME);
+    }
+}
+
+#[test]
+fn load_migrates_the_retired_dark_themes() {
+    let dir = tempfile::tempdir().unwrap();
+    for (retired, path) in [(LEGACY_THEME_GRAY, "gray.json"), (LEGACY_THEME_BLACK, "black.json")] {
+        let path = dir.path().join(path);
+        std::fs::write(&path, format!(r#"{{"theme":"{retired}"}}"#)).unwrap();
+        // Both were dark, so an existing install keeps the appearance it had.
+        assert_eq!(Settings::load(&path).unwrap().theme, THEME_DARK);
+    }
+}
+
+#[test]
+fn load_marks_onboarding_done_when_access_already_exists() {
+    let dir = tempfile::tempdir().unwrap();
+    let configured = dir.path().join("configured.json");
+    std::fs::write(&configured, r#"{"groq_api_key":"gsk_test"}"#).unwrap();
+    assert!(Settings::load(&configured).unwrap().onboarding_done);
+
+    let empty = dir.path().join("empty.json");
+    std::fs::write(&empty, r#"{"auto_send":true}"#).unwrap();
+    assert!(!Settings::load(&empty).unwrap().onboarding_done);
+
+    // An explicit value always wins over the inference.
+    let explicit = dir.path().join("explicit.json");
+    std::fs::write(&explicit, r#"{"groq_api_key":"gsk_test","onboarding_done":false}"#).unwrap();
+    assert!(!Settings::load(&explicit).unwrap().onboarding_done);
 }
 
 #[test]
@@ -266,7 +303,7 @@ fn env_fallback_ignores_none_and_blank() {
 fn clamp_limits_opacity_and_step() {
     let mut s = Settings { window_opacity: 0.05, move_step: 1000, ..Default::default() };
     s.clamp();
-    assert_eq!(s.window_opacity, 0.2);
+    assert_eq!(s.window_opacity, limits::window::OPACITY.min);
     assert_eq!(s.move_step, 200);
     s.window_opacity = 1.5;
     s.move_step = 0;
@@ -282,7 +319,7 @@ fn save_load_roundtrip_with_owner_only_perms() {
     let s = Settings {
         groq_api_key: "gsk_test".into(),
         chat_font_size: 15.0,
-        window_opacity: 0.5,
+        window_opacity: 0.8,
         auto_send: true,
         auto_preview_html: false,
         prompt_presets: vec![test_preset()],
@@ -298,7 +335,7 @@ fn save_load_roundtrip_with_owner_only_perms() {
     let loaded = Settings::load(&path).unwrap();
     assert_eq!(loaded.groq_api_key, "gsk_test");
     assert_eq!(loaded.chat_font_size, 15.0);
-    assert_eq!(loaded.window_opacity, 0.5);
+    assert_eq!(loaded.window_opacity, 0.8);
     assert!(loaded.auto_send);
     assert!(!loaded.auto_preview_html);
     assert_eq!(loaded.prompt_presets.len(), 1);
@@ -338,7 +375,7 @@ fn load_clamps_out_of_range_values() {
     let path = dir.path().join("s.json");
     std::fs::write(&path, r#"{"window_opacity":0.05,"move_step":999}"#).unwrap();
     let s = Settings::load(&path).unwrap();
-    assert_eq!(s.window_opacity, 0.2);
+    assert_eq!(s.window_opacity, limits::window::OPACITY.min);
     assert_eq!(s.move_step, 200);
 }
 

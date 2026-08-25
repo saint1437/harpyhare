@@ -345,7 +345,7 @@ function ComposerToolbar(props: ComposerToolbarProps) {
         <NotebookText />
         {props.hasContext && (
           <span
-            className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-primary"
+            className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-accent-mark"
             aria-hidden
           />
         )}
@@ -427,10 +427,10 @@ function LibraryDocToggle({
       type="button"
       onClick={onToggle}
       className={cn(
-        "flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-body transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+        "flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-body transition-colors outline-none focus-visible:ring-2 focus-visible:ring-focus",
         selected
-          ? "bg-surface-active text-foreground"
-          : "text-muted-foreground hover:bg-surface active:bg-surface-active",
+          ? "bg-surface-active text-fg"
+          : "text-fg-subtle hover:bg-surface active:bg-surface-active",
       )}
     >
       <Check className={`size-3.5 shrink-0 ${selected ? "" : "opacity-0"}`} />
@@ -450,7 +450,7 @@ function LibraryPicker({
 }) {
   if (library.docs.length === 0) {
     return (
-      <p className="text-caption text-muted-foreground">
+      <p className="text-caption text-fg-subtle">
         Библиотека пуста — материалы добавляются в лаунчере на экране «Контексты».
       </p>
     );
@@ -503,7 +503,7 @@ function ChatContextDialog(props: ChatContextDialogProps) {
         </div>
         <div className="flex flex-col gap-1.5">
           <SectionLabel>Свой текст</SectionLabel>
-          <p className="text-caption text-muted-foreground">
+          <p className="text-caption text-fg-subtle">
             Уникальный справочный текст этого чата — уходит в системный промпт каждого запроса
             вместе с выбранными материалами.
           </p>
@@ -558,7 +558,7 @@ export function Composer(props: ComposerProps) {
         disabled={props.streaming}
         onRun={props.onQuickAction}
       />
-      <div className="rounded-xl bg-card/70 shadow-raise ring-1 ring-border transition-[box-shadow] ring-inset focus-within:ring-ring/60">
+      <div className="rounded-xl bg-surface/70 shadow-raise ring-1 ring-inset ring-line transition-[box-shadow] focus-within:ring-focus">
         <PromptTextarea
           fieldRef={props.promptRef}
           value={chat.draft}

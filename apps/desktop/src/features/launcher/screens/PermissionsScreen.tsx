@@ -14,12 +14,9 @@ const STATE_LABEL: Record<PermissionState, string> = {
 
 function StatusChip({ state }: { state: PermissionState }) {
   return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 text-caption text-muted-foreground">
+    <span className="inline-flex shrink-0 items-center gap-1.5 text-caption text-fg-subtle">
       <span
-        className={cn(
-          "size-1.5 rounded-full",
-          state === "granted" ? "bg-primary" : "bg-muted-foreground/40",
-        )}
+        className={cn("size-1.5 rounded-full", state === "granted" ? "bg-success" : "bg-fg-subtle")}
         aria-hidden
       />
       {STATE_LABEL[state]}
@@ -42,20 +39,15 @@ function PermissionRowView({
       aria-label={row.title}
       className="grid grid-cols-[1.25rem_minmax(0,1fr)_14rem] items-center gap-x-3 px-3 py-2.5"
     >
-      <row.icon
-        className={cn("size-4.5", granted ? "text-foreground" : "text-muted-foreground")}
-        aria-hidden
-      />
+      <row.icon className={cn("size-4.5", granted ? "text-fg" : "text-fg-subtle")} aria-hidden />
 
       <div className="flex min-w-0 flex-col gap-0.5">
         <div className="flex flex-wrap items-center gap-x-2">
           <span className="text-body">{row.title}</span>
           <StatusChip state={state} />
-          <span className="text-hint text-muted-foreground/80">
-            {permissionNeedLabel(row.need)}
-          </span>
+          <span className="text-hint text-fg-subtle/80">{permissionNeedLabel(row.need)}</span>
         </div>
-        <p className="min-h-9 text-caption text-muted-foreground">{row.purpose}</p>
+        <p className="min-h-9 text-caption text-fg-subtle">{row.purpose}</p>
       </div>
 
       <div className="flex items-center justify-end gap-1.5">

@@ -8,8 +8,14 @@ pub(crate) const TMP_FILE_EXTENSION: &str = "tmp";
 
 static TMP_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
-pub const THEME_GRAY: &str = "gray";
-pub const THEME_BLACK: &str = "black";
+/// `system` follows the OS; the two explicit values pin it. The former
+/// `gray`/`black` pair were two dark themes 0.05 lightness apart and retired
+/// when the palette gained a real light half — `migrate_legacy_theme` maps them.
+pub const THEME_SYSTEM: &str = "system";
+pub const THEME_LIGHT: &str = "light";
+pub const THEME_DARK: &str = "dark";
+pub const LEGACY_THEME_GRAY: &str = "gray";
+pub const LEGACY_THEME_BLACK: &str = "black";
 
 pub const QUICK_ACTION_LIMIT: usize = 9;
 
@@ -76,7 +82,7 @@ impl SettingsLimits {
 
 pub mod defaults {
     pub const STT_LANGUAGE: &str = "ru";
-    pub const THEME: &str = super::THEME_GRAY;
+    pub const THEME: &str = super::THEME_SYSTEM;
 }
 
 pub mod limits {
@@ -86,7 +92,7 @@ pub mod limits {
         use super::Bounds;
         pub const WIDTH: Bounds<f64> = Bounds { default: 960.0, min: 300.0, max: 1600.0 };
         pub const HEIGHT: Bounds<f64> = Bounds { default: 680.0, min: 520.0, max: 1100.0 };
-        pub const OPACITY: Bounds<f64> = Bounds { default: 0.9, min: 0.2, max: 1.0 };
+        pub const OPACITY: Bounds<f64> = Bounds { default: 0.9, min: 0.75, max: 1.0 };
         pub const MOVE_STEP: Bounds<u32> = Bounds { default: 20, min: 1, max: 200 };
         pub const RESIZE_STEP: Bounds<u32> = Bounds { default: 20, min: 1, max: 200 };
     }
@@ -188,6 +194,8 @@ pub struct Settings {
     pub mic_permission_requested: bool,
     pub quick_actions: Vec<QuickAction>,
     pub quick_action_attachments: bool,
+    pub onboarding_done: bool,
+    pub copy_results_to_clipboard: bool,
 }
 
 impl Default for Settings {
@@ -229,8 +237,36 @@ impl Default for Settings {
             mic_permission_requested: false,
             quick_actions: seeded_quick_actions(),
             quick_action_attachments: false,
+            onboarding_done: false,
+            copy_results_to_clipboard: true,
         }
     }
+}
+
+/// Both retired values were dark, so an existing install keeps the appearance it
+/// had; only a fresh install gets `system`.
+fn migrate_legacy_theme(value: &mut serde_json::Value) {
+    let Some(theme) = value.get("theme").and_then(serde_json::Value::as_str) else {
+        return;
+    };
+    if theme == LEGACY_THEME_GRAY || theme == LEGACY_THEME_BLACK {
+        value["theme"] = serde_json::Value::String(THEME_DARK.into());
+    }
+}
+
+/// Onboarding exists to obtain API access; anyone who already has it has
+/// effectively completed it and must not be sent back through the flow.
+fn migrate_onboarding_done(value: &mut serde_json::Value) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    if object.contains_key("onboarding_done") {
+        return;
+    }
+    let configured = ["anthropic_api_key", "groq_api_key", "access_token"].iter().any(|key| {
+        object.get(*key).and_then(serde_json::Value::as_str).is_some_and(|v| !v.is_empty())
+    });
+    object.insert("onboarding_done".into(), serde_json::Value::Bool(configured));
 }
 
 impl Settings {
@@ -251,7 +287,7 @@ impl Settings {
             limits::capture::AUTO_MIN_UTTERANCE_MS.clamp(self.auto_min_utterance_ms);
         self.auto_max_utterance_secs =
             limits::capture::AUTO_MAX_UTTERANCE_SECS.clamp(self.auto_max_utterance_secs);
-        if self.theme != THEME_GRAY && self.theme != THEME_BLACK {
+        if !matches!(self.theme.as_str(), THEME_SYSTEM | THEME_LIGHT | THEME_DARK) {
             self.theme = defaults::THEME.into();
         }
         self.quick_actions.truncate(QUICK_ACTION_LIMIT);
@@ -264,6 +300,8 @@ impl Settings {
                 let mut value: serde_json::Value = serde_json::from_str(&raw)
                     .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
                 crate::hotkeys::migrate_legacy_fields(&mut value);
+                migrate_legacy_theme(&mut value);
+                migrate_onboarding_done(&mut value);
                 serde_json::from_value::<Settings>(value)
                     .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?
             }

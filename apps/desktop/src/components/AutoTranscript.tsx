@@ -53,12 +53,12 @@ export function AutoTranscript({
   return (
     <section
       aria-label={TITLE}
-      className="flex shrink-0 flex-col gap-1.5 rounded-lg bg-card px-2.5 py-2 shadow-raise ring-1 ring-border ring-inset"
+      className="flex shrink-0 flex-col gap-1.5 rounded-lg bg-surface px-2.5 py-2 shadow-raise ring-1 ring-inset ring-line"
     >
       <div className="flex items-center justify-between gap-2">
         <SectionLabel>{TITLE}</SectionLabel>
         <div className="flex items-center gap-2">
-          <span className="text-hint text-muted-foreground">{hint}</span>
+          <span className="text-hint text-fg-subtle">{hint}</span>
           {!instant && (
             <Button size="xs" disabled={pendingCount === 0} title={answerTitle} onClick={onAnswer}>
               <CornerDownLeft aria-hidden />
@@ -69,7 +69,7 @@ export function AutoTranscript({
       </div>
       <div ref={listRef} className="max-h-24 overflow-y-auto">
         {turns.length === 0 ? (
-          <p className="text-caption text-muted-foreground">{EMPTY_HINT}</p>
+          <p className="text-caption text-fg-subtle">{EMPTY_HINT}</p>
         ) : (
           <ul className="flex flex-col gap-0.5">
             {turns.map((turn) => (
@@ -77,10 +77,10 @@ export function AutoTranscript({
                 key={turn.seq}
                 className={cn(
                   "text-caption",
-                  turn.seq > submittedThrough ? "text-foreground" : "text-muted-foreground",
+                  turn.seq > submittedThrough ? "text-fg" : "text-fg-subtle",
                 )}
               >
-                <span className="text-muted-foreground">{speakerLabel(turn.speaker)}: </span>
+                <span className="text-fg-subtle">{speakerLabel(turn.speaker)}: </span>
                 {turn.text}
               </li>
             ))}

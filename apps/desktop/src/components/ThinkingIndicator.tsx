@@ -36,7 +36,7 @@ export function ThinkingIndicator({ startedAt }: { startedAt: number }) {
       <span className="thinking-shimmer text-body font-medium" aria-live="polite">
         Думает…
       </span>
-      <span className="font-mono text-caption text-muted-foreground/60 tabular-nums" aria-hidden>
+      <span className="font-mono text-caption text-fg-subtle/60 tabular-nums" aria-hidden>
         {formatElapsed(seconds)}
       </span>
     </div>

@@ -58,9 +58,9 @@ const AUTODETECT_LANGUAGE_SUBSET = [
   "go",
   "java",
 ];
-const ASSISTANT_PROSE_CLASS = "prose-answer text-chat leading-relaxed text-foreground/90";
+const ASSISTANT_PROSE_CLASS = "prose-answer text-chat leading-relaxed text-fg/90";
 
-const FLOATING_CHIP_CLASS = "border bg-popover/95 shadow-pop backdrop-blur-sm";
+const FLOATING_CHIP_CLASS = "border bg-elevated/95 shadow-pop backdrop-blur-sm";
 const MESSAGE_IMAGE_ALT = "Картинка в сообщении";
 const COPY_MESSAGE_TITLE = "Копировать сообщение";
 const ASSISTANT_ACTIONS_GUTTER_CLASS = "pr-13.5";
@@ -80,7 +80,7 @@ function ExternalLinkAnchor({ href, children }: { href?: string; children?: Reac
         e.preventDefault();
         if (href && EXTERNAL_HTTP_URL.test(href)) void openExternal(href);
       }}
-      className="text-foreground underline decoration-foreground/40 underline-offset-2 hover:decoration-foreground"
+      className="text-fg underline decoration-fg/40 underline-offset-2 hover:decoration-fg"
     >
       {children}
     </a>
@@ -172,7 +172,7 @@ function MessageActions({
       <MessageActionButton
         title="Удалить сообщение"
         onClick={onRemove}
-        className="hover:text-destructive"
+        className="hover:text-danger"
       >
         <Trash2 className="size-3.5" />
       </MessageActionButton>
@@ -279,10 +279,10 @@ function EmptyState() {
   return (
     <div className="grid h-full place-items-center">
       <div className="flex flex-col items-center gap-2.5 text-center">
-        <span className="grid size-9 place-items-center rounded-lg bg-surface ring-1 ring-border ring-inset">
-          <MessagesSquare className="size-4 text-muted-foreground" aria-hidden />
+        <span className="grid size-9 place-items-center rounded-lg bg-surface ring-1 ring-inset ring-line">
+          <MessagesSquare className="size-4 text-fg-subtle" aria-hidden />
         </span>
-        <span className="text-body text-muted-foreground">Чат появится здесь</span>
+        <span className="text-body text-fg-subtle">Чат появится здесь</span>
       </div>
     </div>
   );
@@ -297,7 +297,7 @@ const MessageImages = memo(function MessageImages({ images }: { images: ImagePay
           key={i}
           src={imageDataUrl(image)}
           alt={MESSAGE_IMAGE_ALT}
-          className="max-h-48 max-w-full rounded-md object-contain ring-1 ring-border ring-inset"
+          className="max-h-48 max-w-full rounded-md object-contain ring-1 ring-inset ring-line"
         />
       ))}
     </div>
@@ -306,7 +306,7 @@ const MessageImages = memo(function MessageImages({ images }: { images: ImagePay
 
 function UserBubble({ text, images }: { text: string; images: ImagePayload[] }) {
   return (
-    <div className="flex max-w-[85%] flex-col gap-1.5 rounded-lg bg-surface px-3 py-1.5 text-chat text-foreground/90 ring-1 ring-border/50 ring-inset">
+    <div className="flex max-w-[85%] flex-col gap-1.5 rounded-lg bg-surface px-3 py-1.5 text-chat text-fg/90 ring-1 ring-inset ring-line/50">
       <MessageImages images={images} />
       {text !== "" && <span className="min-w-0 break-words whitespace-pre-wrap">{text}</span>}
     </div>
@@ -320,7 +320,7 @@ function JumpToBottomButton({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       className={cn(
         FLOATING_CHIP_CLASS,
-        "absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full px-2.5 py-1 text-caption text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 active:bg-surface-active",
+        "absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full px-2.5 py-1 text-caption text-fg-subtle transition-colors outline-none hover:text-fg focus-visible:ring-2 focus-visible:ring-focus active:bg-surface-active",
       )}
     >
       ↓ Вниз

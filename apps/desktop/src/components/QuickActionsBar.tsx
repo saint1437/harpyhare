@@ -32,11 +32,11 @@ function QuickActionButton({ action, hint, disabled, onRun }: QuickActionButtonP
       disabled={disabled}
       title={action.title}
       onClick={onRun}
-      className="bg-surface text-foreground/85 ring-1 ring-border ring-inset hover:bg-surface-active active:bg-surface"
+      className="bg-surface text-fg/85 ring-1 ring-inset ring-line hover:bg-surface-active active:bg-surface"
     >
       {action.title}
       {hint !== null && (
-        <span className="font-mono text-hint text-muted-foreground/80 tabular-nums">{hint}</span>
+        <span className="font-mono text-hint text-fg-subtle/80 tabular-nums">{hint}</span>
       )}
     </Button>
   );

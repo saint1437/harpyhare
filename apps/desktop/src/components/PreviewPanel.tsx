@@ -14,7 +14,7 @@ export interface PreviewPanelProps {
 export const PREVIEW_PANEL_WIDTH_PX = 570;
 
 const PREVIEW_IFRAME_TITLE = "HTML превью";
-const PREVIEW_IFRAME_CLASS = "min-h-0 flex-1 rounded-xl border-0 bg-white";
+const PREVIEW_IFRAME_CLASS = "min-h-0 flex-1 rounded-xl border-0 bg-surface-preview";
 const PREVIEW_SANDBOX = "allow-scripts allow-same-origin";
 
 function usePreviewSrc(html: string) {
@@ -43,7 +43,7 @@ function PreviewHeader({ html, onClose }: { html: string; onClose: () => void })
       <Button
         variant="ghost"
         size="compact"
-        className="text-muted-foreground"
+        className="text-fg-subtle"
         onClick={() => void navigator.clipboard.writeText(html)}
       >
         Копировать код
@@ -59,7 +59,7 @@ function PreviewBody({ html, src }: { html: string; src: string }) {
   if (html === "") {
     return (
       <div className="grid flex-1 place-items-center">
-        <span className="text-body text-muted-foreground">Нет содержимого</span>
+        <span className="text-body text-fg-subtle">Нет содержимого</span>
       </div>
     );
   }

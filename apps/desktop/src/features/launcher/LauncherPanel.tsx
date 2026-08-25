@@ -157,9 +157,9 @@ export function LauncherPanel({
       </div>
 
       {error !== null && (
-        <div className="flex items-center gap-2.5 rounded-lg bg-destructive/10 px-3 py-2 ring-1 ring-destructive/30 ring-inset">
-          <span className="size-1.5 shrink-0 rounded-full bg-destructive" aria-hidden />
-          <span className="min-w-0 text-body text-destructive">{error}</span>
+        <div className="flex items-center gap-2.5 rounded-lg bg-danger/10 px-3 py-2 ring-1 ring-danger ring-inset">
+          <span className="size-1.5 shrink-0 rounded-full bg-danger" aria-hidden />
+          <span className="min-w-0 text-body text-danger">{error}</span>
         </div>
       )}
 

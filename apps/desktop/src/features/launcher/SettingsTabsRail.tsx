@@ -29,15 +29,15 @@ function SettingsTabButton({
         onSelect(id);
       }}
       className={cn(
-        "relative flex items-center justify-center gap-2 rounded-md px-0 py-1.5 text-left text-body whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60 min-[900px]:justify-start min-[900px]:px-2",
+        "relative flex items-center justify-center gap-2 rounded-md px-0 py-1.5 text-left text-body whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-focus min-[900px]:justify-start min-[900px]:px-2",
         active
-          ? "bg-surface-active text-foreground"
-          : "text-muted-foreground hover:bg-surface hover:text-foreground active:bg-surface-active",
+          ? "bg-surface-active text-fg"
+          : "text-fg-subtle hover:bg-surface hover:text-fg active:bg-surface-active",
       )}
     >
       {active && (
         <span
-          className="absolute top-1/2 left-0 h-4 w-0.5 -translate-y-1/2 rounded-full bg-primary"
+          className="absolute top-1/2 left-0 h-4 w-0.5 -translate-y-1/2 rounded-full bg-accent-mark"
           aria-hidden
         />
       )}

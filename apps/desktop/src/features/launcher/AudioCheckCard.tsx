@@ -57,9 +57,9 @@ function rowHint(
 
 function LevelMeter({ level }: { level: number }) {
   return (
-    <span className="h-1 w-10 shrink-0 overflow-hidden rounded-full bg-muted" aria-hidden>
+    <span className="h-1 w-10 shrink-0 overflow-hidden rounded-full bg-inset" aria-hidden>
       <span
-        className="block h-full rounded-full bg-primary"
+        className="block h-full rounded-full bg-listening"
         style={{ width: `${String(Math.round(level * LEVEL_SCALE))}%` }}
       />
     </span>

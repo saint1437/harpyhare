@@ -6,7 +6,7 @@ const ACTIVE_LABEL = "Автослушание включено";
 const IDLE_LABEL = "Автослушание выключено";
 const ACTIVE_ACTION = "нажмите, чтобы выключить";
 const IDLE_ACTION = "нажмите, чтобы слушать собеседника и себя";
-const ACTIVE_CLASS = "text-recording hover:text-recording/85";
+const ACTIVE_CLASS = "text-listening hover:text-listening/85";
 
 interface AutoModeIndicatorProps {
   active: boolean;

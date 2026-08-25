@@ -4,19 +4,16 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md text-body font-medium whitespace-nowrap transition-colors outline-none select-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:pointer-events-none disabled:opacity-50 aria-invalid:ring-destructive/30 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md text-body font-medium whitespace-nowrap transition-colors outline-none select-none focus-visible:ring-2 focus-visible:ring-focus disabled:pointer-events-none disabled:opacity-50 aria-invalid:ring-danger [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default:
-          "bg-primary text-primary-foreground shadow-btn hover:bg-primary/90 active:bg-primary/80",
+        default: "bg-accent text-accent-on shadow-btn hover:bg-accent-hover active:bg-accent-hover",
         destructive:
-          "bg-destructive/75 text-destructive-foreground shadow-btn hover:bg-destructive/65 focus-visible:ring-destructive/40 active:bg-destructive/55",
+          "bg-danger text-danger-on shadow-btn hover:bg-danger/85 focus-visible:ring-danger active:bg-danger/75",
         outline:
-          "border border-input bg-input/20 hover:bg-input/35 focus-visible:border-ring active:bg-input/45",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80 active:bg-secondary/70",
-        ghost: "hover:bg-surface hover:text-foreground active:bg-surface-active",
+          "border border-line-strong bg-inset hover:bg-surface-active focus-visible:border-focus active:bg-surface-active",
+        ghost: "hover:bg-surface hover:text-fg active:bg-surface-active",
       },
       size: {
         default: "h-8 px-3.5 has-[>svg]:px-2.5",

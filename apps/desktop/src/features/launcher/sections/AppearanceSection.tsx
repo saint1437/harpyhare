@@ -1,12 +1,22 @@
 import { SelectItem } from "@/components/ui/select";
 import { SETTINGS_LIMITS } from "@/ipc/bindings";
-import { applyTheme, THEME_BLACK, THEME_GRAY } from "@/lib/window-controls";
+import { applyTheme, THEMES, type Theme } from "@/lib/window-controls";
 import type { SectionProps } from "../contract";
 import { SettingGroup, SettingRow, SettingSelect, SettingSlider } from "../fields";
 
 const CHAT_FONT_SIZE_STEP = 0.5;
 const WINDOW_OPACITY_STEP = 0.05;
 const PERCENT_SCALE = 100;
+
+const THEME_LABEL: Record<Theme, string> = {
+  system: "Как в системе",
+  light: "Светлая",
+  dark: "Тёмная",
+};
+
+function isTheme(value: string): value is Theme {
+  return (THEMES as readonly string[]).includes(value);
+}
 
 function formatPercent(fraction: number): string {
   return `${String(Math.round(fraction * PERCENT_SCALE))}%`;
@@ -15,17 +25,23 @@ function formatPercent(fraction: number): string {
 export function AppearanceSection({ draft, set }: SectionProps) {
   return (
     <SettingGroup title="Вид" description="Оформление основного окна с чатом.">
-      <SettingRow label="Тема" hint="Серая светлее, чёрная контрастнее.">
+      <SettingRow
+        label="Тема"
+        hint="«Как в системе» переключается вместе с оформлением macOS или Windows."
+      >
         <SettingSelect
           ariaLabel="Тема"
-          value={draft.theme === THEME_BLACK ? THEME_BLACK : THEME_GRAY}
+          value={isTheme(draft.theme) ? draft.theme : THEMES[0]}
           onValueChange={(v) => {
             set("theme", v);
             applyTheme(document.documentElement, v);
           }}
         >
-          <SelectItem value={THEME_GRAY}>Серая</SelectItem>
-          <SelectItem value={THEME_BLACK}>Чёрная</SelectItem>
+          {THEMES.map((theme) => (
+            <SelectItem key={theme} value={theme}>
+              {THEME_LABEL[theme]}
+            </SelectItem>
+          ))}
         </SettingSelect>
       </SettingRow>
       <SettingRow label="Размер шрифта чата" hint="Влияет на текст переписки и код в ответах.">

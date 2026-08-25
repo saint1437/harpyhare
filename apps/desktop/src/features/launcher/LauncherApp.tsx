@@ -64,9 +64,7 @@ export function LauncherApp() {
 
   if (loading)
     return (
-      <div className="grid h-screen place-items-center text-body text-muted-foreground">
-        Загрузка…
-      </div>
+      <div className="grid h-screen place-items-center text-body text-fg-subtle">Загрузка…</div>
     );
 
   return (
