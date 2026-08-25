@@ -10,7 +10,17 @@ vi.mock("@/ipc/commands", () => ({
   checkAudioSource: () => Promise.resolve({ heard: true, peak: 0.3, text: "проверка" }),
 }));
 
+import type { AudioCheckApi } from "@/hooks/useAudioCheck";
 import { StartScreen } from "./StartScreen";
+
+const IDLE_AUDIO_CHECK: AudioCheckApi = {
+  running: null,
+  level: 0,
+  source: null,
+  result: null,
+  error: null,
+  run: () => undefined,
+};
 
 const ACCESS_STEP = "Доступ к API";
 const AUDIO_STEP = "Запись системного звука";
@@ -62,6 +72,8 @@ function renderScreen(overrides: {
   const props = {
     readiness: overrides.readiness ?? readiness(),
     launching: overrides.launching ?? false,
+    audioCheck: IDLE_AUDIO_CHECK,
+    recordCombo: "Cmd+R",
     onRedeem: overrides.onRedeem ?? vi.fn(() => Promise.resolve(null)),
     onNavigate: overrides.onNavigate ?? vi.fn(),
     onLaunch: overrides.onLaunch ?? vi.fn(),

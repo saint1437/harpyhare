@@ -2,9 +2,11 @@ import { ArrowRight, Check } from "lucide-react";
 import type { ReactNode } from "react";
 import { AccessCodeForm } from "@/components/AccessCodeForm";
 import { StateBadge, type StateTone } from "@/components/StateBadge";
+import type { AudioCheckApi } from "@/hooks/useAudioCheck";
 import { Button } from "@/components/ui/button";
 import type { PermissionsApi } from "@/hooks/usePermissions";
 import type { PermissionKind } from "@/ipc/bindings";
+import { formatCombo, hotkeyAction } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { AudioCheckCard } from "../AudioCheckCard";
 import type { LauncherDestination } from "../contract";
@@ -16,6 +18,7 @@ import { startSteps, stepsLeft, type StartStep, type StartStepState } from "../s
 import type { LauncherReadiness } from "../useLauncherReadiness";
 
 const SETTINGS_SCREEN: ScreenId = "settings";
+const RECORD_ACTION = "record";
 
 const STATE_LABEL: Record<StartStepState, string> = {
   done: "готово",
@@ -23,6 +26,9 @@ const STATE_LABEL: Record<StartStepState, string> = {
   checking: "проверяю…",
 };
 
+// Пуш-ту-ток нигде не объяснялся, а экран, где он описан, уничтожается ровно в
+// тот момент, когда знание становится нужным. Комбинация и подпись берутся из
+// реестра: литерал устарел бы в ту секунду, когда пользователь переназначит клавишу.
 const DEFAULTS_NOTE =
   "Клавиши, быстрые действия, размеры окна и вид уже заданы по умолчанию — их можно не трогать.";
 
@@ -156,12 +162,16 @@ function PermissionControl({
 export function StartScreen({
   readiness,
   launching,
+  audioCheck,
+  recordCombo,
   onRedeem,
   onNavigate,
   onLaunch,
 }: {
   readiness: LauncherReadiness;
   launching: boolean;
+  audioCheck: AudioCheckApi;
+  recordCombo: string;
   onRedeem: (code: string) => Promise<string | null>;
   onNavigate: (destination: LauncherDestination) => void;
   onLaunch: () => void;
@@ -187,7 +197,22 @@ export function StartScreen({
         ))}
       </SettingGroup>
 
-      <AudioCheckCard autoModeEnabled={readiness.autoModeEnabled} />
+      <AudioCheckCard autoModeEnabled={readiness.autoModeEnabled} check={audioCheck} />
+
+      <SettingGroup title="Как пользоваться">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5">
+          <span className="rounded-md bg-inset px-2 py-1 font-mono text-body font-semibold text-fg">
+            {recordCombo === "" ? "не назначено" : formatCombo(recordCombo)}
+          </span>
+          <span className="min-w-40 flex-1 text-body text-fg-muted">
+            {hotkeyAction(RECORD_ACTION).hint}
+          </span>
+        </div>
+        <p className="px-3 py-2.5 text-caption text-fg-subtle">
+          Отпустите — расшифровка попадёт в поле ввода. Остальные сочетания перечислены в основном
+          окне по кнопке с клавиатурой.
+        </p>
+      </SettingGroup>
 
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5 rounded-lg bg-surface px-3 py-2.5 shadow-raise ring-1 ring-inset ring-line">
         <p className="min-w-40 flex-1 text-caption text-fg-subtle">{DEFAULTS_NOTE}</p>

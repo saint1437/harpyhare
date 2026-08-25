@@ -18,7 +18,14 @@ vi.mock("@/ipc/commands", () => ({
   checkAudioSource: (source: AudioSource) => checkAudioSource(source),
 }));
 
+import { useAudioCheck } from "@/hooks/useAudioCheck";
 import { AudioCheckCard } from "./AudioCheckCard";
+
+// Хук поднят в LauncherPanel, чтобы шапка могла сказать «Слушаю», пока проверка
+// открывает настоящий тап. Тест по-прежнему проверяет связку хук + карточка.
+function Card({ autoModeEnabled }: { autoModeEnabled: boolean }) {
+  return <AudioCheckCard autoModeEnabled={autoModeEnabled} check={useAudioCheck()} />;
+}
 
 const SYSTEM_ROW = "Системный звук";
 const MIC_ROW = "Микрофон";
@@ -52,7 +59,7 @@ afterEach(() => {
 describe("AudioCheckCard", () => {
   it("проверка системного звука показывает расслышанный текст", async () => {
     checkAudioSource.mockResolvedValueOnce({ heard: true, peak: 0.4, text: "раз, два, три" });
-    render(<AudioCheckCard autoModeEnabled={false} />);
+    render(<Card autoModeEnabled={false} />);
     fireEvent.click(row(SYSTEM_ROW).getByText("Проверить"));
     expect(checkAudioSource).toHaveBeenCalledExactlyOnceWith("system");
     await waitFor(() => {
@@ -62,7 +69,7 @@ describe("AudioCheckCard", () => {
 
   it("тишина названа тишиной, а не молчаливым успехом", async () => {
     checkAudioSource.mockResolvedValueOnce({ heard: false, peak: 0, text: "" });
-    render(<AudioCheckCard autoModeEnabled={false} />);
+    render(<Card autoModeEnabled={false} />);
     fireEvent.click(row(SYSTEM_ROW).getByText("Проверить"));
     await waitFor(() => {
       expect(screen.getByText(/Тишина — звук не дошёл/)).not.toBeNull();
@@ -71,7 +78,7 @@ describe("AudioCheckCard", () => {
 
   it("звук есть, а речи нет — это отдельный ответ", async () => {
     checkAudioSource.mockResolvedValueOnce({ heard: true, peak: 0.9, text: "" });
-    render(<AudioCheckCard autoModeEnabled={false} />);
+    render(<Card autoModeEnabled={false} />);
     fireEvent.click(row(SYSTEM_ROW).getByText("Проверить"));
     await waitFor(() => {
       expect(screen.getByText("Звук идёт, но речи в нём не разобрать.")).not.toBeNull();
@@ -80,7 +87,7 @@ describe("AudioCheckCard", () => {
 
   it("отказ показывается текстом ошибки с бэкенда", async () => {
     checkAudioSource.mockRejectedValueOnce({ code: "permission", message: "Нет доступа" });
-    render(<AudioCheckCard autoModeEnabled={false} />);
+    render(<Card autoModeEnabled={false} />);
     fireEvent.click(row(SYSTEM_ROW).getByText("Проверить"));
     await waitFor(() => {
       expect(screen.getByText("Нет доступа")).not.toBeNull();
@@ -89,7 +96,7 @@ describe("AudioCheckCard", () => {
 
   it("пока проверка идёт, второй запуск невозможен, а уровень виден", async () => {
     const pending = deferredCheck();
-    render(<AudioCheckCard autoModeEnabled={false} />);
+    render(<Card autoModeEnabled={false} />);
     fireEvent.click(row(SYSTEM_ROW).getByText("Проверить"));
     const button = screen.getByText("Слушаю…").closest("button");
     expect(button?.disabled).toBe(true);
@@ -108,9 +115,9 @@ describe("AudioCheckCard", () => {
   });
 
   it("микрофон проверяется только там, где он нужен — при автослушании", () => {
-    const { rerender } = render(<AudioCheckCard autoModeEnabled={false} />);
+    const { rerender } = render(<Card autoModeEnabled={false} />);
     expect(screen.queryByText(MIC_ROW)).toBeNull();
-    rerender(<AudioCheckCard autoModeEnabled />);
+    rerender(<Card autoModeEnabled />);
     expect(screen.getByText(MIC_ROW)).not.toBeNull();
   });
 });

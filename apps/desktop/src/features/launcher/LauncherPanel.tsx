@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { LiveRegion } from "@/components/LiveRegion";
+import { useAudioCheck } from "@/hooks/useAudioCheck";
+import { useConnectivity } from "@/hooks/useConnectivity";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
 import type { Settings } from "@/ipc/types";
+import { effectiveCombo } from "@/lib/hotkeys";
 import { isPresetFilled, mergePresets } from "@/lib/presets";
 import { isQuickActionFilled } from "@/lib/quick-actions";
 import { ContextLibraryPanel } from "./ContextLibraryPanel";
@@ -18,7 +21,10 @@ import { ScreenShell } from "./ScreenShell";
 import { PresetsSection, type PresetsUpdate } from "./sections/PresetsSection";
 import { DEFAULT_SETTINGS_TAB, type SettingsTabId } from "./settings-tabs";
 import { Sidebar, type SidebarNotice } from "./Sidebar";
+import { panelProps } from "./useRovingTabs";
+import type { SaveState } from "./StatusObject";
 
+const RECORD_ACTION = "record";
 const RISE_STEP_MS = 50;
 const AUTOSAVE_DEBOUNCE_MS = 600;
 
@@ -54,6 +60,27 @@ export function LauncherPanel({
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>(DEFAULT_SETTINGS_TAB);
 
   const official = useOfficialPresets();
+  const audioCheck = useAudioCheck();
+  // Что именно ушло в `set_settings` последним — и для адоптации клампа, и для
+  // повтора неудавшегося сохранения.
+  const lastSavedRef = useRef<Settings | null>(null);
+  // Лаунчер до сих пор не знал про сеть вовсе: погашение кода без интернета
+  // печатало сырую английскую строку reqwest в русский интерфейс.
+  const connectivity = useConnectivity();
+
+  const saveState: SaveState =
+    error !== null
+      ? "failed"
+      : saving
+        ? "saving"
+        : lastSavedRef.current === null
+          ? "idle"
+          : "saved";
+
+  const retrySave = () => {
+    const pending = lastSavedRef.current;
+    if (pending !== null) onSave(pending);
+  };
 
   const searchSources = useMemo(
     () => ({
@@ -92,11 +119,29 @@ export function LauncherPanel({
     if (tab !== undefined) setSettingsTab(tab);
   };
 
+  // Rust возвращает КЛАМПНУТЫЕ настройки, и адоптировать их обязательно: иначе
+  // после того как `Settings::clamp` снял конфликтующий хоткей или обрезал
+  // список быстрых действий, лаунчер продолжал показывать то, чего на диске уже
+  // нет. Свой же черновик не перетираем — только то, что бэкенд изменил сам.
   useEffect(() => {
-    setDraft((d) =>
-      d.access_token === settings.access_token ? d : { ...d, access_token: settings.access_token },
-    );
-  }, [settings.access_token]);
+    setDraft((d) => {
+      const sent = lastSavedRef.current;
+      if (sent === null) {
+        return d.access_token === settings.access_token
+          ? d
+          : { ...d, access_token: settings.access_token };
+      }
+      const adopted = { ...d };
+      let changed = false;
+      for (const key of Object.keys(settings) as (keyof Settings)[]) {
+        if (sent[key] !== settings[key] && d[key] === sent[key]) {
+          (adopted as Record<string, unknown>)[key] = settings[key];
+          changed = true;
+        }
+      }
+      return changed ? adopted : d;
+    });
+  }, [settings]);
 
   const onSaveRef = useRef(onSave);
   useEffect(() => {
@@ -108,7 +153,9 @@ export function LauncherPanel({
     if (launching || draft === lastQueuedDraft.current) return;
     lastQueuedDraft.current = draft;
     const timer = setTimeout(() => {
-      onSaveRef.current(normalizeDraft(draft));
+      const next = normalizeDraft(draft);
+      lastSavedRef.current = next;
+      onSaveRef.current(next);
     }, AUTOSAVE_DEBOUNCE_MS);
     return () => {
       clearTimeout(timer);
@@ -141,7 +188,9 @@ export function LauncherPanel({
         <LaunchBar
           readiness={readiness}
           launching={launching}
-          saving={saving}
+          saveState={saveState}
+          audioCheckRunning={audioCheck.running !== null}
+          onRetrySave={retrySave}
           search={
             <LauncherSearch
               sources={searchSources}
@@ -159,6 +208,14 @@ export function LauncherPanel({
         />
       </div>
 
+      {connectivity.offline && (
+        <div className="flex items-center gap-2.5 rounded-lg bg-surface px-3 py-2 ring-1 ring-inset ring-line">
+          <span className="size-1.5 shrink-0 rounded-full bg-warning" aria-hidden />
+          <span className="min-w-0 text-body text-fg-muted">
+            Нет соединения — код доступа и обновления сейчас не проверить.
+          </span>
+        </div>
+      )}
       {error !== null && (
         <div className="flex items-center gap-2.5 rounded-lg bg-danger/10 px-3 py-2 ring-1 ring-danger ring-inset">
           <span className="size-1.5 shrink-0 rounded-full bg-danger" aria-hidden />
@@ -179,12 +236,15 @@ export function LauncherPanel({
         <div className="launcher-rise flex min-h-0 min-w-0 flex-1" style={riseDelay(2)}>
           <div
             key={screen}
-            className="flex min-h-0 min-w-0 flex-1 animate-in duration-150 fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none"
+            {...panelProps(screen)}
+            className="flex min-h-0 min-w-0 flex-1 animate-in duration-150 fade-in-0 outline-none slide-in-from-bottom-1 motion-reduce:animate-none"
           >
             {screen === "start" && (
               <StartScreen
                 readiness={readiness}
                 launching={launching}
+                audioCheck={audioCheck}
+                recordCombo={effectiveCombo(draft.hotkeys, RECORD_ACTION)}
                 onRedeem={onRedeem}
                 onNavigate={goTo}
                 onLaunch={() => {

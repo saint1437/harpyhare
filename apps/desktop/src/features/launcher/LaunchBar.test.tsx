@@ -35,18 +35,37 @@ afterEach(() => {
 });
 
 describe("LaunchBar", () => {
-  it("пока доступы не опрошены, запуск заблокирован без ложной тревоги", () => {
+  it("во время проверки звука шапка говорит, что идёт запись", () => {
     render(
       <LaunchBar
-        readiness={readiness({ checking: true, ready: false })}
+        readiness={readiness()}
         launching={false}
-        saving={false}
+        saveState="idle"
+        audioCheckRunning={true}
+        onRetrySave={vi.fn()}
         search={null}
         onGoToBlocker={vi.fn()}
         onLaunch={vi.fn()}
       />,
     );
-    expect(screen.getByText("Проверяю доступы…")).not.toBeNull();
+    expect(screen.getByText("Слушаю")).not.toBeNull();
+    expect(screen.getByText("проверка звука")).not.toBeNull();
+  });
+
+  it("пока доступы не опрошены, запуск заблокирован без ложной тревоги", () => {
+    render(
+      <LaunchBar
+        readiness={readiness({ checking: true, ready: false })}
+        launching={false}
+        saveState="idle"
+        audioCheckRunning={false}
+        onRetrySave={vi.fn()}
+        search={null}
+        onGoToBlocker={vi.fn()}
+        onLaunch={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Проверяю доступы")).not.toBeNull();
     expect(launchButton().disabled).toBe(true);
   });
 
@@ -56,30 +75,37 @@ describe("LaunchBar", () => {
       <LaunchBar
         readiness={readiness()}
         launching={false}
-        saving={false}
+        saveState="idle"
+        audioCheckRunning={false}
+        onRetrySave={vi.fn()}
         search={null}
         onGoToBlocker={vi.fn()}
         onLaunch={onLaunch}
       />,
     );
-    expect(screen.getByText("Всё готово к запуску")).not.toBeNull();
+    expect(screen.getByText("Всё готово")).not.toBeNull();
     fireEvent.click(launchButton());
     expect(onLaunch).toHaveBeenCalledTimes(1);
   });
 
-  it("пока настройки сохраняются, статус говорит об этом", () => {
+  // Раньше «Сохраняю…» занимало ту же строку, что и блокер, и было выше его по
+  // приоритету: подтверждение сохранения на 600 мс прятало ровно то, что
+  // пользователю только что велели починить.
+  it("сохранение не вытесняет блокер — у него своя строка", () => {
     render(
       <LaunchBar
         readiness={readiness({ ready: false, blockers: [AUDIO_BLOCKER] })}
         launching={false}
-        saving={true}
+        saveState="saving"
+        audioCheckRunning={false}
+        onRetrySave={vi.fn()}
         search={null}
         onGoToBlocker={vi.fn()}
         onLaunch={vi.fn()}
       />,
     );
-    expect(screen.getByText("Сохраняю…")).not.toBeNull();
-    expect(screen.queryByText(AUDIO_BLOCKER.label)).toBeNull();
+    expect(screen.getByText("Сохраняю")).not.toBeNull();
+    expect(screen.getByText(AUDIO_BLOCKER.label)).not.toBeNull();
   });
 
   it("блокер назван словами и ведёт на свой экран", () => {
@@ -88,7 +114,9 @@ describe("LaunchBar", () => {
       <LaunchBar
         readiness={readiness({ ready: false, blockers: [AUDIO_BLOCKER] })}
         launching={false}
-        saving={false}
+        saveState="idle"
+        audioCheckRunning={false}
+        onRetrySave={vi.fn()}
         search={null}
         onGoToBlocker={onGoToBlocker}
         onLaunch={vi.fn()}

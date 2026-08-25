@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { usePermissions, type PermissionsApi } from "@/hooks/usePermissions";
 import type { Settings } from "@/ipc/types";
 import { missingApiKeys, missingKeysNotice, type ApiKeyInfo } from "@/lib/api-keys";
-import type { ScreenId } from "./screens";
+import { screenVisible, type ScreenId } from "./screens";
 import type { SettingsTabId } from "./settings-tabs";
 
 export interface LauncherBlocker {
@@ -39,12 +39,17 @@ export function canLaunch(readiness: LauncherReadiness, launching: boolean): boo
   return readiness.ready && !readiness.checking && !launching;
 }
 
+const PERMISSIONS_SCREEN: ScreenId = "permissions";
+
 export function useLauncherReadiness(settings: Settings): LauncherReadiness {
   const missingKeys = useMemo(() => missingApiKeys(settings), [settings]);
   const permissions = usePermissions();
   const checking = !permissions.loaded;
   const autoModeEnabled = settings.auto_mode_enabled;
-  const microphoneNeeded = autoModeEnabled && !permissions.microphoneOk;
+  // Блокер имеет право существовать только там, где до него можно дойти.
+  // На платформе без экрана «Доступы» он запирал запуск без единого маршрута.
+  const canReachPermissions = screenVisible(PERMISSIONS_SCREEN);
+  const microphoneNeeded = autoModeEnabled && !permissions.microphoneOk && canReachPermissions;
 
   const blockers = useMemo(() => {
     const list: LauncherBlocker[] = [];

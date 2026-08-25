@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { SETTINGS_TABS, type SettingsTabId } from "./settings-tabs";
+import { useRovingTabs } from "./useRovingTabs";
 
 interface SettingsTabsRailProps {
   active: SettingsTabId;
@@ -11,19 +12,20 @@ function SettingsTabButton({
   label,
   icon: Icon,
   active,
+  tabProps,
   onSelect,
 }: {
   id: SettingsTabId;
   label: string;
   icon: (props: { className?: string }) => React.ReactNode;
   active: boolean;
+  tabProps: Record<string, unknown>;
   onSelect: (id: SettingsTabId) => void;
 }) {
   return (
     <button
       type="button"
-      role="tab"
-      aria-selected={active}
+      {...tabProps}
       title={label}
       onClick={() => {
         onSelect(id);
@@ -47,11 +49,15 @@ function SettingsTabButton({
   );
 }
 
+const TAB_IDS = SETTINGS_TABS.map((tab) => tab.id);
+
 export function SettingsTabsRail({ active, onSelect }: SettingsTabsRailProps) {
+  const { onKeyDown, tabProps } = useRovingTabs(TAB_IDS, active, onSelect);
   return (
     <div
       role="tablist"
       aria-orientation="vertical"
+      onKeyDown={onKeyDown}
       className="sticky top-0 flex w-9 shrink-0 flex-col gap-0.5 self-start min-[900px]:w-30"
     >
       {SETTINGS_TABS.map((tab) => (
@@ -61,6 +67,7 @@ export function SettingsTabsRail({ active, onSelect }: SettingsTabsRailProps) {
           label={tab.label}
           icon={tab.icon}
           active={active === tab.id}
+          tabProps={tabProps(tab.id)}
           onSelect={onSelect}
         />
       ))}

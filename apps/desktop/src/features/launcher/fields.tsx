@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { SectionLabel } from "@/components/SectionLabel";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -30,6 +30,16 @@ export function SettingGroup({
   );
 }
 
+/**
+ * `htmlFor` was a prop no caller ever passed, so every visible label in every
+ * settings row was a floating text node: clicking it did nothing and nothing tied
+ * it to its control. The id is generated here instead of asked for, and handed
+ * back through `controlId` so the row cannot be wired up half-way.
+ *
+ * Below 640px the fixed 14rem control column stops fitting beside the label, so
+ * the row stacks. The column itself is not negotiable above that: it is what
+ * lines the controls of neighbouring screens up on one vertical.
+ */
 export function SettingRow({
   label,
   hint,
@@ -39,17 +49,21 @@ export function SettingRow({
   label: string;
   hint?: string;
   htmlFor?: string;
-  children: ReactNode;
+  children: ReactNode | ((controlId: string) => ReactNode);
 }) {
+  const generated = useId();
+  const controlId = htmlFor ?? generated;
   return (
-    <div className="grid min-h-9 grid-cols-[minmax(0,1fr)_14rem] items-center gap-x-4 px-3 py-2">
+    <div className="grid min-h-9 grid-cols-[minmax(0,1fr)] items-center gap-x-4 gap-y-1.5 px-3 py-2 min-[640px]:grid-cols-[minmax(0,1fr)_14rem]">
       <div className="min-w-0">
-        <Label htmlFor={htmlFor} className="text-body font-normal text-fg">
+        <Label htmlFor={controlId} className="text-body font-normal text-fg">
           {label}
         </Label>
         {hint !== undefined && <p className="mt-0.5 text-caption text-fg-subtle">{hint}</p>}
       </div>
-      <div className="flex min-w-0 items-center justify-end">{children}</div>
+      <div className="flex min-w-0 items-center justify-end">
+        {typeof children === "function" ? children(controlId) : children}
+      </div>
     </div>
   );
 }
@@ -100,13 +114,17 @@ export function SettingSelect({
 export function SettingSwitch({
   checked,
   ariaLabel,
+  id,
   onCheckedChange,
 }: {
   checked: boolean;
   ariaLabel: string;
+  id?: string;
   onCheckedChange: (value: boolean) => void;
 }) {
-  return <Switch checked={checked} aria-label={ariaLabel} onCheckedChange={onCheckedChange} />;
+  return (
+    <Switch id={id} checked={checked} aria-label={ariaLabel} onCheckedChange={onCheckedChange} />
+  );
 }
 
 export function SettingSlider({

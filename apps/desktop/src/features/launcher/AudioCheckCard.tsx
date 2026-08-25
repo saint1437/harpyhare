@@ -1,6 +1,6 @@
 import { AudioLines, Mic, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAudioCheck } from "@/hooks/useAudioCheck";
+import type { AudioCheckApi } from "@/hooks/useAudioCheck";
 import type { AudioCheck, AudioSource } from "@/ipc/bindings";
 import type { AppError } from "@/lib/errors";
 import { SettingGroup, SettingRow } from "./fields";
@@ -66,8 +66,13 @@ function LevelMeter({ level }: { level: number }) {
   );
 }
 
-export function AudioCheckCard({ autoModeEnabled }: { autoModeEnabled: boolean }) {
-  const check = useAudioCheck();
+export function AudioCheckCard({
+  autoModeEnabled,
+  check,
+}: {
+  autoModeEnabled: boolean;
+  check: AudioCheckApi;
+}) {
   const sources = SOURCES.filter((meta) => meta.source !== "microphone" || autoModeEnabled);
 
   return (

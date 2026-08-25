@@ -1,91 +1,31 @@
-import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
-import { Button } from "@/components/ui/button";
 import { Wordmark } from "@/components/Wordmark";
 import { useWindowDrag } from "@/hooks/useWindowDrag";
 import { PLATFORM } from "@/lib/platform";
 import { cn } from "@/lib/utils";
+import { StatusObject, type SaveState } from "./StatusObject";
 import { LaunchButton } from "./LaunchButton";
 import type { LauncherBlocker, LauncherReadiness } from "./useLauncherReadiness";
 
 const MACOS_TRAFFIC_LIGHTS_CLASS = PLATFORM === "macos" ? "pl-16" : "";
 
-function statusText(readiness: LauncherReadiness, launching: boolean, saving: boolean): string {
-  if (launching) return "Запускаю основное окно…";
-  if (readiness.checking) return "Проверяю доступы…";
-  if (saving) return "Сохраняю…";
-  const blocker = readiness.blockers[0];
-  if (blocker) return blocker.label;
-  return "Всё готово к запуску";
-}
-
-function StatusLine({
-  readiness,
-  launching,
-  saving,
-  onGoToBlocker,
-}: {
-  readiness: LauncherReadiness;
-  launching: boolean;
-  saving: boolean;
-  onGoToBlocker: (blocker: LauncherBlocker) => void;
-}) {
-  const blocker = readiness.blockers[0];
-  const busy = launching || readiness.checking || saving;
-  const text = statusText(readiness, launching, saving);
-  const dot = (
-    <span
-      className={cn(
-        "size-1.5 shrink-0 rounded-full",
-        busy && "bg-fg-subtle/40",
-        !busy && (blocker ? "bg-danger" : "bg-success"),
-      )}
-      aria-hidden
-    />
-  );
-
-  if (blocker && !busy) {
-    return (
-      <Button
-        variant="ghost"
-        size="compact"
-        className="min-w-0 gap-2 text-fg-subtle"
-        onClick={() => {
-          onGoToBlocker(blocker);
-        }}
-      >
-        {dot}
-        <span className="truncate" title={text}>
-          {text}
-        </span>
-        <ChevronRight className="size-3 shrink-0 text-fg-subtle/70" aria-hidden />
-      </Button>
-    );
-  }
-
-  return (
-    <span className="inline-flex h-6.5 min-w-0 items-center gap-2 px-2 text-caption text-fg-subtle">
-      {dot}
-      <span className="truncate" title={text}>
-        {text}
-      </span>
-    </span>
-  );
-}
-
 export function LaunchBar({
   readiness,
   launching,
-  saving,
+  saveState,
+  audioCheckRunning,
   search,
   onGoToBlocker,
+  onRetrySave,
   onLaunch,
 }: {
   readiness: LauncherReadiness;
   launching: boolean;
-  saving: boolean;
+  saveState: SaveState;
+  audioCheckRunning: boolean;
   search: ReactNode;
   onGoToBlocker: (blocker: LauncherBlocker) => void;
+  onRetrySave: () => void;
   onLaunch: () => void;
 }) {
   const onDragMouseDown = useWindowDrag();
@@ -102,11 +42,13 @@ export function LaunchBar({
 
       <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1.5">
         <div className="max-w-80 min-w-0">
-          <StatusLine
+          <StatusObject
             readiness={readiness}
             launching={launching}
-            saving={saving}
+            audioCheckRunning={audioCheckRunning}
+            saveState={saveState}
             onGoToBlocker={onGoToBlocker}
+            onRetrySave={onRetrySave}
           />
         </div>
         <LaunchButton readiness={readiness} launching={launching} onLaunch={onLaunch} />
