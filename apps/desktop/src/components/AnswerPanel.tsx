@@ -211,7 +211,9 @@ function MessageShell({
   if (align === "end") {
     return (
       <div className="group/msg flex items-start justify-end gap-1">
-        <div className={cn("shrink-0", REVEAL_ON_HOVER)}>{actions}</div>
+        <div className={cn("shrink-0 rounded-md p-0.5", FLOATING_CHIP_CLASS, REVEAL_ON_HOVER)}>
+          {actions}
+        </div>
         {children}
       </div>
     );

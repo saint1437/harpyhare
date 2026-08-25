@@ -283,4 +283,18 @@ describe("AnswerPanel — кнопки сообщений", () => {
     const { container } = renderPanel([userMsg]);
     expect(container.querySelector(".absolute.right-0.bottom-0")).toBeNull();
   });
+
+  // Позиции разные по необходимости, но выглядеть они обязаны одинаково.
+  it("подложка кнопок одна и та же у обеих сторон", () => {
+    const mine = renderPanel([userMsg]);
+    const minePlate = mine.container.querySelector(".bg-elevated\\/95")?.className ?? "";
+    cleanup();
+    const theirs = renderPanel([assistant]);
+    const theirsPlate = theirs.container.querySelector(".bg-elevated\\/95")?.className ?? "";
+    expect(minePlate).not.toBe("");
+    for (const shared of ["rounded-md", "p-0.5", "bg-elevated/95", "shadow-pop"]) {
+      expect(minePlate).toContain(shared);
+      expect(theirsPlate).toContain(shared);
+    }
+  });
 });
