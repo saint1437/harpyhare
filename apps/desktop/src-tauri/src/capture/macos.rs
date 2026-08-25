@@ -128,14 +128,35 @@ fn open_input(device_uid: Option<&str>) -> Result<(Source, StreamSpec), CaptureE
     Ok((Source::Device(device), spec))
 }
 
+/// Первый поток устройства: у выходов, которые нас интересуют, он единственный.
+const TAP_STREAM_INDEX: isize = 0;
+
 fn open_output_tap(output_device_uid: Option<&str>) -> Result<(Source, StreamSpec), CaptureError> {
-    let tap_desc = ca::TapDesc::with_stereo_global_tap_excluding_processes(&ns::Array::new());
+    // Устройство резолвится ДО тапа, потому что тап к нему привязывается.
+    let output_device = resolve_device(output_device_uid, SourceKind::Output)?;
+    let output_uid = output_device.uid().map_err(from_os)?;
+
+    // Тап привязан к устройству, а не глобален по всем процессам.
+    //
+    // Глобальный тап (`with_stereo_global_tap_excluding_processes` с пустым
+    // списком исключений) снимал звук ЛЮБОГО процесса, куда бы тот ни играл, а
+    // выбранное устройство работало лишь источником тактирования агрегата и не
+    // фильтровало ничего. На машине, где обработанный микрофон проигрывается в
+    // виртуальный кабель ради шумодава, это означало, что собственный голос
+    // пользователя приходил в захват как «системный звук» — а в автослушании
+    // ещё и с меткой «Интервьюер», то есть запускал отправку. Обойти это
+    // маршрутизацией было нельзя: тап ловил всё.
+    //
+    // Пустой список исключений сохранён: исключать никого не нужно, нужно
+    // ограничить область одним устройством.
+    let tap_desc = ca::TapDesc::alloc().init_excluding_processes_and_device(
+        &ns::Array::new(),
+        output_uid.as_ns(),
+        TAP_STREAM_INDEX,
+    );
     let tap = tap_desc.create_process_tap().map_err(from_os)?;
     let tap_uid = tap.uid().map_err(from_os)?;
     let spec = stream_spec(&tap.asbd().map_err(from_os)?)?;
-
-    let output_device = resolve_device(output_device_uid, SourceKind::Output)?;
-    let output_uid = output_device.uid().map_err(from_os)?;
     let sub_device =
         cf::DictionaryOf::with_keys_values(&[sub_keys::uid()], &[output_uid.as_type_ref()]);
     let sub_tap = cf::DictionaryOf::with_keys_values(&[sub_keys::uid()], &[tap_uid.as_type_ref()]);

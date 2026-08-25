@@ -42,7 +42,10 @@ function withSavedDevice(devices: AudioDeviceInfo[], savedUid: string): AudioDev
 function CaptureDeviceRow({ draft, set }: SectionProps) {
   const devices = withSavedDevice(useAudioOutputDevices(), draft.capture_device_uid);
   return (
-    <SettingRow label="Устройство захвата" hint="Звук снимается с того выхода, который слышите вы.">
+    <SettingRow
+      label="Устройство захвата"
+      hint="Снимается звук только этого выхода. Что играет в другие устройства — в захват не попадёт."
+    >
       <SettingSelect
         ariaLabel="Устройство захвата"
         value={
