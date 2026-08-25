@@ -224,3 +224,63 @@ describe("AnswerPanel — картинки в сообщении пользов�
     expect(container.querySelectorAll("img")).toHaveLength(1);
   });
 });
+
+describe("AnswerPanel — кнопки сообщений", () => {
+  const assistant: ChatMessage = { role: "assistant", text: "Ответ", images: [] };
+
+  function renderPanel(messages: ChatMessage[]) {
+    return render(
+      <AnswerPanel
+        messages={messages}
+        recordCombo="Cmd+R"
+        partial={null}
+        streaming={false}
+        scrollModifier="Alt"
+        onTogglePreview={() => undefined}
+        onCopyMessage={() => undefined}
+        onRemoveMessage={() => undefined}
+        onResendMessage={() => undefined}
+      />,
+    );
+  }
+
+  // Раньше под кнопки держался постоянный жёлоб в 54px — на каждой строке
+  // каждого ответа, всегда. В узком окне это пятая часть ширины, и текст ответа
+  // оказывался заметно уже своих же сообщений.
+  it("у ответа кнопки не занимают ширину", () => {
+    const { container } = renderPanel([assistant]);
+    const chip = container.querySelector(".absolute.right-0.bottom-0");
+    expect(chip).not.toBeNull();
+    expect(container.querySelector("[class*='pr-13.5']")).toBeNull();
+  });
+
+  // Поток и история должны совпадать по правому краю: пока жёлоб существовал,
+  // его ширину приходилось дублировать в StreamingAssistant вручную, и любая
+  // добавленная кнопка молча разъезжала их.
+  it("поток и дописанный ответ выровнены одинаково", () => {
+    const streamed = render(
+      <AnswerPanel
+        messages={[]}
+        recordCombo="Cmd+R"
+        partial="Ответ"
+        streaming
+        scrollModifier="Alt"
+        onTogglePreview={() => undefined}
+        onCopyMessage={() => undefined}
+        onRemoveMessage={() => undefined}
+        onResendMessage={() => undefined}
+      />,
+    );
+    const streamingProse = streamed.container.querySelector(".prose-answer")?.className ?? "";
+    cleanup();
+    const { container } = renderPanel([assistant]);
+    const historyProse = container.querySelector(".prose-answer")?.className ?? "";
+    expect(streamingProse).toBe(historyProse);
+  });
+
+  // У своего сообщения свободная зона слева есть, и там кнопки ничего не отнимают.
+  it("у своего сообщения кнопки остаются в потоке слева", () => {
+    const { container } = renderPanel([userMsg]);
+    expect(container.querySelector(".absolute.right-0.bottom-0")).toBeNull();
+  });
+});

@@ -69,7 +69,13 @@ const ASSISTANT_PROSE_CLASS = "prose-answer text-chat leading-relaxed text-fg/90
 const FLOATING_CHIP_CLASS = "border bg-elevated/95 shadow-pop backdrop-blur-sm";
 const MESSAGE_IMAGE_ALT = "Картинка в сообщении";
 const COPY_MESSAGE_TITLE = "Копировать сообщение";
-const ASSISTANT_ACTIONS_GUTTER_CLASS = "pr-13.5";
+/**
+ * Показ по наведению — без transition: анимация прозрачности в прозрачном
+ * безрамочном окне поднимает элемент в отдельный слой WKWebView, и при схлопывании
+ * слоя остаются несмытые пиксели.
+ */
+const REVEAL_ON_HOVER =
+  "pointer-events-none opacity-0 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100";
 
 const REHYPE_PLUGINS: NonNullable<Parameters<typeof Markdown>[0]["rehypePlugins"]> = [
   [
@@ -161,7 +167,7 @@ function MessageActions({
   onResend: (() => void) | null;
 }) {
   return (
-    <div className="pointer-events-none flex shrink-0 gap-0.5 opacity-0 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
+    <div className="flex shrink-0 gap-0.5">
       {onCopy && (
         <MessageActionButton title={COPY_MESSAGE_TITLE} onClick={onCopy}>
           <Copy className="size-3.5" />
@@ -200,18 +206,40 @@ function MessageShell({
   children: ReactNode;
 }) {
   const actions = <MessageActions onCopy={onCopy} onRemove={onRemove} onResend={onResend} />;
+  // Своё сообщение — пузырь, он никогда не занимает всю ширину, поэтому кнопки
+  // помещаются в свободную зону слева и ничего не отнимают.
   if (align === "end") {
     return (
       <div className="group/msg flex items-start justify-end gap-1">
-        {actions}
+        <div className={cn("shrink-0", REVEAL_ON_HOVER)}>{actions}</div>
         {children}
       </div>
     );
   }
+  /**
+   * У ответа свободной зоны нет: он тянется на всю ширину. Раньше под кнопки
+   * держался постоянный жёлоб справа (4 + 24 + 2 + 24 = 54px) — чтобы показ по
+   * наведению не дёргал вёрстку. Цена оказалась выше пользы: 54px терялись на
+   * КАЖДОЙ строке каждого ответа всегда, а в узком окне это пятая часть ширины,
+   * и текст ответа оказывался заметно уже своих же сообщений.
+   *
+   * Теперь кнопки лежат абсолютом и ширины не занимают вовсе. Прежнее правило
+   * «не накрывать текст» соблюдено ровно там, где это важно: якорь — правый
+   * НИЖНИЙ угол, а последняя строка абзаца почти всегда короткая. Плюс своя
+   * непрозрачная подложка, так что накрытое не просвечивает.
+   */
   return (
-    <div className="group/msg flex items-start gap-1">
-      <div className="min-w-0 flex-1">{children}</div>
-      {actions}
+    <div className="group/msg relative">
+      {children}
+      <div
+        className={cn(
+          "absolute right-0 bottom-0 rounded-md p-0.5",
+          FLOATING_CHIP_CLASS,
+          REVEAL_ON_HOVER,
+        )}
+      >
+        {actions}
+      </div>
     </div>
   );
 }
@@ -227,7 +255,7 @@ function Assistant({ text, components }: { text: string; components: Components 
 function StreamingAssistant({ text, components }: { text: string; components: Components }) {
   const [stable, tail] = splitStableTail(text);
   return (
-    <div className={cn(ASSISTANT_PROSE_CLASS, ASSISTANT_ACTIONS_GUTTER_CLASS)}>
+    <div className={ASSISTANT_PROSE_CLASS}>
       {stable !== "" && <MarkdownChunk text={stable} components={components} />}
       {tail !== "" && <MarkdownChunk text={tail} components={components} />}
     </div>
