@@ -86,3 +86,28 @@ describe("usePromptFocus", () => {
     expect(field.selectionEnd).toBe(DRAFT_TEXT.length);
   });
 });
+
+/** Клубок размонтирует композер целиком — как настоящее сворачивание окна. */
+function CollapsibleField({ collapsed, text }: { collapsed: boolean; text: string }) {
+  const ref = usePromptFocus(false, collapsed);
+  return collapsed ? null : createElement("textarea", { ref, defaultValue: text });
+}
+
+describe("usePromptFocus и сворачивание окна", () => {
+  // Композер при сворачивании размонтируется, ref обнуляется, а при
+  // разворачивании монтируется заново. Эффект сам по себе не перезапустился бы:
+  // ни suspended, ни focus не менялись — и каретка не возвращалась.
+  it("после сворачивания и разворачивания каретка возвращается в конец текста", () => {
+    const view = render(createElement(CollapsibleField, { collapsed: false, text: DRAFT_TEXT }));
+    expect(document.activeElement).toBe(document.querySelector("textarea"));
+
+    view.rerender(createElement(CollapsibleField, { collapsed: true, text: DRAFT_TEXT }));
+    expect(document.querySelector("textarea")).toBeNull();
+
+    view.rerender(createElement(CollapsibleField, { collapsed: false, text: DRAFT_TEXT }));
+    const field = document.querySelector("textarea");
+    if (!field) throw new Error("поле промпта не вернулось после разворачивания");
+    expect(document.activeElement).toBe(field);
+    expect(field.selectionStart).toBe(DRAFT_TEXT.length);
+  });
+});

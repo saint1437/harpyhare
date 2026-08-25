@@ -200,6 +200,14 @@ pub fn set_collapsed(app: &AppHandle, collapsed: bool) {
         return;
     }
 
+    // Развернуть — это не только «стать больше». Хоткей сворачивания глобальный,
+    // и разворачивают окно чаще всего из ЧУЖОГО приложения: без set_focus окно
+    // вырастает, но ключевым не становится, и набранное уходит мимо. Каретку в
+    // поле ставит эффект на фронтенде — событие focus-prompt здесь пришло бы
+    // раньше, чем композер успел смонтироваться.
+    let _ = w.show();
+    let _ = w.set_focus();
+
     let settings = current_settings(app);
     set_window_size(app.clone(), settings.window_width, settings.window_height);
     let restore = w.clone();

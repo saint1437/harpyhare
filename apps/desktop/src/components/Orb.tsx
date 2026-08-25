@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useOrbDrag } from "@/hooks/useOrbDrag";
 import { listeningAnnouncement, type ListeningState } from "@/lib/listening";
 import { cn } from "@/lib/utils";
@@ -53,10 +54,17 @@ const LABEL: Record<OrbState, string> = {
 
 export function Orb({ state, onExpand }: { state: OrbState; onExpand: () => void }) {
   const drag = useOrbDrag(onExpand);
+  // Композер только что размонтировался вместе с окном, и фокус ушёл бы в body.
+  // Забираем его на кружок: с клавиатуры Enter разворачивает окно обратно.
+  const face = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    face.current?.focus();
+  }, []);
   return (
     <div className="grid h-screen w-screen place-items-center bg-transparent">
       <LiveRegion message={state === "answer" ? "Ответ готов" : listeningAnnouncement(state)} />
       <button
+        ref={face}
         type="button"
         title={LABEL[state]}
         aria-label={LABEL[state]}

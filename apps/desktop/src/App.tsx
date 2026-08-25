@@ -693,7 +693,7 @@ export default function App() {
   usePttSuspend(effectiveCombo(settings.hotkeys, "record"));
   const connectivity = useConnectivity();
   const promptCoveredByOverlay = teleprompterOpen || connectivity.offline;
-  const promptRef = usePromptFocus(promptCoveredByOverlay);
+  const promptRef = usePromptFocus(promptCoveredByOverlay, collapsed);
 
   const duplicateActiveChat = useCallback(() => {
     chatsRef.current.duplicateChat(chatsRef.current.activeId);
