@@ -80,7 +80,7 @@ function ChatTab({
       title={title || `Чат ${String(number)}`}
       aria-label={closeOnClick ? `Закрыть чат ${String(number)}` : `Чат ${String(number)}`}
       className={cn(
-        "group relative grid size-6.5 shrink-0 place-items-center rounded-md font-mono text-caption transition-colors outline-none focus-visible:ring-2 focus-visible:ring-focus",
+        "group relative grid size-6.5 shrink-0 place-items-center rounded-md font-mono text-caption transition-colors outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus focus-visible:outline-solid",
         isActive
           ? "bg-surface-active text-fg ring-1 ring-inset ring-line"
           : "text-fg-subtle hover:bg-surface hover:text-fg active:bg-surface-active",

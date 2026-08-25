@@ -1,3 +1,4 @@
+import { StateBadge, type StateTone } from "@/components/StateBadge";
 import { Button } from "@/components/ui/button";
 import type { PermissionsApi } from "@/hooks/usePermissions";
 import type { PermissionState } from "@/ipc/bindings";
@@ -12,16 +13,14 @@ const STATE_LABEL: Record<PermissionState, string> = {
   unknown: "не выдан",
 };
 
+const STATE_TONE: Record<PermissionState, StateTone> = {
+  granted: "success",
+  denied: "danger",
+  unknown: "warning",
+};
+
 function StatusChip({ state }: { state: PermissionState }) {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 text-caption text-fg-subtle">
-      <span
-        className={cn("size-1.5 rounded-full", state === "granted" ? "bg-success" : "bg-fg-subtle")}
-        aria-hidden
-      />
-      {STATE_LABEL[state]}
-    </span>
-  );
+  return <StateBadge tone={STATE_TONE[state]} label={STATE_LABEL[state]} />;
 }
 
 function PermissionRowView({

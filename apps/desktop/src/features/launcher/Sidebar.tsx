@@ -42,7 +42,7 @@ function SidebarItem({
         onSelect(id);
       }}
       className={cn(
-        "group relative flex items-center justify-center rounded-md px-0 py-2 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-focus",
+        "group relative flex items-center justify-center rounded-md px-0 py-2 transition-colors outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus focus-visible:outline-solid",
         active
           ? "bg-surface-active text-fg"
           : "text-fg-subtle hover:bg-surface hover:text-fg active:bg-surface-active",

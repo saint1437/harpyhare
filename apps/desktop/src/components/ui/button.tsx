@@ -4,13 +4,12 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md text-body font-medium whitespace-nowrap transition-colors outline-none select-none focus-visible:ring-2 focus-visible:ring-focus disabled:pointer-events-none disabled:opacity-50 aria-invalid:ring-danger [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md text-body font-medium whitespace-nowrap transition-colors outline-none select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus focus-visible:outline-solid disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
         default: "bg-accent text-accent-on shadow-btn hover:bg-accent-hover active:bg-accent-hover",
-        destructive:
-          "bg-danger text-danger-on shadow-btn hover:bg-danger/85 focus-visible:ring-danger active:bg-danger/75",
+        destructive: "bg-danger text-danger-on shadow-btn hover:bg-danger/85 active:bg-danger/75",
         outline:
           "border border-line-strong bg-inset hover:bg-surface-active focus-visible:border-focus active:bg-surface-active",
         ghost: "hover:bg-surface hover:text-fg active:bg-surface-active",

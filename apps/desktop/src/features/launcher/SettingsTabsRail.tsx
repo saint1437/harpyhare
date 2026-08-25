@@ -29,7 +29,7 @@ function SettingsTabButton({
         onSelect(id);
       }}
       className={cn(
-        "relative flex items-center justify-center gap-2 rounded-md px-0 py-1.5 text-left text-body whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-focus min-[900px]:justify-start min-[900px]:px-2",
+        "relative flex items-center justify-center gap-2 rounded-md px-0 py-1.5 text-left text-body whitespace-nowrap transition-colors outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus focus-visible:outline-solid min-[900px]:justify-start min-[900px]:px-2",
         active
           ? "bg-surface-active text-fg"
           : "text-fg-subtle hover:bg-surface hover:text-fg active:bg-surface-active",

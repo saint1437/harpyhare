@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { LiveRegion } from "@/components/LiveRegion";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
 import type { Settings } from "@/ipc/types";
 import { isPresetFilled, mergePresets } from "@/lib/presets";
@@ -134,6 +135,7 @@ export function LauncherPanel({
 
   return (
     <div className="flex h-screen flex-col gap-2.5 px-4 pt-0 pb-4 sm:px-5">
+      <LiveRegion message={error ?? ""} />
       <div className="launcher-rise relative z-30" style={riseDelay(0)}>
         <LaunchBar
           readiness={readiness}

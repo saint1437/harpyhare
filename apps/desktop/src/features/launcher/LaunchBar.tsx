@@ -1,9 +1,8 @@
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
-import { EqBars } from "@/components/EqBars";
 import { Button } from "@/components/ui/button";
+import { Wordmark } from "@/components/Wordmark";
 import { useWindowDrag } from "@/hooks/useWindowDrag";
-import { BRAND_NAME } from "@/lib/brand";
 import { PLATFORM } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { LaunchButton } from "./LaunchButton";
@@ -96,10 +95,7 @@ export function LaunchBar({
       className={cn("flex h-9 shrink-0 items-center gap-3", MACOS_TRAFFIC_LIGHTS_CLASS)}
     >
       <div className="flex shrink-0 items-center gap-2">
-        <EqBars animated={launching} barClass="bg-accent-mark" />
-        <h1 className="font-mono text-hint font-semibold tracking-wider text-fg/55 uppercase">
-          {BRAND_NAME}
-        </h1>
+        <Wordmark />
       </div>
 
       <div className="max-w-96 min-w-0 flex-1">{search}</div>

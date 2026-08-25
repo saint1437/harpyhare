@@ -6,7 +6,7 @@ import { useWindowDrag } from "@/hooks/useWindowDrag";
 import type { RecorderState } from "@/ipc/types";
 import { formatCombo } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
-import { EqBars, type EqBarsProps } from "./EqBars";
+import { CaptureMeter, type CaptureMeterProps } from "./CaptureMeter";
 
 export interface ContextUsage {
   usedTokens: number;
@@ -52,15 +52,21 @@ function ContextUsageGauge({ usage }: { usage: ContextUsage }) {
   );
 }
 
-function indicatorProps(
+/**
+ * `listening` is the only chromatic capture signal in the product, and it means
+ * exactly one thing: sound is going somewhere right now. Transcribing is work,
+ * not capture, so it is deliberately neutral and carries its meaning in motion
+ * and in the word beside it.
+ */
+function captureIndicator(
   state: RecorderState,
   autoListening: boolean,
   showError: boolean,
-): EqBarsProps {
-  if (state === "recording") return { animated: true, barClass: "bg-listening" };
-  if (state === "transcribing") return { animated: true, barClass: "bg-processing" };
-  if (autoListening) return { animated: true, barClass: "bg-listening" };
-  return { animated: false, barClass: showError ? "bg-danger" : "bg-fg-subtle/50" };
+): CaptureMeterProps {
+  if (state === "recording") return { tone: "listening", animated: true };
+  if (state === "transcribing") return { tone: "processing", animated: true };
+  if (autoListening) return { tone: "listening", animated: true };
+  return { tone: showError ? "danger" : "idle", animated: false };
 }
 
 export function StatusBar({
@@ -87,7 +93,7 @@ export function StatusBar({
       >
         <Minus />
       </IconButton>
-      <EqBars {...indicatorProps(state, autoListening, showError)} />
+      <CaptureMeter {...captureIndicator(state, autoListening, showError)} />
       {tabs}
       <span
         title={showError ? error : undefined}

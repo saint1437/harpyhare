@@ -385,7 +385,7 @@ function EmptyDropZone({ onPick }: { onPick: () => void }) {
       type="button"
       onClick={onPick}
       {...{ [DROP_FOLDER_ATTR]: ROOT_FOLDER_ID }}
-      className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-7 text-center transition-colors outline-none hover:border-fg/30 hover:bg-surface focus-visible:ring-2 focus-visible:ring-focus"
+      className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-7 text-center transition-colors outline-none hover:border-fg/30 hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus focus-visible:outline-solid"
     >
       <span className="grid size-9 place-items-center rounded-lg bg-surface ring-1 ring-inset ring-line">
         <Upload className="size-4 text-fg-subtle" />

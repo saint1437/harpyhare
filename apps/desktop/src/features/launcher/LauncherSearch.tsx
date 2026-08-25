@@ -74,7 +74,7 @@ export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
         }
         autoComplete="off"
         spellCheck={false}
-        className="h-7 pl-7 text-body focus-visible:ring-inset"
+        className="h-7 pl-7 text-body focus-visible:outline-offset-0"
         onChange={(e) => {
           setQuery(e.target.value);
           setActive(FIRST_INDEX);
@@ -131,7 +131,7 @@ export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
               role="option"
               aria-selected={index === activeIndex}
               className={cn(
-                "flex w-full items-center gap-3 rounded-sm px-2 py-1 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-focus",
+                "flex w-full items-center gap-3 rounded-sm px-2 py-1 text-left transition-colors outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus focus-visible:outline-solid",
                 index === activeIndex
                   ? "bg-surface-active"
                   : "hover:bg-surface active:bg-surface-active",

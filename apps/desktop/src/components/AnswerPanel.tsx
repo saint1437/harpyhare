@@ -320,7 +320,7 @@ function JumpToBottomButton({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       className={cn(
         FLOATING_CHIP_CLASS,
-        "absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full px-2.5 py-1 text-caption text-fg-subtle transition-colors outline-none hover:text-fg focus-visible:ring-2 focus-visible:ring-focus active:bg-surface-active",
+        "absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full px-2.5 py-1 text-caption text-fg-subtle transition-colors outline-none hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus focus-visible:outline-solid active:bg-surface-active",
       )}
     >
       ↓ Вниз

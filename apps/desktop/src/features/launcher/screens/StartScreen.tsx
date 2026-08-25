@@ -1,6 +1,7 @@
 import { ArrowRight, Check } from "lucide-react";
 import type { ReactNode } from "react";
 import { AccessCodeForm } from "@/components/AccessCodeForm";
+import { StateBadge, type StateTone } from "@/components/StateBadge";
 import { Button } from "@/components/ui/button";
 import type { PermissionsApi } from "@/hooks/usePermissions";
 import type { PermissionKind } from "@/ipc/bindings";
@@ -31,16 +32,17 @@ function summary(steps: StartStep[]): string {
   return left === 0 ? "Всё готово — можно запускать." : `Осталось шагов: ${String(left)}.`;
 }
 
+// `todo` and `checking` used to share one grey dot and differed only by the word.
+// They now differ by glyph too — the word is still there, but it is no longer the
+// only thing carrying the difference.
+const STATE_TONE: Record<StartStepState, StateTone> = {
+  done: "success",
+  todo: "warning",
+  checking: "neutral",
+};
+
 function StateChip({ state }: { state: StartStepState }) {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 text-caption text-fg-subtle">
-      <span
-        className={cn("size-1.5 rounded-full", state === "done" ? "bg-success" : "bg-fg-subtle")}
-        aria-hidden
-      />
-      {STATE_LABEL[state]}
-    </span>
-  );
+  return <StateBadge tone={STATE_TONE[state]} label={STATE_LABEL[state]} />;
 }
 
 function StepView({ step, children }: { step: StartStep; children: ReactNode }) {

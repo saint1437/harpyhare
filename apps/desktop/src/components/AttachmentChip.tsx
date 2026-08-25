@@ -14,7 +14,7 @@ export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps) {
         type="button"
         onClick={onRemove}
         aria-label="Удалить вложение"
-        className="pointer-events-none absolute top-1 right-1 grid size-4.5 place-items-center rounded-full bg-scrim-chip text-on-scrim opacity-0 outline-none group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-focus"
+        className="pointer-events-none absolute top-1 right-1 grid size-4.5 place-items-center rounded-full bg-scrim-chip text-on-scrim opacity-0 outline-none group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus focus-visible:outline-solid"
       >
         <X className="size-3" />
       </button>

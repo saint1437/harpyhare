@@ -134,7 +134,7 @@ function PromptTextarea(props: PromptTextareaProps) {
       }}
       spellCheck={false}
       placeholder="Расшифровка появится здесь — или напиши вопрос сам"
-      className="max-h-40 min-h-9 resize-none overflow-y-auto border-0 bg-transparent py-1.5 text-body focus-visible:ring-0"
+      className="max-h-40 min-h-9 resize-none overflow-y-auto border-0 bg-transparent py-1.5 text-body focus-visible:outline-none"
     />
   );
 }
@@ -427,7 +427,7 @@ function LibraryDocToggle({
       type="button"
       onClick={onToggle}
       className={cn(
-        "flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-body transition-colors outline-none focus-visible:ring-2 focus-visible:ring-focus",
+        "flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-body transition-colors outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus focus-visible:outline-solid",
         selected
           ? "bg-surface-active text-fg"
           : "text-fg-subtle hover:bg-surface active:bg-surface-active",
