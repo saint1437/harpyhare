@@ -44,6 +44,7 @@ possible at all.
 | 5 · HUD | `6f9d898` | Five capture states with words; a real pause; opaque status pill; live region; quit |
 | 6 · Polish | `741bfad` | Empty state teaches the hotkey; lazy release notes; loading skeleton; skip link |
 | 7 · Orb | `1b09056` | Collapse-to-ball replaces hiding; HUD top bar regrouped |
+| 7a · Orb fixes | `8c3bacf` | Removed the black rim; drag-vs-click on the ball |
 
 ### The orb, and the top bar (stage 7 — `1b09056`)
 
@@ -74,6 +75,20 @@ been persisted into `window_width/height` as the HUD's "saved size".
 `hide_main_window` was removed from both sides: collapse replaces hiding entirely, so it would have been
 exactly the dead contract surface I criticised `close_app` for. The internal `hide_main` stays — the
 region screenshot still uses it.
+
+**Two defects found on first sight of it (`8c3bacf`).** The "black rim" was three things at once: macOS
+draws the native window shadow around the *window*, not the circle, so a dark rectangular halo framed the
+transparent square — now `set_shadow(false)` while collapsed; `shadow-modal` is 64px of blur inside what
+was a 72px window, so it hit the window edge and clipped into a hard dark border — now a small shadow
+with the window widened to 80px to hold it; and `ring-line` is a dark grey hairline, which reads as a
+hairline on the launcher's own surface but as a black outline over someone else's window — now a light
+inset rim, per theme.
+
+Dragging failed for a reason worth recording: this project's drag helper deliberately excludes `button`
+so header buttons stay clickable, and the ball *is* a button. Calling `startDragging()` on mousedown is
+not an option either — the OS takes the gesture and the click never lands. So a 4px threshold separates
+the two intents: below it the window expands, above it the gesture goes to the system and the trailing
+click is suppressed.
 
 ---
 
@@ -158,7 +173,7 @@ push-to-talk alone. A live region. A quit button.
 | `cargo clippy --release` | ✅ clean (a stale pre-move absolute path in the cache needed `cargo clean -p tauri --release` first — unrelated to these changes) |
 | `knip` | ✅ clean |
 | `npm run build` | ✅ |
-| `npm run tauri build` | ✅ **full bundle: `.app`, signed, `.dmg`, and the updater `.tar.gz`**, zero warnings. (A first attempt failed at `bundle_dmg.sh`; it succeeded on the next run, so that was transient — a stale mounted volume — not an environment limit as I first reported.) |
+| `npm run tauri build` | ✅ **`.app` signed, `.dmg` (8 070 140 B), updater `.tar.gz`** — zero warnings. Stops only at signing the updater artifact, which needs `TAURI_SIGNING_PRIVATE_KEY`; that is a release secret held by CI, so this is expected, not a defect. **Correction to my first report:** I blamed the DMG failure on missing Automation permission. The real cause is a **stale mounted volume** — a killed run leaves `/Volumes/dmg.XXXXXX` behind and `bundle_dmg.sh` then fails every time. `hdiutil detach /Volumes/dmg.* -force` clears it. Worth knowing: it will recur. |
 | `nx build landing` | ✅ **60 output files, byte-identical to baseline**; `git diff` shows `apps/landing` untouched |
 | Palette validator | ✅ **356 checks across 4 scopes** (light/dark × HUD/launcher), AA + sRGB gamut |
 | Token validator | ✅ every colour utility resolves (28 tokens, 4 shadows) |
