@@ -46,6 +46,7 @@ export function LauncherPanel({
   onCheckUpdates,
   onSave,
   onLaunch,
+  onReplayOnboarding,
 }: LauncherPanelProps) {
   const [draft, setDraft] = useState<Settings>(settings);
   const [checkState, setCheckState] = useState<CheckState>("idle");
@@ -197,6 +198,7 @@ export function LauncherPanel({
                 set={set}
                 tab={settingsTab}
                 onRedeem={onRedeem}
+                onReplayOnboarding={onReplayOnboarding}
                 onTabChange={setSettingsTab}
               />
             )}

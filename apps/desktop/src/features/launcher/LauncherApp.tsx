@@ -7,6 +7,7 @@ import type { Settings } from "@/ipc/types";
 import { applyTheme } from "@/lib/window-controls";
 import { LauncherPanel } from "./LauncherPanel";
 import { useLauncherReadiness } from "./useLauncherReadiness";
+import { OnboardingFlow } from "../onboarding/OnboardingFlow";
 
 function applyLauncherTheme(settings: Settings): void {
   applyTheme(document.documentElement, settings.theme);
@@ -20,6 +21,9 @@ export function LauncherApp() {
   const [launching, setLaunching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Re-entry from settings: the flag is already true, so the gate has to be
+  // openable by hand as well as by the flag.
+  const [replayOnboarding, setReplayOnboarding] = useState(false);
 
   const redeem = useCallback(
     async (code: string): Promise<string | null> => {
@@ -67,6 +71,28 @@ export function LauncherApp() {
       <div className="grid h-screen place-items-center text-body text-fg-subtle">Загрузка…</div>
     );
 
+  if (!settings.onboarding_done || replayOnboarding) {
+    const finish = () => {
+      setReplayOnboarding(false);
+      handleSave({ ...settings, onboarding_done: true });
+    };
+    return (
+      <OnboardingFlow
+        draft={settings}
+        set={(key, value) => {
+          handleSave({ ...settings, [key]: value });
+        }}
+        permissions={readiness.permissions}
+        launching={launching}
+        onRedeem={redeem}
+        onLaunch={() => {
+          handleLaunch({ ...settings, onboarding_done: true });
+        }}
+        onFinish={finish}
+      />
+    );
+  }
+
   return (
     <LauncherPanel
       settings={settings}
@@ -80,6 +106,9 @@ export function LauncherApp() {
       onCheckUpdates={updater.checkNow}
       onSave={handleSave}
       onLaunch={handleLaunch}
+      onReplayOnboarding={() => {
+        setReplayOnboarding(true);
+      }}
     />
   );
 }

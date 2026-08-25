@@ -15,12 +15,27 @@ import { SettingsTabsRail } from "../SettingsTabsRail";
 type SettingsScreenProps = SectionProps & {
   tab: SettingsTabId;
   onRedeem: (code: string) => Promise<string | null>;
+  onReplayOnboarding: () => void;
   onTabChange: (tab: SettingsTabId) => void;
 };
 
-export function SettingsScreen({ draft, set, tab, onRedeem, onTabChange }: SettingsScreenProps) {
+export function SettingsScreen({
+  draft,
+  set,
+  tab,
+  onRedeem,
+  onReplayOnboarding,
+  onTabChange,
+}: SettingsScreenProps) {
   const sections: Record<SettingsTabId, ReactNode> = {
-    access: <ApiKeysSection draft={draft} set={set} onRedeem={onRedeem} />,
+    access: (
+      <ApiKeysSection
+        draft={draft}
+        set={set}
+        onRedeem={onRedeem}
+        onReplayOnboarding={onReplayOnboarding}
+      />
+    ),
     speech: (
       <>
         <SttSection draft={draft} set={set} />

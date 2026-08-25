@@ -33,7 +33,7 @@ describe("usePermissions", () => {
     });
     expect(result.current.audioOk).toBe(true);
     expect(result.current.screenOk).toBe(false);
-    expect(result.current.allOk).toBe(false);
+    expect(result.current.microphoneOk).toBe(false);
   });
 
   it("request обновляет статус только запрошенного доступа", async () => {

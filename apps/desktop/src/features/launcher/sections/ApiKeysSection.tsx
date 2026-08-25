@@ -8,6 +8,8 @@ import { SettingBlock, SettingGroup, SettingRow } from "../fields";
 
 type ApiKeysSectionProps = SectionProps & {
   onRedeem: (code: string) => Promise<string | null>;
+  /** Онбординг перепроходится отсюда: флаг уже стоит, а дверь нужна. */
+  onReplayOnboarding?: () => void;
 };
 
 const KEY_FIELDS: { id: ApiKeyId; placeholder: string }[] = [
@@ -15,7 +17,7 @@ const KEY_FIELDS: { id: ApiKeyId; placeholder: string }[] = [
   { id: "groq", placeholder: "gsk_…" },
 ];
 
-export function ApiKeysSection({ draft, set, onRedeem }: ApiKeysSectionProps) {
+export function ApiKeysSection({ draft, set, onRedeem, onReplayOnboarding }: ApiKeysSectionProps) {
   if (draft.access_token.trim() !== "") {
     return (
       <SettingGroup
@@ -73,6 +75,16 @@ export function ApiKeysSection({ draft, set, onRedeem }: ApiKeysSectionProps) {
           </SettingBlock>
         );
       })}
+      {onReplayOnboarding !== undefined && (
+        <SettingRow
+          label="Первичная настройка"
+          hint="Короткий проход по доступам, приватности и клавише записи."
+        >
+          <Button variant="ghost" size="sm" onClick={onReplayOnboarding}>
+            Пройти заново
+          </Button>
+        </SettingRow>
+      )}
     </SettingGroup>
   );
 }

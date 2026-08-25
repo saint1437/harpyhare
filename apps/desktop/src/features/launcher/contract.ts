@@ -29,4 +29,5 @@ export interface LauncherPanelProps {
   onCheckUpdates: () => Promise<UpdateInfo | null>;
   onSave: (next: Settings) => void;
   onLaunch: (next: Settings) => void;
+  onReplayOnboarding: () => void;
 }
