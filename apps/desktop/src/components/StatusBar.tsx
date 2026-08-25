@@ -1,12 +1,14 @@
-import { ArrowDownCircle, Minus, Square } from "lucide-react";
+import { ArrowDownCircle, Minus, Power, Square } from "lucide-react";
 import type { ReactNode } from "react";
 import { IconButton } from "@/components/IconButton";
 import { Button } from "@/components/ui/button";
 import { useWindowDrag } from "@/hooks/useWindowDrag";
 import type { RecorderState } from "@/ipc/types";
 import { formatCombo } from "@/lib/hotkeys";
+import { listeningAnnouncement, listeningState } from "@/lib/listening";
 import { cn } from "@/lib/utils";
-import { CaptureMeter, type CaptureMeterProps } from "./CaptureMeter";
+import { ListeningStatus } from "./ListeningStatus";
+import { LiveRegion } from "./LiveRegion";
 
 export interface ContextUsage {
   usedTokens: number;
@@ -16,6 +18,7 @@ export interface ContextUsage {
 export interface StatusBarProps {
   state: RecorderState;
   autoListening: boolean;
+  bufferEnabled: boolean;
   error: string | null;
   toggleHotkey: string;
   tabs: ReactNode;
@@ -24,6 +27,8 @@ export interface StatusBarProps {
   update: { version: string; busy: boolean; onOpen: () => void } | null;
   onStop: () => void;
   onHide: () => void;
+  onTogglePause: () => void;
+  onQuit: () => void;
 }
 
 const CONTEXT_USAGE_WARN_PERCENT = 80;
@@ -52,26 +57,10 @@ function ContextUsageGauge({ usage }: { usage: ContextUsage }) {
   );
 }
 
-/**
- * `listening` is the only chromatic capture signal in the product, and it means
- * exactly one thing: sound is going somewhere right now. Transcribing is work,
- * not capture, so it is deliberately neutral and carries its meaning in motion
- * and in the word beside it.
- */
-function captureIndicator(
-  state: RecorderState,
-  autoListening: boolean,
-  showError: boolean,
-): CaptureMeterProps {
-  if (state === "recording") return { tone: "listening", animated: true };
-  if (state === "transcribing") return { tone: "processing", animated: true };
-  if (autoListening) return { tone: "listening", animated: true };
-  return { tone: showError ? "danger" : "idle", animated: false };
-}
-
 export function StatusBar({
   state,
   autoListening,
+  bufferEnabled,
   error,
   toggleHotkey,
   tabs,
@@ -80,9 +69,19 @@ export function StatusBar({
   update,
   onStop,
   onHide,
+  onTogglePause,
+  onQuit,
 }: StatusBarProps) {
-  const showError = error !== null && state === "idle";
+  // Раньше ошибка показывалась только в простое, то есть отказ во время
+  // записи пропадал совсем. Теперь у захвата и у ошибки разные слоты.
+  const showError = error !== null;
   const onDragMouseDown = useWindowDrag();
+  const listening = listeningState({
+    state,
+    autoListening,
+    bufferEnabled,
+    hasError: showError,
+  });
 
   return (
     <header className="flex min-h-7 items-center gap-2" onMouseDown={onDragMouseDown}>
@@ -93,20 +92,27 @@ export function StatusBar({
       >
         <Minus />
       </IconButton>
-      <CaptureMeter {...captureIndicator(state, autoListening, showError)} />
+      <LiveRegion message={showError ? error : listeningAnnouncement(listening)} />
+      <ListeningStatus
+        value={listening}
+        paused={!bufferEnabled}
+        error={showError ? error : null}
+        onTogglePause={onTogglePause}
+      />
       {tabs}
-      <span
-        title={showError ? error : undefined}
-        className="min-w-0 flex-1 truncate text-caption text-danger"
-      >
-        {showError ? error : ""}
-      </span>
+      <span className="min-w-0 flex-1" />
       <div className="flex shrink-0 items-center gap-0.5">
         {contextUsage && <ContextUsageGauge usage={contextUsage} />}
         {actions}
         {update && <UpdateBadge update={update} />}
         <IconButton title="Стоп — вернуться в лаунчер" onClick={onStop}>
           <Square />
+        </IconButton>
+        {/* Окно без рамки, без трея и без строки меню: до этой кнопки выйти из
+            приложения было физически нечем — команда close_app существовала в
+            контракте и не вызывалась ниоткуда. */}
+        <IconButton title="Выйти из приложения" onClick={onQuit}>
+          <Power />
         </IconButton>
       </div>
     </header>

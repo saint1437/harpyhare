@@ -21,8 +21,8 @@ import { ScreenShell } from "./ScreenShell";
 import { PresetsSection, type PresetsUpdate } from "./sections/PresetsSection";
 import { DEFAULT_SETTINGS_TAB, type SettingsTabId } from "./settings-tabs";
 import { Sidebar, type SidebarNotice } from "./Sidebar";
-import { panelProps } from "./useRovingTabs";
 import type { SaveState } from "./StatusObject";
+import { panelProps } from "./useRovingTabs";
 
 const RECORD_ACTION = "record";
 const RISE_STEP_MS = 50;

@@ -3,8 +3,8 @@ import { Wordmark } from "@/components/Wordmark";
 import { useWindowDrag } from "@/hooks/useWindowDrag";
 import { PLATFORM } from "@/lib/platform";
 import { cn } from "@/lib/utils";
-import { StatusObject, type SaveState } from "./StatusObject";
 import { LaunchButton } from "./LaunchButton";
+import { StatusObject, type SaveState } from "./StatusObject";
 import type { LauncherBlocker, LauncherReadiness } from "./useLauncherReadiness";
 
 const MACOS_TRAFFIC_LIGHTS_CLASS = PLATFORM === "macos" ? "pl-16" : "";

@@ -41,6 +41,7 @@ import { useTranscription } from "@/hooks/useTranscription";
 import { useUpdater, type UpdaterApi } from "@/hooks/useUpdater";
 import { useWindowControls } from "@/hooks/useWindowControls";
 import {
+  closeApp,
   hideMainWindow,
   countChatTokens,
   retryTranscription,
@@ -404,6 +405,8 @@ interface AppHeaderProps {
   canTeleprompt: boolean;
   contextUsage: ContextUsage | null;
   screenShareVisible: boolean;
+  bufferEnabled: boolean;
+  onTogglePause: () => void;
   onToggleScreenShare: () => void;
   onCopy: () => void;
   onOpenTeleprompter: () => void;
@@ -423,6 +426,8 @@ function AppHeader({
   canTeleprompt,
   contextUsage,
   screenShareVisible,
+  bufferEnabled,
+  onTogglePause,
   onToggleScreenShare,
   onCopy,
   onOpenTeleprompter,
@@ -433,6 +438,9 @@ function AppHeader({
     <StatusBar
       state={state}
       autoListening={autoMode.active}
+      bufferEnabled={bufferEnabled}
+      onTogglePause={onTogglePause}
+      onQuit={() => void closeApp()}
       error={error?.message ?? null}
       toggleHotkey={effectiveCombo(hotkeys, "toggle_window")}
       contextUsage={contextUsage}
@@ -762,6 +770,18 @@ export default function App() {
     });
   };
 
+  /**
+   * Пауза выключает ВСЁ пассивное — фоновый буфер и автослушание. Пуш-ту-ток
+   * остаётся: удержание клавиши не пассивное прослушивание, и отнимать его
+   * значило бы сделать паузу второй кнопкой «Стоп».
+   */
+  const togglePassiveListening = () => {
+    const current = settingsRef.current;
+    const resuming = !current.buffer_enabled;
+    if (!resuming && autoMode.active) autoMode.toggle();
+    saveSettingsReportingError({ ...current, buffer_enabled: resuming });
+  };
+
   const skipUpdate = () => {
     const skipped = updater.info?.version ?? "";
     setUpdateOpen(false);
@@ -792,6 +812,8 @@ export default function App() {
           canTeleprompt={canTeleprompt}
           contextUsage={contextUsage}
           screenShareVisible={settings.screen_share_visible}
+          bufferEnabled={settings.buffer_enabled}
+          onTogglePause={togglePassiveListening}
           onToggleScreenShare={toggleScreenShareVisible}
           onCopy={() => {
             copyLastAssistantMessage(active.messages);
