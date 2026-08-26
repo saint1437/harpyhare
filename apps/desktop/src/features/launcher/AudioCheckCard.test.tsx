@@ -19,6 +19,8 @@ vi.mock("@/ipc/commands", () => ({
 }));
 
 import { useAudioCheck } from "@/hooks/useAudioCheck";
+import { errorTitle } from "@/lib/errors";
+import { dismissAllNotifications, getNotifications } from "@/lib/notifications";
 import { AudioCheckCard } from "./AudioCheckCard";
 
 // Хук поднят в LauncherPanel, чтобы шапка могла сказать «Слушаю», пока проверка
@@ -52,13 +54,14 @@ function deferredCheck() {
 
 afterEach(() => {
   cleanup();
+  dismissAllNotifications();
   levelHandlers.length = 0;
   vi.clearAllMocks();
 });
 
 describe("AudioCheckCard", () => {
   it("проверка системного звука показывает расслышанный текст", async () => {
-    checkAudioSource.mockResolvedValueOnce({ heard: true, peak: 0.4, text: "раз, два, три" });
+    checkAudioSource.mockResolvedValueOnce({ heard: true, text: "раз, два, три" });
     render(<Card autoModeEnabled={false} />);
     fireEvent.click(row(SYSTEM_ROW).getByText("Проверить"));
     expect(checkAudioSource).toHaveBeenCalledExactlyOnceWith("system");
@@ -68,7 +71,7 @@ describe("AudioCheckCard", () => {
   });
 
   it("тишина названа тишиной, а не молчаливым успехом", async () => {
-    checkAudioSource.mockResolvedValueOnce({ heard: false, peak: 0, text: "" });
+    checkAudioSource.mockResolvedValueOnce({ heard: false, text: "" });
     render(<Card autoModeEnabled={false} />);
     fireEvent.click(row(SYSTEM_ROW).getByText("Проверить"));
     await waitFor(() => {
@@ -77,7 +80,7 @@ describe("AudioCheckCard", () => {
   });
 
   it("звук есть, а речи нет — это отдельный ответ", async () => {
-    checkAudioSource.mockResolvedValueOnce({ heard: true, peak: 0.9, text: "" });
+    checkAudioSource.mockResolvedValueOnce({ heard: true, text: "" });
     render(<Card autoModeEnabled={false} />);
     fireEvent.click(row(SYSTEM_ROW).getByText("Проверить"));
     await waitFor(() => {
@@ -85,13 +88,18 @@ describe("AudioCheckCard", () => {
     });
   });
 
-  it("отказ показывается текстом ошибки с бэкенда", async () => {
+  // Текст отказа с бэкенда бывает длиннее самой строки настроек, поэтому он
+  // уходит в уведомление, а подсказка возвращается к своему обычному виду.
+  it("отказ уходит в уведомление, а подсказка строки не ломается", async () => {
     checkAudioSource.mockRejectedValueOnce({ code: "permission", message: "Нет доступа" });
     render(<Card autoModeEnabled={false} />);
     fireEvent.click(row(SYSTEM_ROW).getByText("Проверить"));
     await waitFor(() => {
-      expect(screen.getByText("Нет доступа")).not.toBeNull();
+      expect(getNotifications()).toHaveLength(1);
     });
+    expect(getNotifications()[0]?.title).toBe(errorTitle("permission"));
+    expect(getNotifications()[0]?.detail).toBe("Нет доступа");
+    expect(row(SYSTEM_ROW).getByText(/Голос собеседника/)).not.toBeNull();
   });
 
   it("пока проверка идёт, второй запуск невозможен, а уровень виден", async () => {
@@ -108,7 +116,7 @@ describe("AudioCheckCard", () => {
       expect(document.querySelector("span[style*='width: 50%']")).not.toBeNull();
     });
 
-    pending.resolve({ heard: true, peak: 0.5, text: "слышно" });
+    pending.resolve({ heard: true, text: "слышно" });
     await waitFor(() => {
       expect(screen.getByText("Расслышала: «слышно»")).not.toBeNull();
     });

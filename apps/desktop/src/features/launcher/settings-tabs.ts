@@ -51,7 +51,7 @@ export const SETTINGS_TABS = [
   {
     id: "behavior",
     label: "Поведение",
-    description: "Демонстрация экрана, автоотправка, превью HTML, суфлёр и стиль ответа.",
+    description: "Демонстрация экрана, автоотправка, превью HTML, суфлёр и буфер обмена.",
     icon: Workflow,
   },
   {

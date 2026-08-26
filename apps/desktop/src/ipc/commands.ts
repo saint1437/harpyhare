@@ -22,6 +22,7 @@ export const {
   startAutoMode,
   stopAutoMode,
   autoModeActive,
+  takeAutoModeError,
   checkAudioSource,
   listModels,
   loadChatImages,

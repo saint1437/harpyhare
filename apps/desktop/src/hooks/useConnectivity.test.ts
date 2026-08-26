@@ -2,8 +2,18 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const probeConnectivity = vi.fn<() => Promise<boolean>>();
+type Handler = (payload: unknown) => void;
+const handlers = new Map<string, Handler>();
 vi.mock("@/ipc/commands", () => ({
   probeConnectivity: () => probeConnectivity(),
+}));
+vi.mock("@/ipc/events", () => ({
+  onEvent: (name: string, handler: Handler) => {
+    handlers.set(name, handler);
+    return () => {
+      handlers.delete(name);
+    };
+  },
 }));
 
 import { useConnectivity } from "./useConnectivity";
@@ -14,6 +24,7 @@ function setOnLine(value: boolean): void {
 
 beforeEach(() => {
   probeConnectivity.mockReset();
+  handlers.clear();
   setOnLine(true);
 });
 
@@ -42,14 +53,20 @@ describe("useConnectivity", () => {
     });
   });
 
-  it("reportNetworkError поднимает offline", async () => {
+  // Правило переехало сюда из App вместе со сводной ошибкой HUD: WKWebView
+  // считает себя онлайн и при мёртвом VPN, а бэкенд — нет.
+  it("код network в ошибке бэкенда поднимает offline, прочие коды — нет", async () => {
     probeConnectivity.mockResolvedValue(true);
     const { result } = renderHook(() => useConnectivity());
     await waitFor(() => {
       expect(result.current.offline).toBe(false);
     });
     act(() => {
-      result.current.reportNetworkError();
+      handlers.get("llm-error")?.({ code: "api", message: "500" });
+    });
+    expect(result.current.offline).toBe(false);
+    act(() => {
+      handlers.get("stt-error")?.({ code: "network", message: "Нет соединения" });
     });
     expect(result.current.offline).toBe(true);
   });

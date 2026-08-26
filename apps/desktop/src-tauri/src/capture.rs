@@ -169,7 +169,18 @@ impl AudioCapture {
                 .map_err(|e| CaptureError::Audio(e.to_string()))?;
         }
 
-        let running = backend::start(source, ctx)?;
+        let running = match backend::start(source, ctx) {
+            Ok(running) => running,
+            Err(e) => {
+                // Self is not built yet, so Drop will not run — without an
+                // explicit shutdown the consumer would park in the condvar
+                // forever with its Arc<Shared> and the ring: one thread plus a
+                // couple of megabytes per failed start (the common case being a
+                // TCC denial on the microphone).
+                shutdown_consumer(&shared);
+                return Err(e);
+            }
+        };
 
         Ok(Self {
             shared,
@@ -253,16 +264,20 @@ impl AudioCapture {
     }
 }
 
+fn shutdown_consumer(shared: &Shared) {
+    shared.shutdown.store(true, Ordering::Release);
+    shared.stop_requested.store(true, Ordering::Release);
+    let _wake = shared.session.lock().unwrap();
+    shared.cv.notify_all();
+}
+
 // Without this a dropped capture would leak its consumer thread forever. That used
 // to happen at most once per device rebuild; the auto-mode toggle drops the
 // microphone capture every time it is switched off.
 impl Drop for AudioCapture {
     fn drop(&mut self) {
-        self.shared.shutdown.store(true, Ordering::Release);
-        self.shared.stop_requested.store(true, Ordering::Release);
         *self.shared.segmenting.lock().unwrap() = None;
-        let _wake = self.shared.session.lock().unwrap();
-        self.shared.cv.notify_all();
+        shutdown_consumer(&self.shared);
     }
 }
 

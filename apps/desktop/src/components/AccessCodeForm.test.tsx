@@ -1,8 +1,13 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { errorTitle } from "@/lib/errors";
+import { dismissAllNotifications, getNotifications } from "@/lib/notifications";
 import { AccessCodeForm } from "./AccessCodeForm";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  dismissAllNotifications();
+});
 
 const PLACEHOLDER = "XXXXX-XXXXX-XXXXX-XXXXX";
 
@@ -31,14 +36,31 @@ describe("AccessCodeForm", () => {
     });
   });
 
-  it("показывает ошибку и сохраняет введённый код", async () => {
+  // Отказ приходит сырым `String(e)` от Tauri и бывает в несколько строк, а
+  // форма стоит в узкой карточке онбординга — поэтому он уходит в уведомление,
+  // а введённый код остаётся в поле для правки.
+  it("отказ уходит в уведомление и сохраняет введённый код", async () => {
     const onRedeem = () => Promise.resolve<string | null>("Код недействителен");
     render(<AccessCodeForm onRedeem={onRedeem} />);
     const input = screen.getByPlaceholderText<HTMLInputElement>(PLACEHOLDER);
     fireEvent.change(input, { target: { value: "wrong-1" } });
     fireEvent.click(screen.getByText("Активировать"));
-    await screen.findByText("Код недействителен");
+    await waitFor(() => {
+      expect(getNotifications()).toHaveLength(1);
+    });
+    expect(getNotifications()[0]?.title).toBe(errorTitle("badAccessCode"));
+    expect(getNotifications()[0]?.detail).toBe("Код недействителен");
     expect(input.value).toBe("wrong-1");
+  });
+
+  // Раньше успех не показывался никак: поле просто очищалось.
+  it("успех подтверждается уведомлением", async () => {
+    render(<AccessCodeForm onRedeem={() => Promise.resolve(null)} />);
+    fireEvent.change(screen.getByPlaceholderText(PLACEHOLDER), { target: { value: "code-1" } });
+    fireEvent.click(screen.getByText("Активировать"));
+    await waitFor(() => {
+      expect(getNotifications()[0]?.tone).toBe("success");
+    });
   });
 
   it("не запускает повторную активацию, пока первая в процессе", async () => {

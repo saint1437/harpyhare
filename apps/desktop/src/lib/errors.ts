@@ -51,3 +51,28 @@ export function isRetryable(error: AppError | null): boolean {
 export function isNetworkError(error: AppError | null): boolean {
   return error?.code === "network";
 }
+
+/**
+ * A headline for every code — short, fixed, and always the same length class.
+ *
+ * The message from Rust is a whole sentence and may carry a slab of someone
+ * else's JSON inside it (`api_error_message` splices up to 120 characters of a
+ * non-JSON body in, and a Tauri `invoke` rejection arrives as raw `String(e)`).
+ * Only the code is guaranteed to be short, so only the code may be the headline;
+ * the message is the body, and the body is what gets clamped.
+ */
+const ERROR_TITLES: Record<ErrorCode, string> = {
+  network: "Нет соединения",
+  badApiKey: "Ключ не принят",
+  badAccessCode: "Код доступа не принят",
+  retryable: "Сервис перегружен",
+  api: "Ошибка сервиса",
+  cancelled: "Остановлено",
+  permission: "Нет доступа",
+  silence: "Тишина",
+  internal: "Сбой в приложении",
+};
+
+export function errorTitle(code: ErrorCode): string {
+  return ERROR_TITLES[code];
+}

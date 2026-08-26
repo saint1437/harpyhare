@@ -32,6 +32,11 @@ export function useCancelKey(
   useEffect(() => {
     if (target === null) return;
     const onKey = (e: KeyboardEvent) => {
+      // Radix layers (popovers, dialogs) consume Escape in the document's
+      // capture phase and mark it preventDefault — that Esc closed a layer, it
+      // was not cancelling the recording or the stream. Without the check,
+      // closing the params popover killed the stream mid-answer.
+      if (e.defaultPrevented) return;
       if (e.repeat) return;
       if (!matchesPrepared(e, prepared)) return;
       e.preventDefault();

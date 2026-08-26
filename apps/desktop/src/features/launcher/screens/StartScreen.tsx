@@ -7,7 +7,7 @@ import type { AudioCheckApi } from "@/hooks/useAudioCheck";
 import type { PermissionsApi } from "@/hooks/usePermissions";
 import type { PermissionKind } from "@/ipc/bindings";
 import { formatCombo, hotkeyAction } from "@/lib/hotkeys";
-import { cn } from "@/lib/utils";
+import { cn, SURFACE_CARD_CLASS } from "@/lib/utils";
 import { AudioCheckCard } from "../AudioCheckCard";
 import type { LauncherDestination } from "../contract";
 import { SettingGroup } from "../fields";
@@ -214,7 +214,12 @@ export function StartScreen({
         </p>
       </SettingGroup>
 
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5 rounded-lg bg-surface px-3 py-2.5 shadow-raise ring-1 ring-inset ring-line">
+      <div
+        className={cn(
+          "flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5 px-3 py-2.5",
+          SURFACE_CARD_CLASS,
+        )}
+      >
         <p className="min-w-40 flex-1 text-caption text-fg-subtle">{DEFAULTS_NOTE}</p>
         <div className="flex shrink-0 items-center gap-1.5">
           <Button

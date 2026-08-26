@@ -1,55 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
-import { SelectItem } from "@/components/ui/select";
 import { SETTINGS_LIMITS } from "@/ipc/bindings";
 import { listAudioInputDevices } from "@/ipc/commands";
-import type { AudioDeviceInfo } from "@/ipc/types";
 import { queryKeys } from "@/lib/query-client";
+import { AudioDeviceRow } from "../AudioDeviceRow";
 import type { SectionProps } from "../contract";
-import { SettingGroup, SettingRow, SettingSelect, SettingSlider, SettingSwitch } from "../fields";
-
-const MIC_SYSTEM_DEFAULT = "system-default";
-const MIC_MISSING_LABEL = "Недоступное устройство";
-const AUDIO_DEVICES_STALE_MS = 30 * 1000;
+import { SettingGroup, SettingRow, SettingSlider, SettingSwitch } from "../fields";
 
 const SILENCE_STEP_MS = 50;
 const MIN_UTTERANCE_STEP_MS = 50;
 const MAX_UTTERANCE_STEP_SECS = 5;
-
-function useAudioInputDevices(): AudioDeviceInfo[] {
-  const { data } = useQuery({
-    queryKey: queryKeys.audioInputDevices,
-    queryFn: listAudioInputDevices,
-    staleTime: AUDIO_DEVICES_STALE_MS,
-  });
-  return data ?? [];
-}
-
-function withSavedDevice(devices: AudioDeviceInfo[], savedUid: string): AudioDeviceInfo[] {
-  if (savedUid === "" || devices.some((d) => d.uid === savedUid)) return devices;
-  return [...devices, { uid: savedUid, name: MIC_MISSING_LABEL }];
-}
-
-function MicrophoneRow({ draft, set }: SectionProps) {
-  const devices = withSavedDevice(useAudioInputDevices(), draft.auto_mic_device_uid);
-  return (
-    <SettingRow label="Микрофон" hint="С него берётся ваша речь — вторая сторона разговора.">
-      <SettingSelect
-        ariaLabel="Микрофон"
-        value={draft.auto_mic_device_uid === "" ? MIC_SYSTEM_DEFAULT : draft.auto_mic_device_uid}
-        onValueChange={(v) => {
-          set("auto_mic_device_uid", v === MIC_SYSTEM_DEFAULT ? "" : v);
-        }}
-      >
-        <SelectItem value={MIC_SYSTEM_DEFAULT}>Системный микрофон</SelectItem>
-        {devices.map((d) => (
-          <SelectItem key={d.uid} value={d.uid}>
-            {d.name}
-          </SelectItem>
-        ))}
-      </SettingSelect>
-    </SettingRow>
-  );
-}
 
 export function AutoModeSection({ draft, set }: SectionProps) {
   return (
@@ -81,7 +39,17 @@ export function AutoModeSection({ draft, set }: SectionProps) {
           }}
         />
       </SettingRow>
-      <MicrophoneRow draft={draft} set={set} />
+      <AudioDeviceRow
+        label="Микрофон"
+        hint="С него берётся ваша речь — вторая сторона разговора."
+        defaultLabel="Системный микрофон"
+        queryKey={queryKeys.audioInputDevices}
+        listDevices={listAudioInputDevices}
+        uid={draft.auto_mic_device_uid}
+        onChange={(uid) => {
+          set("auto_mic_device_uid", uid);
+        }}
+      />
       <SettingRow label="Пауза до конца реплики" hint="Столько тишины считается концом фразы.">
         <SettingSlider
           ariaLabel="Пауза до конца реплики"

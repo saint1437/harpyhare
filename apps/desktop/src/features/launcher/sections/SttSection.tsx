@@ -1,9 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
 import { SelectItem } from "@/components/ui/select";
 import { SETTINGS_LIMITS } from "@/ipc/bindings";
 import { listAudioOutputDevices } from "@/ipc/commands";
-import type { AudioDeviceInfo } from "@/ipc/types";
 import { queryKeys } from "@/lib/query-client";
+import { AudioDeviceRow } from "../AudioDeviceRow";
 import type { SectionProps } from "../contract";
 import { SettingGroup, SettingRow, SettingSelect, SettingSlider, SettingSwitch } from "../fields";
 
@@ -19,52 +18,7 @@ const STT_LANGUAGES = [
   { value: STT_LANGUAGE_AUTO, label: "Автоопределение" },
 ];
 
-const CAPTURE_DEVICE_SYSTEM_DEFAULT = "system-default";
-const CAPTURE_DEVICE_MISSING_LABEL = "Недоступное устройство";
 const BUFFER_SECONDS_STEP = 1;
-
-const AUDIO_DEVICES_STALE_MS = 30 * 1000;
-
-function useAudioOutputDevices(): AudioDeviceInfo[] {
-  const { data } = useQuery({
-    queryKey: queryKeys.audioDevices,
-    queryFn: listAudioOutputDevices,
-    staleTime: AUDIO_DEVICES_STALE_MS,
-  });
-  return data ?? [];
-}
-
-function withSavedDevice(devices: AudioDeviceInfo[], savedUid: string): AudioDeviceInfo[] {
-  if (savedUid === "" || devices.some((d) => d.uid === savedUid)) return devices;
-  return [...devices, { uid: savedUid, name: CAPTURE_DEVICE_MISSING_LABEL }];
-}
-
-function CaptureDeviceRow({ draft, set }: SectionProps) {
-  const devices = withSavedDevice(useAudioOutputDevices(), draft.capture_device_uid);
-  return (
-    <SettingRow
-      label="Устройство захвата"
-      hint="Снимается звук только этого выхода. Что играет в другие устройства — в захват не попадёт."
-    >
-      <SettingSelect
-        ariaLabel="Устройство захвата"
-        value={
-          draft.capture_device_uid === "" ? CAPTURE_DEVICE_SYSTEM_DEFAULT : draft.capture_device_uid
-        }
-        onValueChange={(v) => {
-          set("capture_device_uid", v === CAPTURE_DEVICE_SYSTEM_DEFAULT ? "" : v);
-        }}
-      >
-        <SelectItem value={CAPTURE_DEVICE_SYSTEM_DEFAULT}>Системный вывод</SelectItem>
-        {devices.map((d) => (
-          <SelectItem key={d.uid} value={d.uid}>
-            {d.name}
-          </SelectItem>
-        ))}
-      </SettingSelect>
-    </SettingRow>
-  );
-}
 
 export function SttSection({ draft, set }: SectionProps) {
   return (
@@ -72,7 +26,17 @@ export function SttSection({ draft, set }: SectionProps) {
       title="Распознавание речи"
       description="Что именно слушает приложение и на каком языке расшифровывает."
     >
-      <CaptureDeviceRow draft={draft} set={set} />
+      <AudioDeviceRow
+        label="Устройство захвата"
+        hint="Снимается звук только этого выхода. Что играет в другие устройства — в захват не попадёт."
+        defaultLabel="Системный вывод"
+        queryKey={queryKeys.audioDevices}
+        listDevices={listAudioOutputDevices}
+        uid={draft.capture_device_uid}
+        onChange={(uid) => {
+          set("capture_device_uid", uid);
+        }}
+      />
       <SettingRow
         label="Язык распознавания"
         hint={

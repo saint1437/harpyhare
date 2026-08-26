@@ -11,7 +11,7 @@ import {
 } from "./auto-turns";
 
 function turn(seq: number, speaker: AutoTurn["speaker"], text: string): AutoTurn {
-  return { seq, speaker, text, atMs: 1000 + seq };
+  return { seq, speaker, text };
 }
 
 describe("insertTurn", () => {

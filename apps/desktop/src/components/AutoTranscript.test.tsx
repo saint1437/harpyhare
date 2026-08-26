@@ -6,7 +6,7 @@ import { AutoTranscript } from "./AutoTranscript";
 const ANSWER_COMBO = "Cmd+Shift+Enter";
 
 function turn(seq: number, speaker: AutoTurn["speaker"], text: string): AutoTurn {
-  return { seq, speaker, text, atMs: 1000 + seq };
+  return { seq, speaker, text };
 }
 
 function renderPanel(overrides: Partial<Parameters<typeof AutoTranscript>[0]> = {}) {

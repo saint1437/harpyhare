@@ -1,5 +1,6 @@
 import { AudioLines, Mic, Monitor, type LucideIcon } from "lucide-react";
-import type { PermissionKind } from "@/ipc/bindings";
+import type { StateTone } from "@/components/StateBadge";
+import type { PermissionKind, PermissionState } from "@/ipc/bindings";
 
 /**
  * Для чего доступ нужен, а не просто «обязателен ли»: микрофон не нужен никому,
@@ -24,6 +25,18 @@ const NEED_LABEL: Record<PermissionNeed, string> = {
 export function permissionNeedLabel(need: PermissionNeed): string {
   return NEED_LABEL[need];
 }
+
+/**
+ * The state-to-colour vocabulary, single-sourced: PermissionsScreen and
+ * onboarding's AudioStep each held a byte-identical copy, and the two could
+ * only ever drift silently. The wording stays local to each screen (persistent
+ * state vs the immediate result of a request); the colour must not.
+ */
+export const PERMISSION_STATE_TONE: Record<PermissionState, StateTone> = {
+  granted: "success",
+  denied: "danger",
+  unknown: "warning",
+};
 
 export const PERMISSION_ROWS: PermissionRow[] = [
   {

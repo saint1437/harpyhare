@@ -17,6 +17,7 @@ import { Composer } from "@/components/Composer";
 import { ConnectivityOverlay } from "@/components/ConnectivityOverlay";
 import { HotkeysPopover } from "@/components/HotkeysPopover";
 import { IconButton } from "@/components/IconButton";
+import { NotificationStack } from "@/components/NotificationStack";
 import { Orb } from "@/components/Orb";
 import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
 import { ScreenShareIndicator } from "@/components/ScreenShareIndicator";
@@ -32,7 +33,9 @@ import { useContextLibrary } from "@/hooks/useContextLibrary";
 import { useDuplicateChatKey } from "@/hooks/useDuplicateChatKey";
 import { useLatestRef } from "@/hooks/useLatestRef";
 import { useModels } from "@/hooks/useModels";
+import { useNotifications } from "@/hooks/useNotifications";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
+import { orbDragInProgress } from "@/hooks/useOrbDrag";
 import { usePromptFocus } from "@/hooks/usePromptFocus";
 import { usePttSuspend } from "@/hooks/usePttSuspend";
 import { useQuickActionKeys } from "@/hooks/useQuickActionKeys";
@@ -73,11 +76,17 @@ import {
 } from "@/lib/chats";
 import { appendTranscript } from "@/lib/composer";
 import { libraryContextBlocks, type ContextLibrary } from "@/lib/context-library";
-import { internalError, isNetworkError, isRetryable, type AppError } from "@/lib/errors";
+import { isRetryable } from "@/lib/errors";
 import { effectiveCombo } from "@/lib/hotkeys";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
 import { imagePngBase64, messageCopyImage, messageCopyText } from "@/lib/message-clipboard";
 import type { ModelInfo } from "@/lib/models";
+import {
+  dismissAllNotifications,
+  hasFailureNotification,
+  notifyAppError,
+  notifyError,
+} from "@/lib/notifications";
 import { answerArrival, orbState, transcriptArrival } from "@/lib/orb";
 import { mergePresets, presetText, type PromptPreset } from "@/lib/presets";
 import { queryKeys } from "@/lib/query-client";
@@ -92,9 +101,8 @@ const PREVIEW_EXTRA_WIDTH_PX = PREVIEW_PANEL_WIDTH_PX + SHELL_COLUMN_GAP_PX;
 const USER_CONTEXT_SYSTEM_HEADER = "Контекст от пользователя (справочные материалы):\n";
 const SYSTEM_BLOCKS_SEPARATOR = "\n\n";
 
-const settingsSaveErrorText = (err: string) => `Ошибка сохранения настроек: ${err}`;
-const NOOP = () => undefined;
-const COPY_IMAGE_ERROR_TEXT = "Не удалось скопировать картинку в буфер обмена";
+const SETTINGS_SAVE_ERROR_TITLE = "Не удалось сохранить настройки";
+const COPY_IMAGE_ERROR_TITLE = "Не удалось скопировать картинку";
 
 function historyWithNewUserMessage(
   chat: Chat,
@@ -150,40 +158,33 @@ function updateBadge(updater: UpdaterApi, onOpen: () => void): StatusBarProps["u
 }
 
 interface SttFeedback {
-  sttError: AppError | null;
   showRetry: boolean;
-  setSttError: (err: AppError | null) => void;
-  clearError: () => void;
   clearFeedback: () => void;
   retry: () => void;
 }
 
+/**
+ * Текст отказа распознавания ушёл в уведомление, а здесь осталось то, чем
+ * уведомление быть не может: кнопка «Повторить» в композере живёт до тех пор,
+ * пока не появится расшифровка, — а уведомление по определению временное.
+ */
 function useSttFeedback(state: RecorderState): SttFeedback {
-  const [sttError, setSttError] = useState<AppError | null>(null);
   const [showRetry, setShowRetry] = useState(false);
 
   useEffect(
     () =>
       onEvent("stt-error", (err) => {
-        setSttError(err);
+        notifyAppError(err);
         setShowRetry(isRetryable(err));
       }),
     [],
   );
 
   useEffect(() => {
-    if (state === "recording") {
-      setSttError(null);
-      setShowRetry(false);
-    }
+    if (state === "recording") setShowRetry(false);
   }, [state]);
 
-  const clearError = useCallback(() => {
-    setSttError(null);
-  }, []);
-
   const clearFeedback = useCallback(() => {
-    setSttError(null);
     setShowRetry(false);
   }, []);
 
@@ -192,7 +193,7 @@ function useSttFeedback(state: RecorderState): SttFeedback {
     void retryTranscription();
   }, []);
 
-  return { sttError, showRetry, setSttError, clearError, clearFeedback, retry };
+  return { showRetry, clearFeedback, retry };
 }
 
 interface PreviewPanelState {
@@ -236,18 +237,26 @@ function useWindowFrameSync(
   windowWidth: number,
   windowHeight: number,
   previewOpen: boolean,
+  collapsed: boolean,
   ready: boolean,
   nativeSizeRef: RefObject<LogicalWindowSize>,
   guardUntilRef: RefObject<number>,
 ): void {
   useEffect(() => {
-    if (!ready) return;
+    // A collapsed window never receives the full size: the resize hotkey used
+    // to inflate the 80px orb to 960×680 with window_collapsed=true on both
+    // sides. On expand the effect re-runs via the flag and delivers the target
+    // — including the preview extra width, which Rust's set_collapsed knows
+    // nothing about (the native-size echo is invalidated for the orb's
+    // lifetime in the collapsed-changed handler, otherwise the pre-collapse
+    // size would match the target and setWindowSize would never go out).
+    if (!ready || collapsed) return;
     const extra = previewOpen ? PREVIEW_EXTRA_WIDTH_PX : 0;
     const target = { width: windowWidth + extra, height: windowHeight };
     if (windowSizesEqual(target, nativeSizeEcho(nativeSizeRef.current, extra))) return;
     guardUntilRef.current = Date.now() + PROGRAMMATIC_RESIZE_GUARD_MS;
     void setWindowSize(target.width, target.height);
-  }, [windowWidth, windowHeight, previewOpen, ready, nativeSizeRef, guardUntilRef]);
+  }, [windowWidth, windowHeight, previewOpen, collapsed, ready, nativeSizeRef, guardUntilRef]);
 }
 
 function useNativeResizeSync(
@@ -331,7 +340,6 @@ function useSendPipeline(
   streamRef: RefObject<ClaudeStreams>,
   presetsRef: RefObject<PromptPreset[]>,
   libraryRef: RefObject<ContextLibrary>,
-  clearSttError: () => void,
 ): SendPipeline {
   const streamChat = useCallback(
     (chat: Chat, history: ChatMessageDto[]) => {
@@ -348,11 +356,12 @@ function useSendPipeline(
       const trimmed = rawText.trim();
       const images = draftImages(chat);
       if (trimmed === "" && images.length === 0) return;
-      clearSttError();
+      // Новая попытка — новый разговор: отказ прошлой к ней уже не относится.
+      dismissAllNotifications();
       chatsRef.current.appendUserMessage(chat.id, trimmed, images);
       streamChat(chat, historyWithNewUserMessage(chat, trimmed, images));
     },
-    [chatsRef, streamRef, clearSttError, streamChat],
+    [chatsRef, streamRef, streamChat],
   );
 
   const dispatchQuickAction = useCallback(
@@ -362,11 +371,12 @@ function useSendPipeline(
       const trimmed = prompt.trim();
       if (trimmed === "") return;
       const images = withAttachments ? draftImages(chat) : [];
-      clearSttError();
+      // Новая попытка — новый разговор: отказ прошлой к ней уже не относится.
+      dismissAllNotifications();
       chatsRef.current.appendQuickActionMessage(chat.id, trimmed, images);
       streamChat(chat, historyWithNewUserMessage(chat, trimmed, images));
     },
-    [chatsRef, streamRef, clearSttError, streamChat],
+    [chatsRef, streamRef, streamChat],
   );
 
   const dispatchAutoTurn = useCallback(
@@ -378,13 +388,14 @@ function useSendPipeline(
       // Fire-and-forget is safe here only because `send` awaits the cancellation this
       // starts; the replacement request cannot outrun it.
       if (interrupt) void streamRef.current.abandon(chat.id);
-      clearSttError();
+      // Новая попытка — новый разговор: отказ прошлой к ней уже не относится.
+      dismissAllNotifications();
       const trimmed = text.trim();
       chatsRef.current.appendAutoTurnMessage(chat.id, trimmed);
       streamChat(chat, historyWithNewUserMessage(chat, trimmed, []));
       return true;
     },
-    [chatsRef, streamRef, clearSttError, streamChat],
+    [chatsRef, streamRef, streamChat],
   );
 
   const doSend = useCallback(() => {
@@ -396,7 +407,8 @@ function useSendPipeline(
       const chat = chatsRef.current.active;
       if (streamRef.current.streaming[chat.id]) return;
       if (chat.messages[index]?.role !== "user") return;
-      clearSttError();
+      // Новая попытка — новый разговор: отказ прошлой к ней уже не относится.
+      dismissAllNotifications();
       const kept = chat.messages.slice(0, index + 1);
       chatsRef.current.truncateMessages(chat.id, kept.length);
       streamChat(
@@ -404,7 +416,7 @@ function useSendPipeline(
         kept.map((m) => ({ role: m.role, text: m.text, images: requestImages(m.images) })),
       );
     },
-    [chatsRef, streamRef, clearSttError, streamChat],
+    [chatsRef, streamRef, streamChat],
   );
 
   return { dispatchSend, dispatchQuickAction, dispatchAutoTurn, doSend, resendFromMessage };
@@ -413,7 +425,7 @@ function useSendPipeline(
 interface AppHeaderProps {
   state: RecorderState;
   autoMode: AutoModeApi;
-  error: AppError | null;
+  hasError: boolean;
   hotkeys: HotkeyBinding[];
   updater: UpdaterApi;
   chats: ChatsApi;
@@ -434,7 +446,7 @@ interface AppHeaderProps {
 function AppHeader({
   state,
   autoMode,
-  error,
+  hasError,
   hotkeys,
   updater,
   chats,
@@ -458,7 +470,7 @@ function AppHeader({
       bufferEnabled={bufferEnabled}
       onTogglePause={onTogglePause}
       onQuit={() => void closeApp()}
-      error={error?.message ?? null}
+      hasError={hasError}
       toggleHotkey={effectiveCombo(hotkeys, "toggle_window")}
       contextUsage={contextUsage}
       update={updateBadge(updater, onOpenUpdate)}
@@ -583,6 +595,7 @@ export default function App() {
   const chats = useChats();
   const models = useModels();
   const updater = useUpdater();
+  const notifications = useNotifications();
 
   const [updateOpen, setUpdateOpen] = useState(false);
   // Свёрнутость живёт в Rust: глобальный хоткей обрабатывается там же, и окно
@@ -590,6 +603,7 @@ export default function App() {
   const [collapsed, setCollapsed] = useState(false);
   const collapsedRef = useRef(false);
   const resizeGuardUntilRef = useRef(0);
+  const nativeSizeRef = useRef<LogicalWindowSize>({ width: 0, height: 0 });
   useEffect(
     () =>
       onEvent("collapsed-changed", ({ collapsed: next }) => {
@@ -601,6 +615,11 @@ export default function App() {
         // размер окна.
         collapsedRef.current = next;
         resizeGuardUntilRef.current = Date.now() + PROGRAMMATIC_RESIZE_GUARD_MS;
+        // Collapsing wipes the native-size echo: it holds the pre-collapse
+        // width (preview included), and on expand useWindowFrameSync would take
+        // it for an already-applied target and stay silent — the preview would
+        // come back zero-width.
+        if (next) nativeSizeRef.current = { width: 0, height: 0 };
         setCollapsed(next);
       }),
     [],
@@ -623,7 +642,10 @@ export default function App() {
       onEvent("transcript-ready", () => {
         if (
           transcriptArrival({ collapsed: collapsedRef.current, autoSend: autoSendRef.current }) ===
-          "expand"
+            "expand" &&
+          // While the OS owns an orb drag, expanding would yank the window out
+          // from under the cursor; the user is literally holding the orb.
+          !orbDragInProgress()
         ) {
           void setWindowCollapsed(false, false);
         }
@@ -638,8 +660,13 @@ export default function App() {
           chatId,
           activeChatId: activeChatRef.current,
         });
-        if (arrival === "expand") void setWindowCollapsed(false, false);
-        if (arrival === "notify") setUnreadAnswer(true);
+        // An answer that finishes mid-drag does not expand the window — it
+        // calls back with the dot, like an answer in a background chat.
+        if (arrival === "expand" && !orbDragInProgress()) {
+          void setWindowCollapsed(false, false);
+        } else if (arrival !== "ignore") {
+          setUnreadAnswer(true);
+        }
       }),
     [collapsedRef, activeChatRef],
   );
@@ -649,14 +676,13 @@ export default function App() {
   const [teleprompterOpen, setTeleprompterOpen] = useState(false);
   const teleprompterResumeRef = useRef({ text: "", offset: 0 });
 
-  const { sttError, showRetry, setSttError, clearError, clearFeedback, retry } =
-    useSttFeedback(state);
+  const { showRetry, clearFeedback, retry } = useSttFeedback(state);
   const { previewHtml, previewOpen, openPreview, togglePreview, closePreview } = usePreviewPanel();
-  const nativeSizeRef = useRef<LogicalWindowSize>({ width: 0, height: 0 });
   useWindowFrameSync(
     settings.window_width,
     settings.window_height,
     previewOpen,
+    collapsed,
     !settingsLoading,
     nativeSizeRef,
     resizeGuardUntilRef,
@@ -691,13 +717,6 @@ export default function App() {
     [chatsRef],
   );
   const screenshot = useRegionScreenshot(onScreenshotImage);
-  const clearScreenshotError = screenshot.clearError;
-  const clearAutoModeErrorRef = useRef<() => void>(NOOP);
-  const clearAllErrors = useCallback(() => {
-    clearError();
-    clearScreenshotError();
-    clearAutoModeErrorRef.current();
-  }, [clearError, clearScreenshotError, clearAutoModeErrorRef]);
 
   const onAssistantDone = useCallback(
     (chatId: string, text: string) => {
@@ -715,13 +734,9 @@ export default function App() {
   const streamRef = useLatestRef(stream);
 
   const { dispatchSend, dispatchQuickAction, dispatchAutoTurn, doSend, resendFromMessage } =
-    useSendPipeline(chatsRef, streamRef, presetsRef, libraryRef, clearAllErrors);
+    useSendPipeline(chatsRef, streamRef, presetsRef, libraryRef);
 
   const autoMode = useAutoMode(dispatchAutoTurn, settings.auto_reply_instant);
-  const clearAutoModeError = autoMode.clearError;
-  useEffect(() => {
-    clearAutoModeErrorRef.current = clearAutoModeError;
-  }, [clearAutoModeError]);
 
   useTranscription(
     useCallback(
@@ -736,7 +751,29 @@ export default function App() {
     ),
   );
 
-  useWindowControls(settings.hotkeys, doSend, bumpOpacity, bumpWindowSize);
+  // Collapsed, the webview stays alive and keeps keyboard focus, so the
+  // document-level handlers (⌘Enter, ⌘1…9, ⌘⇧N) would act on an invisible chat
+  // — the blind send promptCoveredByOverlay exists to prevent. Gated through a
+  // ref: useWindowControls subscribes at the document level and reads no state.
+  const sendUnlessCollapsed = useCallback(() => {
+    if (collapsedRef.current) return;
+    doSend();
+  }, [doSend]);
+  // While collapsed the resize hotkey leaves the settings alone too: the user
+  // presses blind, sees nothing, and would meet a different size on expand.
+  const bumpWindowSizeUnlessCollapsed = useCallback<typeof bumpWindowSize>(
+    (dim, dir) => {
+      if (collapsedRef.current) return;
+      bumpWindowSize(dim, dir);
+    },
+    [bumpWindowSize],
+  );
+  useWindowControls(
+    settings.hotkeys,
+    sendUnlessCollapsed,
+    bumpOpacity,
+    bumpWindowSizeUnlessCollapsed,
+  );
   usePttSuspend(effectiveCombo(settings.hotkeys, "record"));
   const connectivity = useConnectivity();
   const promptCoveredByOverlay = teleprompterOpen || connectivity.offline;
@@ -747,7 +784,7 @@ export default function App() {
   }, [chatsRef]);
   useDuplicateChatKey(
     effectiveCombo(settings.hotkeys, "duplicate_chat"),
-    !promptCoveredByOverlay,
+    !promptCoveredByOverlay && !collapsed,
     duplicateActiveChat,
   );
 
@@ -765,7 +802,9 @@ export default function App() {
   );
   const runQuickActionAt = useCallback(
     (index: number) => {
-      if (promptCoveredByOverlay) return;
+      // Collapse is the same blind case as an overlay: a quick action's prompt
+      // is always non-empty, and ⌘1 from the orb would send with no composer.
+      if (promptCoveredByOverlay || collapsedRef.current) return;
       const action = quickActions[index];
       if (action) runQuickAction(action);
     },
@@ -803,13 +842,10 @@ export default function App() {
     stopActiveStream,
   );
 
-  const error: AppError | null =
-    sttError ?? autoMode.error ?? screenshot.error ?? stream.error[activeId] ?? null;
+  // «Есть ли ошибка» для строки захвата и для клубка теперь тоже временное
+  // состояние: оно живёт ровно столько, сколько живёт само уведомление.
+  const hasError = hasFailureNotification(notifications);
   const partial = activeStreaming ? (stream.partial[activeId] ?? "") : null;
-  const reportNetworkError = connectivity.reportNetworkError;
-  useEffect(() => {
-    if (isNetworkError(error)) reportNetworkError();
-  }, [error, reportNetworkError]);
   const teleprompterText = toReadingText(
     partial !== null && partial !== "" ? partial : lastAssistantText(active.messages),
   );
@@ -830,7 +866,7 @@ export default function App() {
 
   const saveSettingsReportingError = (next: Settings) => {
     void save(next).then((err) => {
-      if (err) setSttError(internalError(settingsSaveErrorText(err)));
+      if (err) notifyError(SETTINGS_SAVE_ERROR_TITLE, err);
     });
   };
 
@@ -847,7 +883,7 @@ export default function App() {
     void imagePngBase64(image)
       .then(copyImageToClipboard)
       .catch(() => {
-        setSttError(internalError(COPY_IMAGE_ERROR_TEXT));
+        notifyError(COPY_IMAGE_ERROR_TITLE);
       });
   };
 
@@ -889,7 +925,7 @@ export default function App() {
           state,
           autoListening: autoMode.active,
           bufferEnabled: settings.buffer_enabled,
-          hasError: error !== null,
+          hasError,
           streaming: activeStreaming,
           answerReady: unreadAnswer,
         })}
@@ -907,7 +943,7 @@ export default function App() {
         <AppHeader
           state={state}
           autoMode={autoMode}
-          error={error}
+          hasError={hasError}
           hotkeys={settings.hotkeys}
           updater={updater}
           chats={chats}
@@ -958,6 +994,12 @@ export default function App() {
             onAnswer={autoMode.answer}
           />
         )}
+
+        {/* В потоке, а не поверх интерфейса — ровно там же, где появляется
+            AutoTranscript. В окне шириной в 400 точек любой плавающий слой
+            закрывает либо объект захвата («меня слышно?»), либо поле ввода;
+            здесь панель ответа просто отдаёт высоту и забирает обратно. */}
+        <NotificationStack />
 
         <AppComposer
           chats={chats}

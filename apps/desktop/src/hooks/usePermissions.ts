@@ -88,7 +88,14 @@ export function usePermissions(): PermissionsApi {
       void permissionsStatus().then((fresh) => {
         if (!alive.current) return;
         setStatus(fresh);
-        if (fresh[awaiting] !== "unknown") setAwaiting(null);
+        // Stop ONLY on success: after request_permission the *_requested flag
+        // is set and the status is never "unknown" again — it reads "denied"
+        // while the TCC dialog is still on screen. Exiting on "not unknown"
+        // killed the wait on its first tick: the row flipped to «нет доступа»
+        // under the open dialog, and a grant made in System Settings without
+        // refocusing was never picked up at all. A genuine denial is closed by
+        // the timeout above.
+        if (fresh[awaiting] === "granted") setAwaiting(null);
       });
     }, GRANT_POLL_INTERVAL_MS);
     return () => {

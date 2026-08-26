@@ -27,6 +27,15 @@ export const commands = {
 	startAutoMode: () => __TAURI_INVOKE<null>("start_auto_mode"),
 	stopAutoMode: () => __TAURI_INVOKE<void>("stop_auto_mode"),
 	autoModeActive: () => __TAURI_INVOKE<boolean>("auto_mode_active"),
+	/**
+	 *  Takes (and clears) a start error that happened before the webview
+	 *  subscribed: `swap_to_main_window` starts the mode before the HUD manages to
+	 *  mount, and the `auto-mode-error` event in that window goes nowhere.
+	 */
+	takeAutoModeError: () => __TAURI_INVOKE<{
+	code: ErrorCode,
+	message: string,
+} | null>("take_auto_mode_error"),
 	listAudioInputDevices: () => __TAURI_INVOKE<AudioDeviceInfo[]>("list_audio_input_devices"),
 	checkAudioSource: (source: AudioSource) => __TAURI_INVOKE<AudioCheck>("check_audio_source", { source }),
 	listAudioOutputDevices: () => __TAURI_INVOKE<AudioDeviceInfo[]>("list_audio_output_devices"),
@@ -80,7 +89,6 @@ export type AppError = {
  */
 export type AudioCheck = {
 	heard: boolean,
-	peak: number | null,
 	text: string,
 };
 
@@ -103,7 +111,6 @@ export type AutoTurnPayload = {
 	speaker: Speaker,
 	text: string,
 	seq: number,
-	atMs: number | null,
 };
 
 export type ChatMessage = {

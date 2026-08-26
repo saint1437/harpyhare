@@ -18,7 +18,6 @@ const IDLE_AUDIO_CHECK: AudioCheckApi = {
   level: 0,
   source: null,
   result: null,
-  error: null,
   run: () => undefined,
 };
 

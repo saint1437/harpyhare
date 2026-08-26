@@ -2,7 +2,6 @@ import { AudioLines, Mic, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AudioCheckApi } from "@/hooks/useAudioCheck";
 import type { AudioCheck, AudioSource } from "@/ipc/bindings";
-import type { AppError } from "@/lib/errors";
 import { SettingGroup, SettingRow } from "./fields";
 
 const TITLE = "Проверка звука";
@@ -44,15 +43,11 @@ function heardResult(result: AudioCheck): string {
   return result.text === "" ? NO_SPEECH_RESULT : `Расслышала: «${result.text}»`;
 }
 
-function rowHint(
-  meta: SourceMeta,
-  shown: boolean,
-  result: AudioCheck | null,
-  error: AppError | null,
-): string {
-  if (!shown) return meta.hint;
-  if (error !== null) return error.message;
-  return result === null ? meta.hint : heardResult(result);
+// Отказ проверки уходит в уведомление, а не в подсказку строки: текст ошибки
+// с бэкенда бывает длиннее самой карточки, и строка настроек его не держит.
+function rowHint(meta: SourceMeta, shown: boolean, result: AudioCheck | null): string {
+  if (!shown || result === null) return meta.hint;
+  return heardResult(result);
 }
 
 function LevelMeter({ level }: { level: number }) {
@@ -84,7 +79,7 @@ export function AudioCheckCard({
           <SettingRow
             key={meta.source}
             label={meta.label}
-            hint={rowHint(meta, shown, check.result, check.error)}
+            hint={rowHint(meta, shown, check.result)}
           >
             <div className="flex items-center justify-end gap-2">
               {running && <LevelMeter level={check.level} />}

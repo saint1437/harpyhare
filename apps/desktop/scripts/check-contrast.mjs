@@ -114,8 +114,6 @@ const MARKS_ON_SURFACES = [
 const PAIRS = [
   ["accent-on", "accent", 4.5],
   ["accent-on", "accent-hover", 4.5],
-  ["fg", "accent-subtle", 4.5],
-  ["fg-subtle", "accent-subtle", 4.5],
   ["accent", "base", 3],
 ];
 

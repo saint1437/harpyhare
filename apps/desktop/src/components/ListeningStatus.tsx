@@ -5,6 +5,11 @@ import { cn } from "@/lib/utils";
 import { CaptureMeter } from "./CaptureMeter";
 
 /**
+ * Слово «Ошибка» здесь есть, а текста ошибки нет — и это не потеря. Он стоял тут
+ * обрезанным до 64 символов с полным вариантом в `title`, то есть сообщение,
+ * ради которого всё и затевалось, читалось только наведением мыши. Теперь его
+ * несёт уведомление, а строка захвата отвечает ровно за свой вопрос.
+ *
  * Pause stops everything PASSIVE — the ring buffer and auto mode. Push-to-talk
  * stays live on purpose: holding a key is not passive listening, and taking it
  * away would make the pause a second Stop.
@@ -12,12 +17,10 @@ import { CaptureMeter } from "./CaptureMeter";
 export function ListeningStatus({
   value,
   paused,
-  error,
   onTogglePause,
 }: {
   value: ListeningState;
   paused: boolean;
-  error?: string | null;
   onTogglePause: () => void;
 }) {
   const { tone, animated, word } = listeningPresentation(value);
@@ -38,11 +41,6 @@ export function ListeningStatus({
       >
         {word}
       </span>
-      {error != null && error !== "" && (
-        <span className="max-w-64 min-w-0 truncate text-caption text-danger" title={error}>
-          {error}
-        </span>
-      )}
       <IconButton
         title={
           paused

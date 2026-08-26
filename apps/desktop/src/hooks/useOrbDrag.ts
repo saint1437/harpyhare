@@ -7,6 +7,19 @@ const DRAG_THRESHOLD_PX = 4;
 const LEFT_BUTTON = 0;
 
 /**
+ * Whether an orb drag gesture is live. A module singleton, like the
+ * notification store: the windows are independent React roots, and App reads
+ * the flag without threading it through Orb. Auto-expanding mid-gesture would
+ * yank the window out from under the cursor: the tween sets the position every
+ * frame while the OS owns the drag.
+ */
+const orbDragState = { active: false };
+
+export function orbDragInProgress(): boolean {
+  return orbDragState.active;
+}
+
+/**
  * Кружок должен быть одновременно и ручкой для перетаскивания, и кнопкой.
  *
  * Обычный для этого проекта путь — `useWindowDrag` — здесь не годится:
@@ -25,10 +38,17 @@ export function useOrbDrag(onClick: () => void): {
   const origin = useRef<{ x: number; y: number } | null>(null);
   const dragged = useRef(false);
 
+  // After an OS drag the mouseup may never arrive, so the flag latches until
+  // the next gesture (like `dragged`) and resets when the orb mounts.
+  useEffect(() => {
+    orbDragState.active = false;
+  }, []);
+
   const onMouseDown = useCallback((event: ReactMouseEvent) => {
     if (event.button !== LEFT_BUTTON) return;
     origin.current = { x: event.screenX, y: event.screenY };
     dragged.current = false;
+    orbDragState.active = false;
   }, []);
 
   useEffect(() => {
@@ -38,6 +58,7 @@ export function useOrbDrag(onClick: () => void): {
       const moved = Math.hypot(event.screenX - from.x, event.screenY - from.y);
       if (moved < DRAG_THRESHOLD_PX) return;
       dragged.current = true;
+      orbDragState.active = true;
       void startWindowDrag();
     };
     // Перетаскивание уводит мышь под контроль ОС, и mouseup может не прийти
@@ -58,6 +79,7 @@ export function useOrbDrag(onClick: () => void): {
     (event: ReactMouseEvent) => {
       if (dragged.current) {
         dragged.current = false;
+        orbDragState.active = false;
         event.preventDefault();
         return;
       }

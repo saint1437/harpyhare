@@ -10,3 +10,10 @@ export function detectPlatform(userAgent: string): Platform {
 }
 
 export const PLATFORM: Platform = detectPlatform(navigator.userAgent);
+
+/**
+ * Left inset for macOS traffic lights in a merged-titlebar launcher header.
+ * One constant for both headers (LaunchBar and OnboardingFlow): a tweak to the
+ * window-button metrics must not misalign only one of the two flows.
+ */
+export const TRAFFIC_LIGHTS_INSET_CLASS = PLATFORM === "macos" ? "pl-16" : "";

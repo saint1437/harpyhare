@@ -1,13 +1,88 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useContextLibrary } from "@/hooks/useContextLibrary";
 import { useSettingsStore } from "@/hooks/useSettingsStore";
 import { useUpdater } from "@/hooks/useUpdater";
 import { launchMainWindow, redeemAccessCode } from "@/ipc/commands";
 import type { Settings } from "@/ipc/types";
+import { notifyError } from "@/lib/notifications";
 import { applyTheme } from "@/lib/window-controls";
 import { LauncherPanel } from "./LauncherPanel";
-import { useLauncherReadiness } from "./useLauncherReadiness";
+import { useLauncherReadiness, type LauncherReadiness } from "./useLauncherReadiness";
 import { OnboardingFlow } from "../onboarding/OnboardingFlow";
+
+const SAVE_FAILED_TITLE = "Не удалось сохранить настройки";
+const LAUNCH_FAILED_TITLE = "Не удалось запустить окно";
+const ONBOARDING_AUTOSAVE_DEBOUNCE_MS = 600;
+
+/**
+ * Onboarding needs a local draft for the same reason LauncherPanel has one:
+ * the old `set` pushed every keystroke through set_settings, and the inputs
+ * were controlled by the persisted value lagging a round trip behind — fast
+ * typing into the key field lost characters, and every character rebuilt both
+ * API clients.
+ */
+function OnboardingGate({
+  settings,
+  readiness,
+  launching,
+  onRedeem,
+  onPersist,
+  onLaunch,
+  onFinish,
+}: {
+  settings: Settings;
+  readiness: LauncherReadiness;
+  launching: boolean;
+  onRedeem: (code: string) => Promise<string | null>;
+  onPersist: (next: Settings) => void;
+  onLaunch: (next: Settings) => void;
+  onFinish: (next: Settings) => void;
+}) {
+  const [draft, setDraft] = useState(settings);
+  // Finishing cancels the pending autosave: a "save without onboarding_done
+  // landed AFTER the final one" race would restart onboarding from scratch.
+  const [closing, setClosing] = useState(false);
+  // After redeeming a code the token arrives through reload() into settings —
+  // the only thing onboarding adopts from outside.
+  useEffect(() => {
+    setDraft((d) =>
+      d.access_token === settings.access_token ? d : { ...d, access_token: settings.access_token },
+    );
+  }, [settings.access_token]);
+  const persistRef = useRef(onPersist);
+  useEffect(() => {
+    persistRef.current = onPersist;
+  }, [onPersist]);
+  const lastQueuedDraft = useRef(draft);
+  useEffect(() => {
+    if (launching || closing || draft === lastQueuedDraft.current) return;
+    lastQueuedDraft.current = draft;
+    const timer = setTimeout(() => {
+      persistRef.current(draft);
+    }, ONBOARDING_AUTOSAVE_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [draft, launching, closing]);
+  return (
+    <OnboardingFlow
+      draft={draft}
+      set={(key, value) => {
+        setDraft((d) => ({ ...d, [key]: value }));
+      }}
+      readiness={readiness}
+      launching={launching}
+      onRedeem={onRedeem}
+      onLaunch={() => {
+        onLaunch(draft);
+      }}
+      onFinish={() => {
+        setClosing(true);
+        onFinish(draft);
+      }}
+    />
+  );
+}
 
 function applyLauncherTheme(settings: Settings): void {
   applyTheme(document.documentElement, settings.theme);
@@ -20,7 +95,9 @@ export function LauncherApp() {
   const readiness = useLauncherReadiness(settings);
   const [launching, setLaunching] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Не текст, а флаг: сам отказ показывает уведомление, а объекту статуса нужно
+  // лишь знать, что предлагать повтор.
+  const [saveFailed, setSaveFailed] = useState(false);
   // Re-entry from settings: the flag is already true, so the gate has to be
   // openable by hand as well as by the flag.
   const [replayOnboarding, setReplayOnboarding] = useState(false);
@@ -35,11 +112,11 @@ export function LauncherApp() {
   );
 
   const persist = async (next: Settings): Promise<boolean> => {
-    setError(null);
     setSaving(true);
     try {
       const failure = await save(next);
-      if (failure !== null) setError(failure);
+      setSaveFailed(failure !== null);
+      if (failure !== null) notifyError(SAVE_FAILED_TITLE, failure);
       return failure === null;
     } finally {
       setSaving(false);
@@ -60,7 +137,8 @@ export function LauncherApp() {
           return;
         }
       } catch (e) {
-        setError(String(e));
+        setSaveFailed(true);
+        notifyError(LAUNCH_FAILED_TITLE, String(e));
       }
       setLaunching(false);
     })();
@@ -81,23 +159,20 @@ export function LauncherApp() {
     );
 
   if (!settings.onboarding_done || replayOnboarding) {
-    const finish = () => {
-      setReplayOnboarding(false);
-      handleSave({ ...settings, onboarding_done: true });
-    };
     return (
-      <OnboardingFlow
-        draft={settings}
-        set={(key, value) => {
-          handleSave({ ...settings, [key]: value });
-        }}
-        permissions={readiness.permissions}
+      <OnboardingGate
+        settings={settings}
+        readiness={readiness}
         launching={launching}
         onRedeem={redeem}
-        onLaunch={() => {
-          handleLaunch({ ...settings, onboarding_done: true });
+        onPersist={handleSave}
+        onLaunch={(next) => {
+          handleLaunch({ ...next, onboarding_done: true });
         }}
-        onFinish={finish}
+        onFinish={(next) => {
+          setReplayOnboarding(false);
+          handleSave({ ...next, onboarding_done: true });
+        }}
       />
     );
   }
@@ -110,7 +185,7 @@ export function LauncherApp() {
       readiness={readiness}
       launching={launching}
       saving={saving}
-      error={error}
+      saveFailed={saveFailed}
       onRedeem={redeem}
       onCheckUpdates={updater.checkNow}
       onSave={handleSave}

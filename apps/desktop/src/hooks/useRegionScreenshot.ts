@@ -1,19 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { captureRegionScreenshot } from "@/ipc/commands";
 import { onEvent } from "@/ipc/events";
-import type { AppError } from "@/lib/errors";
+import { notifyAppError } from "@/lib/notifications";
 
 export interface RegionScreenshotApi {
-  error: AppError | null;
-  clearError: () => void;
   capture: () => void;
 }
 
 export function useRegionScreenshot(
   onImage: (dataUrl: string, mediaType: string) => void,
 ): RegionScreenshotApi {
-  const [error, setError] = useState<AppError | null>(null);
-
   const onImageRef = useRef(onImage);
   useEffect(() => {
     onImageRef.current = onImage;
@@ -22,21 +18,16 @@ export function useRegionScreenshot(
   useEffect(
     () =>
       onEvent("screenshot-ready", (p) => {
-        setError(null);
         onImageRef.current(`data:${p.mediaType};base64,${p.dataBase64}`, p.mediaType);
       }),
     [],
   );
 
-  useEffect(() => onEvent("screenshot-error", setError), []);
-
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
+  useEffect(() => onEvent("screenshot-error", notifyAppError), []);
 
   const capture = useCallback(() => {
     void captureRegionScreenshot();
   }, []);
 
-  return { error, clearError, capture };
+  return { capture };
 }

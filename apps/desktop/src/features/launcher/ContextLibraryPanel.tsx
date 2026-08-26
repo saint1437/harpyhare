@@ -40,8 +40,9 @@ import {
   rootDocs,
   type ContextDoc,
 } from "@/lib/context-library";
+import { notifyError } from "@/lib/notifications";
 import { PLATFORM, type Platform } from "@/lib/platform";
-import { cn } from "@/lib/utils";
+import { cn, SURFACE_CARD_CLASS } from "@/lib/utils";
 
 const ROOT_FOLDER_ID = "";
 const ROOT_SELECT_VALUE = "root";
@@ -76,7 +77,6 @@ function dropTargetAt(x: number, y: number): string | null {
 function useNativeFileDrop(
   api: ContextLibraryApi,
   setDropTarget: (t: string | null) => void,
-  setImportError: (e: string | null) => void,
 ): void {
   useEffect(
     () =>
@@ -92,18 +92,17 @@ function useNativeFileDrop(
         const target = dropTargetAt(event.x, event.y);
         setDropTarget(null);
         if (target === null) return;
-        setImportError(null);
         for (const path of event.paths) {
           void readContextImportFile(path)
             .then((text) => {
               api.addDoc({ name: docNameFromFileName(path), text, folderId: target });
             })
             .catch((e: unknown) => {
-              setImportError(String(e));
+              notifyImportFailure(docNameFromFileName(path), e);
             });
         }
       }),
-    [api, setDropTarget, setImportError],
+    [api, setDropTarget],
   );
 }
 
@@ -146,8 +145,11 @@ function useDocDrag(
   return { dragDocId, startDrag };
 }
 
-function importErrorText(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
+// Импорт валится по-разному и многословно: PDF на 20 МБ, битый PDF из
+// `catch_unwind`, файл, который не прочитать. Имя файла — в заголовок, весь
+// текст отказа — в тело уведомления.
+function notifyImportFailure(name: string, e: unknown): void {
+  notifyError(`Не удалось добавить «${name}»`, e instanceof Error ? e.message : String(e));
 }
 
 async function extractPickedFile(file: File): Promise<string> {
@@ -159,15 +161,13 @@ async function importPickedFiles(
   api: ContextLibraryApi,
   files: FileList,
   folderId: string,
-  setImportError: (e: string | null) => void,
 ): Promise<void> {
-  setImportError(null);
   for (const file of Array.from(files)) {
     try {
       const text = await extractPickedFile(file);
       api.addDoc({ name: docNameFromFileName(file.name), text, folderId });
     } catch (e: unknown) {
-      setImportError(importErrorText(e));
+      notifyImportFailure(docNameFromFileName(file.name), e);
     }
   }
 }
@@ -325,7 +325,7 @@ function DocEditor({
   onCancel: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-lg bg-surface p-3 shadow-raise ring-1 ring-inset ring-line">
+    <div className={cn("flex flex-col gap-2 p-3", SURFACE_CARD_CLASS)}>
       <SectionLabel>{draft.id === null ? "Новый материал" : "Материал"}</SectionLabel>
       <div className="flex gap-2">
         <Input
@@ -411,10 +411,9 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
   const { library } = api;
   const [docDraft, setDocDraft] = useState<DocDraft | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const [importError, setImportError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useNativeFileDrop(api, setDropTarget, setImportError);
+  useNativeFileDrop(api, setDropTarget);
   const { dragDocId, startDrag } = useDocDrag(api, setDropTarget);
 
   const saveDocDraft = () => {
@@ -430,8 +429,7 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
 
   const onPickFiles = (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files && files.length > 0)
-      void importPickedFiles(api, files, ROOT_FOLDER_ID, setImportError);
+    if (files && files.length > 0) void importPickedFiles(api, files, ROOT_FOLDER_ID);
     e.target.value = "";
   };
 
@@ -486,8 +484,6 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
           onChange={onPickFiles}
         />
       </div>
-
-      {importError !== null && <p className="text-caption text-danger">{importError}</p>}
 
       {docDraft && (
         <DocEditor
@@ -552,7 +548,8 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
               key={folder.id}
               {...{ [DROP_FOLDER_ATTR]: folder.id }}
               className={cn(
-                "flex flex-col gap-0.5 rounded-lg bg-surface p-1.5 shadow-raise ring-1 ring-inset ring-line transition-colors",
+                "flex flex-col gap-0.5 p-1.5 transition-colors",
+                SURFACE_CARD_CLASS,
                 dropTarget === folder.id && "bg-accent/10 ring-accent/40",
               )}
             >

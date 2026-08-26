@@ -30,8 +30,11 @@ const COLLAPSED_SIZE_LOGICAL_PX: f64 = 80.0;
 
 /// Твин длится RESIZE_TWEEN_STEPS кадров; минимальный размер возвращаем уже
 /// после него — иначе окно щёлкнет в минимум раньше, чем успеет вырасти.
-const MIN_SIZE_RESTORE_DELAY: Duration =
-    Duration::from_millis((RESIZE_TWEEN_STEPS as u64 + 4) * 13);
+/// The frame interval is derived on purpose: retune the tween with another
+/// step and the delay would silently stop covering the expand animation.
+const MIN_SIZE_RESTORE_DELAY: Duration = Duration::from_millis(
+    (RESIZE_TWEEN_STEPS as u64 + 4) * RESIZE_TWEEN_FRAME_INTERVAL.as_millis() as u64,
+);
 
 pub fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(MAIN_WINDOW_LABEL)
@@ -121,13 +124,13 @@ type GlobalRegistrar = fn(&AppHandle, &str) -> Result<(), String>;
 type GlobalUnregistrar = fn(&AppHandle, &str);
 
 const GLOBAL_HOTKEYS: &[(&str, GlobalRegistrar, GlobalUnregistrar)] = &[
-    (hotkeys::ACTION_RECORD, hotkey::register_ptt, hotkey::unregister_ptt),
-    (hotkeys::ACTION_TOGGLE_WINDOW, hotkey::register_toggle, hotkey::unregister_toggle),
-    (hotkeys::ACTION_TELEPROMPTER, hotkey::register_teleprompter, hotkey::unregister_teleprompter),
-    (hotkeys::ACTION_AUTO_MODE, hotkey::register_auto_mode, hotkey::unregister_auto_mode),
-    (hotkeys::ACTION_AUTO_ANSWER, hotkey::register_auto_answer, hotkey::unregister_auto_answer),
-    (hotkeys::ACTION_SCREENSHOT, hotkey::register_screenshot, hotkey::unregister_screenshot),
-    (hotkeys::ACTION_FOCUS_PROMPT, hotkey::register_focus_prompt, hotkey::unregister_focus_prompt),
+    (hotkeys::ACTION_RECORD, hotkey::register_ptt, hotkey::unregister_hotkey),
+    (hotkeys::ACTION_TOGGLE_WINDOW, hotkey::register_toggle, hotkey::unregister_hotkey),
+    (hotkeys::ACTION_TELEPROMPTER, hotkey::register_teleprompter, hotkey::unregister_hotkey),
+    (hotkeys::ACTION_AUTO_MODE, hotkey::register_auto_mode, hotkey::unregister_hotkey),
+    (hotkeys::ACTION_AUTO_ANSWER, hotkey::register_auto_answer, hotkey::unregister_hotkey),
+    (hotkeys::ACTION_SCREENSHOT, hotkey::register_screenshot, hotkey::unregister_hotkey),
+    (hotkeys::ACTION_FOCUS_PROMPT, hotkey::register_focus_prompt, hotkey::unregister_hotkey),
 ];
 
 pub fn register_main_window_hotkeys(app: &AppHandle, s: &settings::Settings) {
@@ -149,7 +152,7 @@ pub fn unregister_main_window_hotkeys_for(app: &AppHandle, s: &settings::Setting
             unregister(app, &combo);
         }
     }
-    hotkey::unregister_cancel(app, &hotkeys::effective(&s.hotkeys, hotkeys::ACTION_CANCEL_RECORDING));
+    hotkey::unregister_hotkey(app, &hotkeys::effective(&s.hotkeys, hotkeys::ACTION_CANCEL_RECORDING));
 }
 
 pub fn show_and_focus_prompt(app: &AppHandle) {
@@ -187,6 +190,7 @@ pub fn set_collapsed(app: &AppHandle, collapsed: bool, focus: bool) {
     if state.window_collapsed.swap(collapsed, Ordering::SeqCst) == collapsed {
         return;
     }
+    let my_gen = state.collapse_gen.fetch_add(1, Ordering::SeqCst) + 1;
     events::collapsed_changed(app, collapsed);
 
     if collapsed {
@@ -218,8 +222,17 @@ pub fn set_collapsed(app: &AppHandle, collapsed: bool, focus: bool) {
     let settings = current_settings(app);
     set_window_size(app.clone(), settings.window_width, settings.window_height);
     let restore = w.clone();
+    let restore_app = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(MIN_SIZE_RESTORE_DELAY);
+        // A generation, not a re-check of the flag: a quick double tap of the
+        // hotkey (expand → collapse, or the reverse within the delay) left a
+        // stale thread that snapped the minimum back to 300×520 mid-someone-
+        // else's tween — the tween aborted as superseded and the orb was stuck
+        // in a big window.
+        if restore_app.state::<App>().collapse_gen.load(Ordering::SeqCst) != my_gen {
+            return;
+        }
         let _ = restore.set_min_size(Some(min_size(
             settings::limits::window::WIDTH.min,
             settings::limits::window::HEIGHT.min,
@@ -277,6 +290,10 @@ fn swap_to_main_window(app: &AppHandle) -> Result<(), String> {
         crate::recording::ensure_capture(&capture_app);
         if start_auto {
             if let Err(e) = crate::auto::start(&capture_app) {
+                // A fast failure lands before the webview subscribes to
+                // auto-mode-error — the HUD pulls the record via a command on
+                // mount.
+                crate::auto::record_start_error(&capture_app, &e);
                 events::auto_mode_error(&capture_app, e);
             }
         }
@@ -285,7 +302,10 @@ fn swap_to_main_window(app: &AppHandle) -> Result<(), String> {
 }
 
 fn swap_to_launcher_window(app: &AppHandle) -> Result<(), String> {
-    crate::auto::stop(app);
+    // Off the main thread: stop() waits for auto mode's transition lock, and a
+    // slow mic open (up to 5 s on Windows) may be running under it.
+    let stop_app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || crate::auto::stop(&stop_app));
     let settings = current_settings(app);
     unregister_main_window_hotkeys_for(app, &settings);
     create_launcher_window(app, &settings)?;

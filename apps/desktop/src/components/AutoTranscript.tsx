@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import type { AutoTurn } from "@/ipc/types";
 import { speakerLabel } from "@/lib/auto-turns";
 import { formatCombo } from "@/lib/hotkeys";
-import { cn } from "@/lib/utils";
+import { cn, SURFACE_CARD_CLASS } from "@/lib/utils";
 
 const TITLE = "Расшифровка";
 const EMPTY_HINT = "Слушаю — реплики появятся здесь.";
@@ -53,7 +53,7 @@ export function AutoTranscript({
   return (
     <section
       aria-label={TITLE}
-      className="flex shrink-0 flex-col gap-1.5 rounded-lg bg-surface px-2.5 py-2 shadow-raise ring-1 ring-inset ring-line"
+      className={cn("flex shrink-0 flex-col gap-1.5 px-2.5 py-2", SURFACE_CARD_CLASS)}
     >
       <div className="flex items-center justify-between gap-2">
         <SectionLabel>{TITLE}</SectionLabel>

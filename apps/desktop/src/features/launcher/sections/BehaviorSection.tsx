@@ -8,6 +8,15 @@ const TOGGLES = [
     hint: "Расшифровка уходит в чат без нажатия отправки.",
   },
   {
+    // Declared in onboarding's PrivacyStep, but it must live here too:
+    // otherwise it is unreachable after onboarding, and search led to a tab
+    // without the row — a dead route. The wording matches the search index and
+    // PrivacyStep word for word.
+    key: "copy_results_to_clipboard",
+    label: "Копировать в буфер обмена",
+    hint: "Расшифровки и снимки экрана.",
+  },
+  {
     key: "auto_preview_html",
     label: "Открывать превью HTML",
     hint: "Если в ответе есть HTML-блок, рядом с чатом открывается панель просмотра.",

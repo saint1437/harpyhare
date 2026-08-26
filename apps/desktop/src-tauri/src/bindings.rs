@@ -35,6 +35,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             auto::start_auto_mode,
             auto::stop_auto_mode,
             auto::auto_mode_active,
+            auto::take_auto_mode_error,
             auto::list_audio_input_devices,
             audio_check::check_audio_source,
             recording::list_audio_output_devices,

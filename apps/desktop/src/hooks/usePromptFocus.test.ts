@@ -1,18 +1,9 @@
 import { act, cleanup, render } from "@testing-library/react";
+import { emitIpcEvent, resetIpcEventHandlers } from "@/test-utils/fake-ipc-events";
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-type Handler = (payload: unknown) => void;
-const handlers = new Map<string, Handler>();
-
-vi.mock("@/ipc/events", () => ({
-  onEvent: (name: string, handler: Handler) => {
-    handlers.set(name, handler);
-    return () => {
-      handlers.delete(name);
-    };
-  },
-}));
+vi.mock("@/ipc/events", async () => await import("@/test-utils/fake-ipc-events"));
 
 import { usePromptFocus } from "./usePromptFocus";
 
@@ -20,7 +11,7 @@ const FOCUS_PROMPT_EVENT = "focus-prompt";
 const DRAFT_TEXT = "недописанный вопрос";
 
 function emitFocusPrompt() {
-  act(() => handlers.get(FOCUS_PROMPT_EVENT)?.(null));
+  emitIpcEvent(FOCUS_PROMPT_EVENT, null);
 }
 
 function PromptField({ suspended, text }: { suspended: boolean; text: string }) {
@@ -40,7 +31,7 @@ function renderPromptField(suspended: boolean, text = "") {
 
 afterEach(() => {
   cleanup();
-  handlers.clear();
+  resetIpcEventHandlers();
   document.body.innerHTML = "";
 });
 

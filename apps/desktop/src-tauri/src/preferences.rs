@@ -82,7 +82,7 @@ pub fn set_ptt_suspended(app: AppHandle, suspended: bool) {
         crate::hotkeys::ACTION_RECORD,
     );
     if suspended {
-        hotkey::unregister_ptt(&app, &hk);
+        hotkey::unregister_hotkey(&app, &hk);
     } else {
         let _ = hotkey::register_ptt(&app, &hk);
     }

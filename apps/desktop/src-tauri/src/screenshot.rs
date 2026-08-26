@@ -85,9 +85,11 @@ pub fn on_capture_region(app: &AppHandle) {
 
 async fn run_capture(app: AppHandle, _slot: CaptureSlot) {
     let was_visible = window::hide_for_screen_capture(&app).await;
+    let mut captured = false;
     let restore = match capture_on_main_thread(&app).await {
         Ok(Some(png)) => {
             deliver(&app, png);
+            captured = true;
             true
         }
         Ok(None) => was_visible,
@@ -97,6 +99,13 @@ async fn run_capture(app: AppHandle, _slot: CaptureSlot) {
         }
     };
     if restore {
+        if captured {
+            // A shot taken from the orb: without expanding, the screenshot lands
+            // silently in an invisible chat's draft and focus goes to the orb.
+            // With the window already expanded set_collapsed is a no-op; on
+            // cancel and error the orb stays an orb.
+            window::set_collapsed(&app, false, false);
+        }
         window::show_and_focus_prompt(&app);
     }
 }

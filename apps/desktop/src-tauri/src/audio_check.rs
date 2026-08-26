@@ -1,3 +1,4 @@
+use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Manager};
@@ -13,7 +14,7 @@ const CHECK_SECS: u64 = 5;
 const LEVEL_INTERVAL: Duration = Duration::from_millis(100);
 
 const ERR_BUSY: &str = "Идёт запись — дождитесь её окончания";
-const ERR_NO_SYSTEM_CAPTURE: &str = "Захват системного звука недоступен";
+const ERR_CHECK_RUNNING: &str = "Идёт проверка звука — дождитесь её окончания";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
@@ -29,8 +30,44 @@ pub enum AudioSource {
 #[serde(rename_all = "camelCase")]
 pub struct AudioCheck {
     pub heard: bool,
-    pub peak: f32,
     pub text: String,
+}
+
+pub fn is_active(app: &AppHandle) -> bool {
+    app.state::<App>().audio_check_active.load(Ordering::Acquire)
+}
+
+pub fn busy_error() -> AppError {
+    AppError::new(ErrorCode::Internal, ERR_CHECK_RUNNING)
+}
+
+/// The five-second check window is a busy state even though the recorder is
+/// Idle: starting auto mode or PTT inside it armed a segmenter in the middle of
+/// a foreign session, and stop_system then tore that session down. The slot is
+/// RAII so a panic inside the command cannot leave the flag raised forever
+/// (the same device as the screenshot's CaptureSlot).
+struct CheckSlot(AppHandle);
+
+impl CheckSlot {
+    fn claim(app: &AppHandle) -> Result<Self, AppError> {
+        let busy = app
+            .state::<App>()
+            .audio_check_active
+            .swap(true, Ordering::AcqRel);
+        if busy {
+            return Err(busy_error());
+        }
+        Ok(Self(app.clone()))
+    }
+}
+
+impl Drop for CheckSlot {
+    fn drop(&mut self) {
+        self.0
+            .state::<App>()
+            .audio_check_active
+            .store(false, Ordering::Release);
+    }
 }
 
 pub fn peak_level(samples: &[f32]) -> f32 {
@@ -68,14 +105,15 @@ fn start_system(app: &AppHandle) -> Result<(), AppError> {
     // как кнопка «Выдать»: иначе статус навсегда остался бы «не спрашивали».
     permissions::mark_requested(app, PermissionKind::Audio)
         .map_err(|e| AppError::new(ErrorCode::Internal, e))?;
-    if !recording::ensure_capture(app) {
-        return Err(AppError::new(ErrorCode::Permission, ERR_NO_SYSTEM_CAPTURE));
-    }
+    recording::ensure_capture_or_err(app)?;
     let buffer_enabled = current_settings(app).buffer_enabled;
     let st = app.state::<App>();
     let mut guard = st.capture.lock().unwrap();
     let Some(capture) = guard.as_mut() else {
-        return Err(AppError::new(ErrorCode::Permission, ERR_NO_SYSTEM_CAPTURE));
+        return Err(AppError::new(
+            ErrorCode::Permission,
+            recording::ERR_NO_SYSTEM_CAPTURE,
+        ));
     };
     // Фоновый буфер выключается на время проверки: иначе в неё попал бы хвост,
     // записанный ДО нажатия, и «слышно» значило бы «было слышно когда-то».
@@ -90,7 +128,11 @@ fn start_system(app: &AppHandle) -> Result<(), AppError> {
 }
 
 fn stop_system(app: &AppHandle) -> Result<Vec<f32>, AppError> {
-    let buffer_enabled = current_settings(app).buffer_enabled;
+    // Belt and braces: the busy slot keeps auto mode out of the check window,
+    // but if it is somehow live (started earlier), buffering must not be turned
+    // off — segmentation lives in run_buffering, and without it the
+    // interviewer's feed dies.
+    let buffer_enabled = current_settings(app).buffer_enabled || auto::is_active(app);
     let st = app.state::<App>();
     let mut guard = st.capture.lock().unwrap();
     let Some(capture) = guard.as_mut() else {
@@ -120,11 +162,9 @@ async fn record_microphone(app: &AppHandle) -> Result<Vec<f32>, AppError> {
 }
 
 async fn verdict(app: &AppHandle, samples: Vec<f32>) -> Result<AudioCheck, AppError> {
-    let peak = peak_level(&samples);
     if audio::is_silence(&samples) {
         return Ok(AudioCheck {
             heard: false,
-            peak,
             text: String::new(),
         });
     }
@@ -134,7 +174,6 @@ async fn verdict(app: &AppHandle, samples: Vec<f32>) -> Result<AudioCheck, AppEr
         .map_err(|e| AppError::from(&e))?;
     Ok(AudioCheck {
         heard: true,
-        peak,
         text: text.trim().to_string(),
     })
 }
@@ -143,6 +182,7 @@ async fn verdict(app: &AppHandle, samples: Vec<f32>) -> Result<AudioCheck, AppEr
 #[specta::specta]
 pub async fn check_audio_source(app: AppHandle, source: AudioSource) -> Result<AudioCheck, AppError> {
     ensure_idle(&app)?;
+    let _slot = CheckSlot::claim(&app)?;
     let samples = match source {
         AudioSource::System => {
             start_system(&app)?;

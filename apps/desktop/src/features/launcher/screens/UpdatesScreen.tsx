@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import { NotificationCard } from "@/components/NotificationCard";
 import { Button } from "@/components/ui/button";
 import type { UpdaterApi } from "@/hooks/useUpdater";
 import type { UpdateProgress } from "@/ipc/types";
@@ -8,8 +9,11 @@ import { ScreenShell } from "../ScreenShell";
 
 const ReleaseNotes = lazy(() => import("../ReleaseNotes"));
 
-export type CheckState = "idle" | "checking" | "latest" | { failure: string };
+// Отказ проверки живёт в уведомлении, а не в подписи строки: сюда приходил
+// сырой `String(e)` от плагина обновлений, и подпись под кнопкой его не держала.
+export type CheckState = "idle" | "checking" | "latest";
 
+const UPDATE_FAILED_TITLE = "Не удалось обновиться";
 const MIB = 1024 * 1024;
 const PERCENT_MAX = 100;
 
@@ -33,7 +37,6 @@ function progressCaption(updater: UpdaterApi, percent: number | null): string {
 function checkCaption(state: CheckState): string {
   if (state === "checking") return "Проверяю…";
   if (state === "latest") return "Установлена последняя версия";
-  if (typeof state === "object") return `Не удалось проверить обновления: ${state.failure}`;
   return "Проверка идёт автоматически при запуске и раз в шесть часов.";
 }
 
@@ -104,10 +107,14 @@ export function UpdatesScreen({
             </SettingBlock>
           )}
 
+          {/* Единственная ошибка, которая НЕ уезжает в стопку уведомлений:
+              «Повторить» стоит здесь же, и уносить причину от кнопки означало бы
+              оставить кнопку без объяснения. Карточка та же самая, поэтому
+              многоэкранный текст точно так же сворачивается и копируется. */}
           {updater.status === "error" && updater.error !== null && (
-            <SettingBlock label="Ошибка установки">
-              <span className="text-body whitespace-pre-wrap text-danger">{updater.error}</span>
-            </SettingBlock>
+            <div className="px-3 py-2.5">
+              <NotificationCard tone="danger" title={UPDATE_FAILED_TITLE} detail={updater.error} />
+            </div>
           )}
 
           {available && (

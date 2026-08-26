@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { autoModeActive, startAutoMode, stopAutoMode } from "@/ipc/commands";
+import { autoModeActive, startAutoMode, stopAutoMode, takeAutoModeError } from "@/ipc/commands";
 import { onEvent } from "@/ipc/events";
 import type { AutoTurn } from "@/ipc/types";
 import {
@@ -10,7 +10,8 @@ import {
   turnsAfter,
   type SubmissionPlan,
 } from "@/lib/auto-turns";
-import { asAppError, type AppError } from "@/lib/errors";
+import { asAppError } from "@/lib/errors";
+import { notifyAppError } from "@/lib/notifications";
 
 const SUBMIT_DEBOUNCE_MS = 900;
 
@@ -20,17 +21,14 @@ export interface AutoModeApi {
   /** Реплики, ещё не ушедшие в чат: их и отправит «Ответить». */
   pending: AutoTurn[];
   submittedThrough: number;
-  error: AppError | null;
   toggle: () => void;
   answer: () => void;
-  clearError: () => void;
 }
 
 export function useAutoMode(onSubmit: (text: string) => boolean, instant: boolean): AutoModeApi {
   const [active, setActive] = useState(false);
   const [turns, setTurns] = useState<AutoTurn[]>([]);
   const [submittedThrough, setSubmittedThrough] = useState(NO_TURN_SUBMITTED);
-  const [error, setError] = useState<AppError | null>(null);
 
   const turnsRef = useRef<AutoTurn[]>([]);
   const submittedThroughRef = useRef(NO_TURN_SUBMITTED);
@@ -97,12 +95,18 @@ export function useAutoMode(onSubmit: (text: string) => boolean, instant: boolea
     [advanceThrough],
   );
 
-  useEffect(() => onEvent("auto-mode-error", setError), []);
+  useEffect(() => onEvent("auto-mode-error", notifyAppError), []);
 
   useEffect(() => {
     let live = true;
     void autoModeActive().then((running) => {
       if (live) setActive(running);
+    });
+    // A start failure at HUD launch lands before the auto-mode-error
+    // subscription exists (the emit goes into a not-yet-mounted webview) —
+    // Rust stores it and we pull it once on mount.
+    void takeAutoModeError().then((pending) => {
+      if (live && pending) notifyAppError(pending);
     });
     return () => {
       live = false;
@@ -116,22 +120,17 @@ export function useAutoMode(onSubmit: (text: string) => boolean, instant: boolea
     [],
   );
 
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
-
   const toggle = useCallback(() => {
     if (active) {
       void stopAutoMode();
       return;
     }
-    setError(null);
     void startAutoMode().catch((e: unknown) => {
-      setError(asAppError(e));
+      notifyAppError(asAppError(e));
     });
   }, [active]);
 
   const pending = useMemo(() => turnsAfter(turns, submittedThrough), [turns, submittedThrough]);
 
-  return { active, turns, pending, submittedThrough, error, toggle, answer, clearError };
+  return { active, turns, pending, submittedThrough, toggle, answer };
 }

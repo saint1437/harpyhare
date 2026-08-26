@@ -50,6 +50,8 @@ const contract = {
   AutoTurn: true satisfies SameShape<AutoTurn, Rust.AutoTurnPayload>,
   Speaker: true satisfies SameShape<AutoTurn["speaker"], Rust.Speaker>,
   AutoModeChanged: true satisfies SameShape<EventMap["auto-mode-changed"], Rust.AutoModeChanged>,
+  CollapsedChanged: true satisfies SameShape<EventMap["collapsed-changed"], Rust.CollapsedChanged>,
+  AudioLevel: true satisfies SameShape<EventMap["audio-level"], Rust.AudioLevel>,
   HotkeyBinding: true satisfies SameShape<HotkeyBinding, Rust.HotkeyBinding>,
   QuickAction: true satisfies SameShape<QuickAction, Rust.QuickAction>,
   PlatformCombo: true satisfies SameShape<Record<Platform, string>, Rust.PlatformCombo>,

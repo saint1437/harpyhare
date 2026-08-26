@@ -25,6 +25,9 @@ const ERR_NO_CAPTURE: (ErrorCode, &str) = (
     "Захват системного звука недоступен — проверь устройство вывода в настройках",
 );
 const ERR_NO_AUDIO_BUFFER: &str = "нет аудио-буфера";
+/// The shared "no capture" text for auto.rs and audio_check.rs: the user-facing
+/// wording must be single-sourced, otherwise two copies drift silently.
+pub const ERR_NO_SYSTEM_CAPTURE: &str = "Захват системного звука недоступен";
 #[cfg(target_os = "macos")]
 const ERR_SILENCE: &str = "Тишина — нечего распознавать (если звук играл: проверь право «Запись системного звука» у macOS и устройство захвата в настройках)";
 #[cfg(target_os = "windows")]
@@ -67,7 +70,22 @@ pub fn rebuild_capture(app: &AppHandle) -> bool {
     let st = app.state::<App>();
     let new_capture = build_capture(&current_settings(app));
     let built = new_capture.is_some();
+    let auto_live = auto::is_active(app);
+    if auto_live {
+        // The fresh capture is built from settings.buffer_enabled and with no
+        // segmenter, while auto mode lived on the previous one: without forced
+        // buffering the consumer parks and the interviewer's turns die silently
+        // — with the HUD still honestly showing "listening".
+        if let Some(c) = new_capture.as_ref() {
+            c.set_buffering(true);
+        }
+    }
     *st.capture.lock().unwrap() = new_capture;
+    if built && auto_live {
+        // Re-arm the segmenter only after installing into the state:
+        // reapply_bounds takes the capture lock and the live generation itself.
+        auto::reapply_bounds(app);
+    }
     built
 }
 
@@ -76,6 +94,14 @@ pub fn ensure_capture(app: &AppHandle) -> bool {
         return true;
     }
     rebuild_capture(app)
+}
+
+pub fn ensure_capture_or_err(app: &AppHandle) -> Result<(), AppError> {
+    if ensure_capture(app) {
+        Ok(())
+    } else {
+        Err(AppError::new(ErrorCode::Permission, ERR_NO_SYSTEM_CAPTURE))
+    }
 }
 
 // A stalled capture is alive as an object and dead as a stream: its backend can no
@@ -101,6 +127,12 @@ fn rebuild_capture_now(app: &AppHandle) {
 pub fn on_ptt_pressed(app: &AppHandle) {
     if auto::is_active(app) {
         events::stt_error(app, auto::recorder_busy_error());
+        return;
+    }
+    if crate::audio_check::is_active(app) {
+        // The audio check holds the same capture: its stop() would tear down the
+        // PTT session, and the PTT tail would leak into the check's verdict.
+        events::stt_error(app, crate::audio_check::busy_error());
         return;
     }
     let st = app.state::<App>();
@@ -198,7 +230,7 @@ pub fn on_ptt_released(app: &AppHandle) {
         .lock()
         .unwrap()
         .on(state::Event::PttReleased { duration_secs: secs });
-    hotkey::unregister_cancel(app, &hotkey::cancel_combo(app));
+    hotkey::unregister_hotkey(app, &hotkey::cancel_combo(app));
     finish_recording(app, action);
 }
 
@@ -216,7 +248,7 @@ pub fn on_cancel(app: &AppHandle) {
     if action == state::Action::Discard {
         cancel_stt_stream(app);
         stop_capture_discarding(&st);
-        hotkey::unregister_cancel(app, &hotkey::cancel_combo(app));
+        hotkey::unregister_hotkey(app, &hotkey::cancel_combo(app));
         events::state_changed(app, state::RecorderState::Idle);
     }
 }
@@ -350,7 +382,7 @@ fn spawn_max_duration_watchdog(app: AppHandle, my_gen: u64) {
                     .lock()
                     .unwrap()
                     .on(state::Event::MaxDurationReached);
-                hotkey::unregister_cancel(&app, &hotkey::cancel_combo(&app));
+                hotkey::unregister_hotkey(&app, &hotkey::cancel_combo(&app));
                 finish_recording(&app, action);
                 break;
             }

@@ -97,7 +97,6 @@ pub struct AutoTurnPayload {
     pub speaker: crate::auto::Speaker,
     pub text: String,
     pub seq: u32,
-    pub at_ms: f64,
 }
 
 #[derive(Clone, serde::Serialize, specta::Type)]

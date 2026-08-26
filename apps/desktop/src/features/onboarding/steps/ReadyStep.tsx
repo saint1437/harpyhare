@@ -2,6 +2,8 @@ import { StateBadge } from "@/components/StateBadge";
 import { Button } from "@/components/ui/button";
 import type { Settings } from "@/ipc/types";
 import { effectiveCombo, formatCombo, hotkeyAction } from "@/lib/hotkeys";
+import { cn, SURFACE_CARD_CLASS } from "@/lib/utils";
+import type { LauncherReadiness } from "../../launcher/useLauncherReadiness";
 import { OnboardingShell } from "../OnboardingShell";
 
 const RECORD_ACTION = "record";
@@ -18,7 +20,7 @@ export function ReadyStep({
   step,
   total,
   settings,
-  audioReady,
+  readiness,
   launching,
   onLaunch,
   onFixAudio,
@@ -27,7 +29,7 @@ export function ReadyStep({
   step: number;
   total: number;
   settings: Settings;
-  audioReady: boolean;
+  readiness: LauncherReadiness;
   launching: boolean;
   onLaunch: () => void;
   onFixAudio: () => void;
@@ -35,18 +37,24 @@ export function ReadyStep({
 }) {
   const combo = effectiveCombo(settings.hotkeys, RECORD_ACTION);
   const hint = hotkeyAction(RECORD_ACTION).hint;
+  const audioReady = readiness.permissions.audioOk;
+  const ready = readiness.ready && !readiness.checking;
+  // A blocker other than system audio (the mic for auto-listening, keys on a
+  // replay): the button must name the reason — LauncherApp silently refuses to
+  // launch without readiness.ready, so the click used to go nowhere.
+  const otherBlocker = ready || !audioReady ? null : (readiness.blockers[0]?.label ?? null);
 
   return (
     <OnboardingShell
       step={step}
       total={total}
-      heading={audioReady ? "Всё готово" : "Почти готово"}
+      heading={ready ? "Всё готово" : "Почти готово"}
       primary={
         // Без доступа к системному звуку запуск физически заблокирован
         // (`canLaunch` требует `audioOk`), поэтому кнопка «всё равно запустить»
         // была бы обещанием, которого приложение не выполнит.
         audioReady ? (
-          <Button disabled={launching} onClick={onLaunch}>
+          <Button disabled={launching || !ready} onClick={onLaunch}>
             {launching ? "Запускаю…" : "Запустить"}
           </Button>
         ) : (
@@ -59,7 +67,7 @@ export function ReadyStep({
         </Button>
       }
     >
-      <div className="flex flex-col items-center gap-2 rounded-lg bg-surface px-4 py-7 shadow-raise ring-1 ring-inset ring-line">
+      <div className={cn("flex flex-col items-center gap-2 px-4 py-7", SURFACE_CARD_CLASS)}>
         <span className="font-mono text-display font-semibold tracking-wider text-fg">
           {combo === "" ? "не назначено" : formatCombo(combo)}
         </span>
@@ -69,7 +77,10 @@ export function ReadyStep({
       <p className="text-caption text-fg-subtle">{AFTERWARDS}</p>
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-        <StateBadge tone="success" label="Доступ к API" />
+        <StateBadge
+          tone={readiness.missingKeys.length === 0 ? "success" : "warning"}
+          label="Доступ к API"
+        />
         {audioReady ? (
           <StateBadge tone="success" label="Системный звук" />
         ) : (
@@ -78,6 +89,7 @@ export function ReadyStep({
             label="Системный звук не выдан — без него запуск недоступен."
           />
         )}
+        {otherBlocker !== null && <StateBadge tone="warning" label={otherBlocker} />}
       </div>
     </OnboardingShell>
   );

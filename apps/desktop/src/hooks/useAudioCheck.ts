@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AudioCheck, AudioSource } from "@/ipc/bindings";
 import { checkAudioSource } from "@/ipc/commands";
 import { onEvent } from "@/ipc/events";
-import { asAppError, type AppError } from "@/lib/errors";
+import { asAppError } from "@/lib/errors";
+import { notifyAppError } from "@/lib/notifications";
 
 /**
  * Разрешение выдано — это ещё не «звук идёт». Проверка слушает выбранный
@@ -14,7 +15,6 @@ export interface AudioCheckState {
   level: number;
   source: AudioSource | null;
   result: AudioCheck | null;
-  error: AppError | null;
 }
 
 export interface AudioCheckApi extends AudioCheckState {
@@ -26,7 +26,6 @@ const IDLE: AudioCheckState = {
   level: 0,
   source: null,
   result: null,
-  error: null,
 };
 
 export function useAudioCheck(): AudioCheckApi {
@@ -52,15 +51,16 @@ export function useAudioCheck(): AudioCheckApi {
   const run = useCallback((source: AudioSource) => {
     if (runningRef.current !== null) return;
     runningRef.current = source;
-    setState({ running: source, level: 0, source, result: null, error: null });
+    setState({ running: source, level: 0, source, result: null });
     void checkAudioSource(source)
       .then((result) => {
         if (runningRef.current !== source) return;
-        setState({ running: null, level: 0, source, result, error: null });
+        setState({ running: null, level: 0, source, result });
       })
       .catch((e: unknown) => {
         if (runningRef.current !== source) return;
-        setState({ running: null, level: 0, source, result: null, error: asAppError(e) });
+        setState({ running: null, level: 0, source, result: null });
+        notifyAppError(asAppError(e));
       })
       .finally(() => {
         if (runningRef.current === source) runningRef.current = null;

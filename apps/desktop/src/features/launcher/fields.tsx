@@ -4,7 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { cn } from "@/lib/utils";
+import { cn, SURFACE_CARD_CLASS } from "@/lib/utils";
 
 export function SettingGroup({
   title,
@@ -23,7 +23,7 @@ export function SettingGroup({
           <p className="text-caption text-fg-subtle/90">{description}</p>
         )}
       </header>
-      <div className="divide-y divide-line overflow-hidden rounded-lg bg-surface shadow-raise ring-1 ring-inset ring-line">
+      <div className={cn("divide-y divide-line overflow-hidden", SURFACE_CARD_CLASS)}>
         {children}
       </div>
     </section>
@@ -31,10 +31,12 @@ export function SettingGroup({
 }
 
 /**
- * `htmlFor` was a prop no caller ever passed, so every visible label in every
- * settings row was a floating text node: clicking it did nothing and nothing tied
- * it to its control. The id is generated here instead of asked for, and handed
- * back through `controlId` so the row cannot be wired up half-way.
+ * The label is tied to its control ONLY through the function form of `children`:
+ * the row hands the generated id down, the caller puts it on the control, and
+ * `htmlFor` points at something real. With plain children the Label renders
+ * WITHOUT `htmlFor` — the old unconditional reference pointed at an id no
+ * control ever carried, which is an invalid for/id pair for assistive tech
+ * (every section passes plain children and identifies controls by `ariaLabel`).
  *
  * Below 640px the fixed 14rem control column stops fitting beside the label, so
  * the row stacks. The column itself is not negotiable above that: it is what
@@ -53,10 +55,11 @@ export function SettingRow({
 }) {
   const generated = useId();
   const controlId = htmlFor ?? generated;
+  const wired = htmlFor !== undefined || typeof children === "function";
   return (
     <div className="grid min-h-9 grid-cols-[minmax(0,1fr)] items-center gap-x-4 gap-y-1.5 px-3 py-2 min-[640px]:grid-cols-[minmax(0,1fr)_14rem]">
       <div className="min-w-0">
-        <Label htmlFor={controlId} className="text-body font-normal text-fg">
+        <Label htmlFor={wired ? controlId : undefined} className="text-body font-normal text-fg">
           {label}
         </Label>
         {hint !== undefined && <p className="mt-0.5 text-caption text-fg-subtle">{hint}</p>}
@@ -91,19 +94,22 @@ export function SettingBlock({
 export function SettingSelect({
   value,
   ariaLabel,
+  id,
   disabled,
   onValueChange,
   children,
 }: {
   value: string;
   ariaLabel: string;
+  /** For SettingRow's function form: the select trigger is a labelable button. */
+  id?: string;
   disabled?: boolean;
   onValueChange: (value: string) => void;
   children: ReactNode;
 }) {
   return (
     <Select value={value} disabled={disabled} onValueChange={onValueChange}>
-      <SelectTrigger size="sm" aria-label={ariaLabel} className="w-full min-w-0">
+      <SelectTrigger size="sm" id={id} aria-label={ariaLabel} className="w-full min-w-0">
         <SelectValue />
       </SelectTrigger>
       <SelectContent position="popper">{children}</SelectContent>

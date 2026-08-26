@@ -33,9 +33,15 @@ pub struct App {
     pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
     pub update_installing: AtomicBool,
     pub screenshot_capturing: AtomicBool,
+    /// A five-second audio check (audio_check.rs) is running: the recorder
+    /// stays Idle during it, so the capture being busy is visible only here.
+    pub audio_check_active: AtomicBool,
     /// Свёрнут ли HUD в клубок. Живёт в Rust, потому что глобальный хоткей
     /// сворачивания обрабатывается здесь же, а окно меняет только Rust.
     pub window_collapsed: AtomicBool,
+    /// Collapse generation: the deferred min_inner_size restore after an
+    /// expand must stay silent when its set_collapsed is no longer the latest.
+    pub collapse_gen: AtomicU64,
 }
 
 pub struct SttStream {
@@ -166,7 +172,9 @@ pub fn build_app_state(
         pending_update: Mutex::new(None),
         update_installing: AtomicBool::new(false),
         screenshot_capturing: AtomicBool::new(false),
+        audio_check_active: AtomicBool::new(false),
         window_collapsed: AtomicBool::new(false),
+        collapse_gen: AtomicU64::new(0),
         mic_capture: Mutex::new(None),
         auto: auto::AutoState::default(),
     }

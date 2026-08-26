@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { LiveRegion } from "@/components/LiveRegion";
+import { NotificationStack } from "@/components/NotificationStack";
 import { useAudioCheck } from "@/hooks/useAudioCheck";
 import { useConnectivity } from "@/hooks/useConnectivity";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
 import type { Settings } from "@/ipc/types";
 import { effectiveCombo } from "@/lib/hotkeys";
+import { notifyError } from "@/lib/notifications";
 import { isPresetFilled, mergePresets } from "@/lib/presets";
 import { isQuickActionFilled } from "@/lib/quick-actions";
 import { ContextLibraryPanel } from "./ContextLibraryPanel";
@@ -27,6 +28,7 @@ import { panelId, panelProps } from "./useRovingTabs";
 const RECORD_ACTION = "record";
 const RISE_STEP_MS = 50;
 const AUTOSAVE_DEBOUNCE_MS = 600;
+const CHECK_FAILED_TITLE = "Не удалось проверить обновления";
 
 function riseDelay(order: number): CSSProperties {
   return { animationDelay: `${String(order * RISE_STEP_MS)}ms` };
@@ -40,6 +42,16 @@ function normalizeDraft(draft: Settings): Settings {
   };
 }
 
+// Compared BY VALUE, not by identity: the set_settings round trip returns
+// fresh objects, so for array fields (hotkeys etc.) `sent !== settings` was
+// always true — adoption copied a content-identical array into a new draft,
+// the new draft re-armed the autosave, and the launcher wrote settings.json
+// every 600 ms for the rest of the session. The draft side is value-compared
+// too, so a genuinely clamped array now adopts as well.
+function sameSettingValue(a: unknown, b: unknown): boolean {
+  return a === b || JSON.stringify(a) === JSON.stringify(b);
+}
+
 export function LauncherPanel({
   settings,
   contextLibrary,
@@ -47,7 +59,7 @@ export function LauncherPanel({
   updater,
   launching,
   saving,
-  error,
+  saveFailed,
   onRedeem,
   onCheckUpdates,
   onSave,
@@ -68,14 +80,13 @@ export function LauncherPanel({
   // печатало сырую английскую строку reqwest в русский интерфейс.
   const connectivity = useConnectivity();
 
-  const saveState: SaveState =
-    error !== null
-      ? "failed"
-      : saving
-        ? "saving"
-        : lastSavedRef.current === null
-          ? "idle"
-          : "saved";
+  const saveState: SaveState = saveFailed
+    ? "failed"
+    : saving
+      ? "saving"
+      : lastSavedRef.current === null
+        ? "idle"
+        : "saved";
 
   const retrySave = () => {
     const pending = lastSavedRef.current;
@@ -134,7 +145,7 @@ export function LauncherPanel({
       const adopted = { ...d };
       let changed = false;
       for (const key of Object.keys(settings) as (keyof Settings)[]) {
-        if (sent[key] !== settings[key] && d[key] === sent[key]) {
+        if (!sameSettingValue(sent[key], settings[key]) && sameSettingValue(d[key], sent[key])) {
           (adopted as Record<string, unknown>)[key] = settings[key];
           changed = true;
         }
@@ -169,7 +180,8 @@ export function LauncherPanel({
         setCheckState(found ? "idle" : "latest");
       })
       .catch((e: unknown) => {
-        setCheckState({ failure: String(e) });
+        setCheckState("idle");
+        notifyError(CHECK_FAILED_TITLE, String(e));
       });
   };
 
@@ -183,7 +195,6 @@ export function LauncherPanel({
 
   return (
     <div className="flex h-screen flex-col gap-2.5 px-4 pt-0 pb-4 sm:px-5">
-      <LiveRegion message={error ?? ""} />
       <div className="launcher-rise relative z-30" style={riseDelay(0)}>
         <LaunchBar
           readiness={readiness}
@@ -216,12 +227,10 @@ export function LauncherPanel({
           </span>
         </div>
       )}
-      {error !== null && (
-        <div className="flex items-center gap-2.5 rounded-lg bg-danger/10 px-3 py-2 ring-1 ring-danger ring-inset">
-          <span className="size-1.5 shrink-0 rounded-full bg-danger" aria-hidden />
-          <span className="min-w-0 text-body text-danger">{error}</span>
-        </div>
-      )}
+      {/* Единственная поверхность для отказов обоих окон: раньше здесь стоял
+          баннер во всю ширину, и сообщение вроде тела ответа Anthropic растягивало
+          лаунчер, оставаясь при этом без возможности его скопировать. */}
+      <NotificationStack className="w-full max-w-96 self-end" />
 
       <a
         href={`#${panelId(screen)}`}

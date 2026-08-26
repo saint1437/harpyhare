@@ -1,10 +1,15 @@
-import { StateBadge, type StateTone } from "@/components/StateBadge";
+import { StateBadge } from "@/components/StateBadge";
 import { Button } from "@/components/ui/button";
 import type { PermissionsApi } from "@/hooks/usePermissions";
 import type { PermissionState } from "@/ipc/bindings";
 import { cn } from "@/lib/utils";
 import { SettingGroup } from "../fields";
-import { permissionNeedLabel, PERMISSION_ROWS, type PermissionRow } from "../permission-rows";
+import {
+  permissionNeedLabel,
+  PERMISSION_ROWS,
+  PERMISSION_STATE_TONE,
+  type PermissionRow,
+} from "../permission-rows";
 import { ScreenShell } from "../ScreenShell";
 
 const STATE_LABEL: Record<PermissionState, string> = {
@@ -13,14 +18,8 @@ const STATE_LABEL: Record<PermissionState, string> = {
   unknown: "не выдан",
 };
 
-const STATE_TONE: Record<PermissionState, StateTone> = {
-  granted: "success",
-  denied: "danger",
-  unknown: "warning",
-};
-
 function StatusChip({ state }: { state: PermissionState }) {
-  return <StateBadge tone={STATE_TONE[state]} label={STATE_LABEL[state]} />;
+  return <StateBadge tone={PERMISSION_STATE_TONE[state]} label={STATE_LABEL[state]} />;
 }
 
 function PermissionRowView({

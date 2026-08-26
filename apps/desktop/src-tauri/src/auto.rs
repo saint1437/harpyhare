@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::Mutex;
 
 use tauri::{AppHandle, Manager};
 
@@ -10,7 +10,6 @@ use crate::{audio, capture, events, recording, settings, state};
 const MAX_IN_FLIGHT_PER_SPEAKER: u32 = 2;
 
 const ERR_RECORDER_BUSY: &str = "Идёт запись по клавише — дождитесь её окончания";
-const ERR_NO_SYSTEM_CAPTURE: &str = "Захват системного звука недоступен";
 const ERR_NO_MICROPHONE: &str =
     "Нет доступа к микрофону — без него не отделить вашу речь от речи собеседника";
 const ERR_MICROPHONE_UNAVAILABLE: &str =
@@ -27,6 +26,16 @@ pub enum Speaker {
 #[derive(Default)]
 pub struct AutoState {
     active: AtomicBool,
+    // Between claiming `active` and storing the mic, start() does slow work
+    // (opening the device takes hundreds of ms, up to 5 s on Windows), and
+    // without a shared lock a parallel stop() could run IN FULL mid-start:
+    // active=false while the mic is open and recording. The lock is held for
+    // the whole body of start()/stop(); `active` stays atomic so is_active()
+    // reads stay cheap.
+    transition: Mutex<()>,
+    // Start failure at HUD launch: the emit leaves before the webview manages
+    // to subscribe, so the frontend pulls it with a command after mounting.
+    last_error: Mutex<Option<AppError>>,
     generation: AtomicU64,
     seq: AtomicU32,
     interviewer_in_flight: AtomicU32,
@@ -58,13 +67,6 @@ pub fn is_active(app: &AppHandle) -> bool {
 
 pub fn recorder_busy_error() -> AppError {
     AppError::new(ErrorCode::Internal, ERR_AUTO_MODE_ACTIVE)
-}
-
-fn now_ms() -> f64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as f64)
-        .unwrap_or_default()
 }
 
 /// Микрофон открывается РОВНО ОДИН раз за старт, и спрашивать о доступе заранее
@@ -111,10 +113,9 @@ fn segment_sink(app: AppHandle, speaker: Speaker, generation: u64) -> capture::S
         }
         in_flight.fetch_add(1, Ordering::AcqRel);
         let seq = st.auto.seq.fetch_add(1, Ordering::AcqRel);
-        let at_ms = now_ms();
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
-            transcribe_segment(app, speaker, generation, seq, at_ms, samples).await;
+            transcribe_segment(app, speaker, generation, seq, samples).await;
         });
     })
 }
@@ -124,13 +125,19 @@ async fn transcribe_segment(
     speaker: Speaker,
     generation: u64,
     seq: u32,
-    at_ms: f64,
     samples: Vec<f32>,
 ) {
     let engine = stt_engine(&app);
     let result = engine.transcribe(&samples).await;
     let st = app.state::<App>();
-    st.auto.in_flight(speaker).fetch_sub(1, Ordering::AcqRel);
+    // Saturating decrement: start()/stop() reset the counters to 0 while a task
+    // is still in flight, and the paired fetch_sub wrapped the AtomicU32 to
+    // u32::MAX — the queue ceiling read as forever "full" and that speaker's
+    // turns were dropped until the next mode toggle.
+    let _ = st
+        .auto
+        .in_flight(speaker)
+        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |v| v.checked_sub(1));
     // `SttEngine::transcribe` takes no cancellation token, so a stopped auto mode
     // discards its own late results by generation instead of cancelling them.
     if st.auto.generation.load(Ordering::Acquire) != generation {
@@ -143,7 +150,6 @@ async fn transcribe_segment(
                 speaker,
                 text: text.trim().to_string(),
                 seq,
-                at_ms,
             },
         ),
         Ok(_) => {}
@@ -151,8 +157,26 @@ async fn transcribe_segment(
     }
 }
 
+fn arm_segmenter(
+    capture: &capture::AudioCapture,
+    app: &AppHandle,
+    settings: &settings::Settings,
+    speaker: Speaker,
+    generation: u64,
+) {
+    capture.start_segmenting(
+        segmenter_bounds(settings),
+        segment_sink(app.clone(), speaker, generation),
+    );
+}
+
+pub fn record_start_error(app: &AppHandle, e: &AppError) {
+    *app.state::<App>().auto.last_error.lock().unwrap() = Some(e.clone());
+}
+
 pub fn start(app: &AppHandle) -> Result<(), AppError> {
     let st = app.state::<App>();
+    let _transition = st.auto.transition.lock().unwrap();
     // Claiming `active` up front, not at the end: launch-at-start and the hotkey can
     // race, and two starts that both got past a plain read would each build a mic
     // capture, the second silently dropping the first.
@@ -164,9 +188,13 @@ pub fn start(app: &AppHandle) -> Result<(), AppError> {
         claimed();
         return Err(AppError::new(ErrorCode::Internal, ERR_RECORDER_BUSY));
     }
-    if !recording::ensure_capture(app) {
+    if crate::audio_check::is_active(app) {
         claimed();
-        return Err(AppError::new(ErrorCode::Permission, ERR_NO_SYSTEM_CAPTURE));
+        return Err(crate::audio_check::busy_error());
+    }
+    if let Err(e) = recording::ensure_capture_or_err(app) {
+        claimed();
+        return Err(e);
     }
     let settings = current_settings(app);
     let mic = match build_mic_capture(&settings) {
@@ -187,28 +215,27 @@ pub fn start(app: &AppHandle) -> Result<(), AppError> {
         let Some(system) = system.as_ref() else {
             drop(system);
             claimed();
-            return Err(AppError::new(ErrorCode::Permission, ERR_NO_SYSTEM_CAPTURE));
+            return Err(AppError::new(
+                ErrorCode::Permission,
+                recording::ERR_NO_SYSTEM_CAPTURE,
+            ));
         };
         system.set_buffering(true);
-        system.start_segmenting(
-            segmenter_bounds(&settings),
-            segment_sink(app.clone(), Speaker::Interviewer, generation),
-        );
+        arm_segmenter(system, app, &settings, Speaker::Interviewer, generation);
     }
 
     mic.set_buffering(true);
-    mic.start_segmenting(
-        segmenter_bounds(&settings),
-        segment_sink(app.clone(), Speaker::User, generation),
-    );
+    arm_segmenter(&mic, app, &settings, Speaker::User, generation);
     *st.mic_capture.lock().unwrap() = Some(mic);
 
+    st.auto.last_error.lock().unwrap().take();
     events::auto_mode_changed(app, true);
     Ok(())
 }
 
 pub fn stop(app: &AppHandle) {
     let st = app.state::<App>();
+    let _transition = st.auto.transition.lock().unwrap();
     if !st.auto.active.swap(false, Ordering::AcqRel) {
         return;
     }
@@ -247,19 +274,13 @@ pub fn reapply_bounds(app: &AppHandle) {
     {
         let system = st.capture.lock().unwrap();
         if let Some(system) = system.as_ref() {
-            system.start_segmenting(
-                segmenter_bounds(&settings),
-                segment_sink(app.clone(), Speaker::Interviewer, generation),
-            );
+            arm_segmenter(system, app, &settings, Speaker::Interviewer, generation);
         }
     }
     {
         let mic = st.mic_capture.lock().unwrap();
         if let Some(mic) = mic.as_ref() {
-            mic.start_segmenting(
-                segmenter_bounds(&settings),
-                segment_sink(app.clone(), Speaker::User, generation),
-            );
+            arm_segmenter(mic, app, &settings, Speaker::User, generation);
         }
     }
 }
@@ -290,6 +311,15 @@ pub fn stop_auto_mode(app: AppHandle) {
 #[specta::specta]
 pub fn auto_mode_active(app: AppHandle) -> bool {
     is_active(&app)
+}
+
+/// Takes (and clears) a start error that happened before the webview
+/// subscribed: `swap_to_main_window` starts the mode before the HUD manages to
+/// mount, and the `auto-mode-error` event in that window goes nowhere.
+#[tauri::command]
+#[specta::specta]
+pub fn take_auto_mode_error(app: AppHandle) -> Option<AppError> {
+    app.state::<App>().auto.last_error.lock().unwrap().take()
 }
 
 #[tauri::command]

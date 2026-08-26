@@ -36,6 +36,12 @@ export function useRovingTabs<T extends string>(
       if (target === undefined) return;
       event.preventDefault();
       onSelect(target);
+      // DOM focus must follow the selection: without it the focus-visible
+      // ring stayed on the previous button with tabIndex=-1 and
+      // aria-selected=false, the screen reader kept announcing the old tab,
+      // and Tab left from the stale position — the roving-tabindex contract
+      // broke on the very first arrow press.
+      document.getElementById(tabId(target))?.focus();
     },
     [ids, active, onSelect, prev, next],
   );

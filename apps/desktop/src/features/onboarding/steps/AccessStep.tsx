@@ -4,6 +4,7 @@ import { AccessCodeForm } from "@/components/AccessCodeForm";
 import { Button } from "@/components/ui/button";
 import type { Settings } from "@/ipc/types";
 import { missingApiKeys } from "@/lib/api-keys";
+import { cn, SURFACE_CARD_CLASS } from "@/lib/utils";
 import type { SetSetting } from "../../launcher/contract";
 import { ApiKeysSection } from "../../launcher/sections/ApiKeysSection";
 import { OnboardingShell } from "../OnboardingShell";
@@ -57,12 +58,12 @@ export function AccessStep({
       <p className="text-body text-fg-muted">{INTRO}</p>
 
       {done ? (
-        <div className="rounded-lg bg-surface p-3 shadow-raise ring-1 ring-inset ring-line">
+        <div className={cn("p-3", SURFACE_CARD_CLASS)}>
           <p className="text-body text-fg">Доступ уже настроен — запросы уходят от вашего имени.</p>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5 rounded-lg bg-surface p-3 shadow-raise ring-1 ring-inset ring-line">
+          <div className={cn("flex flex-col gap-1.5 p-3", SURFACE_CARD_CLASS)}>
             <span className="text-body text-fg">Код доступа</span>
             <p className="text-caption text-fg-subtle">{CODE_HINT}</p>
             <AccessCodeForm onRedeem={onRedeem} autoFocus />

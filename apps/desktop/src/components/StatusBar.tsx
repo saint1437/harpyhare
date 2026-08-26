@@ -19,7 +19,7 @@ export interface StatusBarProps {
   state: RecorderState;
   autoListening: boolean;
   bufferEnabled: boolean;
-  error: string | null;
+  hasError: boolean;
   toggleHotkey: string;
   tabs: ReactNode;
   actions: ReactNode;
@@ -61,7 +61,7 @@ export function StatusBar({
   state,
   autoListening,
   bufferEnabled,
-  error,
+  hasError,
   toggleHotkey,
   tabs,
   actions,
@@ -72,26 +72,15 @@ export function StatusBar({
   onTogglePause,
   onQuit,
 }: StatusBarProps) {
-  // Раньше ошибка показывалась только в простое, то есть отказ во время
-  // записи пропадал совсем. Теперь у захвата и у ошибки разные слоты.
-  const showError = error !== null;
   const onDragMouseDown = useWindowDrag();
-  const listening = listeningState({
-    state,
-    autoListening,
-    bufferEnabled,
-    hasError: showError,
-  });
+  const listening = listeningState({ state, autoListening, bufferEnabled, hasError });
 
   return (
     <header className="flex min-h-7 items-center gap-2" onMouseDown={onDragMouseDown}>
-      <LiveRegion message={showError ? error : listeningAnnouncement(listening)} />
-      <ListeningStatus
-        value={listening}
-        paused={!bufferEnabled}
-        error={showError ? error : null}
-        onTogglePause={onTogglePause}
-      />
+      {/* Объявляется только состояние захвата: текст отказа теперь несёт
+          NotificationStack со своей живой областью. */}
+      <LiveRegion message={listeningAnnouncement(listening)} />
+      <ListeningStatus value={listening} paused={!bufferEnabled} onTogglePause={onTogglePause} />
       {tabs}
       <span className="min-w-0 flex-1" />
       {/* Инструменты приглушены и стоят вместе; цвет остаётся только у

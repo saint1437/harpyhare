@@ -1,5 +1,6 @@
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { NotificationCard } from "@/components/NotificationCard";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,6 +27,7 @@ export interface UpdateDialogProps {
 const MIB = 1024 * 1024;
 const PERCENT_MAX = 100;
 const DOWNLOADING_LABEL = "Загрузка…";
+const UPDATE_FAILED_TITLE = "Не удалось обновиться";
 const REMARK_PLUGINS = [remarkGfm];
 
 function downloadPercent(progress: UpdateProgress | null): number | null {
@@ -85,8 +87,11 @@ export function UpdateDialog({
 
           {busy && <DownloadProgress status={status} progress={progress} />}
 
+          {/* Единственная ошибка, которая НЕ уезжает в стопку уведомлений: она
+              остаётся при своей кнопке «Повторить», да и стопка сидит в потоке
+              под модалкой. Карточка та же — текст сворачивается и копируется. */}
           {status === "error" && error !== null && (
-            <span className="text-body whitespace-pre-wrap text-danger">{error}</span>
+            <NotificationCard tone="danger" title={UPDATE_FAILED_TITLE} detail={error} />
           )}
         </div>
 

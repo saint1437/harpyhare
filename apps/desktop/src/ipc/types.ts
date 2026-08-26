@@ -75,7 +75,6 @@ export interface AutoTurn {
   speaker: Speaker;
   text: string;
   seq: number;
-  atMs: number;
 }
 
 export type RecorderState = "idle" | "recording" | "transcribing";

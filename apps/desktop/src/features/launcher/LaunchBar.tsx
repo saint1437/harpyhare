@@ -1,13 +1,11 @@
 import type { ReactNode } from "react";
 import { Wordmark } from "@/components/Wordmark";
 import { useWindowDrag } from "@/hooks/useWindowDrag";
-import { PLATFORM } from "@/lib/platform";
+import { TRAFFIC_LIGHTS_INSET_CLASS } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { LaunchButton } from "./LaunchButton";
 import { StatusObject, type SaveState } from "./StatusObject";
 import type { LauncherBlocker, LauncherReadiness } from "./useLauncherReadiness";
-
-const MACOS_TRAFFIC_LIGHTS_CLASS = PLATFORM === "macos" ? "pl-16" : "";
 
 export function LaunchBar({
   readiness,
@@ -32,7 +30,7 @@ export function LaunchBar({
   return (
     <header
       onMouseDown={onDragMouseDown}
-      className={cn("flex h-9 shrink-0 items-center gap-3", MACOS_TRAFFIC_LIGHTS_CLASS)}
+      className={cn("flex h-9 shrink-0 items-center gap-3", TRAFFIC_LIGHTS_INSET_CLASS)}
     >
       <div className="flex shrink-0 items-center gap-2">
         <Wordmark />

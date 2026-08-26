@@ -46,12 +46,10 @@
   --fg: oklch(0.245 0.012 40);
   --fg-muted: oklch(0.44 0.012 40);
   --fg-subtle: oklch(0.508 0.012 40);
-  --fg-invert: oklch(0.985 0.004 40);
 
   /* accent — the brand oxblood. One job: the primary action. */
   --accent: oklch(0.475 0.165 20);
   --accent-hover: oklch(0.415 0.16 20);
-  --accent-subtle: oklch(0.935 0.026 20);
   --accent-on: oklch(0.985 0.006 30);
   --accent-mark: oklch(0.43 0.165 20);
 
@@ -107,11 +105,9 @@
     --fg: oklch(0.955 0.006 40);
     --fg-muted: oklch(0.79 0.008 40);
     --fg-subtle: oklch(0.695 0.008 40);
-    --fg-invert: oklch(0.2 0.01 40);
 
     --accent: oklch(0.55 0.16 20);
     --accent-hover: oklch(0.495 0.15 20);
-    --accent-subtle: oklch(0.285 0.055 20);
     --accent-on: oklch(0.98 0.008 30);
     --accent-mark: oklch(0.68 0.15 20);
 
@@ -162,11 +158,9 @@
   --fg: oklch(0.955 0.006 40);
   --fg-muted: oklch(0.79 0.008 40);
   --fg-subtle: oklch(0.695 0.008 40);
-  --fg-invert: oklch(0.2 0.01 40);
 
   --accent: oklch(0.55 0.16 20);
   --accent-hover: oklch(0.495 0.15 20);
-  --accent-subtle: oklch(0.285 0.055 20);
   --accent-on: oklch(0.98 0.008 30);
   --accent-mark: oklch(0.68 0.15 20);
 
@@ -245,11 +239,9 @@ body.launcher {
   --color-fg: var(--fg);
   --color-fg-muted: var(--fg-muted);
   --color-fg-subtle: var(--fg-subtle);
-  --color-fg-invert: var(--fg-invert);
 
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
-  --color-accent-subtle: var(--accent-subtle);
   --color-accent-on: var(--accent-on);
   --color-accent-mark: var(--accent-mark);
 
@@ -267,7 +259,6 @@ body.launcher {
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --radius-window: var(--window-radius);
 
   --font-sans:
     ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui,
@@ -428,6 +419,24 @@ svg.lucide {
   }
 }
 
+/* Полоса жизни уведомления. Анимируется ШИРИНА, а не transform: трансформ
+   поднял бы полоску в отдельный слой WKWebView, а схлопывание такого слоя в
+   прозрачном окне и есть источник «залипших» пикселей — по той же причине в
+   разметке нет ни одного transition-opacity. `forwards` оставляет полосу
+   пустой до того момента, как хранилище снимет карточку. */
+@keyframes notification-life {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0;
+  }
+}
+
+.notification-life {
+  animation: notification-life linear forwards;
+}
+
 .thinking-shimmer {
   background: linear-gradient(90deg, var(--fg-subtle) 40%, var(--fg) 50%, var(--fg-subtle) 60%);
   background-size: 200% 100%;
@@ -462,7 +471,10 @@ svg.lucide {
   .listening-breath,
   .orb-spin,
   .eq-bar,
-  .thinking-shimmer {
+  .thinking-shimmer,
+  /* Без этого глобальные 0.01ms схлопнули бы полосу в ноль на первом кадре и
+     уведомление выглядело бы уже истёкшим. Пусть стоит полной. */
+  .notification-life {
     animation: none !important;
   }
 }
