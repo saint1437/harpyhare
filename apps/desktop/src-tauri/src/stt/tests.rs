@@ -1,4 +1,9 @@
 use super::*;
+
+/// The mapping tests assert which error a status becomes, not how many times we
+/// ask; three attempts of the same 503 would only make them slow.
+const NO_RETRY: RetryPolicy =
+    RetryPolicy::new(1, std::time::Duration::from_millis(1), std::time::Duration::from_millis(1));
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -169,8 +174,10 @@ async fn transcribe_maps_429_and_5xx_to_retryable() {
             .respond_with(ResponseTemplate::new(code))
             .mount(&server)
             .await;
-        let stt = GroqStt::new("k".into()).with_base_url(server.uri());
-        assert!(matches!(stt.transcribe(&samples()).await, Err(SttError::Retryable(_))));
+        let stt = GroqStt::new("k".into())
+            .with_base_url(server.uri())
+            .with_retry(NO_RETRY);
+        assert!(matches!(stt.transcribe(&samples()).await, Err(SttError::Retryable(..))));
     }
 }
 

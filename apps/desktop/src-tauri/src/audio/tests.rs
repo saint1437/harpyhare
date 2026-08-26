@@ -1,14 +1,20 @@
 use super::*;
 
+fn downmixed(interleaved: &[f32], channels: usize) -> Vec<f32> {
+    let mut out = Vec::new();
+    downmix_into(interleaved, channels, &mut out);
+    out
+}
+
 #[test]
 fn downmix_averages_channels() {
     let stereo = vec![1.0f32, 0.0, 0.5, 0.5];
-    assert_eq!(downmix_to_mono(&stereo, 2), vec![0.5, 0.5]);
+    assert_eq!(downmixed(&stereo, 2), vec![0.5, 0.5]);
 }
 
 #[test]
 fn downmix_mono_passthrough() {
-    assert_eq!(downmix_to_mono(&[0.3, -0.3], 1), vec![0.3, -0.3]);
+    assert_eq!(downmixed(&[0.3, -0.3], 1), vec![0.3, -0.3]);
 }
 
 #[test]

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AudioCheck, AudioSource } from "@/ipc/bindings";
+import type { AudioCheck, AudioSource } from "@/ipc/types";
 
 type LevelHandler = (payload: { level: number }) => void;
 const levelHandlers: LevelHandler[] = [];
@@ -19,7 +19,8 @@ vi.mock("@/ipc/commands", () => ({
 }));
 
 import { useAudioCheck } from "@/hooks/useAudioCheck";
-import { errorTitle } from "@/lib/errors";
+import { format, getDict } from "@/i18n";
+import { errorTitle } from "@/i18n/errors";
 import { dismissAllNotifications, getNotifications } from "@/lib/notifications";
 import { AudioCheckCard } from "./AudioCheckCard";
 
@@ -29,8 +30,12 @@ function Card({ autoModeEnabled }: { autoModeEnabled: boolean }) {
   return <AudioCheckCard autoModeEnabled={autoModeEnabled} check={useAudioCheck()} />;
 }
 
-const SYSTEM_ROW = "Системный звук";
-const MIC_ROW = "Микрофон";
+function copy() {
+  return getDict().launcher.audioCheck;
+}
+
+const SYSTEM_ROW = copy().sources.system.label;
+const MIC_ROW = copy().sources.microphone.label;
 
 function row(label: string) {
   const node = screen.getByText(label).closest("div[class*='grid']");
@@ -63,28 +68,28 @@ describe("AudioCheckCard", () => {
   it("проверка системного звука показывает расслышанный текст", async () => {
     checkAudioSource.mockResolvedValueOnce({ heard: true, text: "раз, два, три" });
     render(<Card autoModeEnabled={false} />);
-    fireEvent.click(row(SYSTEM_ROW).getByText("Проверить"));
+    fireEvent.click(row(SYSTEM_ROW).getByText(copy().run));
     expect(checkAudioSource).toHaveBeenCalledExactlyOnceWith("system");
     await waitFor(() => {
-      expect(screen.getByText("Расслышала: «раз, два, три»")).not.toBeNull();
+      expect(screen.getByText(format(copy().heard, { text: "раз, два, три" }))).not.toBeNull();
     });
   });
 
   it("тишина названа тишиной, а не молчаливым успехом", async () => {
     checkAudioSource.mockResolvedValueOnce({ heard: false, text: "" });
     render(<Card autoModeEnabled={false} />);
-    fireEvent.click(row(SYSTEM_ROW).getByText("Проверить"));
+    fireEvent.click(row(SYSTEM_ROW).getByText(copy().run));
     await waitFor(() => {
-      expect(screen.getByText(/Тишина — звук не дошёл/)).not.toBeNull();
+      expect(screen.getByText(copy().silence)).not.toBeNull();
     });
   });
 
   it("звук есть, а речи нет — это отдельный ответ", async () => {
     checkAudioSource.mockResolvedValueOnce({ heard: true, text: "" });
     render(<Card autoModeEnabled={false} />);
-    fireEvent.click(row(SYSTEM_ROW).getByText("Проверить"));
+    fireEvent.click(row(SYSTEM_ROW).getByText(copy().run));
     await waitFor(() => {
-      expect(screen.getByText("Звук идёт, но речи в нём не разобрать.")).not.toBeNull();
+      expect(screen.getByText(copy().noSpeech)).not.toBeNull();
     });
   });
 
@@ -93,20 +98,20 @@ describe("AudioCheckCard", () => {
   it("отказ уходит в уведомление, а подсказка строки не ломается", async () => {
     checkAudioSource.mockRejectedValueOnce({ code: "permission", message: "Нет доступа" });
     render(<Card autoModeEnabled={false} />);
-    fireEvent.click(row(SYSTEM_ROW).getByText("Проверить"));
+    fireEvent.click(row(SYSTEM_ROW).getByText(copy().run));
     await waitFor(() => {
       expect(getNotifications()).toHaveLength(1);
     });
-    expect(getNotifications()[0]?.title).toBe(errorTitle("permission"));
+    expect(getNotifications()[0]?.title).toBe(errorTitle("permission", getDict()));
     expect(getNotifications()[0]?.detail).toBe("Нет доступа");
-    expect(row(SYSTEM_ROW).getByText(/Голос собеседника/)).not.toBeNull();
+    expect(row(SYSTEM_ROW).getByText(copy().sources.system.hint)).not.toBeNull();
   });
 
   it("пока проверка идёт, второй запуск невозможен, а уровень виден", async () => {
     const pending = deferredCheck();
     render(<Card autoModeEnabled={false} />);
-    fireEvent.click(row(SYSTEM_ROW).getByText("Проверить"));
-    const button = screen.getByText("Слушаю…").closest("button");
+    fireEvent.click(row(SYSTEM_ROW).getByText(copy().run));
+    const button = screen.getByText(copy().running).closest("button");
     expect(button?.disabled).toBe(true);
 
     levelHandlers.forEach((handler) => {
@@ -118,7 +123,7 @@ describe("AudioCheckCard", () => {
 
     pending.resolve({ heard: true, text: "слышно" });
     await waitFor(() => {
-      expect(screen.getByText("Расслышала: «слышно»")).not.toBeNull();
+      expect(screen.getByText(format(copy().heard, { text: "слышно" }))).not.toBeNull();
     });
   });
 

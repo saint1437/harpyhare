@@ -10,10 +10,35 @@ mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
 
+/// The native glue a platform owes the facade. See `capture::CaptureBackend`
+/// for why these are traits rather than a naming convention.
+///
+/// A call that genuinely has nothing to do on a platform is an explicit empty
+/// body there (`disable_cursor_autohide_on_typing` on Windows) — never a
+/// `#[cfg]` in the shared facade.
+pub trait PlatformBackend {
+    fn disable_cursor_autohide_on_typing();
+    fn merge_titlebar_into_content(app: &AppHandle);
+    fn clip_native_window_corners(app: &AppHandle);
+    fn install_move_keys_monitor(app: AppHandle);
+    fn open_audio_capture_privacy_pane();
+    fn open_microphone_privacy_pane();
+    fn open_screen_capture_privacy_pane();
+    fn screen_capture_access() -> bool;
+    fn request_screen_capture_access() -> bool;
+    fn open_url(url: &str);
+}
+
 #[cfg(target_os = "macos")]
-use macos as backend;
+type Backend = macos::Backend;
 #[cfg(target_os = "windows")]
-use windows as backend;
+type Backend = windows::Backend;
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+compile_error!(
+    "нативная подложка реализована только для macOS и Windows: \
+     добавьте модуль platform/<os>.rs с `impl PlatformBackend`"
+);
 
 pub const WINDOW_CORNER_RADIUS_LOGICAL_PX: f64 = 22.0;
 
@@ -92,8 +117,9 @@ fn arrow_action(app: &AppHandle, active: ModifierMask) -> Option<ArrowAction> {
     if active.is_empty() {
         return None;
     }
-    let st = app.state::<App>();
-    let s = st.settings.try_lock().ok()?;
+    // The low-level keyboard hook must fit inside LowLevelHooksTimeout, so a
+    // contended settings lock means "no decision", never a wait.
+    let s = app.state::<App>().settings.try_get()?;
     let move_mask = modifier_mask(&hotkeys::effective(&s.hotkeys, hotkeys::ACTION_MOVE_WINDOW));
     let resize_mask = modifier_mask(&hotkeys::effective(&s.hotkeys, hotkeys::ACTION_RESIZE_WINDOW));
     if cfg!(debug_assertions) {
@@ -132,48 +158,48 @@ pub fn handle_arrow_key(app: &AppHandle, active: ModifierMask, dx: i32, dy: i32)
     if main_window(app).is_none() {
         return false;
     }
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let handle = app.clone();
-        let _ = app.run_on_main_thread(move || apply_arrow_action(&handle, action, dx, dy));
-    });
+    // `run_on_main_thread` posts to the event loop and returns at once, so the
+    // async task that used to wrap it bought nothing and cost one spawn per
+    // keypress — with key repeat, dozens a second.
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || apply_arrow_action(&handle, action, dx, dy));
     true
 }
 
 pub fn disable_cursor_autohide_on_typing() {
-    backend::disable_cursor_autohide_on_typing();
+    Backend::disable_cursor_autohide_on_typing();
 }
 
 pub fn clip_native_window_corners(app: &AppHandle) {
-    backend::clip_native_window_corners(app);
+    Backend::clip_native_window_corners(app);
 }
 
 pub fn merge_titlebar_into_content(app: &AppHandle) {
-    backend::merge_titlebar_into_content(app);
+    Backend::merge_titlebar_into_content(app);
 }
 
 pub fn install_move_keys_monitor(app: AppHandle) {
-    backend::install_move_keys_monitor(app);
+    Backend::install_move_keys_monitor(app);
 }
 
 pub fn open_audio_capture_privacy_pane() {
-    backend::open_audio_capture_privacy_pane();
+    Backend::open_audio_capture_privacy_pane();
 }
 
 pub fn open_microphone_privacy_pane() {
-    backend::open_microphone_privacy_pane();
+    Backend::open_microphone_privacy_pane();
 }
 
 pub fn open_screen_capture_privacy_pane() {
-    backend::open_screen_capture_privacy_pane();
+    Backend::open_screen_capture_privacy_pane();
 }
 
 pub fn screen_capture_access() -> bool {
-    backend::screen_capture_access()
+    Backend::screen_capture_access()
 }
 
 pub fn request_screen_capture_access() -> bool {
-    backend::request_screen_capture_access()
+    Backend::request_screen_capture_access()
 }
 
 fn is_web_url(url: &str) -> bool {
@@ -182,7 +208,7 @@ fn is_web_url(url: &str) -> bool {
 
 pub fn open_web_url(url: &str) {
     if is_web_url(url) {
-        backend::open_url(url);
+        Backend::open_url(url);
     }
 }
 

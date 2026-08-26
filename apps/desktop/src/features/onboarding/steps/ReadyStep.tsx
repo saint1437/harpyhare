@@ -1,15 +1,13 @@
 import { StateBadge } from "@/components/StateBadge";
 import { Button } from "@/components/ui/button";
+import { canLaunch, type Readiness } from "@/features/settings/readiness";
+import { useDict } from "@/hooks/useDict";
 import type { Settings } from "@/ipc/types";
-import { effectiveCombo, formatCombo, hotkeyAction } from "@/lib/hotkeys";
+import { effectiveCombo, formatCombo, hotkeyAction, hotkeyHint } from "@/lib/hotkeys";
 import { cn, SURFACE_CARD_CLASS } from "@/lib/utils";
-import type { LauncherReadiness } from "../../launcher/useLauncherReadiness";
 import { OnboardingShell } from "../OnboardingShell";
 
 const RECORD_ACTION = "record";
-
-const AFTERWARDS =
-  "Отпустите — расшифровка попадёт в поле ввода. Остальные сочетания перечислены в окне по кнопке с клавиатурой.";
 
 /**
  * Hands over exactly one thing to remember. The combination and its caption both
@@ -29,16 +27,22 @@ export function ReadyStep({
   step: number;
   total: number;
   settings: Settings;
-  readiness: LauncherReadiness;
+  readiness: Readiness;
   launching: boolean;
   onLaunch: () => void;
   onFixAudio: () => void;
   onOpenLauncher: () => void;
 }) {
+  const dict = useDict();
+  const copy = dict.onboarding.ready;
   const combo = effectiveCombo(settings.hotkeys, RECORD_ACTION);
-  const hint = hotkeyAction(RECORD_ACTION).hint;
+  const hint = hotkeyHint(hotkeyAction(RECORD_ACTION), dict);
   const audioReady = readiness.permissions.audioOk;
   const ready = readiness.ready && !readiness.checking;
+  // The third launch button in the app: the enabling rule is the shared function,
+  // never a second copy of the expression — a button that is live in one place and
+  // grey in another reads as a broken app.
+  const launchable = canLaunch(readiness, launching);
   // A blocker other than system audio (the mic for auto-listening, keys on a
   // replay): the button must name the reason — LauncherApp silently refuses to
   // launch without readiness.ready, so the click used to go nowhere.
@@ -48,46 +52,43 @@ export function ReadyStep({
     <OnboardingShell
       step={step}
       total={total}
-      heading={ready ? "Всё готово" : "Почти готово"}
+      heading={ready ? copy.headingReady : copy.headingAlmost}
       primary={
-        // Без доступа к системному звуку запуск физически заблокирован
-        // (`canLaunch` требует `audioOk`), поэтому кнопка «всё равно запустить»
-        // была бы обещанием, которого приложение не выполнит.
+        // Launching is physically blocked without system audio access
+        // (`canLaunch` requires `audioOk`), so a "launch anyway" button would be
+        // a promise the app cannot keep.
         audioReady ? (
-          <Button disabled={launching || !ready} onClick={onLaunch}>
-            {launching ? "Запускаю…" : "Запустить"}
+          <Button disabled={!launchable} onClick={onLaunch}>
+            {launching ? copy.launching : copy.launch}
           </Button>
         ) : (
-          <Button onClick={onFixAudio}>Выдать доступ</Button>
+          <Button onClick={onFixAudio}>{copy.grantAudio}</Button>
         )
       }
       secondary={
         <Button variant="ghost" size="sm" onClick={onOpenLauncher}>
-          {audioReady ? "Открыть настройки" : "Продолжить без него"}
+          {audioReady ? copy.openLauncher : copy.continueWithout}
         </Button>
       }
     >
       <div className={cn("flex flex-col items-center gap-2 px-4 py-7", SURFACE_CARD_CLASS)}>
         <span className="font-mono text-display font-semibold tracking-wider text-fg">
-          {combo === "" ? "не назначено" : formatCombo(combo)}
+          {combo === "" ? copy.unassigned : formatCombo(combo)}
         </span>
         <span className="text-body text-fg-muted">{hint}</span>
       </div>
 
-      <p className="text-caption text-fg-subtle">{AFTERWARDS}</p>
+      <p className="text-caption text-fg-subtle">{copy.afterwards}</p>
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
         <StateBadge
           tone={readiness.missingKeys.length === 0 ? "success" : "warning"}
-          label="Доступ к API"
+          label={dict.common.apiKeys.accessTitle}
         />
         {audioReady ? (
-          <StateBadge tone="success" label="Системный звук" />
+          <StateBadge tone="success" label={copy.audioOk} />
         ) : (
-          <StateBadge
-            tone="warning"
-            label="Системный звук не выдан — без него запуск недоступен."
-          />
+          <StateBadge tone="warning" label={copy.audioMissing} />
         )}
         {otherBlocker !== null && <StateBadge tone="warning" label={otherBlocker} />}
       </div>

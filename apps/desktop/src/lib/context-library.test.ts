@@ -3,16 +3,17 @@ import {
   addDoc,
   addFolder,
   deserializeLibrary,
+  DOC_LIMIT,
+  EMPTY_LIBRARY,
+  libraryIsFull,
   docNameFromFileName,
   isPdfFileName,
-  EMPTY_LIBRARY,
   libraryContextBlocks,
   moveDoc,
   removeDoc,
   removeFolder,
   renameFolder,
   rootDocs,
-  sanitizeSelectedIds,
   serializeLibrary,
   updateDoc,
   DOC_TEXT_LIMIT_CHARS,
@@ -82,10 +83,6 @@ describe("библиотека контекстов", () => {
     expect(blocks).toEqual(["Справочный материал «Резюме»:\nтекст резюме"]);
   });
 
-  it("sanitizeSelectedIds выбрасывает удалённые материалы", () => {
-    expect(sanitizeSelectedIds(libWithFolderAndDoc(), ["d1", "gone"])).toEqual(["d1"]);
-  });
-
   it("serialize/deserialize — раунд-трип; битый folderId чинится в корень", () => {
     const lib = libWithFolderAndDoc();
     expect(deserializeLibrary(serializeLibrary(lib))).toEqual(lib);
@@ -96,5 +93,36 @@ describe("библиотека контекстов", () => {
     expect(deserializeLibrary(broken)?.docs[0]?.folderId).toBe("");
     expect(deserializeLibrary("не json")).toBeNull();
     expect(deserializeLibrary("")).toBeNull();
+  });
+
+  it("не пускает больше DOC_LIMIT материалов", () => {
+    let lib = EMPTY_LIBRARY;
+    for (let i = 0; i < DOC_LIMIT; i++) {
+      lib = addDoc(lib, { name: `м${String(i)}`, text: "t", folderId: "" }, `d${String(i)}`);
+    }
+    expect(lib.docs).toHaveLength(DOC_LIMIT);
+    expect(libraryIsFull(lib)).toBe(true);
+    const refused = addDoc(lib, { name: "лишний", text: "t", folderId: "" }, "extra");
+    expect(refused).toBe(lib);
+  });
+
+  // A file written before the limit existed must not smuggle a thousand
+  // materials past it — every one of them goes through count_tokens.
+  it("обрезает по DOC_LIMIT при чтении", () => {
+    const docs = Array.from({ length: DOC_LIMIT + 5 }, (_, i) => ({
+      id: `d${String(i)}`,
+      name: `м${String(i)}`,
+      text: "t",
+      folderId: "",
+    }));
+    const restored = deserializeLibrary(JSON.stringify({ folders: [], docs }));
+    expect(restored?.docs).toHaveLength(DOC_LIMIT);
+  });
+
+  it("режет только битое поле, а не материал целиком", () => {
+    const restored = deserializeLibrary(
+      JSON.stringify({ folders: [], docs: [{ id: "d", name: 7, text: null, folderId: 3 }] }),
+    );
+    expect(restored?.docs[0]).toEqual({ id: "d", name: "Без имени", text: "", folderId: "" });
   });
 });

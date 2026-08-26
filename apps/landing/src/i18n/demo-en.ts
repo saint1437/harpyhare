@@ -132,11 +132,11 @@ export const demoEn: DemoCopy = {
         {
           label: "Record a question",
           hint: "Hold while the other person is speaking",
-          combo: "F9",
+          combo: "⌘ R",
         },
         { label: "Show / hide the window", combo: "⌘⇧ H" },
-        { label: "Teleprompter", combo: "F10" },
-        { label: "Capture a screen region", combo: "⌘⇧ S" },
+        { label: "Teleprompter", combo: "⌘⇧ T" },
+        { label: "Capture a screen region", combo: "⌘⇧ A" },
       ],
       moveModifier: "Move modifier",
       moveStep: "Move step",
@@ -236,7 +236,7 @@ export const demoEn: DemoCopy = {
       {
         title: "Recording",
         rows: [
-          { label: "Record a question", combo: "F9" },
+          { label: "Record a question", combo: "⌘ R" },
           { label: "Cancel recording", combo: "Esc" },
           { label: "Send", combo: "⌘ ⏎" },
         ],
@@ -253,8 +253,8 @@ export const demoEn: DemoCopy = {
       {
         title: "Chat",
         rows: [
-          { label: "Teleprompter", combo: "F10" },
-          { label: "Capture a region", combo: "⌘⇧ S" },
+          { label: "Teleprompter", combo: "⌘⇧ T" },
+          { label: "Capture a region", combo: "⌘⇧ A" },
           { label: "Scroll", combo: "⌥ ↑↓" },
         ],
       },

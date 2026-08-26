@@ -1,9 +1,32 @@
-import { HOTKEY_ACTIONS, QUICK_ACTION_LIMIT } from "@/ipc/bindings";
+import type { Dictionary } from "@/i18n/types";
+import { HOTKEY_ACTIONS, QUICK_ACTION_LIMIT } from "@/ipc/types";
 import type { HotkeyBinding } from "@/ipc/types";
 import { PLATFORM, type Platform } from "./platform";
 
 export type HotkeyAction = (typeof HOTKEY_ACTIONS)[number];
 export type HotkeyActionId = HotkeyAction["id"];
+
+/**
+ * The registry carries KEYS, not text: `hotkeys.rs` used to hold Russian
+ * `label`/`hint`/`group` and they travelled into `bindings.ts` verbatim, which
+ * put the interface's language inside the generated contract. These three are
+ * the only way back from a key to a phrase, so a caller cannot accidentally
+ * print a key at the user.
+ *
+ * The `Dictionary` arrives as a parameter rather than through `getDict()`
+ * because everything here is pure and unit-tested across both locales.
+ */
+export function hotkeyLabel(action: HotkeyAction, dict: Dictionary): string {
+  return dict.hotkeys.actions[action.labelKey].label;
+}
+
+export function hotkeyHint(action: HotkeyAction, dict: Dictionary): string {
+  return dict.hotkeys.actions[action.hintKey].hint;
+}
+
+export function hotkeyGroupTitle(action: HotkeyAction, dict: Dictionary): string {
+  return dict.hotkeys.groups[action.groupKey];
+}
 
 const COMBO_SEPARATOR = "+";
 
@@ -84,13 +107,38 @@ export function defaultCombo(id: HotkeyActionId, platform: Platform = PLATFORM):
   return hotkeyAction(id).defaultCombo[platform];
 }
 
+// The last binding for an action wins. Walking backwards costs nothing, while
+// `[...bindings].reverse().find(...)` allocated a copy of the array on every
+// call — and App calls this a dozen times per render, i.e. per stream frame.
 export function effectiveCombo(
   bindings: HotkeyBinding[],
   id: HotkeyActionId,
   platform: Platform = PLATFORM,
 ): string {
-  const bound = [...bindings].reverse().find((b) => b.action === id);
-  return bound ? bound.combo : defaultCombo(id, platform);
+  for (let i = bindings.length - 1; i >= 0; i--) {
+    const bound = bindings[i];
+    if (bound?.action === id) return bound.combo;
+  }
+  return defaultCombo(id, platform);
+}
+
+export type HotkeyCombos = Record<HotkeyActionId, string>;
+
+// One pass over the bindings for every action, so a component that needs
+// several combos resolves them once per settings change instead of once per
+// action per render.
+export function effectiveCombos(
+  bindings: HotkeyBinding[],
+  platform: Platform = PLATFORM,
+): HotkeyCombos {
+  const combos = {} as HotkeyCombos;
+  for (const action of HOTKEY_ACTIONS) {
+    combos[action.id] = action.defaultCombo[platform];
+  }
+  for (const bound of bindings) {
+    if (bound.action in combos) combos[bound.action as HotkeyActionId] = bound.combo;
+  }
+  return combos;
 }
 
 export function splitCombo(combo: string): { modifiers: string[]; key: string | null } {
@@ -141,15 +189,24 @@ export function formatComboWithKey(
   return formatCombo([combo, key].join(COMBO_SEPARATOR), platform);
 }
 
-export function comboLabel(
-  action: HotkeyAction,
-  combo: string,
-  platform: Platform = PLATFORM,
-): string {
+function comboLabel(action: HotkeyAction, combo: string, platform: Platform = PLATFORM): string {
   if (combo.trim() === "") return "";
   const formatted = formatCombo(combo, platform);
   const hint = KIND_HINTS[action.kind];
   return hint === undefined ? formatted : `${formatted}${HINT_SEPARATOR}${hint}`;
+}
+
+/**
+ * Appends the combination to a label, or leaves the label alone when the action
+ * has no binding.
+ *
+ * The empty case is NOT hypothetical: `assignHotkey` strips a stolen combination
+ * from its previous owner, so `effectiveCombo` legitimately returns "" and every
+ * call site that pasted it into prose printed a dangling "()".
+ */
+export function withComboHint(label: string, combo: string, platform: Platform = PLATFORM): string {
+  const formatted = formatCombo(combo, platform);
+  return formatted === "" ? label : `${label} (${formatted})`;
 }
 
 export interface HotkeyHint {
@@ -168,38 +225,43 @@ const PASTE_MODIFIER: Record<Platform, string> = {
 };
 const SEND_KEY = "Enter";
 const PASTE_KEY = "V";
-const FIELD_HINTS_GROUP = hotkeyAction("send").group;
+/** The three field behaviours hang off the group the send action lives in. */
+const FIELD_HINTS_GROUP = hotkeyAction("send").groupKey;
 
-function fieldHints(platform: Platform): Record<string, HotkeyHint[]> {
+function fieldHints(dict: Dictionary, platform: Platform): HotkeyHint[] {
   const paste = [PASTE_MODIFIER[platform], PASTE_KEY].join(COMBO_SEPARATOR);
   const newline = ["Shift", SEND_KEY].join(COMBO_SEPARATOR);
-  return {
-    [FIELD_HINTS_GROUP]: [
-      { combo: formatCombo(SEND_KEY, platform), label: "отправить из поля ввода" },
-      { combo: formatCombo(newline, platform), label: "перенос строки" },
-      { combo: formatCombo(paste, platform), label: "вставить скриншот" },
-    ],
-  };
+  const copy = dict.hotkeys.fieldHints;
+  return [
+    { combo: formatCombo(SEND_KEY, platform), label: copy.send },
+    { combo: formatCombo(newline, platform), label: copy.newline },
+    { combo: formatCombo(paste, platform), label: copy.paste },
+  ];
 }
 
 export function hotkeyGroups(
   bindings: HotkeyBinding[],
+  dict: Dictionary,
   platform: Platform = PLATFORM,
 ): HotkeyGroup[] {
-  const groups: HotkeyGroup[] = [];
+  const groups: { key: string; group: HotkeyGroup }[] = [];
   for (const action of HOTKEY_ACTIONS) {
     const combo = comboLabel(action, effectiveCombo(bindings, action.id, platform), platform);
     if (combo === "") continue;
-    const hint = { combo, label: action.label.toLowerCase() };
-    const existing = groups.find((g) => g.title === action.group);
-    if (existing) existing.hints.push(hint);
-    else groups.push({ title: action.group, hints: [hint] });
+    const hint = { combo, label: hotkeyLabel(action, dict).toLowerCase() };
+    const existing = groups.find((g) => g.key === action.groupKey);
+    if (existing) existing.group.hints.push(hint);
+    else
+      groups.push({
+        key: action.groupKey,
+        group: { title: hotkeyGroupTitle(action, dict), hints: [hint] },
+      });
   }
-  const hints = fieldHints(platform);
-  for (const group of groups) {
-    group.hints.push(...(hints[group.title] ?? []));
-  }
-  return groups;
+  // The group is matched by KEY, not by title: two locales give it two titles,
+  // and matching on the printed one worked only for as long as there was one.
+  const field = groups.find((g) => g.key === FIELD_HINTS_GROUP);
+  if (field) field.group.hints.push(...fieldHints(dict, platform));
+  return groups.map((g) => g.group);
 }
 
 export type ComboIconName =

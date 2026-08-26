@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { errorTitle } from "@/lib/errors";
+import { getDict } from "@/i18n";
+import { errorTitle } from "@/i18n/errors";
 import { dismissAllNotifications, getNotifications } from "@/lib/notifications";
 import { AccessCodeForm } from "./AccessCodeForm";
 
@@ -48,7 +49,7 @@ describe("AccessCodeForm", () => {
     await waitFor(() => {
       expect(getNotifications()).toHaveLength(1);
     });
-    expect(getNotifications()[0]?.title).toBe(errorTitle("badAccessCode"));
+    expect(getNotifications()[0]?.title).toBe(errorTitle("badAccessCode", getDict()));
     expect(getNotifications()[0]?.detail).toBe("Код недействителен");
     expect(input.value).toBe("wrong-1");
   });

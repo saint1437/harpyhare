@@ -11,11 +11,21 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "withGlobalTauri": true,
     "macOSPrivateApi": true,
     "windows": [],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: blob:",
+        "font-src": "'self' data:",
+        "connect-src": "ipc: http://ipc.localhost",
+        "frame-src": "preview: http://preview.localhost",
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "form-action": "'none'"
+      }
     }
   },
   "bundle": {

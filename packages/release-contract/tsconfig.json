@@ -1,0 +1,10 @@
+{
+  "extends": "@harpyhare/tsconfig/base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["contract.d.ts", "*.test.ts", "vitest.config.ts"]
+}

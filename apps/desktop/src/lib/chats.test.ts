@@ -1,3 +1,4 @@
+import { getDict } from "@/i18n";
 import { describe, expect, it } from "vitest";
 import {
   chatImageIds,
@@ -8,6 +9,7 @@ import {
   hydrateChatImages,
   serializeChats,
   type Chat,
+  type StoredChat,
 } from "./chats";
 
 const img = { id: "00000000000000aa.png", media_type: "image/png", data: "AAAA" };
@@ -247,5 +249,56 @@ describe("serialize/deserialize", () => {
     expect(deserializeChats(serializeChats(chats))?.[0]?.context).toBe("вакансия: senior rust");
     const old = deserializeChats('[{"id":"a","title":"Чат 1","messages":[],"draft":""}]');
     expect(old?.[0]?.context).toBe("");
+  });
+});
+
+/**
+ * The reader and the model cannot drift any more: the on-disk schema declares
+ * exactly the fields `Chat` has, and this assertion is what says so. Thirteen
+ * hand-written `typeof` checks used to be the reader, and adding a field to
+ * `Chat` broke neither the build nor a test — it simply came back missing after
+ * a restart. Modelled on the `SameKeys` assertions in `ipc/contract.test.ts`.
+ */
+type SameKeys<A, B> = [keyof A] extends [keyof B]
+  ? [keyof B] extends [keyof A]
+    ? true
+    : never
+  : never;
+
+const schemaCoversEveryChatField: SameKeys<StoredChat, Chat> = true;
+
+describe("схема хранения чата", () => {
+  it("описывает ровно те же поля, что и Chat", () => {
+    expect(schemaCoversEveryChatField).toBe(true);
+    const restored = deserializeChats(serializeChats([createChat(1)]))?.[0];
+    expect(Object.keys(restored ?? {}).sort()).toEqual(Object.keys(createChat(1)).sort());
+  });
+
+  it("чинит поле, а не выбрасывает чат целиком", () => {
+    const restored = deserializeChats(
+      JSON.stringify([
+        {
+          id: "a",
+          title: 5,
+          messages: "не массив",
+          thinkingEnabled: "да",
+          lastInputTokens: -10,
+          libraryDocIds: ["ok", 7],
+        },
+      ]),
+    )?.[0];
+    expect(restored?.id).toBe("a");
+    // The stem is the dictionary's, the number is the position in the file —
+    // a title missing from chats.json must never restore as an empty tab.
+    expect(restored?.title).toBe(`${getDict().common.chat.untitled} 1`);
+    expect(restored?.messages).toEqual([]);
+    expect(restored?.thinkingEnabled).toBe(false);
+    expect(restored?.lastInputTokens).toBe(0);
+    expect(restored?.libraryDocIds).toEqual(["ok"]);
+  });
+
+  it("выдаёт чату без id новый — иначе его нельзя ни выбрать, ни удалить", () => {
+    const restored = deserializeChats('[{"title":"Чат","messages":[]}]')?.[0];
+    expect(restored?.id).not.toBe("");
   });
 });

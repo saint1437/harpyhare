@@ -40,12 +40,12 @@ fn text_pdf() -> Vec<u8> {
 
 #[test]
 fn classifies_supported_extensions() {
-    assert!(is_supported_extension(Path::new("/a/b/файл.md")));
-    assert!(is_supported_extension(Path::new("note.MARKDOWN")));
-    assert!(is_supported_extension(Path::new("note.Txt")));
-    assert!(is_supported_extension(Path::new("doc.PDF")));
-    assert!(!is_supported_extension(Path::new("archive.zip")));
-    assert!(!is_supported_extension(Path::new("noext")));
+    assert!(classify(Path::new("/a/b/файл.md")).is_some());
+    assert!(classify(Path::new("note.MARKDOWN")).is_some());
+    assert!(classify(Path::new("note.Txt")).is_some());
+    assert!(classify(Path::new("doc.PDF")).is_some());
+    assert!(classify(Path::new("archive.zip")).is_none());
+    assert!(classify(Path::new("noext")).is_none());
 }
 
 #[test]

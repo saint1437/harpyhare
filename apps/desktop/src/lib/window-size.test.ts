@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SETTINGS_LIMITS } from "@/ipc/bindings";
+import { SETTINGS_LIMITS } from "@/ipc/types";
 import {
   clampWindowSize,
   nativeSizeEcho,

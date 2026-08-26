@@ -16,7 +16,7 @@ vi.mock("@/ipc/commands", () => ({
 
 import { useUpdater } from "./useUpdater";
 
-const INFO: UpdateInfo = { version: "0.2.0", notes: "Заметки", date: null };
+const INFO: UpdateInfo = { version: "0.2.0", notes: "Заметки" };
 
 afterEach(() => {
   resetIpcEventHandlers();

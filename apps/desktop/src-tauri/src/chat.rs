@@ -1,4 +1,3 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -8,54 +7,14 @@ use tokio_util::sync::CancellationToken;
 use crate::app_state::{llm_provider, App};
 use crate::error::AppError;
 use crate::{events, llm};
+use crate::sync::MutexExt;
 
 const LLM_DELTA_FLUSH_INTERVAL: Duration = Duration::from_millis(25);
 
-static LLM_STREAM_EPOCH: AtomicU64 = AtomicU64::new(0);
-
-// A superseded stream keeps running until its provider future observes the cancel, and
-// on the way out it drains its buffer, emits a result and clears its registry entry.
-// Without an epoch all three land on the stream that replaced it: its answer gets the
-// old tail prepended, `llm-done` tears it down mid-flight, and its cancel token is
-// dropped from the map so Stop no longer reaches it.
-pub struct LlmStreamSlot {
-    epoch: u64,
-    cancel: CancellationToken,
-}
-
-pub type LlmStreamSlots = std::collections::HashMap<String, LlmStreamSlot>;
-
-fn claim_slot(slots: &mut LlmStreamSlots, chat_id: &str, epoch: u64, cancel: CancellationToken) {
-    let slot = LlmStreamSlot { epoch, cancel };
-    if let Some(old) = slots.insert(chat_id.to_string(), slot) {
-        old.cancel.cancel();
-    }
-}
-
-fn slot_is_current(slots: &LlmStreamSlots, chat_id: &str, epoch: u64) -> bool {
-    slots.get(chat_id).is_some_and(|slot| slot.epoch == epoch)
-}
-
-fn release_slot(slots: &mut LlmStreamSlots, chat_id: &str, epoch: u64) {
-    if slot_is_current(slots, chat_id, epoch) {
-        slots.remove(chat_id);
-    }
-}
-
-fn register_llm_cancel(app: &AppHandle, chat_id: &str) -> (u64, CancellationToken) {
-    let epoch = LLM_STREAM_EPOCH.fetch_add(1, Ordering::AcqRel) + 1;
-    let cancel = CancellationToken::new();
-    let st = app.state::<App>();
-    claim_slot(&mut st.llm_cancel.lock().unwrap(), chat_id, epoch, cancel.clone());
-    (epoch, cancel)
-}
-
+/// Whether this epoch is still the live stream of that chat. The registry and
+/// the reason it needs epochs at all live in `llm_service.rs`.
 pub fn is_current_stream(app: &AppHandle, chat_id: &str, epoch: u64) -> bool {
-    slot_is_current(&app.state::<App>().llm_cancel.lock().unwrap(), chat_id, epoch)
-}
-
-fn unregister_llm_cancel(app: &AppHandle, chat_id: &str, epoch: u64) {
-    release_slot(&mut app.state::<App>().llm_cancel.lock().unwrap(), chat_id, epoch);
+    app.state::<App>().llm.is_current_stream(chat_id, epoch)
 }
 
 struct LlmDeltaFlusher {
@@ -103,7 +62,7 @@ async fn run_llm_delta_flusher(
 }
 
 fn flush_pending_delta(app: &AppHandle, chat_id: &str, epoch: u64, pending: &Mutex<String>) {
-    let delta = std::mem::take(&mut *pending.lock().unwrap());
+    let delta = std::mem::take(&mut *pending.lock_safe());
     if delta.is_empty() || !is_current_stream(app, chat_id, epoch) {
         return;
     }
@@ -138,7 +97,7 @@ impl llm::LlmStreamSink for ChatStreamSink {
                 self.started.elapsed()
             );
         }
-        self.pending.lock().unwrap().push_str(delta);
+        self.pending.lock_safe().push_str(delta);
     }
 
     fn input_tokens(&mut self, total: u32) {
@@ -160,7 +119,7 @@ pub async fn send_to_claude(
     options: llm::RequestOptions,
 ) {
     let provider = llm_provider(&app);
-    let (epoch, cancel) = register_llm_cancel(&app, &chat_id);
+    let (epoch, cancel) = app.state::<App>().llm.begin_stream(&chat_id);
     let request = llm::LlmRequest {
         model,
         system,
@@ -182,7 +141,7 @@ pub async fn send_to_claude(
     flusher.stop_and_await_final_drain().await;
     eprintln!("[perf] llm stream total {:?}", started.elapsed());
     emit_llm_result(&app, chat_id.clone(), epoch, res);
-    unregister_llm_cancel(&app, &chat_id, epoch);
+    app.state::<App>().llm.end_stream(&chat_id, epoch);
 }
 
 #[tauri::command]
@@ -193,7 +152,10 @@ pub async fn count_chat_tokens(
     system: String,
     model: String,
     options: llm::RequestOptions,
-) -> Result<u32, String> {
+) -> Result<u32, AppError> {
+    // The code, not just the prose: this command feeds the context-fullness
+    // indicator, and the frontend has to tell "no network" from "the key is
+    // wrong" to decide whether hiding the gauge is temporary.
     llm_provider(&app)
         .count_tokens(llm::LlmRequest {
             model,
@@ -202,15 +164,13 @@ pub async fn count_chat_tokens(
             options,
         })
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn cancel_stream(app: AppHandle, chat_id: String) {
-    if let Some(slot) = app.state::<App>().llm_cancel.lock().unwrap().remove(&chat_id) {
-        slot.cancel.cancel();
-    }
+    app.state::<App>().llm.cancel_stream(&chat_id);
 }
 
 #[tauri::command]
@@ -224,9 +184,6 @@ pub async fn probe_connectivity(app: AppHandle) -> bool {
 pub async fn list_models(app: AppHandle) -> Vec<llm::ModelInfo> {
     match llm_provider(&app).list_models().await {
         Ok(models) if !models.is_empty() => models,
-        _ => app.state::<App>().models.lock().unwrap().clone(),
+        _ => app.state::<App>().llm.cached_models(),
     }
 }
-
-#[cfg(test)]
-mod tests;

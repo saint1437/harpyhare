@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MODIFIER_COMBOS } from "@/ipc/bindings";
+import { MODIFIER_COMBOS } from "@/ipc/types";
 import { matchesModifier, parseModifier, type ModifierState } from "./hotkey-modifier";
 import { PLATFORMS } from "./platform";
 

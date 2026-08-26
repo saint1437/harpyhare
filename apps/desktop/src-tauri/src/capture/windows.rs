@@ -19,7 +19,8 @@ use windows::Win32::System::Com::{
 };
 
 use super::{
-    AudioDeviceInfo, CallbackCtx, CaptureError, DeviceChangeHandler, SourceKind, StreamSpec,
+    AudioDeviceInfo, CallbackCtx, CaptureBackend, CaptureError, DeviceChangeHandler, SourceKind,
+    StreamSpec,
 };
 
 const CAPTURE_THREAD_NAME: &str = "wasapi-capture";
@@ -273,6 +274,32 @@ fn activate_client(device: &IMMDevice) -> Result<(IAudioClient, SampleFormat), C
         )));
     }
     Ok((client, format))
+}
+
+pub struct Backend;
+
+impl CaptureBackend for Backend {
+    type Source = Source;
+    type Running = Running;
+
+    fn open(
+        kind: SourceKind,
+        device_uid: Option<&str>,
+    ) -> Result<(Self::Source, StreamSpec), CaptureError> {
+        open(kind, device_uid)
+    }
+
+    fn start(source: Self::Source, ctx: Box<CallbackCtx>) -> Result<Self::Running, CaptureError> {
+        start(source, ctx)
+    }
+
+    fn list_devices(kind: SourceKind) -> Vec<AudioDeviceInfo> {
+        list_devices(kind)
+    }
+
+    fn watch_default_output_device(on_change: DeviceChangeHandler) {
+        watch_default_output_device(on_change);
+    }
 }
 
 pub struct Source {

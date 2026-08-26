@@ -7,9 +7,9 @@ fn binding(action: &str, combo: &str) -> HotkeyBinding {
 fn digit_family_action(id: &'static str) -> HotkeyAction {
     HotkeyAction {
         id,
-        group: "",
-        label: "",
-        hint: "",
+        group_key: GROUP_CHAT,
+        label_key: id,
+        hint_key: id,
         kind: HotkeyKind::ModifierDigits,
         scope: HotkeyScope::Hud,
         default_combo: PlatformCombo::shared(MODIFIER_CMD),

@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PermissionKind, PermissionState, PermissionsStatus } from "@/ipc/bindings";
+import type { PermissionKind, PermissionState, PermissionsStatus } from "@/ipc/types";
 
 const permissionsStatus = vi.fn<() => Promise<PermissionsStatus>>();
 const requestPermission = vi.fn<(kind: PermissionKind) => Promise<PermissionState>>();
@@ -32,7 +32,6 @@ describe("usePermissions", () => {
       expect(result.current.loaded).toBe(true);
     });
     expect(result.current.audioOk).toBe(true);
-    expect(result.current.screenOk).toBe(false);
     expect(result.current.microphoneOk).toBe(false);
   });
 

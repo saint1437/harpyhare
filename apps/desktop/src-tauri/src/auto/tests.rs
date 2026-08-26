@@ -30,7 +30,7 @@ fn segmenter_bounds_follow_clamped_defaults() {
 
 #[test]
 fn in_flight_counters_are_independent_per_speaker() {
-    let auto = AutoState::default();
+    let auto = AutoService::default();
     auto.in_flight(Speaker::Interviewer).fetch_add(1, Ordering::AcqRel);
     assert_eq!(auto.in_flight(Speaker::Interviewer).load(Ordering::Acquire), 1);
     assert_eq!(auto.in_flight(Speaker::User).load(Ordering::Acquire), 0);
@@ -42,10 +42,14 @@ fn speakers_serialize_to_the_frontend_labels() {
     assert_eq!(serde_json::to_string(&Speaker::User).unwrap(), "\"user\"");
 }
 
+/// The "auto listening is on" refusal now comes from the capture mode that is
+/// actually holding the device, not from a constant in this module — but it is
+/// still coded rather than prose the frontend has to match on.
 #[test]
-fn recorder_busy_error_is_coded_not_prose_matched() {
-    assert_eq!(recorder_busy_error().code, ErrorCode::Internal);
-    assert!(!recorder_busy_error().message.is_empty());
+fn the_busy_refusal_is_coded_not_prose_matched() {
+    let busy = crate::capture_service::CaptureMode::AutoListening.busy_error();
+    assert_eq!(busy.code, ErrorCode::Internal);
+    assert!(!busy.message.is_empty());
 }
 
 #[test]

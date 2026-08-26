@@ -102,7 +102,7 @@ export function PresetsScreen() {
           }}
           className={cn(
             "rounded-xl bg-app-card p-4 text-left ring-1 transition-colors ring-inset",
-            active === index ? "ring-app-primary/60" : "ring-app-border hover:ring-app-border",
+            active === index ? "ring-app-primary-mark" : "ring-app-border hover:ring-app-border",
           )}
         >
           <div className="flex items-center justify-between gap-3">

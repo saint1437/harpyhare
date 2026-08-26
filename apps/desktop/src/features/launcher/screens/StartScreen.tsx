@@ -3,14 +3,18 @@ import type { ReactNode } from "react";
 import { AccessCodeForm } from "@/components/AccessCodeForm";
 import { StateBadge, type StateTone } from "@/components/StateBadge";
 import { Button } from "@/components/ui/button";
+import { SettingGroup } from "@/features/settings/fields";
+import { RequestPermissionButton } from "@/features/settings/RequestPermissionButton";
 import type { AudioCheckApi } from "@/hooks/useAudioCheck";
+import { useDict } from "@/hooks/useDict";
 import type { PermissionsApi } from "@/hooks/usePermissions";
-import type { PermissionKind } from "@/ipc/bindings";
-import { formatCombo, hotkeyAction } from "@/lib/hotkeys";
+import { format } from "@/i18n";
+import type { Dictionary } from "@/i18n/types";
+import type { PermissionKind } from "@/ipc/types";
+import { formatCombo, hotkeyAction, hotkeyHint } from "@/lib/hotkeys";
 import { cn, SURFACE_CARD_CLASS } from "@/lib/utils";
 import { AudioCheckCard } from "../AudioCheckCard";
 import type { LauncherDestination } from "../contract";
-import { SettingGroup } from "../fields";
 import { LaunchButton } from "../LaunchButton";
 import type { ScreenId } from "../screens";
 import { ScreenShell } from "../ScreenShell";
@@ -20,22 +24,11 @@ import type { LauncherReadiness } from "../useLauncherReadiness";
 const SETTINGS_SCREEN: ScreenId = "settings";
 const RECORD_ACTION = "record";
 
-const STATE_LABEL: Record<StartStepState, string> = {
-  done: "готово",
-  todo: "нужно сделать",
-  checking: "проверяю…",
-};
-
-// Пуш-ту-ток нигде не объяснялся, а экран, где он описан, уничтожается ровно в
-// тот момент, когда знание становится нужным. Комбинация и подпись берутся из
-// реестра: литерал устарел бы в ту секунду, когда пользователь переназначит клавишу.
-const DEFAULTS_NOTE =
-  "Клавиши, быстрые действия, размеры окна и вид уже заданы по умолчанию — их можно не трогать.";
-
-function summary(steps: StartStep[]): string {
-  if (steps.some((step) => step.state === "checking")) return "Проверяю доступы…";
+function summary(steps: StartStep[], dict: Dictionary): string {
+  const copy = dict.launcher.start;
+  if (steps.some((step) => step.state === "checking")) return copy.summaryChecking;
   const left = stepsLeft(steps);
-  return left === 0 ? "Всё готово — можно запускать." : `Осталось шагов: ${String(left)}.`;
+  return left === 0 ? copy.summaryReady : format(copy.summaryLeft, { count: String(left) });
 }
 
 // `todo` and `checking` used to share one grey dot and differed only by the word.
@@ -48,7 +41,8 @@ const STATE_TONE: Record<StartStepState, StateTone> = {
 };
 
 function StateChip({ state }: { state: StartStepState }) {
-  return <StateBadge tone={STATE_TONE[state]} label={STATE_LABEL[state]} />;
+  const label = useDict().launcher.start.stepStates[state];
+  return <StateBadge tone={STATE_TONE[state]} label={label} />;
 }
 
 function StepView({ step, children }: { step: StartStep; children: ReactNode }) {
@@ -85,6 +79,7 @@ function AccessControl({
   onRedeem: (code: string) => Promise<string | null>;
   onNavigate: (destination: LauncherDestination) => void;
 }) {
+  const copy = useDict().launcher.start;
   const openKeys = (
     <Button
       variant="ghost"
@@ -94,7 +89,7 @@ function AccessControl({
         onNavigate({ screen: step.screen, tab: step.tab });
       }}
     >
-      {step.state === "done" ? "Изменить доступ" : "Ввести свои ключи"}
+      {step.state === "done" ? copy.changeAccess : copy.enterKeys}
       <ArrowRight className="size-3" aria-hidden />
     </Button>
   );
@@ -120,18 +115,13 @@ function PermissionControl({
   permissions: PermissionsApi;
   onNavigate: (destination: LauncherDestination) => void;
 }) {
+  const dict = useDict();
+  const buttons = dict.settings.permissions;
   return (
     <div className="flex flex-wrap items-center gap-1.5 self-start">
       {step.state === "todo" && (
         <>
-          <Button
-            size="sm"
-            className="min-w-18"
-            disabled={permissions.pending !== null}
-            onClick={() => void permissions.request(kind)}
-          >
-            {permissions.pending === kind ? "Запрашиваю…" : "Выдать"}
-          </Button>
+          <RequestPermissionButton permissions={permissions} kind={kind} label={buttons.grant} />
           <Button
             variant="ghost"
             size="sm"
@@ -139,7 +129,7 @@ function PermissionControl({
               permissions.openSettings(kind);
             }}
           >
-            Настройки
+            {buttons.openSettings}
           </Button>
         </>
       )}
@@ -152,7 +142,7 @@ function PermissionControl({
           onNavigate({ screen: step.screen, tab: step.tab });
         }}
       >
-        Все доступы
+        {dict.launcher.start.allPermissions}
         <ArrowRight className="size-3" aria-hidden />
       </Button>
     </div>
@@ -176,11 +166,13 @@ export function StartScreen({
   onNavigate: (destination: LauncherDestination) => void;
   onLaunch: () => void;
 }) {
-  const steps = startSteps(readiness);
+  const dict = useDict();
+  const copy = dict.launcher.start;
+  const steps = startSteps(readiness, dict);
 
   return (
     <ScreenShell screen="start">
-      <SettingGroup title="Что нужно для запуска" description={summary(steps)}>
+      <SettingGroup title={copy.stepsTitle} description={summary(steps, dict)}>
         {steps.map((step) => (
           <StepView key={step.id} step={step}>
             {step.id === "access" ? (
@@ -199,19 +191,19 @@ export function StartScreen({
 
       <AudioCheckCard autoModeEnabled={readiness.autoModeEnabled} check={audioCheck} />
 
-      <SettingGroup title="Как пользоваться">
+      {/* Пуш-ту-ток нигде не объяснялся, а экран, где он описан, уничтожается ровно в
+          тот момент, когда знание становится нужным. Комбинация и подпись берутся из
+          реестра: литерал устарел бы в ту секунду, когда пользователь переназначит клавишу. */}
+      <SettingGroup title={copy.usageTitle}>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5">
           <span className="rounded-md bg-inset px-2 py-1 font-mono text-body font-semibold text-fg">
-            {recordCombo === "" ? "не назначено" : formatCombo(recordCombo)}
+            {recordCombo === "" ? copy.unassignedCombo : formatCombo(recordCombo)}
           </span>
           <span className="min-w-40 flex-1 text-body text-fg-muted">
-            {hotkeyAction(RECORD_ACTION).hint}
+            {hotkeyHint(hotkeyAction(RECORD_ACTION), dict)}
           </span>
         </div>
-        <p className="px-3 py-2.5 text-caption text-fg-subtle">
-          Отпустите — расшифровка попадёт в поле ввода. Остальные сочетания перечислены в основном
-          окне по кнопке с клавиатурой.
-        </p>
+        <p className="px-3 py-2.5 text-caption text-fg-subtle">{copy.usageNote}</p>
       </SettingGroup>
 
       <div
@@ -220,7 +212,7 @@ export function StartScreen({
           SURFACE_CARD_CLASS,
         )}
       >
-        <p className="min-w-40 flex-1 text-caption text-fg-subtle">{DEFAULTS_NOTE}</p>
+        <p className="min-w-40 flex-1 text-caption text-fg-subtle">{copy.defaultsNote}</p>
         <div className="flex shrink-0 items-center gap-1.5">
           <Button
             variant="ghost"
@@ -229,7 +221,7 @@ export function StartScreen({
               onNavigate({ screen: SETTINGS_SCREEN });
             }}
           >
-            Все настройки
+            {copy.allSettings}
           </Button>
           <LaunchButton readiness={readiness} launching={launching} size="sm" onLaunch={onLaunch} />
         </div>

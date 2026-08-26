@@ -4,13 +4,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectItem } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { MODIFIER_COMBOS, QUICK_ACTION_LIMIT } from "@/ipc/bindings";
+import type { SectionProps } from "@/features/settings/contract";
+import { SettingGroup, SettingRow, SettingSelect } from "@/features/settings/fields";
+import { settingsEntry } from "@/features/settings/settings-registry";
+import { SettingEntryRow } from "@/features/settings/SettingsRows";
+import { useDict } from "@/hooks/useDict";
+import { format } from "@/i18n";
+import { MODIFIER_COMBOS, QUICK_ACTION_LIMIT } from "@/ipc/types";
 import type { QuickAction } from "@/ipc/types";
-import { effectiveCombo, formatCombo, hotkeyAction, type HotkeyActionId } from "@/lib/hotkeys";
+import {
+  effectiveCombo,
+  formatCombo,
+  hotkeyAction,
+  hotkeyHint,
+  hotkeyLabel,
+  type HotkeyActionId,
+} from "@/lib/hotkeys";
 import { PLATFORM } from "@/lib/platform";
 import { filledQuickActions, newQuickAction, quickActionHint } from "@/lib/quick-actions";
-import type { SectionProps } from "../contract";
-import { SettingGroup, SettingRow, SettingSelect, SettingSwitch } from "../fields";
 import { useHotkeyEditor } from "../useHotkeyEditor";
 import { StolenNote } from "./HotkeysSection";
 
@@ -18,18 +29,7 @@ const QUICK_ACTION: HotkeyActionId = "quick_action";
 const PLATFORM_MODIFIERS: readonly string[] = MODIFIER_COMBOS[PLATFORM];
 const PROMPT_ROWS = 2;
 
-const COMBO_LABEL = "Сочетание";
-const ATTACHMENTS_LABEL = "Прикреплять вложения";
-const ATTACHMENTS_HINT =
-  "Быстрое действие отправит картинки из поля ввода вместе с заготовленным промптом.";
-const TITLE_LABEL = "Название";
-const TITLE_PLACEHOLDER = "Название — его видно на кнопке, в чат оно не уходит";
-const PROMPT_LABEL = "Промпт";
-const PROMPT_PLACEHOLDER = "Промпт — именно он уходит в чат вместо названия";
-const REMOVE_TITLE = "Удалить быстрое действие";
-const ADD_LABEL = "Добавить";
-const EMPTY_NOTE = "Пока ни одного действия — кнопок над полем ввода не будет.";
-const GROUP_TITLE = "Быстрые действия";
+const ATTACHMENTS_ENTRY = settingsEntry("quick_action_attachments");
 
 function comboByActionId(actions: QuickAction[], modifier: string): Map<string, string> {
   const combos = new Map<string, string>();
@@ -51,12 +51,13 @@ function QuickActionRow({
   onChange: (patch: Partial<QuickAction>) => void;
   onRemove: () => void;
 }) {
+  const copy = useDict().launcher.quickActions;
   return (
     <div className="flex flex-col gap-1.5 px-3 py-2.5">
       <div className="flex items-center gap-2">
         <Input
-          aria-label={TITLE_LABEL}
-          placeholder={TITLE_PLACEHOLDER}
+          aria-label={copy.titleLabel}
+          placeholder={copy.titlePlaceholder}
           value={action.title}
           onChange={(e) => {
             onChange({ title: e.target.value });
@@ -65,14 +66,14 @@ function QuickActionRow({
         <span className="min-w-10 shrink-0 text-right font-mono text-caption text-fg-subtle tabular-nums">
           {combo}
         </span>
-        <IconButton title={REMOVE_TITLE} className="hover:text-danger" onClick={onRemove}>
+        <IconButton title={copy.remove} className="hover:text-danger" onClick={onRemove}>
           <Trash2 />
         </IconButton>
       </div>
       <Textarea
         rows={PROMPT_ROWS}
-        aria-label={PROMPT_LABEL}
-        placeholder={PROMPT_PLACEHOLDER}
+        aria-label={copy.promptLabel}
+        placeholder={copy.promptPlaceholder}
         value={action.prompt}
         onChange={(e) => {
           onChange({ prompt: e.target.value });
@@ -84,6 +85,8 @@ function QuickActionRow({
 }
 
 export function QuickActionsSection({ draft, set }: SectionProps) {
+  const dict = useDict();
+  const copy = dict.launcher.quickActions;
   const editor = useHotkeyEditor(draft, set);
   const action = hotkeyAction(QUICK_ACTION);
   const modifier = effectiveCombo(draft.hotkeys, QUICK_ACTION);
@@ -108,13 +111,13 @@ export function QuickActionsSection({ draft, set }: SectionProps) {
   };
 
   return (
-    <SettingGroup
-      title={GROUP_TITLE}
-      description="Кнопки над полем ввода: каждая отправляет в чат свой заготовленный промпт."
-    >
-      <SettingRow label={COMBO_LABEL} hint={action.hint}>
+    <SettingGroup title={copy.title} description={copy.description}>
+      <SettingRow label={copy.comboLabel} hint={hotkeyHint(action, dict)}>
         <SettingSelect
-          ariaLabel={`${action.label}: ${COMBO_LABEL.toLowerCase()}`}
+          ariaLabel={format(copy.comboAriaLabel, {
+            action: hotkeyLabel(action, dict),
+            field: copy.comboLabel.toLocaleLowerCase(dict.locale),
+          })}
           value={modifier}
           onValueChange={(v) => {
             editor.onAssign(QUICK_ACTION, v);
@@ -122,25 +125,17 @@ export function QuickActionsSection({ draft, set }: SectionProps) {
         >
           {PLATFORM_MODIFIERS.map((m) => (
             <SelectItem key={m} value={m}>
-              {formatCombo(m)} + цифра
+              {format(copy.comboOption, { combo: formatCombo(m) })}
             </SelectItem>
           ))}
         </SettingSelect>
       </SettingRow>
       <StolenNote editor={editor} />
 
-      <SettingRow label={ATTACHMENTS_LABEL} hint={ATTACHMENTS_HINT}>
-        <SettingSwitch
-          ariaLabel={ATTACHMENTS_LABEL}
-          checked={draft.quick_action_attachments}
-          onCheckedChange={(v) => {
-            set("quick_action_attachments", v);
-          }}
-        />
-      </SettingRow>
+      <SettingEntryRow entry={ATTACHMENTS_ENTRY} draft={draft} set={set} />
 
       {actions.length === 0 && (
-        <p className="px-3 py-2.5 text-caption text-fg-subtle">{EMPTY_NOTE}</p>
+        <p className="px-3 py-2.5 text-caption text-fg-subtle">{copy.empty}</p>
       )}
       {actions.map((quickAction, index) => (
         <QuickActionRow
@@ -158,11 +153,11 @@ export function QuickActionsSection({ draft, set }: SectionProps) {
       <div className="flex items-center gap-3 px-3 py-2">
         <Button variant="ghost" size="sm" disabled={atLimit} onClick={add}>
           <Plus />
-          {ADD_LABEL}
+          {dict.common.actions.add}
         </Button>
         {atLimit && (
           <span className="text-caption text-fg-subtle">
-            Больше не поместится: цифр всего {QUICK_ACTION_LIMIT}.
+            {format(copy.atLimit, { limit: String(QUICK_ACTION_LIMIT) })}
           </span>
         )}
       </div>

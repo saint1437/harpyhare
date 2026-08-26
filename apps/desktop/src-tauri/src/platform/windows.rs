@@ -18,7 +18,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     KBDLLHOOKSTRUCT, SW_SHOWNORMAL, WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
 };
 
-use super::{handle_arrow_key, ModifierMask};
+use super::{ModifierMask, PlatformBackend, handle_arrow_key};
 use crate::window::main_window;
 
 const KEY_PRESSED_MASK: u16 = 0x8000;
@@ -164,4 +164,39 @@ pub fn request_screen_capture_access() -> bool {
 pub fn open_url(url: &str) {
     let wide: Vec<u16> = url.encode_utf16().chain(std::iter::once(0)).collect();
     open_with_shell(PCWSTR(wide.as_ptr()));
+}
+
+pub struct Backend;
+
+impl PlatformBackend for Backend {
+    fn disable_cursor_autohide_on_typing() {
+        disable_cursor_autohide_on_typing();
+    }
+    fn merge_titlebar_into_content(app: &AppHandle) {
+        merge_titlebar_into_content(app);
+    }
+    fn clip_native_window_corners(app: &AppHandle) {
+        clip_native_window_corners(app);
+    }
+    fn install_move_keys_monitor(app: AppHandle) {
+        install_move_keys_monitor(app);
+    }
+    fn open_audio_capture_privacy_pane() {
+        open_audio_capture_privacy_pane();
+    }
+    fn open_microphone_privacy_pane() {
+        open_microphone_privacy_pane();
+    }
+    fn open_screen_capture_privacy_pane() {
+        open_screen_capture_privacy_pane();
+    }
+    fn screen_capture_access() -> bool {
+        screen_capture_access()
+    }
+    fn request_screen_capture_access() -> bool {
+        request_screen_capture_access()
+    }
+    fn open_url(url: &str) {
+        open_url(url);
+    }
 }

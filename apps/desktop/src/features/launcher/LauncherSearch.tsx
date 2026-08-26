@@ -1,6 +1,8 @@
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
+import { useDict } from "@/hooks/useDict";
+import { format } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { searchLauncher, type SearchHit, type SearchSources } from "./search";
 
@@ -9,8 +11,6 @@ const FIRST_INDEX = 0;
 const NEXT_STEP = 1;
 const PREVIOUS_STEP = -1;
 
-const PLACEHOLDER = "Поиск по настройкам";
-const EMPTY_NOTE = "Ничего не найдено";
 const LIST_ID = "launcher-search-results";
 
 function optionDomId(hitId: string): string {
@@ -22,16 +22,14 @@ interface LauncherSearchProps {
   onNavigate: (hit: SearchHit) => void;
 }
 
-function overflowNote(shown: number, total: number): string {
-  return `Показаны первые ${String(shown)} из ${String(total)} — уточните запрос`;
-}
-
 export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
+  const dict = useDict();
+  const copy = dict.launcher.search;
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(FIRST_INDEX);
 
-  const hits = useMemo(() => searchLauncher(query, sources), [query, sources]);
+  const hits = useMemo(() => searchLauncher(query, sources, dict), [query, sources, dict]);
   const shown = hits.slice(FIRST_INDEX, MAX_RESULTS);
   const activeIndex = Math.min(active, shown.length - 1);
   const listVisible = open && query.trim() !== "";
@@ -63,8 +61,8 @@ export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
       />
       <Input
         value={query}
-        placeholder={PLACEHOLDER}
-        aria-label={PLACEHOLDER}
+        placeholder={copy.placeholder}
+        aria-label={copy.placeholder}
         role="combobox"
         aria-autocomplete="list"
         aria-expanded={listVisible}
@@ -113,7 +111,7 @@ export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
         <div
           role="listbox"
           id={LIST_ID}
-          aria-label={PLACEHOLDER}
+          aria-label={copy.placeholder}
           data-no-drag
           className="absolute top-full right-0 left-0 z-20 mt-1.5 max-h-80 animate-in overflow-y-auto rounded-lg border bg-elevated p-1 shadow-pop duration-150 fade-in-0 slide-in-from-top-1 motion-reduce:animate-none"
           onMouseDown={(e) => {
@@ -121,7 +119,7 @@ export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
           }}
         >
           {shown.length === 0 && (
-            <p className="px-2 py-1.5 text-caption text-fg-subtle">{EMPTY_NOTE}</p>
+            <p className="px-2 py-1.5 text-caption text-fg-subtle">{copy.empty}</p>
           )}
           {shown.map((hit, index) => (
             <button
@@ -151,7 +149,10 @@ export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
           ))}
           {hits.length > shown.length && (
             <p className="mt-1 border-t border-line px-2 py-1.5 text-hint text-fg-subtle">
-              {overflowNote(shown.length, hits.length)}
+              {format(copy.overflow, {
+                shown: String(shown.length),
+                total: String(hits.length),
+              })}
             </p>
           )}
         </div>

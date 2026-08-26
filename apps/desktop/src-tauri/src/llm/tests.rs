@@ -507,7 +507,7 @@ async fn proxy_mode_authorizes_with_bearer_not_api_key() {
 }
 
 #[tokio::test]
-async fn proxy_mode_401_surfaces_body_message_not_bad_key() {
+async fn proxy_mode_401_is_a_bad_access_code_carrying_the_worker_message() {
     use wiremock::matchers::method;
     use wiremock::{Mock, MockServer, ResponseTemplate};
     let server = MockServer::start().await;
@@ -527,9 +527,17 @@ async fn proxy_mode_401_surfaces_body_message_not_bad_key() {
         )
         .await
         .unwrap_err();
+    // The spec (2026-07-09-access-codes-proxy-design.md) says 401/403 in proxy
+    // mode means the access code, and `stt.rs` already answered that way. This
+    // side used to answer `Api`, so the same rejection reached the UI under two
+    // codes and the access-code form could not branch on it.
     assert!(
-        matches!(&err, LlmError::Api(m) if m.contains("Код доступа недействителен")),
+        matches!(&err, LlmError::BadAccessCode(m) if m.contains("Код доступа недействителен")),
         "got: {err:?}"
+    );
+    assert_eq!(
+        crate::error::CodedError::code(&err),
+        crate::error::ErrorCode::BadAccessCode
     );
 }
 
@@ -564,4 +572,236 @@ async fn stream_cancellation_stops_early() {
         .await
         .unwrap_err();
     assert!(matches!(err, LlmError::Cancelled));
+}
+
+// ---------- request size ceiling ----------
+
+fn request_of(text: String, image_bytes: usize) -> LlmRequest {
+    LlmRequest {
+        model: "claude-haiku-4-5-20251001".into(),
+        system: String::new(),
+        messages: vec![ChatMessage {
+            role: "user".into(),
+            text,
+            images: vec![ImageAttachment {
+                media_type: "image/png".into(),
+                data: "a".repeat(image_bytes),
+            }],
+        }],
+        options: RequestOptions::default(),
+    }
+}
+
+#[test]
+fn the_request_size_counts_text_and_image_payloads() {
+    let request = request_of("привет".into(), 1000);
+    assert!(request_size_bytes(&request) >= 1000 + "привет".len());
+}
+
+#[tokio::test]
+async fn an_oversized_request_is_refused_before_it_reaches_the_network() {
+    let client = AnthropicClient::new("k".into()).with_base_url("http://127.0.0.1:1".into());
+    let request = request_of(String::new(), MAX_REQUEST_BYTES + 1);
+    let err = client
+        .stream(
+            request.clone(),
+            tokio_util::sync::CancellationToken::new(),
+            &mut TestSink::default(),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, LlmError::TooLarge(m, _) if m == ERR_REQUEST_TOO_LARGE),
+        "got: {err:?}"
+    );
+    assert_eq!(
+        crate::error::CodedError::code(&err),
+        crate::error::ErrorCode::RequestTooLarge,
+        "отказ по размеру — свой код, а не общая ошибка API"
+    );
+    assert_eq!(
+        crate::error::CodedError::params(&err).get(crate::error::param::LIMIT_MB).map(String::as_str),
+        Some("12"),
+        "фронт печатает потолок из params, а не из русской фразы"
+    );
+    assert!(client.count_tokens(request).await.is_err());
+}
+
+#[tokio::test]
+async fn a_request_within_the_ceiling_is_not_refused_locally() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_raw(SSE_FIXTURE.as_bytes().to_vec(), "text/event-stream"),
+        )
+        .mount(&server)
+        .await;
+    let client = AnthropicClient::new("k".into()).with_base_url(server.uri());
+    let request = request_of("q".into(), 1024);
+    assert!(client
+        .stream(
+            request,
+            tokio_util::sync::CancellationToken::new(),
+            &mut TestSink::default()
+        )
+        .await
+        .is_ok());
+}
+
+// ---------- retries ----------
+
+const NO_RETRY: crate::http::RetryPolicy = crate::http::RetryPolicy::new(
+    1,
+    std::time::Duration::from_millis(1),
+    std::time::Duration::from_millis(1),
+);
+
+const TWO_FAST_TRIES: crate::http::RetryPolicy = crate::http::RetryPolicy::new(
+    2,
+    std::time::Duration::from_millis(1),
+    std::time::Duration::from_millis(2),
+);
+
+#[tokio::test]
+async fn a_503_before_the_first_delta_is_retried() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_raw(SSE_FIXTURE.as_bytes().to_vec(), "text/event-stream"),
+        )
+        .mount(&server)
+        .await;
+    let client = AnthropicClient::new("k".into())
+        .with_base_url(server.uri())
+        .with_retry(TWO_FAST_TRIES);
+    let mut sink = TestSink::default();
+    client
+        .stream(
+            request_of("q".into(), 0),
+            tokio_util::sync::CancellationToken::new(),
+            &mut sink,
+        )
+        .await
+        .unwrap();
+    assert!(!sink.text.is_empty(), "повтор довёл ответ до конца");
+}
+
+/// The invariant that makes retrying a stream safe at all: once the reader has
+/// seen text, a second attempt would replay the answer on top of it.
+#[tokio::test]
+async fn a_stream_that_already_produced_text_is_not_retried() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let truncated = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"При\"}}\n\n";
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_raw(truncated.as_bytes().to_vec(), "text/event-stream"),
+        )
+        // Exactly one request: a retry here would be the bug.
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = AnthropicClient::new("k".into())
+        .with_base_url(server.uri())
+        .with_retry(TWO_FAST_TRIES);
+    let mut sink = TestSink::default();
+    let err = client
+        .stream(
+            request_of("q".into(), 0),
+            tokio_util::sync::CancellationToken::new(),
+            &mut sink,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, LlmError::Network(_)));
+    assert_eq!(sink.text, "При", "текст остаётся ровно тем, что успело прийти");
+}
+
+#[tokio::test]
+async fn a_rejected_request_is_not_retried() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(400))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = AnthropicClient::new("k".into())
+        .with_base_url(server.uri())
+        .with_retry(TWO_FAST_TRIES);
+    assert!(client
+        .stream(
+            request_of("q".into(), 0),
+            tokio_util::sync::CancellationToken::new(),
+            &mut TestSink::default()
+        )
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn a_proxy_overload_carries_the_workers_own_message() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(503).set_body_json(serde_json::json!({
+            "error": {"message": "Сервер перегружен, попробуйте через минуту"}
+        })))
+        .mount(&server)
+        .await;
+    let client = AnthropicClient::for_proxy("itk".into(), server.uri()).with_retry(NO_RETRY);
+    let err = client
+        .stream(
+            request_of("q".into(), 0),
+            tokio_util::sync::CancellationToken::new(),
+            &mut TestSink::default(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.to_string(), "Сервер перегружен, попробуйте через минуту");
+    assert_eq!(
+        crate::error::CodedError::code(&err),
+        crate::error::ErrorCode::Retryable
+    );
+}
+
+#[tokio::test]
+async fn a_direct_overload_keeps_the_bundled_wording() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(429))
+        .mount(&server)
+        .await;
+    let client = AnthropicClient::new("k".into())
+        .with_base_url(server.uri())
+        .with_retry(NO_RETRY);
+    let err = client
+        .stream(
+            request_of("q".into(), 0),
+            tokio_util::sync::CancellationToken::new(),
+            &mut TestSink::default(),
+        )
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("429"), "got: {err}");
 }

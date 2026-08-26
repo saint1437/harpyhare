@@ -38,3 +38,35 @@ if (nodeShadowsJsdomLocalStorage) {
     writable: true,
   });
 }
+
+const RESIZE_OBSERVER_GLOBAL = "ResizeObserver";
+
+/**
+ * jsdom implements no layout, and therefore no `ResizeObserver` — but the app
+ * has two of them (`usePromptAutosize` in the composer, and any virtualiser
+ * that measures items), and a bare `new ResizeObserver(...)` is a ReferenceError
+ * that kills the render rather than degrading it.
+ *
+ * The stub observes nothing and never fires, which is the honest behaviour for
+ * an environment where nothing ever has a size: a test that needs a size sets
+ * it explicitly. It lives here rather than in each test file for the same
+ * reason the localStorage shim does — a missing global is the environment's
+ * problem, not each case's.
+ */
+if ((globalThis as Record<string, unknown>)[RESIZE_OBSERVER_GLOBAL] === undefined) {
+  Object.defineProperty(globalThis, RESIZE_OBSERVER_GLOBAL, {
+    value: class {
+      observe(): void {
+        // Nothing in jsdom ever changes size.
+      }
+      unobserve(): void {
+        // Nothing was observed.
+      }
+      disconnect(): void {
+        // Nothing to disconnect.
+      }
+    },
+    configurable: true,
+    writable: true,
+  });
+}

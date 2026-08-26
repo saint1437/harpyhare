@@ -1,60 +1,41 @@
 import { SelectItem } from "@/components/ui/select";
-import { MODIFIER_COMBOS, SETTINGS_LIMITS } from "@/ipc/bindings";
-import { effectiveCombo, formatCombo, hotkeyAction, type HotkeyActionId } from "@/lib/hotkeys";
+import type { SectionProps } from "@/features/settings/contract";
+import {
+  SettingBlock,
+  SettingGroup,
+  SettingSelect,
+  SettingSlider,
+} from "@/features/settings/fields";
+import { useDict } from "@/hooks/useDict";
+import { format } from "@/i18n";
+import { MODIFIER_COMBOS } from "@/ipc/types";
+import { effectiveCombo, formatCombo, hotkeyAction, hotkeyLabel } from "@/lib/hotkeys";
 import { PLATFORM } from "@/lib/platform";
-import type { SectionProps } from "../contract";
-import { SettingBlock, SettingGroup, SettingSelect, SettingSlider } from "../fields";
 import { useHotkeyEditor } from "../useHotkeyEditor";
+import { WINDOW_PAIRS } from "../window-pairs";
 import { StolenNote } from "./HotkeysSection";
-
-const PAIRS = [
-  {
-    action: "move_window",
-    hint: "Модификатор со стрелками двигает окно, шаг — на сколько пикселей за нажатие.",
-    stepKey: "move_step",
-    limits: SETTINGS_LIMITS.moveStep,
-  },
-  {
-    action: "resize_window",
-    hint: "Модификатор со стрелками меняет ширину и высоту окна.",
-    stepKey: "resize_step",
-    limits: SETTINGS_LIMITS.resizeStep,
-  },
-  {
-    action: "scroll_chat",
-    hint: "Прокрутка переписки стрелками вверх и вниз.",
-    stepKey: "scroll_step",
-    limits: SETTINGS_LIMITS.scrollStep,
-  },
-] as const satisfies readonly {
-  action: HotkeyActionId;
-  hint: string;
-  stepKey: keyof SectionProps["draft"];
-  limits: { min: number; max: number };
-}[];
 
 const STEP_GRANULARITY = 5;
 const PLATFORM_MODIFIERS: readonly string[] = MODIFIER_COMBOS[PLATFORM];
 
 export function WindowSection({ draft, set }: SectionProps) {
+  const dict = useDict();
+  const copy = dict.launcher.window;
   const editor = useHotkeyEditor(draft, set);
 
   return (
-    <SettingGroup
-      title="Сдвиг, размер и скролл"
-      description="Модификатор и его шаг настраиваются вместе — они работают только в паре."
-    >
-      {PAIRS.map((pair) => {
-        const action = hotkeyAction(pair.action);
+    <SettingGroup title={copy.title} description={copy.description}>
+      {WINDOW_PAIRS.map((pair) => {
+        const label = hotkeyLabel(hotkeyAction(pair.action), dict);
         const combo = effectiveCombo(draft.hotkeys, pair.action);
-        const taken = PAIRS.filter((p) => p.action !== pair.action).map((p) =>
+        const taken = WINDOW_PAIRS.filter((p) => p.action !== pair.action).map((p) =>
           effectiveCombo(draft.hotkeys, p.action),
         );
         return (
-          <SettingBlock key={pair.action} label={action.label} hint={pair.hint}>
+          <SettingBlock key={pair.action} label={label} hint={copy.pairs[pair.action]}>
             <div className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)] items-center gap-4">
               <SettingSelect
-                ariaLabel={`${action.label}: модификатор`}
+                ariaLabel={format(copy.modifierAriaLabel, { action: label })}
                 value={combo}
                 onValueChange={(v) => {
                   editor.onAssign(pair.action, v);
@@ -62,17 +43,19 @@ export function WindowSection({ draft, set }: SectionProps) {
               >
                 {PLATFORM_MODIFIERS.filter((m) => m === combo || !taken.includes(m)).map((m) => (
                   <SelectItem key={m} value={m}>
-                    {formatCombo(m)} + стрелки
+                    {format(copy.modifierOption, { combo: formatCombo(m) })}
                   </SelectItem>
                 ))}
               </SettingSelect>
               <SettingSlider
-                ariaLabel={`${action.label}: шаг`}
+                ariaLabel={format(copy.stepAriaLabel, { action: label })}
                 value={draft[pair.stepKey]}
                 min={pair.limits.min}
                 max={pair.limits.max}
                 step={STEP_GRANULARITY}
-                readout={`${String(draft[pair.stepKey])} px`}
+                readout={format(dict.settings.readouts.pixels, {
+                  value: String(draft[pair.stepKey]),
+                })}
                 onChange={(v) => {
                   set(pair.stepKey, v);
                 }}

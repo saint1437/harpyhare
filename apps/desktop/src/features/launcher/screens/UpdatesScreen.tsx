@@ -1,21 +1,24 @@
 import { lazy, Suspense } from "react";
 import { NotificationCard } from "@/components/NotificationCard";
 import { Button } from "@/components/ui/button";
+import { SettingBlock, SettingGroup, SettingRow } from "@/features/settings/fields";
+import { useDict } from "@/hooks/useDict";
 import type { UpdaterApi } from "@/hooks/useUpdater";
+import { format } from "@/i18n";
+import type { Dictionary } from "@/i18n/types";
 import type { UpdateProgress } from "@/ipc/types";
 import { BRAND_NAME } from "@/lib/brand";
-import { SettingBlock, SettingGroup, SettingRow } from "../fields";
 import { ScreenShell } from "../ScreenShell";
 
-const ReleaseNotes = lazy(() => import("../ReleaseNotes"));
+const ReleaseNotes = lazy(() => import("@/components/ReleaseNotes"));
 
 // Отказ проверки живёт в уведомлении, а не в подписи строки: сюда приходил
 // сырой `String(e)` от плагина обновлений, и подпись под кнопкой его не держала.
 export type CheckState = "idle" | "checking" | "latest";
 
-const UPDATE_FAILED_TITLE = "Не удалось обновиться";
 const MIB = 1024 * 1024;
 const PERCENT_MAX = 100;
+const MIB_FRACTION_DIGITS = 1;
 
 function downloadPercent(progress: UpdateProgress | null): number | null {
   if (progress && progress.total !== null && progress.total > 0) {
@@ -25,22 +28,25 @@ function downloadPercent(progress: UpdateProgress | null): number | null {
 }
 
 function formatMib(bytes: number): string {
-  return (bytes / MIB).toFixed(1);
+  return (bytes / MIB).toFixed(MIB_FRACTION_DIGITS);
 }
 
-function progressCaption(updater: UpdaterApi, percent: number | null): string {
-  if (updater.status === "restarting") return "Установлено. Перезапуск…";
-  if (percent !== null) return `Загрузка ${String(percent)}%`;
-  return `Загрузка ${formatMib(updater.progress?.downloaded ?? 0)} МиБ`;
+function progressCaption(updater: UpdaterApi, percent: number | null, dict: Dictionary): string {
+  const copy = dict.launcher.updates;
+  if (updater.status === "restarting") return copy.restarting;
+  if (percent !== null) return format(copy.downloadPercent, { percent: String(percent) });
+  return format(copy.downloadSize, { size: formatMib(updater.progress?.downloaded ?? 0) });
 }
 
-function checkCaption(state: CheckState): string {
-  if (state === "checking") return "Проверяю…";
-  if (state === "latest") return "Установлена последняя версия";
-  return "Проверка идёт автоматически при запуске и раз в шесть часов.";
+function checkCaption(state: CheckState, dict: Dictionary): string {
+  const copy = dict.launcher.updates;
+  if (state === "checking") return copy.checking;
+  if (state === "latest") return copy.upToDate;
+  return copy.autoCheckNote;
 }
 
 function DownloadProgress({ updater }: { updater: UpdaterApi }) {
+  const dict = useDict();
   const percent = downloadPercent(updater.progress);
   return (
     <div className="grid gap-1.5">
@@ -55,7 +61,7 @@ function DownloadProgress({ updater }: { updater: UpdaterApi }) {
         />
       </div>
       <span className="font-mono text-caption text-fg-subtle tabular-nums">
-        {progressCaption(updater, percent)}
+        {progressCaption(updater, percent, dict)}
       </span>
     </div>
   );
@@ -70,29 +76,34 @@ export function UpdatesScreen({
   checkState: CheckState;
   onCheck: () => void;
 }) {
+  const dict = useDict();
+  const copy = dict.launcher.updates;
   const busy = updater.status === "downloading" || updater.status === "restarting";
   const available = updater.info !== null && !busy;
 
   return (
     <ScreenShell screen="updates">
-      <SettingGroup title="Версия" description={`Установленная сборка ${BRAND_NAME}.`}>
+      <SettingGroup
+        title={copy.versionTitle}
+        description={format(copy.versionDescription, { brand: BRAND_NAME })}
+      >
         <SettingRow
           label={`${BRAND_NAME} ${updater.currentVersion}`}
-          hint={checkCaption(checkState)}
+          hint={checkCaption(checkState, dict)}
         >
           <Button variant="ghost" size="sm" disabled={checkState === "checking"} onClick={onCheck}>
-            Проверить
+            {copy.check}
           </Button>
         </SettingRow>
       </SettingGroup>
 
       {updater.info !== null && (
         <SettingGroup
-          title={`Доступна версия ${updater.info.version}`}
-          description="Приложение скачает её, проверит подпись и перезапустится."
+          title={format(copy.availableTitle, { version: updater.info.version })}
+          description={copy.availableDescription}
         >
           {updater.info.notes !== "" && (
-            <SettingBlock label="Что нового">
+            <SettingBlock label={copy.notesLabel}>
               <div className="prose-answer max-h-56 overflow-y-auto rounded-lg bg-surface px-3 py-2 text-body leading-relaxed text-fg-subtle ring-1 ring-inset ring-line">
                 <Suspense fallback={null}>
                   <ReleaseNotes notes={updater.info.notes} />
@@ -102,7 +113,7 @@ export function UpdatesScreen({
           )}
 
           {busy && (
-            <SettingBlock label="Установка">
+            <SettingBlock label={copy.installLabel}>
               <DownloadProgress updater={updater} />
             </SettingBlock>
           )}
@@ -113,17 +124,17 @@ export function UpdatesScreen({
               многоэкранный текст точно так же сворачивается и копируется. */}
           {updater.status === "error" && updater.error !== null && (
             <div className="px-3 py-2.5">
-              <NotificationCard tone="danger" title={UPDATE_FAILED_TITLE} detail={updater.error} />
+              <NotificationCard tone="danger" title={copy.failedTitle} detail={updater.error} />
             </div>
           )}
 
           {available && (
             <div className="flex items-center justify-end gap-2 px-3 py-2">
               <Button variant="ghost" size="sm" onClick={updater.dismiss}>
-                Позже
+                {copy.later}
               </Button>
               <Button size="sm" onClick={updater.install}>
-                {updater.status === "error" ? "Повторить" : "Обновить и перезапустить"}
+                {updater.status === "error" ? dict.common.actions.retry : copy.install}
               </Button>
             </div>
           )}

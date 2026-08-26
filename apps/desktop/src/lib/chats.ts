@@ -1,13 +1,17 @@
+import { getDict } from "@/i18n";
 import { type Attachment, type ImagePayload, imageDataUrl } from "@/lib/composer";
 import { DEFAULT_MODEL } from "@/lib/models";
+import { bool, list, nonEmptyStr, num, obj, oneOf, str, type Infer } from "@/lib/schema";
 
 export const CHAT_LIMIT = 6;
 const TITLE_MAX = 22;
 const TITLE_ELLIPSIS = "…";
-const UNTITLED_CHAT_TITLE = "Чат";
+
 const NO_PRESET_ID = "";
 
-export type Role = "user" | "assistant";
+export const ROLES = ["user", "assistant"] as const;
+
+export type Role = (typeof ROLES)[number];
 
 export const NOT_PERSISTED_IMAGE_ID = "";
 
@@ -47,6 +51,15 @@ export interface Chat {
   lastInputTokens: number;
 }
 
+/**
+ * The chat minus the two fields the composer owns. `draft` and
+ * `draftAttachments` change on every keystroke and nothing else in the chat
+ * does, so everyone who is not the composer — the system prompt, the token
+ * projection, the HUD's root — takes this shape instead and stops re-rendering
+ * per character. See `state/chats`.
+ */
+export type ChatWithoutDraft = Omit<Chat, "draft" | "draftAttachments">;
+
 const NEW_CHAT_DEFAULTS = {
   draft: "",
   titlePinned: false,
@@ -63,8 +76,13 @@ function uid(): string {
   return crypto.randomUUID();
 }
 
+/**
+ * "Чат 3" / "Chat 3". The stem is read at CREATION time and then stored, so
+ * chats made before a language switch keep the name they were given — the same
+ * way a chat renamed by its first message keeps it.
+ */
 function indexedChatTitle(index: number): string {
-  return `${UNTITLED_CHAT_TITLE} ${index}`;
+  return `${getDict().common.chat.untitled} ${index}`;
 }
 
 export function createChat(index: number, id: string = uid()): Chat {
@@ -104,7 +122,7 @@ export type ChatPatch = Partial<
   >
 >;
 
-export function chatRequestOptions(chat: Chat): RequestOptions {
+export function chatRequestOptions(chat: ChatWithoutDraft): RequestOptions {
   return { thinking: chat.thinkingEnabled, webSearch: chat.webSearch };
 }
 
@@ -149,48 +167,50 @@ export function attachmentImage(attachment: Attachment): ChatImage {
   return { ...attachment.payload, id: attachment.id };
 }
 
-function restoreImages(raw: unknown): ChatImage[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.flatMap((value) => {
-    const o = value as Partial<StoredImageRef>;
-    if (typeof o.id !== "string" || o.id === NOT_PERSISTED_IMAGE_ID) return [];
-    if (typeof o.media_type !== "string") return [];
-    return [{ id: o.id, media_type: o.media_type, data: "" }];
-  });
+/**
+ * The on-disk shape, declared once. Its key set is asserted against `Chat` in
+ * `chats.test.ts`: thirteen hand-written `typeof` checks used to be the reader,
+ * and a field added to `Chat` produced neither a compile error nor a failing
+ * test — it simply came back missing after a restart.
+ */
+const storedImageSchema = obj({ id: str(), media_type: str() });
+
+const storedMessageSchema = obj({
+  role: oneOf(ROLES, "user"),
+  text: str(),
+  images: list(storedImageSchema, (image) => image.id !== NOT_PERSISTED_IMAGE_ID),
+});
+
+const storedChatSchema = obj({
+  id: str(),
+  title: str(""),
+  messages: list(storedMessageSchema),
+  draft: str(NEW_CHAT_DEFAULTS.draft),
+  draftAttachments: list(storedImageSchema, (image) => image.id !== NOT_PERSISTED_IMAGE_ID),
+  titlePinned: bool(NEW_CHAT_DEFAULTS.titlePinned),
+  presetId: str(NO_PRESET_ID),
+  thinkingEnabled: bool(NEW_CHAT_DEFAULTS.thinkingEnabled),
+  model: nonEmptyStr(NEW_CHAT_DEFAULTS.model),
+  webSearch: bool(NEW_CHAT_DEFAULTS.webSearch),
+  context: str(NEW_CHAT_DEFAULTS.context),
+  libraryDocIds: list(str(), (id) => id !== ""),
+  lastInputTokens: num(0, { min: 0 }),
+});
+
+export type StoredChat = Infer<typeof storedChatSchema>;
+
+function pendingImage(ref: StoredImageRef): ChatImage {
+  return { id: ref.id, media_type: ref.media_type, data: "" };
 }
 
-function restoreMessage(m: ChatMessage): ChatMessage {
+function restoreChat(raw: unknown): Chat {
+  const stored = storedChatSchema.parse(raw);
   return {
-    role: m.role === "assistant" ? "assistant" : "user",
-    text: typeof m.text === "string" ? m.text : "",
-    images: restoreImages(m.images),
-  };
-}
-
-function restoreChat(c: unknown): Chat {
-  const o = c as Partial<Chat>;
-  return {
-    id: typeof o.id === "string" ? o.id : uid(),
-    title: typeof o.title === "string" ? o.title : UNTITLED_CHAT_TITLE,
-    titlePinned: typeof o.titlePinned === "boolean" ? o.titlePinned : NEW_CHAT_DEFAULTS.titlePinned,
-    presetId: typeof o.presetId === "string" ? o.presetId : NO_PRESET_ID,
-    thinkingEnabled:
-      typeof o.thinkingEnabled === "boolean"
-        ? o.thinkingEnabled
-        : NEW_CHAT_DEFAULTS.thinkingEnabled,
-    model: typeof o.model === "string" && o.model !== "" ? o.model : NEW_CHAT_DEFAULTS.model,
-    webSearch: typeof o.webSearch === "boolean" ? o.webSearch : NEW_CHAT_DEFAULTS.webSearch,
-    context: typeof o.context === "string" ? o.context : NEW_CHAT_DEFAULTS.context,
-    libraryDocIds: Array.isArray(o.libraryDocIds)
-      ? o.libraryDocIds.filter((id): id is string => typeof id === "string")
-      : [],
-    lastInputTokens:
-      typeof o.lastInputTokens === "number" && Number.isFinite(o.lastInputTokens)
-        ? Math.max(0, o.lastInputTokens)
-        : 0,
-    messages: Array.isArray(o.messages) ? o.messages.map(restoreMessage) : [],
-    draft: typeof o.draft === "string" ? o.draft : NEW_CHAT_DEFAULTS.draft,
-    draftAttachments: restoreImages(o.draftAttachments).map(pendingAttachment),
+    ...stored,
+    // A chat with no id cannot be selected, remembered or removed.
+    id: stored.id === "" ? uid() : stored.id,
+    messages: stored.messages.map((m) => ({ ...m, images: m.images.map(pendingImage) })),
+    draftAttachments: stored.draftAttachments.map((ref) => pendingAttachment(pendingImage(ref))),
   };
 }
 
@@ -241,5 +261,11 @@ export function deserializeChats(json: string): Chat[] | null {
     return null;
   }
   if (!Array.isArray(raw) || raw.length === 0) return null;
-  return raw.map((c) => restoreChat(c));
+  // The schema's fallback for a missing title is empty, not «Чат»: a default
+  // baked into a module-level schema would freeze the locale at import time.
+  // The stem is read here instead, once per load, in the current language.
+  return raw.map((c, index) => {
+    const chat = restoreChat(c);
+    return chat.title === "" ? { ...chat, title: indexedChatTitle(index + 1) } : chat;
+  });
 }

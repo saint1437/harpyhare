@@ -1,7 +1,9 @@
 import { act, renderHook } from "@testing-library/react";
 import { emitIpcEvent, resetIpcEventHandlers } from "@/test-utils/fake-ipc-events";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { errorTitle, type AppError } from "@/lib/errors";
+import { getDict } from "@/i18n";
+import { errorTitle } from "@/i18n/errors";
+import type { AppError } from "@/lib/errors";
 import { dismissAllNotifications, getNotifications } from "@/lib/notifications";
 
 const captureRegionScreenshot = vi.fn<() => Promise<void>>(() => Promise.resolve());
@@ -35,7 +37,7 @@ describe("useRegionScreenshot", () => {
     renderHook(() => useRegionScreenshot(vi.fn()));
     emitIpcEvent("screenshot-error", PERMISSION_ERROR);
     expect(getNotifications()).toHaveLength(1);
-    expect(getNotifications()[0]?.title).toBe(errorTitle("permission"));
+    expect(getNotifications()[0]?.title).toBe(errorTitle("permission", getDict()));
     expect(getNotifications()[0]?.detail).toBe(PERMISSION_ERROR.message);
     expect(getNotifications()[0]?.tone).toBe("danger");
   });

@@ -1,0 +1,19 @@
+{
+  "releasesRepo": "screenfriskofficial/harpyhare-releases",
+  "assetSlug": "AudioSystem",
+  "assetNameTemplate": "{slug}_{version}_{arch}{suffix}",
+  "updaterManifestName": "latest.json",
+  "signatureSuffix": ".sig",
+  "platforms": {
+    "macos": {
+      "updaterTarget": "darwin-aarch64",
+      "installerSuffix": ".dmg",
+      "updaterArtifactSuffix": ".app.tar.gz"
+    },
+    "windows": {
+      "updaterTarget": "windows-x86_64",
+      "installerSuffix": "-setup.exe",
+      "updaterArtifactSuffix": "-setup.exe"
+    }
+  }
+}

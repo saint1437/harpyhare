@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getDict } from "@/i18n";
 import type { PermissionsApi } from "@/hooks/usePermissions";
 import { LaunchBar } from "./LaunchBar";
 import type { LauncherBlocker, LauncherReadiness } from "./useLauncherReadiness";
@@ -19,12 +20,16 @@ function readiness(overrides: Partial<LauncherReadiness> = {}): LauncherReadines
 }
 
 const AUDIO_BLOCKER: LauncherBlocker = {
-  label: "Нет доступа к записи системного звука",
+  label: getDict().launcher.blockers.audio,
   screen: "permissions",
 };
 
+function copy() {
+  return getDict().launcher;
+}
+
 function launchButton(): HTMLButtonElement {
-  const button = screen.getByText("Запустить").closest("button");
+  const button = screen.getByText(copy().launch.idle).closest("button");
   if (!button) throw new Error("кнопка запуска не найдена");
   return button;
 }
@@ -48,8 +53,8 @@ describe("LaunchBar", () => {
         onLaunch={vi.fn()}
       />,
     );
-    expect(screen.getByText("Слушаю")).not.toBeNull();
-    expect(screen.getByText("проверка звука")).not.toBeNull();
+    expect(screen.getByText(copy().status.audioCheck.line)).not.toBeNull();
+    expect(screen.getByText(copy().status.audioCheck.detail)).not.toBeNull();
   });
 
   it("пока доступы не опрошены, запуск заблокирован без ложной тревоги", () => {
@@ -65,7 +70,7 @@ describe("LaunchBar", () => {
         onLaunch={vi.fn()}
       />,
     );
-    expect(screen.getByText("Проверяю доступы")).not.toBeNull();
+    expect(screen.getByText(copy().status.checking)).not.toBeNull();
     expect(launchButton().disabled).toBe(true);
   });
 
@@ -83,7 +88,7 @@ describe("LaunchBar", () => {
         onLaunch={onLaunch}
       />,
     );
-    expect(screen.getByText("Всё готово")).not.toBeNull();
+    expect(screen.getByText(copy().status.ready.line)).not.toBeNull();
     fireEvent.click(launchButton());
     expect(onLaunch).toHaveBeenCalledTimes(1);
   });
@@ -104,7 +109,7 @@ describe("LaunchBar", () => {
         onLaunch={vi.fn()}
       />,
     );
-    expect(screen.getByText("Сохраняю")).not.toBeNull();
+    expect(screen.getByText(copy().status.saving)).not.toBeNull();
     expect(screen.getByText(AUDIO_BLOCKER.label)).not.toBeNull();
   });
 

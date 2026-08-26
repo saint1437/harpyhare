@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AudioCheck, AudioSource } from "@/ipc/bindings";
 import { checkAudioSource } from "@/ipc/commands";
 import { onEvent } from "@/ipc/events";
+import type { AudioCheck, AudioSource } from "@/ipc/types";
 import { asAppError } from "@/lib/errors";
 import { notifyAppError } from "@/lib/notifications";
 

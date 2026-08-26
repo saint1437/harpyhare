@@ -48,13 +48,13 @@ function LaunchBar({ launching, onLaunch }: { launching: boolean; onLaunch: () =
   const copy = useCopy().launcher;
   return (
     <header className="flex h-8 shrink-0 items-center gap-2.5">
-      <AppEqBars animated={launching} barClass="bg-app-primary" />
+      <AppEqBars animated={launching} barClass="bg-app-primary-mark" />
       <h2 className="font-mono text-app-caption font-semibold tracking-[0.16em] text-app-fg/80 uppercase">
         harpyhare
       </h2>
       <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">
         <span className="inline-flex min-w-0 items-center gap-2 px-2 text-app-caption text-app-muted">
-          <span className="size-1.5 shrink-0 rounded-full bg-app-primary" aria-hidden />
+          <span className="size-1.5 shrink-0 rounded-full bg-app-primary-mark" aria-hidden />
           <span className="truncate">{launching ? copy.statusLaunching : copy.statusReady}</span>
         </span>
         <AppPrimaryButton onClick={onLaunch} disabled={launching}>

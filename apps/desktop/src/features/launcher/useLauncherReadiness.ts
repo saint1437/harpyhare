@@ -1,48 +1,34 @@
 import { useMemo } from "react";
-import { usePermissions, type PermissionsApi } from "@/hooks/usePermissions";
-import type { Settings } from "@/ipc/types";
-import { missingApiKeys, missingKeysNotice, type ApiKeyInfo } from "@/lib/api-keys";
+import type { Readiness, ReadinessBlocker } from "@/features/settings/readiness";
+import type { SettingsTabId } from "@/features/settings/settings-tabs";
+import { useDict } from "@/hooks/useDict";
+import { usePermissions } from "@/hooks/usePermissions";
+import type { SecretsStatus, Settings } from "@/ipc/types";
+import { missingApiKeys, missingKeysNotice } from "@/lib/api-keys";
 import { screenVisible, type ScreenId } from "./screens";
-import type { SettingsTabId } from "./settings-tabs";
 
-export interface LauncherBlocker {
-  label: string;
+/** A blocker the launcher can also ROUTE to — the shared shape plus a destination. */
+export interface LauncherBlocker extends ReadinessBlocker {
   screen: ScreenId;
   tab?: SettingsTabId;
 }
 
 const KEYS_TAB: SettingsTabId = "access";
 
-const AUDIO_BLOCKER: LauncherBlocker = {
-  label: "Нет доступа к записи системного звука",
-  screen: "permissions",
-};
-
-// Автослушание строит захват микрофона при старте и падает без него, а HUD
-// поднимает режим сам, если стоит «включать при запуске»: без этого блокера
-// лаунчер отпускал в HUD с зелёной галочкой, а там ждала ошибка доступа.
-const MICROPHONE_BLOCKER: LauncherBlocker = {
-  label: "Нет доступа к микрофону — его требует автослушание",
-  screen: "permissions",
-};
-
-export interface LauncherReadiness {
-  missingKeys: ApiKeyInfo[];
-  permissions: PermissionsApi;
-  autoModeEnabled: boolean;
+export interface LauncherReadiness extends Readiness {
   blockers: LauncherBlocker[];
-  checking: boolean;
-  ready: boolean;
-}
-
-export function canLaunch(readiness: LauncherReadiness, launching: boolean): boolean {
-  return readiness.ready && !readiness.checking && !launching;
 }
 
 const PERMISSIONS_SCREEN: ScreenId = "permissions";
 
-export function useLauncherReadiness(settings: Settings): LauncherReadiness {
-  const missingKeys = useMemo(() => missingApiKeys(settings), [settings]);
+export function useLauncherReadiness(
+  settings: Settings,
+  secrets: SecretsStatus,
+): LauncherReadiness {
+  const dict = useDict();
+  // Признаки, а не сами ключи: значения остались в Rust, и лаунчер спрашивает
+  // ровно то, что ему нужно знать, — есть ли чем ходить в API.
+  const missingKeys = useMemo(() => missingApiKeys(secrets), [secrets]);
   const permissions = usePermissions();
   const checking = !permissions.loaded;
   const autoModeEnabled = settings.auto_mode_enabled;
@@ -54,13 +40,24 @@ export function useLauncherReadiness(settings: Settings): LauncherReadiness {
   const blockers = useMemo(() => {
     const list: LauncherBlocker[] = [];
     if (missingKeys.length > 0) {
-      list.push({ label: missingKeysNotice(missingKeys), screen: "settings", tab: KEYS_TAB });
+      list.push({
+        label: missingKeysNotice(missingKeys, dict),
+        screen: "settings",
+        tab: KEYS_TAB,
+      });
     }
     if (checking) return list;
-    if (!permissions.audioOk) list.push(AUDIO_BLOCKER);
-    if (microphoneNeeded) list.push(MICROPHONE_BLOCKER);
+    // Автослушание строит захват микрофона при старте и падает без него, а HUD
+    // поднимает режим сам, если стоит «включать при запуске»: без этого блокера
+    // лаунчер отпускал в HUD с зелёной галочкой, а там ждала ошибка доступа.
+    if (!permissions.audioOk) {
+      list.push({ label: dict.launcher.blockers.audio, screen: PERMISSIONS_SCREEN });
+    }
+    if (microphoneNeeded) {
+      list.push({ label: dict.launcher.blockers.microphone, screen: PERMISSIONS_SCREEN });
+    }
     return list;
-  }, [missingKeys, checking, permissions.audioOk, microphoneNeeded]);
+  }, [missingKeys, checking, permissions.audioOk, microphoneNeeded, dict]);
 
   return {
     missingKeys,

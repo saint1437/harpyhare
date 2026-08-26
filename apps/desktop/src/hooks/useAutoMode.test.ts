@@ -2,7 +2,8 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { emitIpcEvent, resetIpcEventHandlers } from "@/test-utils/fake-ipc-events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AutoTurn } from "@/ipc/types";
-import { errorTitle } from "@/lib/errors";
+import { getDict } from "@/i18n";
+import { errorTitle } from "@/i18n/errors";
 import { dismissAllNotifications, getNotifications } from "@/lib/notifications";
 
 const startAutoMode = vi.fn<() => Promise<null>>(() => Promise.resolve(null));
@@ -168,7 +169,7 @@ describe("useAutoMode — мгновенный режим", () => {
     await waitFor(() => {
       expect(getNotifications()).toHaveLength(1);
     });
-    expect(getNotifications()[0]?.title).toBe(errorTitle("permission"));
+    expect(getNotifications()[0]?.title).toBe(errorTitle("permission", getDict()));
     expect(getNotifications()[0]?.detail).toBe("Нет микрофона");
   });
 
@@ -186,7 +187,7 @@ describe("useAutoMode — мгновенный режим", () => {
     await waitFor(() => {
       expect(getNotifications()).toHaveLength(1);
     });
-    expect(getNotifications()[0]?.title).toBe(errorTitle("permission"));
+    expect(getNotifications()[0]?.title).toBe(errorTitle("permission", getDict()));
     expect(getNotifications()[0]?.detail).toBe("Нет микрофона");
   });
 
@@ -198,7 +199,7 @@ describe("useAutoMode — мгновенный режим", () => {
       ),
     );
     emitIpcEvent("auto-mode-error", { code: "network", message: "Нет сети" });
-    expect(getNotifications()[0]?.title).toBe(errorTitle("network"));
+    expect(getNotifications()[0]?.title).toBe(errorTitle("network", getDict()));
     expect(getNotifications()[0]?.tone).toBe("warning");
   });
 

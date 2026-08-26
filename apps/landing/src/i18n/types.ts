@@ -96,4 +96,14 @@ export interface Dictionary {
     github: string;
     localeSwitch: string;
   };
+  notFound: {
+    title: string;
+    text: string;
+    home: string;
+  };
+  error: {
+    title: string;
+    text: string;
+    retry: string;
+  };
 }

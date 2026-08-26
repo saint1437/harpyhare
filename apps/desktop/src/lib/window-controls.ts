@@ -1,3 +1,5 @@
+import { clamp } from "./clamp";
+
 const NON_DRAGGABLE_SELECTOR = "button, a, input, textarea, select, [role='tab'], [data-no-drag]";
 const OPACITY_CSS_VAR = "--app-opacity";
 // Below 0.75 the translucent HUD shell drops under AA against a light desktop
@@ -8,10 +10,6 @@ const CHAT_FONT_SIZE_CSS_VAR = "--chat-font-size";
 const CHAT_FONT_SIZE_MIN_PX = 10;
 const CHAT_FONT_SIZE_MAX_PX = 20;
 const HUNDREDTHS = 100;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
 
 function roundToHundredths(value: number): number {
   return Math.round(value * HUNDREDTHS) / HUNDREDTHS;

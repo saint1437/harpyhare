@@ -1,6 +1,8 @@
-import type { OrbState } from "@/components/Orb";
 import type { RecorderState } from "@/ipc/types";
-import { listeningState } from "./listening";
+import { listeningState, type ListeningState } from "./listening";
+
+/** The collapsed ball shows every listening state plus "an answer is waiting". */
+export type OrbState = ListeningState | "answer";
 
 /**
  * What the ball says while the window is collapsed.

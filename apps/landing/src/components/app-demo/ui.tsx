@@ -143,7 +143,7 @@ export function AppSwitch({
       }}
       className={cn(
         "inline-flex h-[18px] w-8 shrink-0 items-center rounded-full p-[2px] transition-colors",
-        checked ? "bg-app-primary" : "bg-app-surface-active",
+        checked ? "bg-app-primary-mark" : "bg-app-surface-active",
       )}
     >
       <span

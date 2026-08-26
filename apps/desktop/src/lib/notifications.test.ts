@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { errorTitle, type AppError } from "./errors";
+import { applyLanguage, getDict } from "@/i18n";
+import { errorTitle } from "@/i18n/errors";
+import type { AppError } from "./errors";
 import {
   DETAIL_CLAMP_CHARS,
   dismissAllNotifications,
@@ -203,10 +205,34 @@ describe("notifyAppError", () => {
   beforeEach(dismissAllNotifications);
   afterEach(dismissAllNotifications);
 
-  it("берёт заголовок из кода, а текст из сообщения", () => {
-    notifyAppError(err("badApiKey"));
-    expect(getNotifications()[0]?.title).toBe(errorTitle("badApiKey"));
-    expect(getNotifications()[0]?.detail).toBe("подробности");
+  it("берёт заголовок и текст из кода, а не из русской фразы Rust", () => {
+    notifyAppError({ code: "badApiKey", message: "подробности", params: { provider: "Groq" } });
+    expect(getNotifications()[0]?.title).toBe(errorTitle("badApiKey", getDict()));
+    expect(getNotifications()[0]?.detail).toBe("Проверьте ключ Groq в настройках.");
+  });
+
+  it("параметры подставляются в шаблон словаря", () => {
+    notifyAppError({
+      code: "modelNotAllowed",
+      message: "Модель недоступна",
+      params: { model: "gpt-4o" },
+    });
+    expect(getNotifications()[0]?.detail).toContain("gpt-4o");
+  });
+
+  // Совместимость в обратную сторону: код без своего текста и без параметров
+  // печатает то единственное, что прислал Rust, — русскую фразу.
+  it("пустой шаблон откатывается на message", () => {
+    notifyAppError({ code: "api", message: "чужая фраза" });
+    expect(getNotifications()[0]?.detail).toBe("чужая фраза");
+  });
+
+  it("тот же код на английском даёт английский текст", () => {
+    applyLanguage("en");
+    notifyAppError({ code: "badApiKey", message: "подробности", params: { provider: "Groq" } });
+    expect(getNotifications()[0]?.title).toBe("Key rejected");
+    expect(getNotifications()[0]?.detail).toBe("Check your Groq key in settings.");
+    applyLanguage("ru");
   });
 
   // «Подожди и повтори» — не отказ приложения, и тон у него другой.

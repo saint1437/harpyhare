@@ -1,5 +1,6 @@
+import { requiredPermissionRows } from "@/features/settings/permission-rows";
+import type { OnboardingStepKey } from "@/i18n/onboarding-types";
 import { PLATFORM, type Platform } from "@/lib/platform";
-import { requiredPermissionRows } from "../launcher/permission-rows";
 
 /**
  * The step list is DERIVED, never typed out.
@@ -13,8 +14,18 @@ import { requiredPermissionRows } from "../launcher/permission-rows";
  * The microphone is deliberately absent: auto mode ships off, so nothing on the
  * path to a first answer needs it. Screen recording likewise — it belongs to the
  * region screenshot, which is not first value.
+ *
+ * `satisfies` ties the ids to the dictionary's union: a step added here without
+ * copy in both locales does not compile. The union is declared in `i18n` rather
+ * than exported to it, because a dictionary that imported a feature would close
+ * a cycle (see `onboarding-types.ts`).
  */
-export const ONBOARDING_STEP_IDS = ["access", "audio", "privacy", "ready"] as const;
+export const ONBOARDING_STEP_IDS = [
+  "access",
+  "audio",
+  "privacy",
+  "ready",
+] as const satisfies readonly OnboardingStepKey[];
 export type OnboardingStepId = (typeof ONBOARDING_STEP_IDS)[number];
 
 const AUDIO_STEP: OnboardingStepId = "audio";

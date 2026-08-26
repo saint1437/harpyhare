@@ -18,6 +18,15 @@ pub const ACTION_TELEPROMPTER: &str = "teleprompter";
 pub const ACTION_TELEPROMPTER_CLOSE: &str = "teleprompter_close";
 pub const ACTION_TELEPROMPTER_PAUSE: &str = "teleprompter_pause";
 
+/// The five headings the reference groups actions under. Keys, not text: the
+/// frontend looks each one up in `src/i18n`, so `bindings.ts` stays free of any
+/// user-facing phrase — see the `HotkeyAction` comment.
+pub const GROUP_RECORDING: &str = "recording";
+pub const GROUP_SENDING: &str = "sending";
+pub const GROUP_WINDOW: &str = "window";
+pub const GROUP_CHAT: &str = "chat";
+pub const GROUP_TELEPROMPTER: &str = "teleprompter";
+
 macro_rules! cmd_token {
     () => {
         "Cmd"
@@ -70,6 +79,8 @@ impl PlatformCombo {
         Self { macos: combo, windows: combo }
     }
 
+    /// The pair travels to the frontend whole (see the identical-`bindings.ts`
+    /// invariant); only Rust ever asks for "the current one".
     pub fn current(&self) -> &'static str {
         #[cfg(target_os = "macos")]
         {
@@ -79,6 +90,15 @@ impl PlatformCombo {
         {
             self.windows
         }
+        // Without this the body is two `#[cfg]` blocks and nothing else, so on a
+        // third OS the function returns `()` where `&'static str` is declared —
+        // a type error pointing at the wrong thing. The shape of the constant
+        // itself is contract and must not gain a third field.
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        compile_error!(
+            "PlatformCombo::current: неизвестная ОС — добавьте поле в PlatformCombo \
+             и обновите контракт на фронте (SameShape<Record<Platform, string>, …>)"
+        );
     }
 }
 
@@ -99,6 +119,11 @@ impl PlatformModifierCombos {
         {
             self.windows
         }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        compile_error!(
+            "PlatformModifierCombos::current: неизвестная ОС — добавьте поле в \
+             PlatformModifierCombos и обновите MODIFIER_COMBOS на фронте"
+        );
     }
 }
 
@@ -144,13 +169,28 @@ pub enum HotkeyScope {
     Teleprompter,
 }
 
+/// One keyboard command, described without a word of prose.
+///
+/// `label`/`group`/`hint` used to be Russian sentences here, and they travelled
+/// into `bindings.ts` verbatim — which made the generated contract a translation
+/// unit and put the interface's language in Rust. They are keys now: the
+/// frontend resolves `label_key`/`hint_key` in `dict.hotkeys.actions` and
+/// `group_key` in `dict.hotkeys.groups`, and an untranslated action fails
+/// `tsc` rather than showing up blank.
+///
+/// `label_key` and `hint_key` both hold the action's own id, and the redundancy
+/// with `id` is deliberate: `id` is identity (what a `HotkeyBinding` names, what
+/// `effective` looks up), while the key fields are the contract that says these
+/// two texts live in the dictionary. Nothing is copied — they are the same
+/// `ACTION_*` constant — and the frontend never has to assume that "the
+/// dictionary happens to be keyed by id".
 #[derive(Debug, Clone, Copy, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct HotkeyAction {
     pub id: &'static str,
-    pub group: &'static str,
-    pub label: &'static str,
-    pub hint: &'static str,
+    pub group_key: &'static str,
+    pub label_key: &'static str,
+    pub hint_key: &'static str,
     pub kind: HotkeyKind,
     pub scope: HotkeyScope,
     pub default_combo: PlatformCombo,
@@ -159,153 +199,153 @@ pub struct HotkeyAction {
 pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
     HotkeyAction {
         id: ACTION_RECORD,
-        group: "Запись",
-        label: "Записать системный звук",
-        hint: "Удерживайте, пока говорит собеседник.",
+        group_key: GROUP_RECORDING,
+        label_key: ACTION_RECORD,
+        hint_key: ACTION_RECORD,
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
         default_combo: primary_combo!("R"),
     },
     HotkeyAction {
         id: ACTION_AUTO_MODE,
-        group: "Запись",
-        label: "Автослушание",
-        hint: "Слушает собеседника и вас, пока включено.",
+        group_key: GROUP_RECORDING,
+        label_key: ACTION_AUTO_MODE,
+        hint_key: ACTION_AUTO_MODE,
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
         default_combo: primary_combo!(shift_token!(), "L"),
     },
     HotkeyAction {
         id: ACTION_CANCEL_RECORDING,
-        group: "Запись",
-        label: "Отменить запись или ответ",
-        hint: "Пока идёт запись — отменяет её, пока генерируется ответ — останавливает его.",
+        group_key: GROUP_RECORDING,
+        label_key: ACTION_CANCEL_RECORDING,
+        hint_key: ACTION_CANCEL_RECORDING,
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Recording,
         default_combo: PlatformCombo::shared("Escape"),
     },
     HotkeyAction {
         id: ACTION_SEND,
-        group: "Отправка",
-        label: "Отправить",
-        hint: "Работает из любого места окна, не только из поля ввода.",
+        group_key: GROUP_SENDING,
+        label_key: ACTION_SEND,
+        hint_key: ACTION_SEND,
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Hud,
         default_combo: primary_combo!("Enter"),
     },
     HotkeyAction {
         id: ACTION_AUTO_ANSWER,
-        group: "Отправка",
-        label: "Ответить на услышанное",
-        hint: "Отправляет накопленную расшифровку. Слушается и когда окно не в фокусе.",
+        group_key: GROUP_SENDING,
+        label_key: ACTION_AUTO_ANSWER,
+        hint_key: ACTION_AUTO_ANSWER,
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
         default_combo: primary_combo!(shift_token!(), "Enter"),
     },
     HotkeyAction {
         id: ACTION_SCREENSHOT,
-        group: "Отправка",
-        label: "Снимок области экрана",
-        hint: "Выделенная область уходит вложением в чат.",
+        group_key: GROUP_SENDING,
+        label_key: ACTION_SCREENSHOT,
+        hint_key: ACTION_SCREENSHOT,
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
         default_combo: primary_combo!(shift_token!(), "A"),
     },
     HotkeyAction {
         id: ACTION_QUICK_ACTION,
-        group: "Отправка",
-        label: "Быстрое действие",
-        hint: "Модификатор с цифрой: 1…9 по порядку кнопок.",
+        group_key: GROUP_SENDING,
+        label_key: ACTION_QUICK_ACTION,
+        hint_key: ACTION_QUICK_ACTION,
         kind: HotkeyKind::ModifierDigits,
         scope: HotkeyScope::Hud,
         default_combo: primary_combo!(),
     },
     HotkeyAction {
         id: ACTION_FOCUS_PROMPT,
-        group: "Отправка",
-        label: "Сфокусировать поле ввода",
-        hint: "Поднимает окно и ставит каретку в конец текста.",
+        group_key: GROUP_SENDING,
+        label_key: ACTION_FOCUS_PROMPT,
+        hint_key: ACTION_FOCUS_PROMPT,
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
         default_combo: primary_combo!(shift_token!(), "D"),
     },
     HotkeyAction {
         id: ACTION_TOGGLE_WINDOW,
-        group: "Окно",
-        label: "Скрыть или показать",
-        hint: "Работает, даже когда окно спрятано.",
+        group_key: GROUP_WINDOW,
+        label_key: ACTION_TOGGLE_WINDOW,
+        hint_key: ACTION_TOGGLE_WINDOW,
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
         default_combo: primary_combo!(shift_token!(), "H"),
     },
     HotkeyAction {
         id: ACTION_MOVE_WINDOW,
-        group: "Окно",
-        label: "Передвинуть",
-        hint: "Модификатор со стрелками.",
+        group_key: GROUP_WINDOW,
+        label_key: ACTION_MOVE_WINDOW,
+        hint_key: ACTION_MOVE_WINDOW,
         kind: HotkeyKind::ModifierArrows,
         scope: HotkeyScope::Hud,
         default_combo: primary_combo!(),
     },
     HotkeyAction {
         id: ACTION_RESIZE_WINDOW,
-        group: "Окно",
-        label: "Изменить размер",
-        hint: "Модификатор со стрелками.",
+        group_key: GROUP_WINDOW,
+        label_key: ACTION_RESIZE_WINDOW,
+        hint_key: ACTION_RESIZE_WINDOW,
         kind: HotkeyKind::ModifierArrows,
         scope: HotkeyScope::Hud,
         default_combo: primary_combo!(shift_token!()),
     },
     HotkeyAction {
         id: ACTION_OPACITY,
-        group: "Окно",
-        label: "Прозрачность",
-        hint: "Модификатор с плюсом и минусом.",
+        group_key: GROUP_WINDOW,
+        label_key: ACTION_OPACITY,
+        hint_key: ACTION_OPACITY,
         kind: HotkeyKind::ModifierPlusMinus,
         scope: HotkeyScope::Hud,
         default_combo: primary_combo!(shift_token!()),
     },
     HotkeyAction {
         id: ACTION_SCROLL_CHAT,
-        group: "Чат",
-        label: "Скролл переписки",
-        hint: "Модификатор со стрелками вверх и вниз.",
+        group_key: GROUP_CHAT,
+        label_key: ACTION_SCROLL_CHAT,
+        hint_key: ACTION_SCROLL_CHAT,
         kind: HotkeyKind::ModifierArrows,
         scope: HotkeyScope::Hud,
         default_combo: PlatformCombo::shared(MODIFIER_ALT),
     },
     HotkeyAction {
         id: ACTION_DUPLICATE_CHAT,
-        group: "Чат",
-        label: "Дубликат чата",
-        hint: "Новый чат с параметрами текущего, без сообщений.",
+        group_key: GROUP_CHAT,
+        label_key: ACTION_DUPLICATE_CHAT,
+        hint_key: ACTION_DUPLICATE_CHAT,
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Hud,
         default_combo: primary_combo!(shift_token!(), "N"),
     },
     HotkeyAction {
         id: ACTION_TELEPROMPTER,
-        group: "Чат",
-        label: "Суфлёр",
-        hint: "Крупный текст ответа поверх экрана.",
+        group_key: GROUP_CHAT,
+        label_key: ACTION_TELEPROMPTER,
+        hint_key: ACTION_TELEPROMPTER,
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
         default_combo: primary_combo!(shift_token!(), "T"),
     },
     HotkeyAction {
         id: ACTION_TELEPROMPTER_CLOSE,
-        group: "Суфлёр",
-        label: "Закрыть суфлёр",
-        hint: "Слушается только пока суфлёр открыт.",
+        group_key: GROUP_TELEPROMPTER,
+        label_key: ACTION_TELEPROMPTER_CLOSE,
+        hint_key: ACTION_TELEPROMPTER_CLOSE,
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Teleprompter,
         default_combo: PlatformCombo::shared("Escape"),
     },
     HotkeyAction {
         id: ACTION_TELEPROMPTER_PAUSE,
-        group: "Суфлёр",
-        label: "Пауза суфлёра",
-        hint: "Останавливает автопрокрутку.",
+        group_key: GROUP_TELEPROMPTER,
+        label_key: ACTION_TELEPROMPTER_PAUSE,
+        hint_key: ACTION_TELEPROMPTER_PAUSE,
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Teleprompter,
         default_combo: PlatformCombo::shared("Space"),

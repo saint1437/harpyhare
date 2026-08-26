@@ -14,7 +14,7 @@ const CONTEXT_WARN_PERCENT = 80;
 
 function indicator(phase: DemoPhase): { animated: boolean; barClass: string } {
   if (phase === "recording") return { animated: true, barClass: "bg-app-recording" };
-  if (phase === "transcribing") return { animated: true, barClass: "bg-app-primary" };
+  if (phase === "transcribing") return { animated: true, barClass: "bg-app-primary-mark" };
   return { animated: false, barClass: "bg-app-muted/50" };
 }
 
@@ -115,7 +115,7 @@ function ChatTabs({ run }: { run: DemoRun }) {
             {closeOnClick && <X className="hidden size-4 group-hover:block" />}
             {isActive && run.phase === "streaming" && (
               <span
-                className="absolute -top-0.5 -right-0.5 size-1.5 animate-pulse rounded-full bg-app-primary"
+                className="absolute -top-0.5 -right-0.5 size-1.5 animate-pulse rounded-full bg-app-primary-mark"
                 aria-hidden
               />
             )}

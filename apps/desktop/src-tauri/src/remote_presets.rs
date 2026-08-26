@@ -5,6 +5,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::events;
 use crate::settings::{write_atomic_owner_only, PromptPreset};
+use crate::sync::MutexExt;
 
 const PRESETS_URL: &str =
     "https://wkbp547fx6lrgcth.public.blob.vercel-storage.com/harpyhare/presets.json";
@@ -14,6 +15,32 @@ const REFRESH_INTERVAL: Duration = Duration::from_secs(30 * 60);
 const LOG_TAG: &str = "[presets]";
 
 const BUNDLED_PRESETS_JSON: &str = include_str!("../../../../config/presets.json");
+
+/// The official prompt presets the app is running with right now: the bundled
+/// pool at first, then whatever the 30-minute refresh last accepted.
+#[derive(Default)]
+pub struct PresetCache(std::sync::Mutex<Vec<PromptPreset>>);
+
+impl PresetCache {
+    pub fn new(presets: Vec<PromptPreset>) -> Self {
+        Self(std::sync::Mutex::new(presets))
+    }
+
+    pub fn get(&self) -> Vec<PromptPreset> {
+        self.0.lock_safe().clone()
+    }
+
+    /// `false` = the pool is unchanged, so there is nothing to cache on disk and
+    /// nothing to tell the frontend about.
+    fn adopt(&self, presets: &[PromptPreset]) -> bool {
+        let mut current = self.0.lock_safe();
+        if *current == presets {
+            return false;
+        }
+        *current = presets.to_vec();
+        true
+    }
+}
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct PresetPool {
@@ -35,13 +62,13 @@ impl PresetPool {
     }
 }
 
-fn cache_path(app: &AppHandle) -> PathBuf {
-    crate::app_state::app_data_file(app, CACHE_FILE_NAME)
+fn cache_path(app: &AppHandle) -> Option<PathBuf> {
+    crate::app_state::app_data_file(app, CACHE_FILE_NAME).ok()
 }
 
 pub fn load_initial(app: &AppHandle) -> Vec<PromptPreset> {
-    std::fs::read_to_string(cache_path(app))
-        .ok()
+    cache_path(app)
+        .and_then(|path| std::fs::read_to_string(path).ok())
         .and_then(|raw| PresetPool::parse(&raw))
         .unwrap_or_else(PresetPool::bundled)
         .presets
@@ -64,10 +91,13 @@ async fn fetch() -> Result<PresetPool, String> {
     PresetPool::parse(&raw).ok_or_else(|| "битый JSON пула пресетов".to_string())
 }
 
+/// The shared client, not a fresh one per refresh: this runs every 30 minutes
+/// for the life of the process, and a new `reqwest::Client` each time meant a
+/// new connection pool, a new TLS handshake and no `User-Agent`.
 async fn fetch_raw() -> reqwest::Result<String> {
-    let client = reqwest::Client::builder().timeout(FETCH_TIMEOUT).build()?;
-    client
+    crate::http::shared()
         .get(PRESETS_URL)
+        .timeout(FETCH_TIMEOUT)
         .send()
         .await?
         .error_for_status()?
@@ -76,16 +106,11 @@ async fn fetch_raw() -> reqwest::Result<String> {
 }
 
 fn apply(app: &AppHandle, pool: PresetPool) {
-    let st = app.state::<crate::app_state::App>();
-    {
-        let mut current = st.official_presets.lock().unwrap();
-        if *current == pool.presets {
-            return;
-        }
-        *current = pool.presets.clone();
+    if !app.state::<crate::app_state::App>().presets.adopt(&pool.presets) {
+        return;
     }
-    if let Ok(json) = serde_json::to_string(&pool) {
-        let _ = write_atomic_owner_only(&cache_path(app), &json);
+    if let (Ok(json), Some(path)) = (serde_json::to_string(&pool), cache_path(app)) {
+        let _ = write_atomic_owner_only(&path, &json);
     }
     eprintln!("{LOG_TAG} пул обновлён (version {})", pool.version);
     events::official_presets_updated(app, pool.presets);

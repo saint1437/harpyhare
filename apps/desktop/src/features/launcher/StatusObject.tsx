@@ -1,6 +1,8 @@
 import { ChevronRight } from "lucide-react";
 import { StateBadge, type StateTone } from "@/components/StateBadge";
 import { Button } from "@/components/ui/button";
+import { useDict } from "@/hooks/useDict";
+import type { Dictionary } from "@/i18n/types";
 import { cn } from "@/lib/utils";
 import type { LauncherBlocker, LauncherReadiness } from "./useLauncherReadiness";
 
@@ -29,20 +31,25 @@ function readinessStatus(
   readiness: LauncherReadiness,
   launching: boolean,
   audioCheckRunning: boolean,
+  dict: Dictionary,
 ): Status {
-  if (launching) return { tone: "neutral", line: "Запускаю окно" };
-  if (audioCheckRunning) return { tone: "listening", line: "Слушаю", detail: "проверка звука" };
-  if (readiness.checking) return { tone: "neutral", line: "Проверяю доступы" };
+  const copy = dict.launcher.status;
+  if (launching) return { tone: "neutral", line: copy.launching };
+  if (audioCheckRunning) {
+    return { tone: "listening", line: copy.audioCheck.line, detail: copy.audioCheck.detail };
+  }
+  if (readiness.checking) return { tone: "neutral", line: copy.checking };
   const blocker = readiness.blockers[0];
-  if (blocker) return { tone: "danger", line: blocker.label, detail: "нажмите, чтобы исправить" };
-  return { tone: "success", line: "Всё готово", detail: "к запуску" };
+  if (blocker) return { tone: "danger", line: blocker.label, detail: copy.blockerDetail };
+  return { tone: "success", line: copy.ready.line, detail: copy.ready.detail };
 }
 
-const SAVE_STATUS: Record<Exclude<SaveState, "idle">, Status> = {
-  saving: { tone: "neutral", line: "Сохраняю" },
-  saved: { tone: "success", line: "Сохранено" },
-  failed: { tone: "danger", line: "Не удалось сохранить", detail: "повторить" },
-};
+function saveStatus(state: Exclude<SaveState, "idle">, dict: Dictionary): Status {
+  const copy = dict.launcher.status;
+  if (state === "saving") return { tone: "neutral", line: copy.saving };
+  if (state === "saved") return { tone: "success", line: copy.saved };
+  return { tone: "danger", line: copy.saveFailed.line, detail: copy.saveFailed.detail };
+}
 
 function StatusLine({
   status,
@@ -78,7 +85,8 @@ export function StatusObject({
   onGoToBlocker: (blocker: LauncherBlocker) => void;
   onRetrySave: () => void;
 }) {
-  const status = readinessStatus(readiness, launching, audioCheckRunning);
+  const dict = useDict();
+  const status = readinessStatus(readiness, launching, audioCheckRunning, dict);
   const blocker = readiness.blockers[0];
   const actionable = blocker !== undefined && !launching && !readiness.checking;
 
@@ -104,10 +112,10 @@ export function StatusObject({
       {saveState !== "idle" &&
         (saveState === "failed" ? (
           <Button variant="ghost" size="compact" className="min-w-0" onClick={onRetrySave}>
-            <StatusLine status={SAVE_STATUS.failed} />
+            <StatusLine status={saveStatus("failed", dict)} />
           </Button>
         ) : (
-          <StatusLine status={SAVE_STATUS[saveState]} className="px-2" />
+          <StatusLine status={saveStatus(saveState, dict)} className="px-2" />
         ))}
     </div>
   );

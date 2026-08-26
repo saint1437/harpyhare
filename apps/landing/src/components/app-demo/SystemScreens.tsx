@@ -24,7 +24,7 @@ function PermissionRow({
           <span
             className={cn(
               "size-1.5 shrink-0 rounded-full",
-              granted ? "bg-app-primary" : "bg-app-destructive",
+              granted ? "bg-app-primary-mark" : "bg-app-destructive",
             )}
             aria-hidden
           />

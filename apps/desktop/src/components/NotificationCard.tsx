@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { IconButton } from "@/components/IconButton";
 import { StateBadge } from "@/components/StateBadge";
 import { Button } from "@/components/ui/button";
+import { useDict } from "@/hooks/useDict";
 import { isDetailClamped, notificationBody, type NotificationTone } from "@/lib/notifications";
 import { cn } from "@/lib/utils";
 
@@ -28,13 +29,6 @@ export interface NotificationCardProps {
   onToggleExpanded?: () => void;
   className?: string;
 }
-
-/** The word behind the glyph: colour is never the only carrier (see StateBadge). */
-const TONE_WORD: Record<NotificationTone, string> = {
-  danger: "Ошибка",
-  warning: "Предупреждение",
-  success: "Готово",
-};
 
 const TONE_BAR: Record<NotificationTone, string> = {
   danger: "bg-danger",
@@ -77,6 +71,7 @@ export function NotificationCard({
   onToggleExpanded,
   className,
 }: NotificationCardProps) {
+  const dict = useDict();
   // Controlled by the stack, self-managed when pinned: the dialog has no second
   // card to keep in step, so it should not have to hold state for one.
   const [ownExpanded, setOwnExpanded] = useState(false);
@@ -106,7 +101,12 @@ export function NotificationCard({
       )}
     >
       <div className="flex min-w-0 items-start gap-2 py-2 pr-1.5 pl-2.5">
-        <StateBadge tone={tone} label={TONE_WORD[tone]} labelHidden className="mt-0.5" />
+        <StateBadge
+          tone={tone}
+          label={dict.common.notifications.toneTitles[tone]}
+          labelHidden
+          className="mt-0.5"
+        />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <div className="flex min-w-0 items-center gap-1.5">
             <span className="min-w-0 truncate text-body font-medium text-fg">{title}</span>
@@ -133,7 +133,7 @@ export function NotificationCard({
               {clamped && (
                 <Button variant="ghost" size="xs" className="text-fg-subtle" onClick={toggle}>
                   {open ? <ChevronUp /> : <ChevronDown />}
-                  {open ? "Свернуть" : "Подробнее"}
+                  {open ? dict.common.actions.less : dict.common.actions.more}
                 </Button>
               )}
               {canCopy && (
@@ -146,7 +146,7 @@ export function NotificationCard({
                   }}
                 >
                   {copied ? <Check /> : <Copy />}
-                  {copied ? "Скопировано" : "Копировать"}
+                  {copied ? dict.common.actions.copied : dict.common.actions.copy}
                 </Button>
               )}
             </div>
@@ -154,7 +154,11 @@ export function NotificationCard({
         </div>
 
         {onDismiss !== undefined && (
-          <IconButton title="Закрыть уведомление" className="size-6" onClick={onDismiss}>
+          <IconButton
+            title={dict.common.notifications.dismiss}
+            className="size-6"
+            onClick={onDismiss}
+          >
             <X />
           </IconButton>
         )}

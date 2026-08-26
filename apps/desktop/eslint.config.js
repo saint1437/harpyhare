@@ -1,66 +1,145 @@
-import js from "@eslint/js";
-import tseslint from "typescript-eslint";
-import react from "eslint-plugin-react";
-import reactHooks from "eslint-plugin-react-hooks";
+import {
+  buildArtifactAndConfigIgnores,
+  nodeScriptGlobals,
+  plainScriptsWithoutTypeChecking,
+  prettierLast,
+  strictTypeAwareCore,
+  testsHoistedViMockImportOrderExemption,
+} from "@harpyhare/eslint-config";
+import { reactSrcConfig } from "@harpyhare/eslint-config/react";
 import reactRefresh from "eslint-plugin-react-refresh";
-import importX from "eslint-plugin-import-x";
-import prettier from "eslint-config-prettier";
-import globals from "globals";
+import tseslint from "typescript-eslint";
 
-const buildArtifactAndConfigIgnores = {
-  ignores: [
-    "dist",
-    "src-tauri",
-    "src/ipc/bindings.ts",
-    "*.config.js",
-    "*.config.ts",
-    "!vite.config.ts",
-    "*.config.d.ts",
-  ],
-};
-
-const srcTypeAwareRules = {
-  files: ["src/**/*.{ts,tsx}"],
-  languageOptions: {
-    parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
-    globals: { ...globals.browser },
-  },
-  plugins: {
-    react,
-    "react-hooks": reactHooks,
-    "react-refresh": reactRefresh,
-    "import-x": importX,
-  },
-  settings: {
-    react: { version: "detect" },
-    "import-x/resolver": { typescript: true },
-  },
+/**
+ * Everything below this line is about THIS app's structure — the zones of
+ * `src/` and who may import whom. The shared half (the strict TS rules, the
+ * React block, `import-x` settings and the exemptions) lives in
+ * `@harpyhare/eslint-config`.
+ */
+const srcTypeAwareRules = reactSrcConfig({
+  tsconfigRootDir: import.meta.dirname,
+  plugins: { "react-refresh": reactRefresh },
   rules: {
-    ...react.configs.flat.recommended.rules,
-    ...react.configs.flat["jsx-runtime"].rules,
-    ...reactHooks.configs.recommended.rules,
     "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
 
-    "@typescript-eslint/ban-ts-comment": [
-      "error",
-      { "ts-ignore": true, "ts-nocheck": true, "ts-expect-error": "allow-with-description" },
-    ],
-    "@typescript-eslint/no-explicit-any": "error",
-    "@typescript-eslint/no-non-null-assertion": "error",
-    "@typescript-eslint/no-unnecessary-type-assertion": "error",
+    // A cycle is how a "who may import whom" rule dies quietly: the graph stays
+    // legal edge by edge while the modules become one lump. Both cycles this
+    // caught were type-only (lib ↔ components, launcher ↔ onboarding), so the
+    // runtime never complained and nothing failed until someone read the graph.
+    // It only sees anything because the shared config sets
+    // `settings["import-x/extensions"]` — see the note there.
+    "import-x/no-cycle": ["error", { ignoreExternal: true }],
+  },
+});
 
-    "@typescript-eslint/restrict-template-expressions": ["error", { allowNumber: true }],
-    "@typescript-eslint/no-unused-vars": [
+/**
+ * The layering is declared here, not just described in CLAUDE.md.
+ *
+ * `src/lib` is the bottom: framework-free pure logic with unit tests. It may
+ * name the shapes that cross the IPC boundary (`@/ipc/types` is types plus the
+ * constants generated from Rust) but nothing that talks to Tauri, and nothing
+ * above it. `lib/listening` and `lib/orb` reached up for `CaptureTone` and
+ * `OrbState` until the types moved down where they belong.
+ */
+const libIsTheBottomLayer = {
+  files: ["src/lib/**"],
+  rules: {
+    "no-restricted-imports": [
       "error",
-      { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
-    ],
-
-    "import-x/order": [
-      "warn",
       {
-        groups: ["builtin", "external", "internal", ["parent", "sibling", "index"]],
-        "newlines-between": "never",
-        alphabetize: { order: "asc", caseInsensitive: true },
+        patterns: [
+          {
+            group: [
+              "@/components",
+              "@/components/**",
+              "@/features/**",
+              "@/hooks/**",
+              "../components/**",
+              "../features/**",
+              "../hooks/**",
+            ],
+            message:
+              "src/lib is the bottom layer — it imports nothing from components, features or hooks. Move the shared type down into lib instead.",
+          },
+          {
+            group: ["@/ipc/**", "../ipc/**", "!@/ipc/types", "!../ipc/types"],
+            message:
+              "src/lib reaches ipc only through @/ipc/types — the rest of src/ipc talks to Tauri.",
+          },
+        ],
+      },
+    ],
+  },
+};
+
+/** `src/components` is the cross-window common zone: it cannot know about features. */
+const componentsAreFeatureAgnostic = {
+  files: ["src/components/**"],
+  rules: {
+    "no-restricted-imports": [
+      "error",
+      {
+        patterns: [
+          {
+            group: ["@/features/**", "../features/**"],
+            message:
+              "A component in the common zone must not import a feature. Either it belongs to that feature (move it there) or the feature should pass what it needs as a prop.",
+          },
+        ],
+      },
+    ],
+  },
+};
+
+/**
+ * Features do not import each other. The one shared zone is `features/settings`
+ * — the settings form itself, rendered both by the launcher's screen and by the
+ * onboarding flow; before it existed those two imported each other in a circle.
+ */
+const FEATURES = ["hud", "launcher", "onboarding", "settings"];
+const SHARED_FEATURE = "settings";
+
+const featureIsolation = FEATURES.map((zone) => ({
+  files: [`src/features/${zone}/**`],
+  rules: {
+    "no-restricted-imports": [
+      "error",
+      {
+        patterns: [
+          {
+            group: FEATURES.filter(
+              (other) => other !== zone && (zone === SHARED_FEATURE || other !== SHARED_FEATURE),
+            ).flatMap((other) => [
+              `@/features/${other}`,
+              `@/features/${other}/**`,
+              `../${other}/**`,
+              `../../${other}/**`,
+            ]),
+            message: `features/${zone} must not import another feature — put what both need in features/${SHARED_FEATURE}.`,
+          },
+        ],
+      },
+    ],
+  },
+}));
+
+/**
+ * A window's composition root is the one place allowed to wire features
+ * together: it is what a root IS. `LauncherApp` owns the settings store and
+ * therefore the one fact that decides between onboarding and the panel.
+ */
+const windowCompositionRoots = {
+  files: ["src/features/launcher/LauncherApp.tsx"],
+  rules: {
+    "no-restricted-imports": [
+      "error",
+      {
+        patterns: [
+          {
+            group: ["@/features/hud", "@/features/hud/**"],
+            message: "The launcher window never renders HUD components.",
+          },
+        ],
       },
     ],
   },
@@ -71,33 +150,20 @@ const shadcnVendorFastRefreshExemption = {
   rules: { "react-refresh/only-export-components": "off" },
 };
 
-const testsHoistedViMockImportOrderExemption = {
-  files: ["**/*.test.{ts,tsx}"],
-  rules: { "import-x/order": "off" },
-};
-
-const plainScriptsWithoutTypeChecking = {
-  files: ["**/*.js", "**/*.mjs", "vite.config.ts"],
-  ...tseslint.configs.disableTypeChecked,
-};
-
-const nodeScriptGlobals = {
-  files: ["scripts/**/*.mjs"],
-  languageOptions: { globals: { ...globals.node } },
-};
-
 export default tseslint.config(
-  buildArtifactAndConfigIgnores,
+  buildArtifactAndConfigIgnores(["dist", "src-tauri", "src/ipc/bindings.ts"], ["!vite.config.ts"]),
 
-  js.configs.recommended,
-  ...tseslint.configs.strictTypeChecked,
-  ...tseslint.configs.stylisticTypeChecked,
+  ...strictTypeAwareCore,
 
   srcTypeAwareRules,
+  libIsTheBottomLayer,
+  componentsAreFeatureAgnostic,
+  ...featureIsolation,
+  windowCompositionRoots,
   shadcnVendorFastRefreshExemption,
   testsHoistedViMockImportOrderExemption,
-  plainScriptsWithoutTypeChecking,
+  plainScriptsWithoutTypeChecking(["vite.config.ts"]),
   nodeScriptGlobals,
 
-  prettier,
+  prettierLast,
 );

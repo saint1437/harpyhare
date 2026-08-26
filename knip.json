@@ -11,6 +11,23 @@
       "project": ["src/**/*.{ts,tsx}"],
       "ignore": ["src/components/ui/**", "src/ipc/bindings.ts"],
       "ignoreBinaries": ["gh"]
+    },
+    "apps/landing": {
+      "entry": [
+        "src/app/**/{page,layout,error,not-found,loading,template,default}.{ts,tsx}",
+        "src/app/{sitemap,robots,manifest}.ts",
+        "src/app/globals.css",
+        "scripts/*.mjs"
+      ],
+      "project": ["src/**/*.{ts,tsx}", "scripts/*.mjs"]
+    },
+    "packages/eslint-config": {
+      "project": ["*.js"],
+      "ignoreDependencies": ["eslint-import-resolver-typescript"]
+    },
+    "packages/prettier-config": {
+      "project": ["*.js"],
+      "ignoreDependencies": ["prettier-plugin-tailwindcss"]
     }
   }
 }

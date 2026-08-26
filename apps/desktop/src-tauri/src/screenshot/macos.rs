@@ -35,3 +35,11 @@ pub fn capture_region() -> Result<Option<Vec<u8>>, String> {
             .into_owned()),
     }
 }
+
+pub struct Backend;
+
+impl super::ScreenshotBackend for Backend {
+    fn capture_region() -> Result<Option<Vec<u8>>, String> {
+        capture_region()
+    }
+}

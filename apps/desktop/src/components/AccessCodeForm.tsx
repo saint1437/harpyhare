@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useDict } from "@/hooks/useDict";
+import { errorTitle } from "@/i18n/errors";
 import { normalizeAccessCode } from "@/lib/access-code";
-import { errorTitle } from "@/lib/errors";
 import { notifyError, notifySuccess } from "@/lib/notifications";
 
 export interface AccessCodeFormProps {
@@ -10,8 +11,8 @@ export interface AccessCodeFormProps {
   autoFocus?: boolean;
 }
 
-const SUCCESS_TITLE = "Код принят";
-const SUCCESS_DETAIL = "Запросы пойдут через сервер — свои ключи вводить не нужно.";
+/** The mask is punctuation and placeholder Xs — the same in every language. */
+const CODE_PLACEHOLDER = "XXXXX-XXXXX-XXXXX-XXXXX";
 
 /**
  * Обе половины ответа — в уведомлениях. Отказ приходит сырым `String(e)` от
@@ -19,6 +20,8 @@ const SUCCESS_DETAIL = "Запросы пойдут через сервер — 
  * онбординга; успех же раньше не показывался вовсе — поле просто очищалось.
  */
 export function AccessCodeForm({ onRedeem, autoFocus }: AccessCodeFormProps) {
+  const dict = useDict();
+  const copy = dict.common.accessCode;
   const [code, setCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -31,10 +34,10 @@ export function AccessCodeForm({ onRedeem, autoFocus }: AccessCodeFormProps) {
       .then((message) => {
         if (message === null) {
           setCode("");
-          notifySuccess(SUCCESS_TITLE, SUCCESS_DETAIL);
+          notifySuccess(copy.successTitle, copy.successDetail);
           return;
         }
-        notifyError(errorTitle("badAccessCode"), message);
+        notifyError(errorTitle("badAccessCode", dict), message);
       })
       .finally(() => {
         setSubmitting(false);
@@ -46,7 +49,7 @@ export function AccessCodeForm({ onRedeem, autoFocus }: AccessCodeFormProps) {
       <Input
         autoFocus={autoFocus}
         autoComplete="off"
-        placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
+        placeholder={CODE_PLACEHOLDER}
         value={code}
         disabled={submitting}
         onChange={(e) => {
@@ -57,7 +60,7 @@ export function AccessCodeForm({ onRedeem, autoFocus }: AccessCodeFormProps) {
         }}
       />
       <Button onClick={activate} disabled={submitting || isEmpty}>
-        {submitting ? "Активация…" : "Активировать"}
+        {submitting ? copy.submitting : copy.submit}
       </Button>
     </div>
   );

@@ -1,9 +1,15 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getDict } from "@/i18n";
 import { LauncherSearch } from "./LauncherSearch";
 import type { SearchHit, SearchSources } from "./search";
 
-const PLACEHOLDER = "Поиск по настройкам";
+const PLACEHOLDER = getDict().launcher.search.placeholder;
+const THEME_ROW = getDict().settings.entries.theme.label;
+const APPEARANCE_BREADCRUMB = [
+  getDict().launcher.screens.settings.label,
+  getDict().settings.tabs.appearance.label,
+].join(getDict().launcher.search.breadcrumbSeparator);
 
 const SOURCES: SearchSources = {
   presets: [{ id: "preset-1", name: "Мой пресет" }],
@@ -32,11 +38,11 @@ describe("LauncherSearch", () => {
   it("ввод показывает результаты с путём до настройки", () => {
     render(<LauncherSearch sources={SOURCES} onNavigate={navigateSpy()} />);
     expect(screen.queryByRole("listbox")).toBeNull();
-    type("Тема");
+    type(THEME_ROW);
     const [option] = screen.getAllByRole("option");
     if (!option) throw new Error("нет результатов поиска");
-    expect(option.textContent).toContain("Тема");
-    expect(option.textContent).toContain("Настройки → Вид");
+    expect(option.textContent).toContain(THEME_ROW);
+    expect(option.textContent).toContain(APPEARANCE_BREADCRUMB);
   });
 
   it("клик по результату зовёт onNavigate и очищает поиск", () => {
@@ -72,7 +78,7 @@ describe("LauncherSearch", () => {
 
   it("Escape закрывает список и очищает запрос", () => {
     render(<LauncherSearch sources={SOURCES} onNavigate={navigateSpy()} />);
-    type("Тема");
+    type(THEME_ROW);
     expect(screen.queryByRole("listbox")).not.toBeNull();
     fireEvent.keyDown(field(), { key: "Escape" });
     expect(field().value).toBe("");
@@ -81,15 +87,15 @@ describe("LauncherSearch", () => {
 
   it("потеря фокуса закрывает список, но запрос остаётся", () => {
     render(<LauncherSearch sources={SOURCES} onNavigate={navigateSpy()} />);
-    type("Тема");
+    type(THEME_ROW);
     fireEvent.blur(field());
     expect(screen.queryByRole("listbox")).toBeNull();
-    expect(field().value).toBe("Тема");
+    expect(field().value).toBe(THEME_ROW);
   });
 
   it("при отсутствии совпадений видно «Ничего не найдено»", () => {
     render(<LauncherSearch sources={SOURCES} onNavigate={navigateSpy()} />);
     type("ксилофон");
-    expect(screen.getByText("Ничего не найдено")).not.toBeNull();
+    expect(screen.getByText(getDict().launcher.search.empty)).not.toBeNull();
   });
 });

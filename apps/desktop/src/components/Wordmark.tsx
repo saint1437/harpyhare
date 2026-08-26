@@ -1,5 +1,4 @@
 import { BRAND_NAME } from "@/lib/brand";
-import { cn } from "@/lib/utils";
 
 /**
  * The product's name, set as type rather than whispered.
@@ -9,14 +8,9 @@ import { cn } from "@/lib/utils";
  * glyph that also meant "your microphone is open". The equaliser moved to
  * `CaptureMeter`, where it means only that; the name stays here and is legible.
  */
-export function Wordmark({ className }: { className?: string }) {
+export function Wordmark() {
   return (
-    <h1
-      className={cn(
-        "font-mono text-caption font-semibold tracking-wider text-fg-muted uppercase select-none",
-        className,
-      )}
-    >
+    <h1 className="font-mono text-caption font-semibold tracking-wider text-fg-muted uppercase select-none">
       {BRAND_NAME}
     </h1>
   );

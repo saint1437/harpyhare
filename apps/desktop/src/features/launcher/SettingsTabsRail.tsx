@@ -1,57 +1,18 @@
-import { cn } from "@/lib/utils";
-import { SETTINGS_TABS, type SettingsTabId } from "./settings-tabs";
+import { SETTINGS_TABS, type SettingsTabId } from "@/features/settings/settings-tabs";
+import { useDict } from "@/hooks/useDict";
+import { RailButton } from "./RailButton";
 import { useRovingTabs } from "./useRovingTabs";
-
-interface SettingsTabsRailProps {
-  active: SettingsTabId;
-  onSelect: (id: SettingsTabId) => void;
-}
-
-function SettingsTabButton({
-  id,
-  label,
-  icon: Icon,
-  active,
-  tabProps,
-  onSelect,
-}: {
-  id: SettingsTabId;
-  label: string;
-  icon: (props: { className?: string }) => React.ReactNode;
-  active: boolean;
-  tabProps: Record<string, unknown>;
-  onSelect: (id: SettingsTabId) => void;
-}) {
-  return (
-    <button
-      type="button"
-      {...tabProps}
-      title={label}
-      onClick={() => {
-        onSelect(id);
-      }}
-      className={cn(
-        "relative flex items-center justify-center gap-2 rounded-md px-0 py-1.5 text-left text-body whitespace-nowrap transition-colors outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus focus-visible:outline-solid min-[900px]:justify-start min-[900px]:px-2",
-        active
-          ? "bg-surface-active text-fg"
-          : "text-fg-subtle hover:bg-surface hover:text-fg active:bg-surface-active",
-      )}
-    >
-      {active && (
-        <span
-          className="absolute top-1/2 left-0 h-4 w-0.5 -translate-y-1/2 rounded-full bg-accent-mark"
-          aria-hidden
-        />
-      )}
-      <Icon className="size-4 shrink-0" />
-      <span className="hidden truncate min-[900px]:inline">{label}</span>
-    </button>
-  );
-}
 
 const TAB_IDS = SETTINGS_TABS.map((tab) => tab.id);
 
-export function SettingsTabsRail({ active, onSelect }: SettingsTabsRailProps) {
+export function SettingsTabsRail({
+  active,
+  onSelect,
+}: {
+  active: SettingsTabId;
+  onSelect: (id: SettingsTabId) => void;
+}) {
+  const tabs = useDict().settings.tabs;
   const { onKeyDown, tabProps } = useRovingTabs(TAB_IDS, active, onSelect);
   return (
     <div
@@ -61,13 +22,15 @@ export function SettingsTabsRail({ active, onSelect }: SettingsTabsRailProps) {
       className="sticky top-0 flex w-9 shrink-0 flex-col gap-0.5 self-start min-[900px]:w-30"
     >
       {SETTINGS_TABS.map((tab) => (
-        <SettingsTabButton
+        <RailButton
           key={tab.id}
           id={tab.id}
-          label={tab.label}
+          label={tabs[tab.id].label}
+          title={tabs[tab.id].label}
           icon={tab.icon}
           active={active === tab.id}
           tabProps={tabProps(tab.id)}
+          className="py-1.5 text-left whitespace-nowrap"
           onSelect={onSelect}
         />
       ))}

@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { useDict } from "@/hooks/useDict";
+import { format } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 /**
@@ -23,15 +25,14 @@ export function OnboardingShell({
   primary: ReactNode;
   secondary?: ReactNode;
 }) {
+  const copy = useDict().onboarding.shell;
   return (
     <section className="flex min-h-0 flex-1 justify-center overflow-y-auto">
       <div className="flex w-full max-w-xl flex-col gap-6 py-6">
         <header className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-caption text-fg-subtle tabular-nums">
-              Шаг {step} из {total}
-            </span>
-          </div>
+          <span className="text-caption text-fg-subtle tabular-nums">
+            {format(copy.position, { step: String(step), total: String(total) })}
+          </span>
           <div className="flex gap-1" role="presentation">
             {Array.from({ length: total }, (_, i) => (
               <span

@@ -151,7 +151,7 @@ export function HudComposer({
 
   return (
     <section>
-      <div className="rounded-xl bg-app-card/60 ring-1 ring-app-border transition-[box-shadow] ring-inset focus-within:ring-app-primary/50">
+      <div className="rounded-xl bg-app-card/60 ring-1 ring-app-border transition-[box-shadow] ring-inset focus-within:ring-app-primary-mark/50">
         <PromptTextarea value={draft} onChange={onDraftChange} onSend={onSend} />
         <div className="flex items-center gap-1 px-1.5 pb-1.5">
           <AppIconButton
@@ -174,7 +174,7 @@ export function HudComposer({
             <NotebookText />
             {hasContext && (
               <span
-                className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-app-primary"
+                className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-app-primary-mark"
                 aria-hidden
               />
             )}
@@ -194,7 +194,7 @@ export function HudComposer({
               title={copy.stopAnswer}
               aria-label={copy.stopAnswer}
               onClick={onStop}
-              className="grid size-7 shrink-0 place-items-center rounded-md bg-app-destructive text-app-primary-fg transition-colors hover:bg-app-destructive/90"
+              className="grid size-7 shrink-0 place-items-center rounded-md bg-app-destructive text-app-destructive-fg transition-colors hover:bg-app-destructive/90"
             >
               <Square className="size-3.5 fill-current" />
             </button>

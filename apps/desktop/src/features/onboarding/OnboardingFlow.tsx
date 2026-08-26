@@ -1,16 +1,17 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { LiveRegion } from "@/components/LiveRegion";
 import { NotificationStack } from "@/components/NotificationStack";
 import { Wordmark } from "@/components/Wordmark";
+import type { SecretsApi, SetSetting } from "@/features/settings/contract";
+import type { Readiness } from "@/features/settings/readiness";
 import { useConnectivity } from "@/hooks/useConnectivity";
+import { useDict } from "@/hooks/useDict";
 import { useWindowDrag } from "@/hooks/useWindowDrag";
+import { format } from "@/i18n";
 import type { Settings } from "@/ipc/types";
-import { missingApiKeys } from "@/lib/api-keys";
 import { TRAFFIC_LIGHTS_INSET_CLASS } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { onboardingSteps, stepPosition, type OnboardingStepId } from "./onboarding-steps";
-import type { SetSetting } from "../launcher/contract";
-import type { LauncherReadiness } from "../launcher/useLauncherReadiness";
 import { AccessStep } from "./steps/AccessStep";
 import { AudioStep } from "./steps/AudioStep";
 import { PrivacyStep } from "./steps/PrivacyStep";
@@ -19,9 +20,9 @@ import { ReadyStep } from "./steps/ReadyStep";
 export interface OnboardingFlowProps {
   draft: Settings;
   set: SetSetting;
-  readiness: LauncherReadiness;
+  readiness: Readiness;
+  secrets: SecretsApi;
   launching: boolean;
-  onRedeem: (code: string) => Promise<string | null>;
   onLaunch: () => void;
   onFinish: () => void;
 }
@@ -37,19 +38,22 @@ export function OnboardingFlow({
   draft,
   set,
   readiness,
+  secrets,
   launching,
-  onRedeem,
   onLaunch,
   onFinish,
 }: OnboardingFlowProps) {
   const permissions = readiness.permissions;
   const steps = onboardingSteps();
-  const accessDone = missingApiKeys(draft).length === 0;
+  // Readiness already carries the answer, computed from the same flags — a
+  // second `missingApiKeys` call here would be a copy of the launcher's rule.
+  const accessDone = readiness.missingKeys.length === 0;
   const [current, setCurrent] = useState<OnboardingStepId>(
     accessDone ? (steps[1] ?? "ready") : "access",
   );
   const onDragMouseDown = useWindowDrag();
   const connectivity = useConnectivity();
+  const shell = useDict().onboarding.shell;
 
   const total = steps.length;
   const position = stepPosition(steps, current) + 1;
@@ -63,9 +67,55 @@ export function OnboardingFlow({
     else goTo(following);
   };
 
+  // Exhaustive over ONBOARDING_STEP_IDS, like the launcher's screens: adding a
+  // step to the registry changes the step counter and the progress bar whether
+  // or not anyone wrote its branch, so the compiler is the only thing that can
+  // notice the missing one.
+  const panels: Record<OnboardingStepId, ReactNode> = {
+    access: (
+      <AccessStep
+        step={position}
+        total={total}
+        secrets={secrets}
+        done={accessDone}
+        offline={connectivity.offline}
+        onNext={next}
+      />
+    ),
+    audio: (
+      <AudioStep
+        step={position}
+        total={total}
+        permissions={permissions}
+        onNext={next}
+        onSkip={next}
+      />
+    ),
+    privacy: <PrivacyStep step={position} total={total} draft={draft} set={set} onNext={next} />,
+    ready: (
+      <ReadyStep
+        step={position}
+        total={total}
+        settings={draft}
+        readiness={readiness}
+        launching={launching}
+        onLaunch={onLaunch}
+        onFixAudio={() => {
+          goTo("audio");
+        }}
+        onOpenLauncher={onFinish}
+      />
+    ),
+  };
+
   return (
     <div className="flex h-screen flex-col gap-2.5 px-4 pt-0 pb-4 sm:px-5">
-      <LiveRegion message={`Первичная настройка, шаг ${String(position)} из ${String(total)}`} />
+      <LiveRegion
+        message={format(shell.announcement, {
+          step: String(position),
+          total: String(total),
+        })}
+      />
       <header
         onMouseDown={onDragMouseDown}
         className={cn("flex h-9 shrink-0 items-center", TRAFFIC_LIGHTS_INSET_CLASS)}
@@ -74,47 +124,11 @@ export function OnboardingFlow({
       </header>
 
       {/* Save, launch and redeem failures used to be invisible here:
-          notifyError fired, but onboarding had no surface for it — the button
-          just flipped back from «Запускаю…» with no explanation. */}
+          notifyError fired, but onboarding had no surface for it — the launch
+          button just flipped back out of its pending state with no explanation. */}
       <NotificationStack className="w-full max-w-96 self-end" />
 
-      {current === "access" && (
-        <AccessStep
-          step={position}
-          total={total}
-          draft={draft}
-          set={set}
-          offline={connectivity.offline}
-          onRedeem={onRedeem}
-          onNext={next}
-        />
-      )}
-      {current === "audio" && (
-        <AudioStep
-          step={position}
-          total={total}
-          permissions={permissions}
-          onNext={next}
-          onSkip={next}
-        />
-      )}
-      {current === "privacy" && (
-        <PrivacyStep step={position} total={total} draft={draft} set={set} onNext={next} />
-      )}
-      {current === "ready" && (
-        <ReadyStep
-          step={position}
-          total={total}
-          settings={draft}
-          readiness={readiness}
-          launching={launching}
-          onLaunch={onLaunch}
-          onFixAudio={() => {
-            goTo("audio");
-          }}
-          onOpenLauncher={onFinish}
-        />
-      )}
+      {panels[current]}
     </div>
   );
 }

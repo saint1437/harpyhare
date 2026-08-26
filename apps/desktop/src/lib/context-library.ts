@@ -1,3 +1,8 @@
+import { getDict } from "@/i18n";
+import { format } from "@/i18n/format";
+import type { Dictionary } from "@/i18n/types";
+import { list, obj, str } from "@/lib/schema";
+
 export interface ContextFolder {
   id: string;
   name: string;
@@ -18,9 +23,33 @@ export interface ContextLibrary {
 export const EMPTY_LIBRARY: ContextLibrary = { folders: [], docs: [] };
 
 export const DOC_TEXT_LIMIT_CHARS = 200_000;
+
+/**
+ * The text of ONE material was capped and the NUMBER of them was not, so the
+ * ceiling on what a chat can drag into every request was 200 000 characters
+ * times however many files the user had imported — and the whole library goes
+ * through `count_tokens` on every projection. A cap the interface can name
+ * ("больше N материалов не поместится") beats a library that quietly makes the
+ * app slower with each import.
+ */
+export const DOC_LIMIT = 100;
+
+/** `{limit}` is filled from `DOC_LIMIT`, so the number is never typed twice. */
+export function docLimitNotice(dict: Dictionary): string {
+  return format(dict.common.contextLibrary.limitNotice, { limit: String(DOC_LIMIT) });
+}
+
+export function libraryIsFull(lib: ContextLibrary): boolean {
+  return lib.docs.length >= DOC_LIMIT;
+}
 const ROOT_FOLDER_ID = "";
-const UNNAMED_DOC = "Без имени";
-const UNNAMED_FOLDER = "Папка";
+
+/**
+ * PROMPT CONTENT, not interface — and it stays Russian for that reason. It
+ * heads a block inside the system prompt, next to the Russian preset text from
+ * `config/presets.json` that addresses the model in the same language;
+ * translating it with the UI would change what the model is told.
+ */
 const LIBRARY_CONTEXT_BLOCK_HEADER = "Справочный материал";
 
 function uid(): string {
@@ -32,7 +61,7 @@ function clampDocText(text: string): string {
 }
 
 export function addFolder(lib: ContextLibrary, name: string, id: string = uid()): ContextLibrary {
-  const trimmed = name.trim() || UNNAMED_FOLDER;
+  const trimmed = name.trim() || getDict().common.contextLibrary.unnamedFolder;
   return { ...lib, folders: [...lib.folders, { id, name: trimmed }] };
 }
 
@@ -57,7 +86,8 @@ export function addDoc(
   doc: { name: string; text: string; folderId: string },
   id: string = uid(),
 ): ContextLibrary {
-  const name = doc.name.trim() || UNNAMED_DOC;
+  if (libraryIsFull(lib)) return lib;
+  const name = doc.name.trim() || getDict().common.contextLibrary.unnamedDoc;
   const folderId = lib.folders.some((f) => f.id === doc.folderId) ? doc.folderId : ROOT_FOLDER_ID;
   return {
     ...lib,
@@ -76,7 +106,10 @@ export function updateDoc(
       if (d.id !== id) return d;
       return {
         ...d,
-        name: patch.name !== undefined ? patch.name.trim() || UNNAMED_DOC : d.name,
+        name:
+          patch.name !== undefined
+            ? patch.name.trim() || getDict().common.contextLibrary.unnamedDoc
+            : d.name,
         text: patch.text !== undefined ? clampDocText(patch.text) : d.text,
       };
     }),
@@ -106,7 +139,7 @@ export function rootDocs(lib: ContextLibrary): ContextDoc[] {
 export function docNameFromFileName(fileName: string): string {
   const base = fileName.split("/").pop() ?? fileName;
   const withoutExt = base.replace(/\.(md|markdown|txt|pdf)$/i, "");
-  return withoutExt.trim() || UNNAMED_DOC;
+  return withoutExt.trim() || getDict().common.contextLibrary.unnamedDoc;
 }
 
 export function isPdfFileName(fileName: string): boolean {
@@ -121,14 +154,26 @@ export function libraryContextBlocks(lib: ContextLibrary, selectedIds: string[])
     .map((d) => `${LIBRARY_CONTEXT_BLOCK_HEADER} «${d.name}»:\n${d.text.trim()}`);
 }
 
-export function sanitizeSelectedIds(lib: ContextLibrary, selectedIds: string[]): string[] {
-  const known = new Set(lib.docs.map((d) => d.id));
-  return selectedIds.filter((id) => known.has(id));
-}
-
 export function serializeLibrary(lib: ContextLibrary): string {
   return JSON.stringify(lib);
 }
+
+const storedFolderSchema = obj({
+  id: str(),
+  name: str(getDict().common.contextLibrary.unnamedFolder),
+});
+
+const storedDocSchema = obj({
+  id: str(),
+  name: str(getDict().common.contextLibrary.unnamedDoc),
+  text: str(),
+  folderId: str(ROOT_FOLDER_ID),
+});
+
+const storedLibrarySchema = obj({
+  folders: list(storedFolderSchema, (folder) => folder.id !== ""),
+  docs: list(storedDocSchema, (doc) => doc.id !== ""),
+});
 
 export function deserializeLibrary(json: string): ContextLibrary | null {
   if (json.trim() === "") return null;
@@ -138,26 +183,16 @@ export function deserializeLibrary(json: string): ContextLibrary | null {
   } catch {
     return null;
   }
-  const o = raw as Partial<ContextLibrary>;
-  const folders = (Array.isArray(o.folders) ? o.folders : []).flatMap((rawFolder) => {
-    const f = rawFolder as Partial<ContextFolder>;
-    return typeof f.id === "string" && typeof f.name === "string"
-      ? [{ id: f.id, name: f.name }]
-      : [];
-  });
-  const folderIds = new Set(folders.map((f) => f.id));
-  const docs = (Array.isArray(o.docs) ? o.docs : []).flatMap((rawDoc) => {
-    const d = rawDoc as Partial<ContextDoc>;
-    if (typeof d.id !== "string" || typeof d.name !== "string") return [];
-    return [
-      {
-        id: d.id,
-        name: d.name,
-        text: clampDocText(typeof d.text === "string" ? d.text : ""),
-        folderId:
-          typeof d.folderId === "string" && folderIds.has(d.folderId) ? d.folderId : ROOT_FOLDER_ID,
-      },
-    ];
-  });
-  return { folders, docs };
+  const stored = storedLibrarySchema.parse(raw);
+  const folderIds = new Set(stored.folders.map((f) => f.id));
+  return {
+    folders: stored.folders,
+    // The limit is applied on read as well: a file written before it existed
+    // must not sneak a thousand materials past the ceiling.
+    docs: stored.docs.slice(0, DOC_LIMIT).map((doc) => ({
+      ...doc,
+      text: clampDocText(doc.text),
+      folderId: folderIds.has(doc.folderId) ? doc.folderId : ROOT_FOLDER_ID,
+    })),
+  };
 }

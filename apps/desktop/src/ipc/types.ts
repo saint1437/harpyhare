@@ -1,9 +1,31 @@
 import type { ImagePayload } from "@/lib/composer";
 import type { AppError } from "@/lib/errors";
 import type { PromptPreset } from "@/lib/presets";
-import { SETTINGS_DEFAULTS } from "./bindings";
+import { SECRETS_STATUS_DEFAULTS, SETTINGS_DEFAULTS } from "./bindings";
 
 export type { AppError, ImagePayload };
+
+// The generated artefact is reached through this module only: `bindings.ts` is
+// rewritten by `cargo test` and is excluded from eslint/prettier/knip, so the
+// rest of the app (including framework-free `lib/`) depends on this facade
+// instead of on the generator's output.
+export {
+  HOTKEY_ACTIONS,
+  MODIFIER_COMBOS,
+  QUICK_ACTION_LIMIT,
+  SECRETS_STATUS_DEFAULTS,
+  SETTINGS_DEFAULTS,
+  SETTINGS_LIMITS,
+} from "./bindings";
+export type {
+  ApiKeyKind,
+  AudioCheck,
+  AudioSource,
+  HotkeyKind,
+  PermissionKind,
+  PermissionState,
+  PermissionsStatus,
+} from "./bindings";
 
 export interface HotkeyBinding {
   action: string;
@@ -16,10 +38,15 @@ export interface QuickAction {
   prompt: string;
 }
 
+/**
+ * What `get_settings` returns — and, since the security audit, **a type with no
+ * secret in it**. The two API keys and the access token used to be three plain
+ * strings here and reached the webview on every call; they live in Rust now,
+ * and the frontend sees only {@link SecretsStatus}.
+ */
 export interface Settings {
-  anthropic_api_key: string;
-  groq_api_key: string;
-  access_token: string;
+  /** The on-disk format of settings.json; owned by Rust's migration chain. */
+  schema_version: number;
   prompt_presets: PromptPreset[];
   hotkeys: HotkeyBinding[];
   auto_send: boolean;
@@ -41,6 +68,8 @@ export interface Settings {
   resize_step: number;
   capture_device_uid: string;
   theme: string;
+  /** `"system" | "ru" | "en"`; `system` is resolved on the frontend — see `@/i18n`. */
+  language: string;
   onboarding_done: boolean;
   copy_results_to_clipboard: boolean;
   scroll_step: number;
@@ -56,6 +85,23 @@ export interface Settings {
   quick_actions: QuickAction[];
   quick_action_attachments: boolean;
 }
+
+/**
+ * Everything the frontend is allowed to know about the credentials: whether each
+ * one is stored, and a masked tail to tell two keys apart. It arrives through
+ * its own command (`get_secrets_status`) and is never part of a settings draft —
+ * the values are written by `set_api_key`/`clear_api_key` alone.
+ */
+export interface SecretsStatus {
+  anthropic_key_set: boolean;
+  groq_key_set: boolean;
+  access_code_active: boolean;
+  /** `sk-…9f2a`, or `""` when no key is stored. */
+  anthropic_key_hint: string;
+  groq_key_hint: string;
+}
+
+export const DEFAULT_SECRETS_STATUS: SecretsStatus = { ...SECRETS_STATUS_DEFAULTS };
 
 export const DEFAULT_SETTINGS: Settings = {
   ...SETTINGS_DEFAULTS,
@@ -88,7 +134,6 @@ export interface ChatMessageDto {
 export interface UpdateInfo {
   version: string;
   notes: string;
-  date: string | null;
 }
 
 export interface UpdateProgress {

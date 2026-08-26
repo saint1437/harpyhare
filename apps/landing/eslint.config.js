@@ -1,85 +1,28 @@
-import js from "@eslint/js";
-import next from "@next/eslint-plugin-next";
-import prettier from "eslint-config-prettier";
-import importX from "eslint-plugin-import-x";
-import react from "eslint-plugin-react";
-import reactHooks from "eslint-plugin-react-hooks";
-import globals from "globals";
+import {
+  buildArtifactAndConfigIgnores,
+  nodeScriptGlobals,
+  plainScriptsWithoutTypeChecking,
+  prettierLast,
+  strictTypeAwareCore,
+  testsHoistedViMockImportOrderExemption,
+} from "@harpyhare/eslint-config";
+import { nextSrcConfig } from "@harpyhare/eslint-config/next";
 import tseslint from "typescript-eslint";
 
-const buildArtifactAndConfigIgnores = {
-  ignores: [".next", "next-env.d.ts", "*.config.js", "*.config.ts", "*.config.d.ts"],
-};
-
-const srcTypeAwareRules = {
-  files: ["src/**/*.{ts,tsx}"],
-  languageOptions: {
-    parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
-    globals: { ...globals.browser },
-  },
-  plugins: {
-    react,
-    "react-hooks": reactHooks,
-    "import-x": importX,
-    "@next/next": next,
-  },
-  settings: {
-    react: { version: "detect" },
-    "import-x/resolver": { typescript: true },
-  },
-  rules: {
-    ...react.configs.flat.recommended.rules,
-    ...react.configs.flat["jsx-runtime"].rules,
-    ...reactHooks.configs.recommended.rules,
-    ...next.configs.recommended.rules,
-    ...next.configs["core-web-vitals"].rules,
-    "@next/next/no-img-element": "off",
-
-    "@typescript-eslint/ban-ts-comment": [
-      "error",
-      { "ts-ignore": true, "ts-nocheck": true, "ts-expect-error": "allow-with-description" },
-    ],
-    "@typescript-eslint/no-explicit-any": "error",
-    "@typescript-eslint/no-non-null-assertion": "error",
-    "@typescript-eslint/no-unnecessary-type-assertion": "error",
-
-    "@typescript-eslint/restrict-template-expressions": ["error", { allowNumber: true }],
-    "@typescript-eslint/no-unused-vars": [
-      "error",
-      { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
-    ],
-
-    "import-x/order": [
-      "warn",
-      {
-        groups: ["builtin", "external", "internal", ["parent", "sibling", "index"]],
-        "newlines-between": "never",
-        alphabetize: { order: "asc", caseInsensitive: true },
-      },
-    ],
-  },
-};
-
-const testsHoistedViMockImportOrderExemption = {
-  files: ["**/*.test.{ts,tsx}"],
-  rules: { "import-x/order": "off" },
-};
-
-const plainScriptsWithoutTypeChecking = {
-  files: ["**/*.js", "**/*.mjs"],
-  ...tseslint.configs.disableTypeChecked,
-};
+const srcTypeAwareRules = nextSrcConfig({
+  tsconfigRootDir: import.meta.dirname,
+  rules: { "@next/next/no-img-element": "off" },
+});
 
 export default tseslint.config(
-  buildArtifactAndConfigIgnores,
+  buildArtifactAndConfigIgnores([".next", "next-env.d.ts"]),
 
-  js.configs.recommended,
-  ...tseslint.configs.strictTypeChecked,
-  ...tseslint.configs.stylisticTypeChecked,
+  ...strictTypeAwareCore,
 
   srcTypeAwareRules,
   testsHoistedViMockImportOrderExemption,
-  plainScriptsWithoutTypeChecking,
+  plainScriptsWithoutTypeChecking(),
+  nodeScriptGlobals,
 
-  prettier,
+  prettierLast,
 );

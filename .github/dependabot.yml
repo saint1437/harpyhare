@@ -1,0 +1,95 @@
+version: 2
+
+updates:
+  # npm: one shared node_modules for the whole monorepo, so the root is enough —
+  # dependabot understands npm workspaces and updates both apps' package.json.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Moscow
+    open-pull-requests-limit: 5
+    versioning-strategy: increase-if-necessary
+    groups:
+      react:
+        patterns:
+          - react
+          - react-dom
+          - "@types/react"
+          - "@types/react-dom"
+      next:
+        patterns:
+          - next
+          - "@next/*"
+      tauri:
+        patterns:
+          - "@tauri-apps/*"
+      tailwind:
+        patterns:
+          - tailwindcss
+          - "@tailwindcss/*"
+          - tailwind-merge
+          - tw-animate-css
+          - prettier-plugin-tailwindcss
+      linters:
+        patterns:
+          - eslint
+          - "eslint-*"
+          - "@eslint/*"
+          - typescript-eslint
+          - prettier
+          - knip
+      testing:
+        patterns:
+          - vitest
+          - "@vitest/*"
+          - jsdom
+          - "@testing-library/*"
+      toolchain:
+        patterns:
+          - nx
+          - typescript
+          - vite
+          - "@vitejs/*"
+          - husky
+          - lint-staged
+          - "@types/node"
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # cargo: the Tauri crate's manifest, a separate ecosystem.
+  - package-ecosystem: cargo
+    directory: /apps/desktop/src-tauri
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Moscow
+    open-pull-requests-limit: 5
+    groups:
+      tauri:
+        patterns:
+          - tauri
+          - "tauri-*"
+      cargo-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # github-actions: the pinned action versions inside .github/workflows.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Moscow
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns:
+          - "*"

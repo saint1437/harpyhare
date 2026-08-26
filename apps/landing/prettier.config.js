@@ -1,10 +1,4 @@
+import tailwind from "@harpyhare/prettier-config/tailwind";
+
 /** @type {import("prettier").Config} */
-export default {
-  printWidth: 100,
-  singleQuote: false,
-  semi: true,
-  trailingComma: "all",
-  plugins: ["prettier-plugin-tailwindcss"],
-  tailwindStylesheet: "./src/app/globals.css",
-  tailwindFunctions: ["cn", "cva"],
-};
+export default { ...tailwind, tailwindStylesheet: "./src/app/globals.css" };

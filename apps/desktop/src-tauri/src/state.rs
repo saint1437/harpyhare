@@ -1,9 +1,10 @@
 pub const MIN_RECORDING_SECS: f32 = 0.3;
 pub const MAX_RECORDING_SECS: f32 = 600.0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, specta::Type)]
 #[serde(rename_all = "lowercase")]
 pub enum RecorderState {
+    #[default]
     Idle,
     Recording,
     Transcribing,

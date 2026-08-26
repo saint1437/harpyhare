@@ -1,16 +1,13 @@
+import {
+  isPlatformInstallerName,
+  RELEASES_REPO,
+  RELEASES_REPO_URL,
+} from "@harpyhare/release-contract";
 import { PLATFORMS, type Platform } from "./platform";
 
-export const RELEASES_REPO = "screenfriskofficial/harpyhare-releases";
+export { RELEASES_REPO };
 export const LATEST_RELEASE_API = `https://api.github.com/repos/${RELEASES_REPO}/releases/latest`;
-export const RELEASES_PAGE = `https://github.com/${RELEASES_REPO}/releases/latest`;
-
-const PLATFORM_INSTALLER_SUFFIXES: Record<Platform, readonly string[]> = {
-  macos: [".dmg"],
-  windows: ["-setup.exe", ".msi", ".exe"],
-};
-
-const UPDATER_ARTIFACT_SUFFIXES = [".nsis.zip", ".app.tar.gz", ".sig"];
-const UPDATER_MANIFEST_NAME = "latest.json";
+export const RELEASES_PAGE = `${RELEASES_REPO_URL}/releases/latest`;
 
 export interface GitHubAsset {
   name: string;
@@ -34,22 +31,18 @@ export function stripVersionPrefix(tag: string): string {
   return tag.replace(/^v/i, "");
 }
 
-function isInstallerAsset(asset: GitHubAsset): boolean {
-  const name = asset.name.toLowerCase();
-  if (name === UPDATER_MANIFEST_NAME) return false;
-  return !UPDATER_ARTIFACT_SUFFIXES.some((suffix) => name.endsWith(suffix));
-}
-
+/**
+ * Which asset a visitor on this platform should get. The suffixes are not
+ * listed here any more: they come from `@harpyhare/release-contract`, the same
+ * module `scripts/release.mjs` builds the names with — this file used to look
+ * for `.msi`/`.exe` installers that are never produced and to filter a
+ * `.nsis.zip` that does not exist either.
+ */
 export function pickPlatformAsset(
   assets: GitHubAsset[],
   platform: Platform,
 ): GitHubAsset | undefined {
-  const installers = assets.filter(isInstallerAsset);
-  for (const suffix of PLATFORM_INSTALLER_SUFFIXES[platform]) {
-    const match = installers.find((asset) => asset.name.toLowerCase().endsWith(suffix));
-    if (match) return match;
-  }
-  return undefined;
+  return assets.find((asset) => isPlatformInstallerName(asset.name, platform));
 }
 
 function collectDownloads(assets: GitHubAsset[]): PlatformDownloads {

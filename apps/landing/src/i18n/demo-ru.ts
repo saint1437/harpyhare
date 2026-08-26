@@ -128,11 +128,11 @@ export const demoRu: DemoCopy = {
         {
           label: "Записать вопрос",
           hint: "Удерживайте, пока говорит собеседник",
-          combo: "F9",
+          combo: "⌘ R",
         },
         { label: "Показать / скрыть окно", combo: "⌘⇧ H" },
-        { label: "Суфлёр", combo: "F10" },
-        { label: "Снимок области экрана", combo: "⌘⇧ S" },
+        { label: "Суфлёр", combo: "⌘⇧ T" },
+        { label: "Снимок области экрана", combo: "⌘⇧ A" },
       ],
       moveModifier: "Модификатор перемещения",
       moveStep: "Шаг перемещения",
@@ -231,7 +231,7 @@ export const demoRu: DemoCopy = {
       {
         title: "Запись",
         rows: [
-          { label: "Записать вопрос", combo: "F9" },
+          { label: "Записать вопрос", combo: "⌘ R" },
           { label: "Отменить запись", combo: "Esc" },
           { label: "Отправить", combo: "⌘ ⏎" },
         ],
@@ -248,8 +248,8 @@ export const demoRu: DemoCopy = {
       {
         title: "Чат",
         rows: [
-          { label: "Суфлёр", combo: "F10" },
-          { label: "Снимок области", combo: "⌘⇧ S" },
+          { label: "Суфлёр", combo: "⌘⇧ T" },
+          { label: "Снимок области", combo: "⌘⇧ A" },
           { label: "Прокрутка", combo: "⌥ ↑↓" },
         ],
       },

@@ -28,12 +28,6 @@ const MONO_CHANNELS: u16 = 1;
 const BITS_PER_SAMPLE: u16 = 16;
 const BYTES_PER_SAMPLE: usize = BITS_PER_SAMPLE as usize / 8;
 
-pub fn downmix_to_mono(interleaved: &[f32], channels: usize) -> Vec<f32> {
-    let mut out = Vec::with_capacity(interleaved.len() / channels.max(1));
-    downmix_into(interleaved, channels, &mut out);
-    out
-}
-
 pub fn downmix_into(interleaved: &[f32], channels: usize, out: &mut Vec<f32>) {
     if channels <= 1 {
         out.extend_from_slice(interleaved);
@@ -281,6 +275,8 @@ pub struct StreamResampler {
     ratio: f64,
 }
 
+const ERR_NO_RESAMPLER: &str = "ресемплер не инициализирован";
+
 impl StreamResampler {
     pub fn new(src_rate: u32) -> Result<Self, AudioError> {
         let (rs, to_trim, out_cap) = if src_rate == TARGET_SAMPLE_RATE {
@@ -309,10 +305,14 @@ impl StreamResampler {
         out: &mut Vec<f32>,
         expected: Option<usize>,
     ) -> Result<usize, AudioError> {
+        // A resampler is always present at this point by construction, but the
+        // consumer thread that calls this holds a mutex the whole capture domain
+        // shares: a panic here poisons it and takes PTT, auto listening and the
+        // audio check down with it, forever.
         let rs = self
             .rs
             .as_mut()
-            .expect("run_chunk только при активном ресемплере");
+            .ok_or_else(|| AudioError::Resample(ERR_NO_RESAMPLER.into()))?;
         let frames = input.len();
         let input_adapter = InterleavedSlice::new(input, 1, frames)
             .map_err(|e| AudioError::Resample(e.to_string()))?;
@@ -384,7 +384,7 @@ impl StreamResampler {
     }
 }
 
-pub fn wav_header_streaming() -> [u8; 44] {
+pub fn wav_header_streaming() -> [u8; WAV_HEADER_LEN] {
     let byte_rate = TARGET_SAMPLE_RATE * u32::from(MONO_CHANNELS) * BYTES_PER_SAMPLE as u32;
     let block_align = MONO_CHANNELS * BYTES_PER_SAMPLE as u16;
     let mut h = [0u8; WAV_HEADER_LEN];

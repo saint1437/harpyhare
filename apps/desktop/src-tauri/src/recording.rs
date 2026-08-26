@@ -1,42 +1,21 @@
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
+//! The Tauri half of push-to-talk: the commands, the device-change listener and
+//! the `RecordingHost` implementation. Everything that decides anything lives in
+//! `recording_service.rs`.
+
 use std::time::Duration;
 
-use futures_util::StreamExt;
 use tauri::{AppHandle, Manager};
-use tokio_util::sync::CancellationToken;
 
-use crate::app_state::{
-    build_capture, cancel_stt_stream, current_settings, llm_provider, stt_engine, App, SttStream,
-};
+use crate::app_state::{build_capture, current_settings, llm_provider, stt_engine, App};
 use crate::error::{AppError, ErrorCode};
-use crate::{audio, auto, capture, events, hotkey, state, stt};
+use crate::recording_service::{RecordingHost, WatchdogTick};
+use crate::{auto, capture, hotkey};
 
-#[cfg(target_os = "macos")]
-const ERR_NO_CAPTURE: (ErrorCode, &str) = (
-    ErrorCode::Permission,
-    "Нет разрешения на запись системного звука",
-);
-#[cfg(target_os = "windows")]
-const ERR_NO_CAPTURE: (ErrorCode, &str) = (
-    ErrorCode::Internal,
-    "Захват системного звука недоступен — проверь устройство вывода в настройках",
-);
-const ERR_NO_AUDIO_BUFFER: &str = "нет аудио-буфера";
 /// The shared "no capture" text for auto.rs and audio_check.rs: the user-facing
 /// wording must be single-sourced, otherwise two copies drift silently.
 pub const ERR_NO_SYSTEM_CAPTURE: &str = "Захват системного звука недоступен";
-#[cfg(target_os = "macos")]
-const ERR_SILENCE: &str = "Тишина — нечего распознавать (если звук играл: проверь право «Запись системного звука» у macOS и устройство захвата в настройках)";
-#[cfg(target_os = "windows")]
-const ERR_SILENCE: &str = "Тишина — нечего распознавать (если звук играл: проверь устройство вывода в настройках захвата)";
 
-const STT_STREAM_CHANNEL_CAPACITY: usize = 256;
 const MAX_DURATION_WATCHDOG_INTERVAL: Duration = Duration::from_secs(1);
-
-type SttBodyChunk = Result<Vec<u8>, std::io::Error>;
 
 pub fn install_default_output_device_listener(app: &AppHandle) {
     let app = app.clone();
@@ -49,8 +28,7 @@ pub fn install_default_output_device_listener(app: &AppHandle) {
 }
 
 fn handle_default_output_device_changed(app: &AppHandle) {
-    let follows_system_default =
-        app.state::<App>().settings.lock().unwrap().capture_device_uid.is_empty();
+    let follows_system_default = current_settings(app).capture_device_uid.is_empty();
     if follows_system_default {
         request_capture_rebuild(app);
     }
@@ -58,11 +36,10 @@ fn handle_default_output_device_changed(app: &AppHandle) {
 
 pub fn request_capture_rebuild(app: &AppHandle) {
     let st = app.state::<App>();
-    let idle = *st.recorder.lock().unwrap() == state::RecorderState::Idle;
-    if idle {
+    if st.recording.is_idle() {
         rebuild_capture_now(app);
     } else {
-        st.capture_rebuild_pending.store(true, Ordering::SeqCst);
+        st.recording.defer_capture_rebuild();
     }
 }
 
@@ -80,7 +57,7 @@ pub fn rebuild_capture(app: &AppHandle) -> bool {
             c.set_buffering(true);
         }
     }
-    *st.capture.lock().unwrap() = new_capture;
+    st.capture.install(new_capture);
     if built && auto_live {
         // Re-arm the segmenter only after installing into the state:
         // reapply_bounds takes the capture lock and the live generation itself.
@@ -90,7 +67,7 @@ pub fn rebuild_capture(app: &AppHandle) -> bool {
 }
 
 pub fn ensure_capture(app: &AppHandle) -> bool {
-    if capture_stalled(app) == Some(false) {
+    if app.state::<App>().capture.is_stalled() == Some(false) {
         return true;
     }
     rebuild_capture(app)
@@ -100,22 +77,16 @@ pub fn ensure_capture_or_err(app: &AppHandle) -> Result<(), AppError> {
     if ensure_capture(app) {
         Ok(())
     } else {
-        Err(AppError::new(ErrorCode::Permission, ERR_NO_SYSTEM_CAPTURE))
+        Err(AppError::with_subject(
+            ErrorCode::Permission,
+            ERR_NO_SYSTEM_CAPTURE,
+            crate::error::subject::SYSTEM_AUDIO_DEVICE,
+        ))
     }
 }
 
-// A stalled capture is alive as an object and dead as a stream: its backend can no
-// longer reopen the device with the spec this capture was built for. Rebuilding is the
-// only cure, so the lock is released before `rebuild_capture` takes it again. `None` =
-// there is no capture at all, which is a different story and a different policy.
-fn capture_stalled(app: &AppHandle) -> Option<bool> {
-    let st = app.state::<App>();
-    let guard = st.capture.lock().unwrap();
-    guard.as_ref().map(|c| c.is_stalled())
-}
-
 fn rebuild_capture_now(app: &AppHandle) {
-    let never_built = app.state::<App>().capture.lock().unwrap().is_none();
+    let never_built = !app.state::<App>().capture.is_present();
     let would_prompt = crate::permissions::AUDIO_REQUIRES_PERMISSION
         && !current_settings(app).audio_permission_requested;
     if never_built && would_prompt {
@@ -124,114 +95,63 @@ fn rebuild_capture_now(app: &AppHandle) {
     rebuild_capture(app);
 }
 
+/// The five side effects the pipeline cannot perform itself, bound to a live
+/// `AppHandle`. Cheap to build (one handle clone), so it is built per call
+/// rather than stored.
+struct TauriRecordingHost(AppHandle);
+
+impl RecordingHost for TauriRecordingHost {
+    fn rebuild_capture(&self) {
+        rebuild_capture_now(&self.0);
+    }
+
+    fn set_cancel_hotkey(&self, armed: bool) {
+        let combo = hotkey::cancel_combo(&self.0);
+        if armed {
+            hotkey::register_cancel(&self.0, &combo);
+        } else {
+            hotkey::unregister_hotkey(&self.0, &combo);
+        }
+    }
+
+    fn warm_up_llm(&self) {
+        let llm_client = llm_provider(&self.0);
+        tauri::async_runtime::spawn(async move { llm_client.warm_up().await });
+    }
+
+    fn watch_max_duration(&self, generation: u64) {
+        spawn_max_duration_watchdog(self.0.clone(), generation);
+    }
+
+    fn copy_transcript(&self, text: &str) {
+        use tauri_plugin_clipboard_manager::ClipboardExt;
+        if current_settings(&self.0).copy_results_to_clipboard {
+            let _ = self.0.clipboard().write_text(text.to_string());
+        }
+    }
+}
+
 pub fn on_ptt_pressed(app: &AppHandle) {
-    if auto::is_active(app) {
-        events::stt_error(app, auto::recorder_busy_error());
-        return;
-    }
-    if crate::audio_check::is_active(app) {
-        // The audio check holds the same capture: its stop() would tear down the
-        // PTT session, and the PTT tail would leak into the check's verdict.
-        events::stt_error(app, crate::audio_check::busy_error());
-        return;
-    }
     let st = app.state::<App>();
-    if st.capture_rebuild_pending.swap(false, Ordering::SeqCst) || capture_stalled(app) == Some(true) {
-        rebuild_capture_now(app);
-    }
-    if st.capture.lock().unwrap().is_none() {
-        events::stt_error(
-            app,
-            AppError::new(ERR_NO_CAPTURE.0, ERR_NO_CAPTURE.1),
-        );
-        return;
-    }
-    let action = st.recorder.lock().unwrap().on(state::Event::PttPressed);
-    if action != state::Action::StartCapture {
-        return;
-    }
-    let sink = start_streaming_transcription(app);
-    if let Some(c) = st.capture.lock().unwrap().as_mut() {
-        if let Err(e) = c.start(Some(sink)) {
-            cancel_stt_stream(app);
-            events::stt_error(app, AppError::from(&e));
-            st.recorder.lock().unwrap().on(state::Event::Cancel);
-            return;
-        }
-    }
-    let gen = st.recording_gen.fetch_add(1, Ordering::SeqCst) + 1;
-    hotkey::register_cancel(app, &hotkey::cancel_combo(app));
-    events::state_changed(app, state::RecorderState::Recording);
-    spawn_max_duration_watchdog(app.clone(), gen);
-    warm_up_llm_for_upcoming_request(app);
-}
-
-fn start_streaming_transcription(app: &AppHandle) -> capture::ChunkSink {
-    let st = app.state::<App>();
-    let stt_client = stt_engine(app);
-    let cancel = CancellationToken::new();
-    let broken = Arc::new(AtomicBool::new(false));
-    let (tx, rx) = tokio::sync::mpsc::channel::<SttBodyChunk>(STT_STREAM_CHANNEL_CAPACITY);
-    let header: SttBodyChunk = Ok(audio::wav_header_streaming().to_vec());
-    let body_stream: stt::AudioChunkStream = Box::pin(
-        futures_util::stream::iter([header]).chain(futures_util::stream::unfold(
-            rx,
-            |mut rx| async move { rx.recv().await.map(|item| (item, rx)) },
-        )),
-    );
-    let handle = {
-        let cancel = cancel.clone();
-        tauri::async_runtime::spawn(
-            async move { stt_client.transcribe_stream(body_stream, cancel).await },
-        )
-    };
-    if let Some(old) = st.stt_stream.lock().unwrap().replace(SttStream {
-        handle,
-        cancel,
-        broken: Arc::clone(&broken),
-    }) {
-        old.cancel.cancel();
-    }
-    Box::new(move |samples: &[f32]| {
-        if broken.load(Ordering::Relaxed) {
-            return;
-        }
-        if tx.try_send(Ok(audio::f32_to_i16le_bytes(samples))).is_err() {
-            broken.store(true, Ordering::Relaxed);
-        }
-    })
-}
-
-fn warm_up_llm_for_upcoming_request(app: &AppHandle) {
-    let llm_client = llm_provider(app);
-    tauri::async_runtime::spawn(async move { llm_client.warm_up().await });
-}
-
-fn current_recording_secs(st: &App) -> f32 {
-    st.capture
-        .lock()
-        .unwrap()
-        .as_ref()
-        .map(|c| c.recording_secs())
-        .unwrap_or(0.0)
-}
-
-fn stop_capture_discarding(st: &App) {
-    if let Some(c) = st.capture.lock().unwrap().as_mut() {
-        let _ = c.stop();
-    }
+    let stt = stt_engine(app);
+    st.recording
+        .on_ptt_pressed(app, &st.capture, &TauriRecordingHost(app.clone()), stt);
 }
 
 pub fn on_ptt_released(app: &AppHandle) {
     let st = app.state::<App>();
-    let secs = current_recording_secs(&st);
-    let action = st
-        .recorder
-        .lock()
-        .unwrap()
-        .on(state::Event::PttReleased { duration_secs: secs });
-    hotkey::unregister_hotkey(app, &hotkey::cancel_combo(app));
-    finish_recording(app, action);
+    let samples = st
+        .recording
+        .on_ptt_released(app, &st.capture, &TauriRecordingHost(app.clone()));
+    if let Some(samples) = samples {
+        spawn_transcription(app.clone(), samples);
+    }
+}
+
+pub fn on_cancel(app: &AppHandle) {
+    let st = app.state::<App>();
+    st.recording
+        .cancel(app, &st.capture, &TauriRecordingHost(app.clone()));
 }
 
 /// Тот же путь, что и у глобального хоткея, но вызываемый из окна: глобальная
@@ -242,127 +162,15 @@ pub fn cancel_recording(app: AppHandle) {
     on_cancel(&app);
 }
 
-pub fn on_cancel(app: &AppHandle) {
-    let st = app.state::<App>();
-    let action = st.recorder.lock().unwrap().on(state::Event::Cancel);
-    if action == state::Action::Discard {
-        cancel_stt_stream(app);
-        stop_capture_discarding(&st);
-        hotkey::unregister_hotkey(app, &hotkey::cancel_combo(app));
-        events::state_changed(app, state::RecorderState::Idle);
-    }
-}
-
-fn finish_recording(app: &AppHandle, action: state::Action) {
-    match action {
-        state::Action::Discard => {
-            cancel_stt_stream(app);
-            stop_capture_discarding(&app.state::<App>());
-            events::state_changed(app, state::RecorderState::Idle);
-        }
-        state::Action::Transcribe => transcribe_recording(app),
-        _ => {}
-    }
-}
-
-fn transcribe_recording(app: &AppHandle) {
-    events::state_changed(app, state::RecorderState::Transcribing);
-    let s16k = match stop_capture_for_transcription(app) {
-        Ok(v) => v,
-        Err(msg) => {
-            cancel_stt_stream(app);
-            return finish_transcription(app, Err(msg));
-        }
-    };
-    if audio::is_silence(&s16k) {
-        cancel_stt_stream(app);
-        return finish_transcription(app, Err(AppError::new(ErrorCode::Silence, ERR_SILENCE)));
-    }
-    *app.state::<App>().last_recording.lock().unwrap() = Some(s16k.clone());
-    let app2 = app.clone();
-    tauri::async_runtime::spawn(async move { finish_transcribe(app2, s16k).await });
-}
-
-fn stop_capture_for_transcription(app: &AppHandle) -> Result<Vec<f32>, AppError> {
-    let t = std::time::Instant::now();
-    let stopped = app
-        .state::<App>()
-        .capture
-        .lock()
-        .unwrap()
-        .as_mut()
-        .map(|c| c.stop());
-    let Some(stopped) = stopped else {
-        return Err(AppError::new(ErrorCode::Internal, ERR_NO_AUDIO_BUFFER));
-    };
-    let s16k = stopped.map_err(|e| AppError::from(&e))?;
-    eprintln!(
-        "[perf] stop → 16k моно готов ({:.1}s audio) за {:?}",
-        s16k.len() as f32 / audio::TARGET_SAMPLE_RATE as f32,
-        t.elapsed()
-    );
-    Ok(s16k)
-}
-
-async fn finish_transcribe(app: AppHandle, samples: Vec<f32>) {
-    let t = std::time::Instant::now();
-    let stream = app.state::<App>().stt_stream.lock().unwrap().take();
-    if let Some(s) = stream {
-        if s.broken.load(Ordering::Relaxed) {
-            eprintln!("[perf] stt stream неполон — фолбэк на классическую загрузку");
-            s.cancel.cancel();
-        } else {
-            match s.handle.await {
-                Ok(Ok(text)) => {
-                    eprintln!("[perf] stop → transcript (stream) {:?}", t.elapsed());
-                    return deliver_transcript(&app, text);
-                }
-                Ok(Err(e @ (stt::SttError::BadApiKey | stt::SttError::BadAccessCode(_)))) => {
-                    return finish_transcription(&app, Err(AppError::from(&e)));
-                }
-                Ok(Err(e)) => {
-                    eprintln!("[perf] stt stream не удался ({e}) — фолбэк на классику");
-                }
-                Err(e) => {
-                    eprintln!("[perf] stt stream задача упала ({e}) — фолбэк на классику");
-                }
-            }
-        }
-    }
-    transcribe_and_emit(app, samples).await;
-}
-
-fn deliver_transcript(app: &AppHandle, text: String) {
-    use tauri_plugin_clipboard_manager::ClipboardExt;
-    if current_settings(app).copy_results_to_clipboard {
-        let _ = app.clipboard().write_text(text.clone());
-    }
-    events::transcript_ready(app, text);
-    events::focus_prompt(app);
-    finish_transcription(app, Ok(()));
-}
-
-async fn transcribe_and_emit(app: AppHandle, samples: Vec<f32>) {
-    let stt_client = stt_engine(&app);
-    let t = std::time::Instant::now();
-    let res = stt_client.transcribe(&samples).await;
-    eprintln!("[perf] stt transcribe (wav+upload+inference) {:?}", t.elapsed());
-    match res {
-        Ok(text) => deliver_transcript(&app, text),
-        Err(e) => finish_transcription(&app, Err(AppError::from(&e))),
-    }
-}
-
-fn finish_transcription(app: &AppHandle, result: Result<(), AppError>) {
-    let st = app.state::<App>();
-    st.recorder
-        .lock()
-        .unwrap()
-        .on(state::Event::TranscriptionFinished);
-    if let Err(err) = result {
-        events::stt_error(app, err);
-    }
-    events::state_changed(app, state::RecorderState::Idle);
+fn spawn_transcription(app: AppHandle, samples: Vec<f32>) {
+    tauri::async_runtime::spawn(async move {
+        let stt = stt_engine(&app);
+        let host = TauriRecordingHost(app.clone());
+        let st = app.state::<App>();
+        st.recording
+            .finish_transcribe(&app, &st.capture, &host, stt, samples)
+            .await;
+    });
 }
 
 fn spawn_max_duration_watchdog(app: AppHandle, my_gen: u64) {
@@ -370,21 +178,18 @@ fn spawn_max_duration_watchdog(app: AppHandle, my_gen: u64) {
         loop {
             tokio::time::sleep(MAX_DURATION_WATCHDOG_INTERVAL).await;
             let st = app.state::<App>();
-            if st.recording_gen.load(Ordering::SeqCst) != my_gen {
-                break;
-            }
-            if *st.recorder.lock().unwrap() != state::RecorderState::Recording {
-                break;
-            }
-            if current_recording_secs(&st) >= state::MAX_RECORDING_SECS {
-                let action = st
-                    .recorder
-                    .lock()
-                    .unwrap()
-                    .on(state::Event::MaxDurationReached);
-                hotkey::unregister_hotkey(&app, &hotkey::cancel_combo(&app));
-                finish_recording(&app, action);
-                break;
+            let elapsed = st.capture.recording_secs();
+            let host = TauriRecordingHost(app.clone());
+            match st
+                .recording
+                .watchdog_tick(&app, &st.capture, &host, my_gen, elapsed)
+            {
+                WatchdogTick::KeepWatching => {}
+                WatchdogTick::Stop => break,
+                WatchdogTick::Transcribe(samples) => {
+                    spawn_transcription(app.clone(), samples);
+                    break;
+                }
             }
         }
     });
@@ -393,18 +198,10 @@ fn spawn_max_duration_watchdog(app: AppHandle, my_gen: u64) {
 #[tauri::command]
 #[specta::specta]
 pub async fn retry_transcription(app: AppHandle) {
-    let samples = app.state::<App>().last_recording.lock().unwrap().clone();
-    let Some(s) = samples else { return };
-    {
-        let st = app.state::<App>();
-        let mut rec = st.recorder.lock().unwrap();
-        if *rec != state::RecorderState::Idle {
-            return;
-        }
-        *rec = state::RecorderState::Transcribing;
-    }
-    events::state_changed(&app, state::RecorderState::Transcribing);
-    transcribe_and_emit(app, s).await;
+    let stt = stt_engine(&app);
+    let host = TauriRecordingHost(app.clone());
+    let st = app.state::<App>();
+    st.recording.retry(&app, &st.capture, &host, stt).await;
 }
 
 #[tauri::command]
@@ -412,4 +209,3 @@ pub async fn retry_transcription(app: AppHandle) {
 pub fn list_audio_output_devices() -> Vec<capture::AudioDeviceInfo> {
     capture::list_devices(capture::SourceKind::Output)
 }
-

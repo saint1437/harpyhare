@@ -1,7 +1,8 @@
 import { act, renderHook } from "@testing-library/react";
 import { emitIpcEvent, resetIpcEventHandlers } from "@/test-utils/fake-ipc-events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { errorTitle } from "@/lib/errors";
+import { getDict } from "@/i18n";
+import { errorBody, errorTitle } from "@/i18n/errors";
 import { dismissAllNotifications, getNotifications } from "@/lib/notifications";
 
 const sendToClaude = vi.fn<(...args: unknown[]) => Promise<void>>();
@@ -26,7 +27,12 @@ vi.mock("@/ipc/commands", () => ({
   },
 }));
 
+import { getStreamState, resetStreamState } from "@/state/stream";
 import { useClaudeStream } from "./useClaudeStream";
+
+// The revealed text is no longer React state on the hook: it lives in the
+// module store the AnswerPanel subscribes to, so the assertions read it there.
+const streamState = getStreamState;
 
 let frameCallbacks: FrameRequestCallback[] = [];
 let frameNow = 0;
@@ -55,6 +61,7 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", () => undefined);
 });
 afterEach(() => {
+  resetStreamState();
   dismissAllNotifications();
   resetIpcEventHandlers();
   vi.clearAllMocks();
@@ -78,8 +85,8 @@ describe("useClaudeStream (per-chat)", () => {
     emitIpcEvent("llm-delta", { chatId: "A", delta: "при" });
     emitIpcEvent("llm-delta", { chatId: "A", delta: "вет" });
     runFrames(2);
-    expect(result.current.partial["A"]).toBe("привет");
-    expect(result.current.streaming["A"]).toBe(true);
+    expect(streamState().partial["A"]).toBe("привет");
+    expect(streamState().streaming["A"]).toBe(true);
   });
 
   it("раскрывает буфер постепенно, а не разом", () => {
@@ -96,7 +103,7 @@ describe("useClaudeStream (per-chat)", () => {
     );
     emitIpcEvent("llm-delta", { chatId: "A", delta: "x".repeat(100000) });
     runFrames(2, 50);
-    const shown = result.current.partial["A"] ?? "";
+    const shown = streamState().partial["A"] ?? "";
     expect(shown.length).toBeGreaterThan(0);
     expect(shown.length).toBeLessThan(100000);
   });
@@ -126,8 +133,8 @@ describe("useClaudeStream (per-chat)", () => {
     emitIpcEvent("llm-delta", { chatId: "A", delta: "AAA" });
     emitIpcEvent("llm-delta", { chatId: "B", delta: "BBB" });
     runFrames(2);
-    expect(result.current.partial["A"]).toBe("AAA");
-    expect(result.current.partial["B"]).toBe("BBB");
+    expect(streamState().partial["A"]).toBe("AAA");
+    expect(streamState().partial["B"]).toBe("BBB");
   });
 
   it("llm-done вызывает onComplete с полным текстом и снимает streaming", () => {
@@ -146,8 +153,8 @@ describe("useClaudeStream (per-chat)", () => {
     emitIpcEvent("llm-delta", { chatId: "A", delta: "итог" });
     emitIpcEvent("llm-done", { chatId: "A" });
     expect(onComplete).toHaveBeenCalledWith("A", "итог");
-    expect(result.current.streaming["A"]).toBeFalsy();
-    expect(result.current.partial["A"]).toBeUndefined();
+    expect(streamState().streaming["A"]).toBeFalsy();
+    expect(streamState().partial["A"]).toBeUndefined();
   });
 
   it("после stop поздние дельты игнорируются", () => {
@@ -167,7 +174,7 @@ describe("useClaudeStream (per-chat)", () => {
     });
     expect(cancelStream).toHaveBeenCalledWith("A");
     emitIpcEvent("llm-delta", { chatId: "A", delta: "поздно" });
-    expect(result.current.partial["A"]).toBeUndefined();
+    expect(streamState().partial["A"]).toBeUndefined();
   });
 
   it("stop сохраняет частичный ответ через onComplete (не выбрасывает)", () => {
@@ -188,7 +195,7 @@ describe("useClaudeStream (per-chat)", () => {
       result.current.stop("A");
     });
     expect(onComplete).toHaveBeenCalledWith("A", "почти готовый ответ");
-    expect(result.current.partial["A"]).toBeUndefined();
+    expect(streamState().partial["A"]).toBeUndefined();
     emitIpcEvent("llm-done", { chatId: "A" });
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
@@ -228,8 +235,11 @@ describe("useClaudeStream (per-chat)", () => {
     emitIpcEvent("llm-delta", { chatId: "A", delta: "начало ответа" });
     emitIpcEvent("llm-error", { chatId: "A", code: "network", message: "оборвалось" });
     expect(onComplete).toHaveBeenCalledWith("A", "начало ответа");
-    expect(getNotifications()[0]?.detail).toBe("оборвалось");
-    expect(result.current.streaming["A"]).toBeFalsy();
+    // The body is rendered from the code now, not printed from Rust's sentence.
+    expect(getNotifications()[0]?.detail).toBe(
+      errorBody({ code: "network", message: "оборвалось" }, getDict()),
+    );
+    expect(streamState().streaming["A"]).toBeFalsy();
   });
 
   it("llm-error поднимает уведомление и снимает streaming", () => {
@@ -245,9 +255,9 @@ describe("useClaudeStream (per-chat)", () => {
         ),
     );
     emitIpcEvent("llm-error", { chatId: "A", code: "api", message: "сломалось" });
-    expect(getNotifications()[0]?.title).toBe(errorTitle("api"));
+    expect(getNotifications()[0]?.title).toBe(errorTitle("api", getDict()));
     expect(getNotifications()[0]?.detail).toBe("сломалось");
-    expect(result.current.streaming["A"]).toBeFalsy();
+    expect(streamState().streaming["A"]).toBeFalsy();
   });
 });
 
@@ -260,15 +270,15 @@ describe("useClaudeStream — barge-in (abandon)", () => {
     });
     emitIpcEvent("llm-delta", { chatId: "c1", delta: "половина отве" });
     runFrames(3);
-    expect(result.current.streaming["c1"]).toBe(true);
+    expect(streamState().streaming["c1"]).toBe(true);
 
     act(() => {
       void result.current.abandon("c1");
     });
     expect(cancelStream).toHaveBeenCalledWith("c1");
     expect(onComplete).not.toHaveBeenCalled();
-    expect(result.current.streaming["c1"]).toBe(false);
-    expect(result.current.partial["c1"]).toBeUndefined();
+    expect(streamState().streaming["c1"]).toBe(false);
+    expect(streamState().partial["c1"]).toBeUndefined();
   });
 
   it("поздние события отменённого стрима не оживляют его", () => {
@@ -284,8 +294,8 @@ describe("useClaudeStream — barge-in (abandon)", () => {
     emitIpcEvent("llm-done", { chatId: "c1" });
     runFrames(2);
     expect(onComplete).not.toHaveBeenCalled();
-    expect(result.current.streaming["c1"]).toBe(false);
-    expect(result.current.partial["c1"]).toBeUndefined();
+    expect(streamState().streaming["c1"]).toBe(false);
+    expect(streamState().partial["c1"]).toBeUndefined();
   });
 
   it("новый стрим после сброса начинается с чистого буфера", async () => {
@@ -305,8 +315,8 @@ describe("useClaudeStream — barge-in (abandon)", () => {
     });
     emitIpcEvent("llm-delta", { chatId: "c1", delta: "новый" });
     runFrames(5);
-    expect(result.current.partial["c1"]).toBe("новый");
-    expect(result.current.streaming["c1"]).toBe(true);
+    expect(streamState().partial["c1"]).toBe("новый");
+    expect(streamState().streaming["c1"]).toBe(true);
 
     emitIpcEvent("llm-done", { chatId: "c1" });
     expect(onComplete).toHaveBeenCalledExactlyOnceWith("c1", "новый");
@@ -355,7 +365,7 @@ describe("useClaudeStream — отмена завершается до ново�
     });
     await flushMicrotasks();
     expect(sendToClaude).toHaveBeenCalledTimes(1);
-    expect(result.current.streaming["c1"]).toBe(false);
+    expect(streamState().streaming["c1"]).toBe(false);
 
     await act(async () => {
       releaseCancel?.();
@@ -363,7 +373,7 @@ describe("useClaudeStream — отмена завершается до ново�
     });
     await flushMicrotasks();
     expect(sendToClaude).toHaveBeenCalledTimes(2);
-    expect(result.current.streaming["c1"]).toBe(true);
+    expect(streamState().streaming["c1"]).toBe(true);
   });
 
   it("состояние чата сбрасывается сразу, не дожидаясь бэкенда", async () => {
@@ -379,8 +389,8 @@ describe("useClaudeStream — отмена завершается до ново�
     act(() => {
       void result.current.abandon("c1");
     });
-    expect(result.current.streaming["c1"]).toBe(false);
-    expect(result.current.partial["c1"]).toBeUndefined();
+    expect(streamState().streaming["c1"]).toBe(false);
+    expect(streamState().partial["c1"]).toBeUndefined();
     expect(onComplete).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -402,7 +412,7 @@ describe("useClaudeStream — отмена завершается до ново�
       await result.current.send("c1", [], ...REQUEST);
     });
     expect(sendToClaude).toHaveBeenCalledTimes(1);
-    expect(result.current.streaming["c1"]).toBe(true);
+    expect(streamState().streaming["c1"]).toBe(true);
   });
 
   it("отмена одного чата не задерживает запрос в другом", async () => {
@@ -416,7 +426,7 @@ describe("useClaudeStream — отмена завершается до ново�
       await result.current.send("c2", [], ...REQUEST);
     });
     expect(sendToClaude).toHaveBeenCalledTimes(1);
-    expect(result.current.streaming["c2"]).toBe(true);
+    expect(streamState().streaming["c2"]).toBe(true);
   });
 
   it("после завершённой отмены следующий запрос уходит без ожидания", async () => {

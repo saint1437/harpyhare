@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { cancelStream, sendToClaude } from "@/ipc/commands";
 import { onEvent } from "@/ipc/events";
 import type { ChatMessageDto } from "@/ipc/types";
@@ -6,11 +6,15 @@ import type { RequestOptions } from "@/lib/chats";
 import { internalError } from "@/lib/errors";
 import { notifyAppError } from "@/lib/notifications";
 import { advanceReveal, sliceRevealed } from "@/lib/stream-reveal";
+import { beginStreamState, clearPartial, setPartials, setStreamingFlag } from "@/state/stream";
 
+/**
+ * The stream's DATA lives in `state/stream` and is read through selectors; what
+ * this hook returns is only the three ways to act on it. Handing `partial` back
+ * through React state was what made every frame of the reveal re-render the
+ * whole HUD.
+ */
 export interface ClaudeStreams {
-  partial: Record<string, string>;
-  streaming: Record<string, boolean>;
-  startedAt: Record<string, number>;
   send: (
     chatId: string,
     messages: ChatMessageDto[],
@@ -25,10 +29,6 @@ export interface ClaudeStreams {
 export function useClaudeStream(
   onComplete: (chatId: string, finalText: string) => void,
 ): ClaudeStreams {
-  const [partial, setPartial] = useState<Record<string, string>>({});
-  const [streaming, setStreaming] = useState<Record<string, boolean>>({});
-  const [startedAt, setStartedAt] = useState<Record<string, number>>({});
-
   const buffers = useRef<Map<string, string>>(new Map());
   const revealed = useRef<Map<string, number>>(new Map());
   const active = useRef<Set<string>>(new Set());
@@ -74,17 +74,7 @@ export function useClaudeStream(
       revealed.current.set(id, shown);
       updates[id] = sliceRevealed(full, shown);
     }
-    setPartial((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      for (const [id, text] of Object.entries(updates)) {
-        if (next[id] !== text) {
-          next[id] = text;
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
+    setPartials(updates);
     raf.current = requestAnimationFrame(frame);
   }, []);
 
@@ -98,11 +88,7 @@ export function useClaudeStream(
   const dropPartial = useCallback((chatId: string) => {
     buffers.current.delete(chatId);
     revealed.current.delete(chatId);
-    setPartial((prev) => {
-      if (!(chatId in prev)) return prev;
-      const { [chatId]: _omit, ...rest } = prev;
-      return rest;
-    });
+    clearPartial(chatId);
   }, []);
 
   const commitBufferAndFinish = useCallback(
@@ -110,7 +96,7 @@ export function useClaudeStream(
       const finalText = buffers.current.get(chatId) ?? "";
       if (commitEvenIfEmpty || finalText !== "") onCompleteRef.current(chatId, finalText);
       dropPartial(chatId);
-      setStreaming((s) => ({ ...s, [chatId]: false }));
+      setStreamingFlag(chatId, false);
     },
     [dropPartial],
   );
@@ -126,11 +112,11 @@ export function useClaudeStream(
       active.current.delete(chatId);
       commitBufferAndFinish(chatId, true);
     });
-    const offError = onEvent("llm-error", ({ chatId, code, message }) => {
+    const offError = onEvent("llm-error", ({ chatId, code, message, params }) => {
       if (!active.current.has(chatId)) return;
       active.current.delete(chatId);
       commitBufferAndFinish(chatId, false);
-      notifyAppError({ code, message });
+      notifyAppError({ code, message, params });
     });
     return () => {
       offDelta();
@@ -147,9 +133,7 @@ export function useClaudeStream(
       buffers.current.set(chatId, "");
       revealed.current.set(chatId, 0);
       active.current.add(chatId);
-      setPartial((p) => ({ ...p, [chatId]: "" }));
-      setStreaming((s) => ({ ...s, [chatId]: true }));
-      setStartedAt((s) => ({ ...s, [chatId]: Date.now() }));
+      beginStreamState(chatId, Date.now());
       ensureRevealLoop();
     },
     [ensureRevealLoop],
@@ -159,7 +143,7 @@ export function useClaudeStream(
     (chatId: string) => {
       active.current.delete(chatId);
       dropPartial(chatId);
-      setStreaming((s) => ({ ...s, [chatId]: false }));
+      setStreamingFlag(chatId, false);
     },
     [dropPartial],
   );
@@ -208,11 +192,11 @@ export function useClaudeStream(
       active.current.delete(chatId);
       const cancelled = requestCancel(chatId);
       dropPartial(chatId);
-      setStreaming((s) => ({ ...s, [chatId]: false }));
+      setStreamingFlag(chatId, false);
       return cancelled;
     },
     [dropPartial, requestCancel],
   );
 
-  return { partial, streaming, startedAt, send, stop, abandon };
+  return useMemo(() => ({ send, stop, abandon }), [send, stop, abandon]);
 }

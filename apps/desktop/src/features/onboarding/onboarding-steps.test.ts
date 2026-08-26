@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { requiredPermissionRows } from "../launcher/permission-rows";
+import { requiredPermissionRows } from "@/features/settings/permission-rows";
+import { dictionary, LOCALES, type Locale } from "@/i18n";
 import { onboardingSteps, stepPosition, ONBOARDING_STEP_IDS } from "./onboarding-steps";
 
 describe("onboardingSteps", () => {
@@ -49,5 +50,58 @@ describe("stepPosition", () => {
 
   it("шаг, которого нет на платформе, не уводит счётчик в минус", () => {
     expect(stepPosition(onboardingSteps("windows"), "audio")).toBe(0);
+  });
+});
+
+/**
+ * Every leaf of the namespace as a `a.b.c[0]` path, which is what a locale walk
+ * compares: the compiler already holds the two dictionaries to one shape, but it
+ * says nothing about the LENGTH of an array (the privacy disclosures) and nothing
+ * at all about a string that is present and empty.
+ */
+type Leaf = readonly [path: string, text: string];
+
+function leaves(value: unknown, prefix: string): Leaf[] {
+  if (typeof value === "string") return [[prefix, value]];
+  if (Array.isArray(value)) {
+    return (value as unknown[]).flatMap((item, index) =>
+      leaves(item, `${prefix}[${String(index)}]`),
+    );
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.entries(value).flatMap(([key, nested]: [string, unknown]) =>
+      leaves(nested, prefix === "" ? key : `${prefix}.${key}`),
+    );
+  }
+  return [];
+}
+
+function onboardingLeaves(locale: Locale): Leaf[] {
+  return leaves(dictionary(locale).onboarding, "");
+}
+
+describe("словарь онбординга", () => {
+  it.each(LOCALES)("ни одной пустой строки в локали %s", (locale) => {
+    const found = onboardingLeaves(locale);
+    expect(found.length).toBeGreaterThan(0);
+    for (const [path, text] of found) {
+      expect(text.trim(), path).not.toBe("");
+    }
+  });
+
+  // The compiler holds the two dictionaries to one shape, but not to one array
+  // LENGTH: a locale with three disclosures instead of four compiles and drops one.
+  it("локали описывают одни и те же строки", () => {
+    const paths = (locale: Locale) => onboardingLeaves(locale).map(([path]) => path);
+    for (const locale of LOCALES) {
+      expect(paths(locale)).toEqual(paths("ru"));
+    }
+  });
+
+  // The registry and the dictionary record share a union, but `satisfies` checks
+  // one direction only: a dictionary key with no step behind it would go unnoticed.
+  it.each(LOCALES)("шаги словаря совпадают с реестром в локали %s", (locale) => {
+    const keys = Object.keys(dictionary(locale).onboarding.steps).sort();
+    expect(keys).toEqual([...ONBOARDING_STEP_IDS].sort());
   });
 });

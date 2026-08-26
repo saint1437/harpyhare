@@ -1,0 +1,61 @@
+name: macos-bundle
+
+# Бандлинг под macOS ломается отдельно от компиляции: конфиг DMG, иконки, права,
+# Info.plist. `cargo test` и clippy этого не видят, а на теге узнавать уже поздно —
+# именно так однажды и поймали падение сборки DMG руками (коммит eb9dbbd).
+# Поэтому сборка гоняется ночью и по кнопке, но не на каждый PR: по замерам она
+# стоит 7м33с из 13м55с всего джоба, и на PR это не окупается.
+on:
+  schedule:
+    - cron: "0 3 * * *" # каждую ночь, 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: бандл под macOS
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Канал Rust
+        id: rust
+        working-directory: .
+        shell: bash
+        run: |
+          channel=""
+          for f in rust-toolchain.toml apps/desktop/src-tauri/rust-toolchain.toml; do
+            if [ -f "$f" ]; then
+              channel=$(sed -n 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$f" | head -n1)
+              [ -n "$channel" ] && break
+            fi
+          done
+          echo "toolchain=${channel:-stable}" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust.outputs.toolchain }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Установить зависимости
+        run: npm ci
+        working-directory: .
+      # Без updater-артефактов: ключ подписи сюда не нужен, а .app.tar.gz/.sig
+      # имеют смысл только в релизе. Проверяем ровно бандлинг.
+      - name: Собрать бандл без updater-артефактов
+        run: npx tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 7

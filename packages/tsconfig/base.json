@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+
+  // The strictness contract of the monorepo. Every project inherits it, so a flag
+  // is loosened here for everyone or nowhere: the two apps used to carry the same
+  // eight strict flags typed out twice, and a flag dropped from one copy would have
+  // looked like a local decision instead of the hole it is.
+  //
+  // `target`/`lib` deliberately stay with the projects — the desktop compiles for a
+  // webview and the landing for browsers plus Node, and the two do not agree on a
+  // language level.
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "isolatedModules": true,
+    "skipLibCheck": true,
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true
+  }
+}

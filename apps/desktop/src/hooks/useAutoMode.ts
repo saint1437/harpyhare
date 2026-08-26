@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import { autoModeActive, startAutoMode, stopAutoMode, takeAutoModeError } from "@/ipc/commands";
 import { onEvent } from "@/ipc/events";
 import type { AutoTurn } from "@/ipc/types";
@@ -33,16 +34,10 @@ export function useAutoMode(onSubmit: (text: string) => boolean, instant: boolea
   const turnsRef = useRef<AutoTurn[]>([]);
   const submittedThroughRef = useRef(NO_TURN_SUBMITTED);
   const submitTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const onSubmitRef = useRef(onSubmit);
-  useEffect(() => {
-    onSubmitRef.current = onSubmit;
-  }, [onSubmit]);
+  const onSubmitRef = useLatestRef(onSubmit);
   // Режим читается из рефа: подписки на события живут одну сессию окна, и смена
   // настройки не должна их пересоздавать — иначе реплика, пришедшая в этот момент, теряется.
-  const instantRef = useRef(instant);
-  useEffect(() => {
-    instantRef.current = instant;
-  }, [instant]);
+  const instantRef = useLatestRef(instant);
 
   const advanceThrough = useCallback((seq: number) => {
     submittedThroughRef.current = seq;
@@ -57,7 +52,7 @@ export function useAutoMode(onSubmit: (text: string) => boolean, instant: boolea
       if (!onSubmitRef.current(plan.text)) return;
       advanceThrough(plan.throughSeq);
     },
-    [advanceThrough],
+    [advanceThrough, onSubmitRef],
   );
 
   const flushInstant = useCallback(() => {
@@ -77,7 +72,7 @@ export function useAutoMode(onSubmit: (text: string) => boolean, instant: boolea
         clearTimeout(submitTimerRef.current);
         submitTimerRef.current = setTimeout(flushInstant, SUBMIT_DEBOUNCE_MS);
       }),
-    [flushInstant],
+    [flushInstant, instantRef],
   );
 
   useEffect(() => onEvent("auto-answer", answer), [answer]);

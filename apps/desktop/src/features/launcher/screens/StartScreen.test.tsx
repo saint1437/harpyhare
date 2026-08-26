@@ -1,7 +1,9 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { permissionRowCopy } from "@/features/settings/permission-rows";
 import type { PermissionsApi } from "@/hooks/usePermissions";
-import type { PermissionsStatus } from "@/ipc/bindings";
+import { getDict } from "@/i18n";
+import type { PermissionsStatus } from "@/ipc/types";
 import { apiKeyInfo } from "@/lib/api-keys";
 import type { LauncherDestination } from "../contract";
 import type { LauncherReadiness } from "../useLauncherReadiness";
@@ -21,8 +23,17 @@ const IDLE_AUDIO_CHECK: AudioCheckApi = {
   run: () => undefined,
 };
 
-const ACCESS_STEP = "Доступ к API";
-const AUDIO_STEP = "Запись системного звука";
+const ACCESS_STEP = getDict().common.apiKeys.accessTitle;
+const AUDIO_STEP = permissionRowCopy("audio", getDict()).title;
+const MICROPHONE_STEP = permissionRowCopy("microphone", getDict()).title;
+
+function copy() {
+  return getDict().launcher.start;
+}
+
+function permissionButtons() {
+  return getDict().settings.permissions;
+}
 
 const ALL_GRANTED: PermissionsStatus = {
   audio: "granted",
@@ -38,7 +49,6 @@ function permissionsApi(
     status,
     loaded: true,
     audioOk: status.audio === "granted",
-    screenOk: status.screen === "granted",
     microphoneOk: status.microphone === "granted",
     pending: null,
     awaiting: null,
@@ -86,7 +96,7 @@ function step(name: string) {
 }
 
 function launchButton(): HTMLButtonElement {
-  const button = screen.getByText("Запустить").closest("button");
+  const button = screen.getByText(getDict().launcher.launch.idle).closest("button");
   if (!button) throw new Error("кнопка запуска не найдена");
   return button;
 }
@@ -99,9 +109,9 @@ afterEach(() => {
 describe("StartScreen", () => {
   it("готовое состояние показывает оба шага закрытыми и разрешает запуск", () => {
     const { onLaunch } = renderScreen({});
-    expect(step(ACCESS_STEP).getByText("готово")).not.toBeNull();
-    expect(step(AUDIO_STEP).getByText("готово")).not.toBeNull();
-    expect(screen.getByText("Всё готово — можно запускать.")).not.toBeNull();
+    expect(step(ACCESS_STEP).getByText(copy().stepStates.done)).not.toBeNull();
+    expect(step(AUDIO_STEP).getByText(copy().stepStates.done)).not.toBeNull();
+    expect(screen.getByText(copy().summaryReady)).not.toBeNull();
     fireEvent.click(launchButton());
     expect(onLaunch).toHaveBeenCalledTimes(1);
   });
@@ -111,7 +121,7 @@ describe("StartScreen", () => {
       readiness: readiness({ missingKeys: [apiKeyInfo("anthropic")], ready: false }),
     });
     const access = step(ACCESS_STEP);
-    expect(access.getByText("нужно сделать")).not.toBeNull();
+    expect(access.getByText(copy().stepStates.todo)).not.toBeNull();
     expect(access.getByPlaceholderText("XXXXX-XXXXX-XXXXX-XXXXX")).not.toBeNull();
     expect(launchButton().disabled).toBe(true);
   });
@@ -124,7 +134,7 @@ describe("StartScreen", () => {
     });
     const input = step(ACCESS_STEP).getByPlaceholderText("XXXXX-XXXXX-XXXXX-XXXXX");
     fireEvent.change(input, { target: { value: "AAAAA-BBBBB-CCCCC-DDDDD" } });
-    fireEvent.click(step(ACCESS_STEP).getByText("Активировать"));
+    fireEvent.click(step(ACCESS_STEP).getByText(getDict().common.accessCode.submit));
     expect(onRedeem).toHaveBeenCalledExactlyOnceWith("AAAAA-BBBBB-CCCCC-DDDDD");
   });
 
@@ -132,7 +142,7 @@ describe("StartScreen", () => {
     const { onNavigate } = renderScreen({
       readiness: readiness({ missingKeys: [apiKeyInfo("groq")], ready: false }),
     });
-    fireEvent.click(screen.getByText("Ввести свои ключи"));
+    fireEvent.click(screen.getByText(copy().enterKeys));
     expect(onNavigate).toHaveBeenCalledExactlyOnceWith({ screen: "settings", tab: "access" });
   });
 
@@ -143,9 +153,9 @@ describe("StartScreen", () => {
       microphone: "granted",
     });
     renderScreen({ readiness: readiness({ permissions, ready: false }) });
-    fireEvent.click(step(AUDIO_STEP).getByText("Выдать"));
+    fireEvent.click(step(AUDIO_STEP).getByText(permissionButtons().grant));
     expect(permissions.request).toHaveBeenCalledExactlyOnceWith("audio");
-    fireEvent.click(step(AUDIO_STEP).getByText("Настройки"));
+    fireEvent.click(step(AUDIO_STEP).getByText(permissionButtons().openSettings));
     expect(permissions.openSettings).toHaveBeenCalledExactlyOnceWith("audio");
   });
 
@@ -156,15 +166,15 @@ describe("StartScreen", () => {
       microphone: "unknown",
     });
     renderScreen({ readiness: readiness({ permissions, checking: true, ready: false }) });
-    expect(step(AUDIO_STEP).getByText("проверяю…")).not.toBeNull();
-    expect(step(AUDIO_STEP).queryByText("Выдать")).toBeNull();
-    expect(screen.getByText("Проверяю доступы…")).not.toBeNull();
+    expect(step(AUDIO_STEP).getByText(copy().stepStates.checking)).not.toBeNull();
+    expect(step(AUDIO_STEP).queryByText(permissionButtons().grant)).toBeNull();
+    expect(screen.getByText(copy().summaryChecking)).not.toBeNull();
     expect(launchButton().disabled).toBe(true);
   });
 
   it("во время запуска кнопка занята и повторно не срабатывает", () => {
     const { onLaunch } = renderScreen({ launching: true });
-    const button = screen.getByText("Запускаю…").closest("button");
+    const button = screen.getByText(getDict().launcher.launch.busy).closest("button");
     if (!button) throw new Error("кнопка запуска не найдена");
     expect(button.disabled).toBe(true);
     fireEvent.click(button);
@@ -173,26 +183,27 @@ describe("StartScreen", () => {
 
   it("«Все доступы» ведёт на экран доступов — необязательные живут только там", () => {
     const { onNavigate } = renderScreen({});
-    fireEvent.click(step(AUDIO_STEP).getByText("Все доступы"));
+    fireEvent.click(step(AUDIO_STEP).getByText(copy().allPermissions));
     expect(onNavigate).toHaveBeenCalledExactlyOnceWith({ screen: "permissions", tab: undefined });
   });
 
   it("проверка звука стоит рядом с шагами: доступ выдан — ещё не значит, что слышно", () => {
     renderScreen({});
-    expect(screen.getByText("Проверка звука")).not.toBeNull();
-    expect(screen.getByText("Системный звук")).not.toBeNull();
-    expect(screen.queryByText("Микрофон")).toBeNull();
+    const audioCheck = getDict().launcher.audioCheck;
+    expect(screen.getByText(audioCheck.title)).not.toBeNull();
+    expect(screen.getByText(audioCheck.sources.system.label)).not.toBeNull();
+    expect(screen.queryByText(audioCheck.sources.microphone.label)).toBeNull();
   });
 
   it("при автослушании появляются и микрофонный шаг, и его проверка", () => {
     renderScreen({ readiness: readiness({ autoModeEnabled: true }) });
-    expect(screen.getByRole("group", { name: "Микрофон" })).not.toBeNull();
-    expect(screen.getAllByText("Микрофон").length).toBeGreaterThan(1);
+    expect(screen.getByRole("group", { name: MICROPHONE_STEP })).not.toBeNull();
+    expect(screen.getAllByText(MICROPHONE_STEP).length).toBeGreaterThan(1);
   });
 
   it("«Все настройки» уводит на экран настроек, ничего не выбирая за пользователя", () => {
     const { onNavigate } = renderScreen({});
-    fireEvent.click(screen.getByText("Все настройки"));
+    fireEvent.click(screen.getByText(copy().allSettings));
     expect(onNavigate).toHaveBeenCalledExactlyOnceWith({ screen: "settings" });
   });
 });

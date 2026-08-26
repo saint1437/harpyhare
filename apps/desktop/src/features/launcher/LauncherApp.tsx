@@ -1,122 +1,86 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useMemo, useState } from "react";
+import { OnboardingGate } from "@/features/onboarding/OnboardingGate";
+import type { SecretsApi } from "@/features/settings/contract";
 import { useContextLibrary } from "@/hooks/useContextLibrary";
-import { useSettingsStore } from "@/hooks/useSettingsStore";
+import { useDict } from "@/hooks/useDict";
 import { useUpdater } from "@/hooks/useUpdater";
-import { launchMainWindow, redeemAccessCode } from "@/ipc/commands";
+import { launchMainWindow } from "@/ipc/commands";
 import type { Settings } from "@/ipc/types";
 import { notifyError } from "@/lib/notifications";
 import { applyTheme } from "@/lib/window-controls";
+import {
+  clearAccessCode,
+  clearApiKey,
+  redeemAccessCode,
+  setApiKey,
+  useSecretsBootstrap,
+  useSecretsLoading,
+  useSecretsStatus,
+} from "@/state/secrets";
+import {
+  saveSettings,
+  useSettings,
+  useSettingsBootstrap,
+  useSettingsLoading,
+} from "@/state/settings";
 import { LauncherPanel } from "./LauncherPanel";
-import { useLauncherReadiness, type LauncherReadiness } from "./useLauncherReadiness";
-import { OnboardingFlow } from "../onboarding/OnboardingFlow";
-
-const SAVE_FAILED_TITLE = "Не удалось сохранить настройки";
-const LAUNCH_FAILED_TITLE = "Не удалось запустить окно";
-const ONBOARDING_AUTOSAVE_DEBOUNCE_MS = 600;
+import { useLauncherReadiness } from "./useLauncherReadiness";
 
 /**
- * Onboarding needs a local draft for the same reason LauncherPanel has one:
- * the old `set` pushed every keystroke through set_settings, and the inputs
- * were controlled by the persisted value lagging a round trip behind — fast
- * typing into the key field lost characters, and every character rebuilt both
- * API clients.
+ * The launcher is an ordinary opaque window with no chat in it, so the theme is
+ * the only visual setting it paints — the HUD's applier adds opacity and the
+ * chat font size.
  */
-function OnboardingGate({
-  settings,
-  readiness,
-  launching,
-  onRedeem,
-  onPersist,
-  onLaunch,
-  onFinish,
-}: {
-  settings: Settings;
-  readiness: LauncherReadiness;
-  launching: boolean;
-  onRedeem: (code: string) => Promise<string | null>;
-  onPersist: (next: Settings) => void;
-  onLaunch: (next: Settings) => void;
-  onFinish: (next: Settings) => void;
-}) {
-  const [draft, setDraft] = useState(settings);
-  // Finishing cancels the pending autosave: a "save without onboarding_done
-  // landed AFTER the final one" race would restart onboarding from scratch.
-  const [closing, setClosing] = useState(false);
-  // After redeeming a code the token arrives through reload() into settings —
-  // the only thing onboarding adopts from outside.
-  useEffect(() => {
-    setDraft((d) =>
-      d.access_token === settings.access_token ? d : { ...d, access_token: settings.access_token },
-    );
-  }, [settings.access_token]);
-  const persistRef = useRef(onPersist);
-  useEffect(() => {
-    persistRef.current = onPersist;
-  }, [onPersist]);
-  const lastQueuedDraft = useRef(draft);
-  useEffect(() => {
-    if (launching || closing || draft === lastQueuedDraft.current) return;
-    lastQueuedDraft.current = draft;
-    const timer = setTimeout(() => {
-      persistRef.current(draft);
-    }, ONBOARDING_AUTOSAVE_DEBOUNCE_MS);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [draft, launching, closing]);
-  return (
-    <OnboardingFlow
-      draft={draft}
-      set={(key, value) => {
-        setDraft((d) => ({ ...d, [key]: value }));
-      }}
-      readiness={readiness}
-      launching={launching}
-      onRedeem={onRedeem}
-      onLaunch={() => {
-        onLaunch(draft);
-      }}
-      onFinish={() => {
-        setClosing(true);
-        onFinish(draft);
-      }}
-    />
-  );
-}
-
-function applyLauncherTheme(settings: Settings): void {
+function applyLauncherVisuals(settings: Settings): void {
   applyTheme(document.documentElement, settings.theme);
 }
 
 export function LauncherApp() {
-  const { settings, loading, save, reload } = useSettingsStore(applyLauncherTheme);
+  const dict = useDict();
+  useSettingsBootstrap(applyLauncherVisuals);
+  useSecretsBootstrap();
+  const settings = useSettings();
+  const secretsStatus = useSecretsStatus();
+  // Оба флага читаются безусловно — `||` прямо в вызовах хуков закоротил бы
+  // второй, и порядок хуков поехал бы на первом же завершении загрузки.
+  // Ждать надо обоих: онбординг выбирается по `onboarding_done`, а готовность к
+  // запуску — по признакам ключей, и показать одно без другого значит на
+  // мгновение объявить настроенного пользователя ненастроенным.
+  const settingsLoading = useSettingsLoading();
+  const secretsLoading = useSecretsLoading();
+  const loading = settingsLoading || secretsLoading;
   const updater = useUpdater();
   const contextLibrary = useContextLibrary();
-  const readiness = useLauncherReadiness(settings);
+  const readiness = useLauncherReadiness(settings, secretsStatus);
   const [launching, setLaunching] = useState(false);
   const [saving, setSaving] = useState(false);
-  // Не текст, а флаг: сам отказ показывает уведомление, а объекту статуса нужно
-  // лишь знать, что предлагать повтор.
+  // A flag, not a text: the failure itself raises a notification, and the status
+  // object only needs to know that it should offer a retry.
   const [saveFailed, setSaveFailed] = useState(false);
   // Re-entry from settings: the flag is already true, so the gate has to be
   // openable by hand as well as by the flag.
   const [replayOnboarding, setReplayOnboarding] = useState(false);
 
-  const redeem = useCallback(
-    async (code: string): Promise<string | null> => {
-      const failure = await redeemAccessCode(code);
-      if (failure === null) await reload();
-      return failure;
-    },
-    [reload],
+  // Одно место, где живут учётные данные и четыре способа их изменить: форму
+  // кода и поля ключей рисуют три разные поверхности, и каждая получает этот
+  // объект целиком вместо россыпи колбэков.
+  const secrets = useMemo<SecretsApi>(
+    () => ({
+      status: secretsStatus,
+      setKey: setApiKey,
+      clearKey: clearApiKey,
+      clearAccessCode,
+      redeem: redeemAccessCode,
+    }),
+    [secretsStatus],
   );
 
   const persist = async (next: Settings): Promise<boolean> => {
     setSaving(true);
     try {
-      const failure = await save(next);
+      const failure = await saveSettings(next);
       setSaveFailed(failure !== null);
-      if (failure !== null) notifyError(SAVE_FAILED_TITLE, failure);
+      if (failure !== null) notifyError(dict.launcher.shell.saveFailedTitle, failure);
       return failure === null;
     } finally {
       setSaving(false);
@@ -138,7 +102,7 @@ export function LauncherApp() {
         }
       } catch (e) {
         setSaveFailed(true);
-        notifyError(LAUNCH_FAILED_TITLE, String(e));
+        notifyError(dict.launcher.shell.launchFailedTitle, String(e));
       }
       setLaunching(false);
     })();
@@ -154,7 +118,7 @@ export function LauncherApp() {
           <div className="w-10 shrink-0 rounded-md bg-surface min-[900px]:w-40" />
           <div className="min-h-0 flex-1 rounded-lg bg-surface ring-1 ring-inset ring-line" />
         </div>
-        <span className="sr-only">Загрузка…</span>
+        <span className="sr-only">{dict.launcher.shell.loading}</span>
       </div>
     );
 
@@ -163,8 +127,8 @@ export function LauncherApp() {
       <OnboardingGate
         settings={settings}
         readiness={readiness}
+        secrets={secrets}
         launching={launching}
-        onRedeem={redeem}
         onPersist={handleSave}
         onLaunch={(next) => {
           handleLaunch({ ...next, onboarding_done: true });
@@ -183,11 +147,10 @@ export function LauncherApp() {
       updater={updater}
       contextLibrary={contextLibrary}
       readiness={readiness}
+      secrets={secrets}
       launching={launching}
       saving={saving}
       saveFailed={saveFailed}
-      onRedeem={redeem}
-      onCheckUpdates={updater.checkNow}
       onSave={handleSave}
       onLaunch={handleLaunch}
       onReplayOnboarding={() => {

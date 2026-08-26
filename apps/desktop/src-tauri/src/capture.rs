@@ -12,10 +12,52 @@ mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
 
+/// The contract a platform has to satisfy, stated instead of implied.
+///
+/// The three split modules (`capture`, `platform`, `screenshot`) used to be
+/// wired up by a naming convention alone: `use macos as backend`, and the
+/// compiler only noticed a missing function where the facade happened to call
+/// it. A backend that forgot one, or drifted in a signature, was a build error
+/// in the wrong file at best and a `#[cfg]`-shaped hole at worst — and there was
+/// nothing for a third platform to be written against. With the trait, "the
+/// Linux backend is incomplete" is one error naming the missing item.
+///
+/// The two-phase `open`/`start` split is part of the contract, not an accident:
+/// `open` reports the stream format FIRST, because the ring's size and the
+/// fields of `Shared` are derived from it and cannot exist before it.
+pub(crate) trait CaptureBackend {
+    /// The opened, not yet running, source.
+    type Source;
+    /// Silences the capture in `Drop`. `Send` because `AudioCapture` holds it
+    /// and travels between threads under a mutex.
+    type Running: Send;
+
+    fn open(
+        kind: SourceKind,
+        device_uid: Option<&str>,
+    ) -> Result<(Self::Source, StreamSpec), CaptureError>;
+    fn start(source: Self::Source, ctx: Box<CallbackCtx>) -> Result<Self::Running, CaptureError>;
+    fn list_devices(kind: SourceKind) -> Vec<AudioDeviceInfo>;
+    fn watch_default_output_device(on_change: DeviceChangeHandler);
+}
+
 #[cfg(target_os = "macos")]
-use macos as backend;
+type Backend = macos::Backend;
 #[cfg(target_os = "windows")]
-use windows as backend;
+type Backend = windows::Backend;
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+compile_error!(
+    "захват системного звука реализован только для macOS и Windows: \
+     добавьте модуль capture/<os>.rs с `impl CaptureBackend`"
+);
+
+/// Whether capturing system audio needs an OS permission at all. macOS gates a
+/// Core Audio process tap behind TCC; Windows WASAPI loopback has no permission
+/// to ask for. Everything that differs between the platforms in the *messages*
+/// below follows from this one fact rather than from its own `#[cfg]`.
+pub const REQUIRES_PERMISSION: bool = cfg!(target_os = "macos");
+use crate::sync::{CondvarExt, MutexExt};
 
 const RING_SECONDS: usize = 8;
 const CONSUMER_THREAD_NAME: &str = "audio-consumer";
@@ -44,6 +86,45 @@ impl crate::error::CodedError for CaptureError {
             CaptureError::Backend(_) | CaptureError::Audio(_) => ErrorCode::Internal,
         }
     }
+}
+
+/// The two sentences `recording.rs` used to hold as `#[cfg]`-split constants.
+/// They live here because the difference between them is a property of the
+/// capture backend, and they derive it from `REQUIRES_PERMISSION` rather than
+/// from a second pair of platform branches.
+pub fn no_capture_error() -> crate::error::AppError {
+    if REQUIRES_PERMISSION {
+        crate::error::AppError::with_subject(
+            crate::error::ErrorCode::Permission,
+            "Нет разрешения на запись системного звука",
+            crate::error::subject::SYSTEM_AUDIO_PERMISSION,
+        )
+    } else {
+        crate::error::AppError::with_subject(
+            crate::error::ErrorCode::Internal,
+            "Захват системного звука недоступен — проверь устройство вывода в настройках",
+            crate::error::subject::SYSTEM_AUDIO_DEVICE,
+        )
+    }
+}
+
+pub fn silence_error() -> crate::error::AppError {
+    let (hint, subject) = if REQUIRES_PERMISSION {
+        (
+            "проверь право «Запись системного звука» у macOS и устройство захвата в настройках",
+            crate::error::subject::SILENCE_GATED,
+        )
+    } else {
+        (
+            "проверь устройство вывода в настройках захвата",
+            crate::error::subject::SILENCE_DEVICE,
+        )
+    };
+    crate::error::AppError::with_subject(
+        crate::error::ErrorCode::Silence,
+        format!("Тишина — нечего распознавать (если звук играл: {hint})"),
+        subject,
+    )
 }
 
 pub type ChunkSink = Box<dyn FnMut(&[f32]) + Send>;
@@ -90,18 +171,18 @@ struct Shared {
     cv: Condvar,
 }
 
-struct CallbackCtx {
+pub(crate) struct CallbackCtx {
     shared: Arc<Shared>,
     prod: HeapProd<f32>,
 }
 
 impl CallbackCtx {
-    fn wants_samples(&self) -> bool {
+    pub(crate) fn wants_samples(&self) -> bool {
         self.shared.recording.load(Ordering::Acquire)
             || self.shared.buffering.load(Ordering::Acquire)
     }
 
-    fn push_samples(&mut self, samples: &[f32]) {
+    pub(crate) fn push_samples(&mut self, samples: &[f32]) {
         let pushed = self.prod.push_slice(samples);
         self.shared.produced.fetch_add(pushed as u64, Ordering::Relaxed);
         if pushed < samples.len() {
@@ -112,9 +193,33 @@ impl CallbackCtx {
     }
 }
 
+/// The capture as its *consumers* see it: push-to-talk, auto listening and the
+/// launcher's audio check drive a device through this port, never through the
+/// concrete `AudioCapture`.
+///
+/// The reason is testability, and it is not theoretical: `AudioCapture::new`
+/// opens a Core Audio process tap or a WASAPI loopback endpoint, so every code
+/// path that touches a live capture — the whole push-to-talk pipeline — was
+/// unreachable from a unit test. `CaptureService` holds a `Box<dyn
+/// CaptureDevice>`, so a test installs a fake and can make `start` fail or the
+/// recording last ten minutes without owning a sound card.
+///
+/// This is a different port from `CaptureBackend`: that one is the *platform*
+/// (compile-time, one per OS), this one is the *device* (run-time, swappable).
+pub trait CaptureDevice: Send {
+    fn start(&mut self, sink: Option<ChunkSink>) -> Result<(), CaptureError>;
+    fn stop(&mut self) -> Result<Vec<f32>, CaptureError>;
+    fn is_stalled(&self) -> bool;
+    fn recording_secs(&self) -> f32;
+    fn set_buffering(&self, enabled: bool);
+    fn set_buffer_capacity_secs(&self, secs: u64);
+    fn start_segmenting(&self, bounds: audio::SegmenterBounds, sink: SegmentSink);
+    fn stop_segmenting(&self);
+}
+
 pub struct AudioCapture {
     shared: Arc<Shared>,
-    _running: backend::Running,
+    _running: <Backend as CaptureBackend>::Running,
 }
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
@@ -124,11 +229,11 @@ pub struct AudioDeviceInfo {
 }
 
 pub fn list_devices(kind: SourceKind) -> Vec<AudioDeviceInfo> {
-    backend::list_devices(kind)
+    Backend::list_devices(kind)
 }
 
 pub fn watch_default_output_device(on_change: DeviceChangeHandler) {
-    backend::watch_default_output_device(on_change);
+    Backend::watch_default_output_device(on_change);
 }
 
 impl AudioCapture {
@@ -137,7 +242,7 @@ impl AudioCapture {
         device_uid: Option<&str>,
         buffer_secs: u64,
     ) -> Result<Self, CaptureError> {
-        let (source, spec) = backend::open(kind, device_uid)?;
+        let (source, spec) = Backend::open(kind, device_uid)?;
 
         let ring = HeapRb::<f32>::new(spec.sample_rate as usize * spec.channels * RING_SECONDS);
         let (prod, cons) = ring.split();
@@ -169,7 +274,7 @@ impl AudioCapture {
                 .map_err(|e| CaptureError::Audio(e.to_string()))?;
         }
 
-        let running = match backend::start(source, ctx) {
+        let running = match Backend::start(source, ctx) {
             Ok(running) => running,
             Err(e) => {
                 // Self is not built yet, so Drop will not run — without an
@@ -190,7 +295,7 @@ impl AudioCapture {
 
     pub fn start(&mut self, sink: Option<ChunkSink>) -> Result<(), CaptureError> {
         self.shared.stop_requested.store(false, Ordering::Release);
-        let mut s = self.shared.session.lock().unwrap();
+        let mut s = self.shared.session.lock_safe();
         *s = Session::Start(sink);
         self.shared.cv.notify_all();
         Ok(())
@@ -198,7 +303,7 @@ impl AudioCapture {
 
     pub fn stop(&mut self) -> Result<Vec<f32>, CaptureError> {
         self.shared.stop_requested.store(true, Ordering::Release);
-        let mut s = self.shared.session.lock().unwrap();
+        let mut s = self.shared.session.lock_safe();
         loop {
             match &mut *s {
                 Session::Done(res) => {
@@ -208,11 +313,7 @@ impl AudioCapture {
                 }
                 Session::Idle => return Ok(Vec::new()),
                 _ => {
-                    let (guard, timeout) = self
-                        .shared
-                        .cv
-                        .wait_timeout(s, STOP_WAIT_TIMEOUT)
-                        .unwrap();
+                    let (guard, timeout) = self.shared.cv.wait_timeout_safe(s, STOP_WAIT_TIMEOUT);
                     s = guard;
                     if timeout.timed_out() {
                         return Err(CaptureError::Audio(format!(
@@ -243,31 +344,68 @@ impl AudioCapture {
     pub fn set_buffering(&self, enabled: bool) {
         self.shared.buffering.store(enabled, Ordering::Release);
         if enabled {
-            let _wake = self.shared.session.lock().unwrap();
+            let _wake = self.shared.session.lock_safe();
             self.shared.cv.notify_all();
         } else {
-            self.shared.rolling.lock().unwrap().clear();
+            self.shared.rolling.lock_safe().clear();
         }
     }
 
     pub fn set_buffer_capacity_secs(&self, secs: u64) {
-        self.shared.rolling.lock().unwrap().set_capacity_secs(secs);
+        self.shared.rolling.lock_safe().set_capacity_secs(secs);
     }
 
     pub fn start_segmenting(&self, bounds: audio::SegmenterBounds, sink: SegmentSink) {
         let segmenter = audio::SpeechSegmenter::new(bounds);
-        *self.shared.segmenting.lock().unwrap() = Some(Segmenting { segmenter, sink });
+        *self.shared.segmenting.lock_safe() = Some(Segmenting { segmenter, sink });
     }
 
     pub fn stop_segmenting(&self) {
-        *self.shared.segmenting.lock().unwrap() = None;
+        *self.shared.segmenting.lock_safe() = None;
+    }
+}
+
+/// Forwarding, on purpose: the inherent methods stay the API the concrete
+/// capture is used through inside `capture.rs` (and by `auto`/`audio_check`,
+/// which own a microphone directly), while the trait is what leaves the module.
+impl CaptureDevice for AudioCapture {
+    fn start(&mut self, sink: Option<ChunkSink>) -> Result<(), CaptureError> {
+        AudioCapture::start(self, sink)
+    }
+
+    fn stop(&mut self) -> Result<Vec<f32>, CaptureError> {
+        AudioCapture::stop(self)
+    }
+
+    fn is_stalled(&self) -> bool {
+        AudioCapture::is_stalled(self)
+    }
+
+    fn recording_secs(&self) -> f32 {
+        AudioCapture::recording_secs(self)
+    }
+
+    fn set_buffering(&self, enabled: bool) {
+        AudioCapture::set_buffering(self, enabled);
+    }
+
+    fn set_buffer_capacity_secs(&self, secs: u64) {
+        AudioCapture::set_buffer_capacity_secs(self, secs);
+    }
+
+    fn start_segmenting(&self, bounds: audio::SegmenterBounds, sink: SegmentSink) {
+        AudioCapture::start_segmenting(self, bounds, sink);
+    }
+
+    fn stop_segmenting(&self) {
+        AudioCapture::stop_segmenting(self);
     }
 }
 
 fn shutdown_consumer(shared: &Shared) {
     shared.shutdown.store(true, Ordering::Release);
     shared.stop_requested.store(true, Ordering::Release);
-    let _wake = shared.session.lock().unwrap();
+    let _wake = shared.session.lock_safe();
     shared.cv.notify_all();
 }
 
@@ -276,7 +414,7 @@ fn shutdown_consumer(shared: &Shared) {
 // microphone capture every time it is switched off.
 impl Drop for AudioCapture {
     fn drop(&mut self) {
-        *self.shared.segmenting.lock().unwrap() = None;
+        *self.shared.segmenting.lock_safe() = None;
         shutdown_consumer(&self.shared);
     }
 }
@@ -308,7 +446,7 @@ enum ConsumerNext {
 }
 
 fn wait_for_work(shared: &Shared) -> ConsumerNext {
-    let mut s = shared.session.lock().unwrap();
+    let mut s = shared.session.lock_safe();
     loop {
         if shared.shutdown.load(Ordering::Acquire) {
             return ConsumerNext::Shutdown;
@@ -321,7 +459,7 @@ fn wait_for_work(shared: &Shared) -> ConsumerNext {
         if shared.buffering.load(Ordering::Acquire) {
             return ConsumerNext::Work(ConsumerWork::Buffering);
         }
-        s = shared.cv.wait(s).unwrap();
+        s = shared.cv.wait_safe(s);
     }
 }
 
@@ -418,7 +556,7 @@ fn run_ptt_session(
         eprintln!("[perf] капчер: кольцо переполнялось, потеряно {dropped} сэмплов");
     }
 
-    let mut s = shared.session.lock().unwrap();
+    let mut s = shared.session.lock_safe();
     *s = Session::Done(match failure {
         None => Ok(out),
         Some(e) => Err(e),
@@ -434,7 +572,7 @@ fn forward_session_chunk(shared: &Shared, chunk: &[f32], sink: &mut Option<Chunk
         sink(chunk);
     }
     if shared.buffering.load(Ordering::Acquire) {
-        shared.rolling.lock().unwrap().push_chunk(chunk);
+        shared.rolling.lock_safe().push_chunk(chunk);
     }
 }
 
@@ -444,7 +582,7 @@ struct BufferedSession {
 }
 
 fn take_pending_session(shared: &Shared) -> Option<BufferedSession> {
-    let mut s = shared.session.lock().unwrap();
+    let mut s = shared.session.lock_safe();
     let Session::Start(sink) = &mut *s else {
         return None;
     };
@@ -454,7 +592,7 @@ fn take_pending_session(shared: &Shared) -> Option<BufferedSession> {
     shared.produced.store(0, Ordering::Relaxed);
     shared.dropped.store(0, Ordering::Relaxed);
     shared.recording.store(true, Ordering::Release);
-    let preroll = shared.rolling.lock().unwrap().snapshot();
+    let preroll = shared.rolling.lock_safe().snapshot();
     let mut out = Vec::with_capacity(
         preroll.len() + audio::TARGET_SAMPLE_RATE as usize * OUT_PREALLOC_SECONDS,
     );
@@ -479,7 +617,7 @@ fn finish_buffered_session(
     if dropped > 0 {
         eprintln!("[perf] капчер: кольцо переполнялось, потеряно {dropped} сэмплов");
     }
-    let mut s = shared.session.lock().unwrap();
+    let mut s = shared.session.lock_safe();
     *s = Session::Done(result.map(|()| sess.out));
     shared.cv.notify_all();
 }
@@ -488,7 +626,7 @@ fn finish_buffered_session(
 // Calling the sink while holding the lock is deliberate: it never touches `Shared`,
 // it only bumps auto-mode counters and spawns a task.
 fn feed_segmenter(shared: &Shared, chunk: &[f32]) {
-    let mut guard = shared.segmenting.lock().unwrap();
+    let mut guard = shared.segmenting.lock_safe();
     let Some(state) = guard.as_mut() else {
         return;
     };
@@ -515,7 +653,7 @@ fn run_buffering(shared: &Shared, ring: &mut HeapCons<f32>, scratch: &mut Scratc
                 return;
             }
             if !shared.buffering.load(Ordering::Acquire) {
-                shared.rolling.lock().unwrap().clear();
+                shared.rolling.lock_safe().clear();
                 return;
             }
             session = take_pending_session(shared);
@@ -531,12 +669,12 @@ fn run_buffering(shared: &Shared, ring: &mut HeapCons<f32>, scratch: &mut Scratc
                 eprintln!("фоновый буфер: ресемплинг упал: {e}");
                 finish_buffered_session(shared, &mut session, Err(e.to_string()));
                 shared.buffering.store(false, Ordering::Release);
-                shared.rolling.lock().unwrap().clear();
+                shared.rolling.lock_safe().clear();
                 return;
             }
             if !chunk.is_empty() {
                 if shared.buffering.load(Ordering::Acquire) {
-                    shared.rolling.lock().unwrap().push_chunk(&chunk);
+                    shared.rolling.lock_safe().push_chunk(&chunk);
                 }
                 feed_segmenter(shared, &chunk);
                 if let Some(sess) = session.as_mut() {
@@ -553,5 +691,95 @@ fn run_buffering(shared: &Shared, ring: &mut HeapCons<f32>, scratch: &mut Scratc
             continue;
         }
         std::thread::sleep(CONSUMER_IDLE_SLEEP);
+    }
+}
+
+/// The fake device the recording tests drive.
+///
+/// It lives next to the port rather than in one test module because three
+/// services take a `CaptureDevice` (`recording`, `auto`, the audio check) and a
+/// second copy of it would drift. Everything observable is an atomic behind an
+/// `Arc`, so a test can install the device into a `CaptureService` and still
+/// read what happened to it.
+#[cfg(test)]
+#[derive(Default)]
+pub struct FakeCaptureState {
+    pub start_fails: AtomicBool,
+    pub stop_fails: AtomicBool,
+    pub stalled: AtomicBool,
+    /// What `recording_secs` answers, in milliseconds (an atomic cannot hold f32).
+    pub recording_millis: AtomicU64,
+    pub starts: AtomicU64,
+    pub stops: AtomicU64,
+    pub buffering: AtomicBool,
+    pub segmenting: AtomicBool,
+    /// What `stop` hands back when it succeeds.
+    pub samples: Mutex<Vec<f32>>,
+}
+
+#[cfg(test)]
+impl FakeCaptureState {
+    pub fn set_recording_secs(&self, secs: f32) {
+        self.recording_millis
+            .store((secs * 1000.0) as u64, Ordering::Release);
+    }
+
+    pub fn set_samples(&self, samples: Vec<f32>) {
+        use crate::sync::MutexExt;
+        *self.samples.lock_safe() = samples;
+    }
+}
+
+#[cfg(test)]
+pub struct FakeCapture(pub Arc<FakeCaptureState>);
+
+#[cfg(test)]
+impl FakeCapture {
+    /// Builds the device and hands back the handle the test keeps.
+    pub fn installable() -> (Box<dyn CaptureDevice>, Arc<FakeCaptureState>) {
+        let state = Arc::new(FakeCaptureState::default());
+        (Box::new(FakeCapture(Arc::clone(&state))), state)
+    }
+}
+
+#[cfg(test)]
+impl CaptureDevice for FakeCapture {
+    fn start(&mut self, _sink: Option<ChunkSink>) -> Result<(), CaptureError> {
+        if self.0.start_fails.load(Ordering::Acquire) {
+            return Err(CaptureError::Backend("фейковый захват не стартует".into()));
+        }
+        self.0.starts.fetch_add(1, Ordering::AcqRel);
+        Ok(())
+    }
+
+    fn stop(&mut self) -> Result<Vec<f32>, CaptureError> {
+        use crate::sync::MutexExt;
+        self.0.stops.fetch_add(1, Ordering::AcqRel);
+        if self.0.stop_fails.load(Ordering::Acquire) {
+            return Err(CaptureError::Backend("фейковый захват не остановился".into()));
+        }
+        Ok(self.0.samples.lock_safe().clone())
+    }
+
+    fn is_stalled(&self) -> bool {
+        self.0.stalled.load(Ordering::Acquire)
+    }
+
+    fn recording_secs(&self) -> f32 {
+        self.0.recording_millis.load(Ordering::Acquire) as f32 / 1000.0
+    }
+
+    fn set_buffering(&self, enabled: bool) {
+        self.0.buffering.store(enabled, Ordering::Release);
+    }
+
+    fn set_buffer_capacity_secs(&self, _secs: u64) {}
+
+    fn start_segmenting(&self, _bounds: audio::SegmenterBounds, _sink: SegmentSink) {
+        self.0.segmenting.store(true, Ordering::Release);
+    }
+
+    fn stop_segmenting(&self) {
+        self.0.segmenting.store(false, Ordering::Release);
     }
 }

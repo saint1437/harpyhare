@@ -1,4 +1,4 @@
-import { QUICK_ACTION_LIMIT } from "@/ipc/bindings";
+import { QUICK_ACTION_LIMIT } from "@/ipc/types";
 import type { QuickAction } from "@/ipc/types";
 import { formatComboWithKey } from "./hotkeys";
 import { PLATFORM, type Platform } from "./platform";

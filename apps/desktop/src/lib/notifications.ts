@@ -1,4 +1,6 @@
-import { errorTitle, type AppError, type ErrorCode } from "./errors";
+import { format, getDict } from "@/i18n";
+import { errorBody, errorTitle } from "@/i18n/errors";
+import type { AppError, ErrorCode } from "./errors";
 
 /**
  * Every transient message in both windows — one model, one store, one surface.
@@ -73,10 +75,11 @@ export function isDetailClamped(detail: string): boolean {
 }
 
 /**
- * Rust messages are whole sentences and often open with the very words the code
- * already put in the headline («Нет соединения — проверь интернет/VPN: …»).
- * Printing both leaves the reader with a stutter, so the headline is never
- * repeated in the body.
+ * A body that opens with the very words the code already put in the headline
+ * leaves the reader with a stutter, so the headline is never repeated in the
+ * body. It matters less than it did — the dictionary writes the two halves
+ * together — but a `{details}` slice quoted from an upstream can still start
+ * with them, and `notifyError` takes a free-form title from its caller.
  */
 export function notificationBody(title: string, detail: string): string {
   if (!detail.toLowerCase().startsWith(title.toLowerCase())) return detail;
@@ -93,7 +96,10 @@ export function notificationAnnouncement(item: AppNotification): string {
   // The count is part of the announcement so a collapsed repeat CHANGES the
   // string: with aria-atomic an identical text is not re-announced, and the
   // silent ×N bump left a screen reader thinking nothing had happened.
-  const heading = item.count > 1 ? `${item.title} (повтор ×${String(item.count)})` : item.title;
+  const heading =
+    item.count > 1
+      ? `${item.title} (${format(getDict().common.notifications.repeat, { count: String(item.count) })})`
+      : item.title;
   if (body === "") return heading;
   const visible = body.length > DETAIL_CLAMP_CHARS ? `${body.slice(0, DETAIL_CLAMP_CHARS)}…` : body;
   return `${heading}. ${visible}`;
@@ -122,16 +128,24 @@ export function stackNotifications(
  * two "wait and try again" codes are not failures of the app, which is why they
  * get the warning tone rather than the alarm one.
  */
-const TONE_BY_CODE: Record<ErrorCode, NotificationTone | null> = {
+export const TONE_BY_CODE: Record<ErrorCode, NotificationTone | null> = {
   cancelled: null,
   network: "warning",
   retryable: "warning",
   silence: "warning",
+  providerUnreachable: "warning",
+  tooManyAttempts: "warning",
   badApiKey: "danger",
   badAccessCode: "danger",
   api: "danger",
   permission: "danger",
   internal: "danger",
+  requestTooLarge: "danger",
+  audioTooLong: "danger",
+  modelNotAllowed: "danger",
+  dailyLimitExceeded: "danger",
+  serviceUnavailable: "danger",
+  contextTooLong: "danger",
 };
 
 /* ── store ────────────────────────────────────────────────────────────────── */
@@ -230,11 +244,18 @@ export function notifyError(title: string, detail?: string): void {
   notify({ tone: "danger", title, detail });
 }
 
-/** The typed code decides both the headline and the tone; the message is the body. */
+/**
+ * The typed code decides the headline, the tone AND the body — the last one is
+ * what changed when the app went bilingual. `error.message` used to be printed
+ * verbatim; it is a Russian log line now, and `errorBody` renders the phrase
+ * from the code and the machine parameters beside it, falling back to `message`
+ * only for a code this build has nothing to say about.
+ */
 export function notifyAppError(error: AppError): void {
   const tone = TONE_BY_CODE[error.code];
   if (tone === null) return;
-  notify({ tone, title: errorTitle(error.code), detail: error.message });
+  const dict = getDict();
+  notify({ tone, title: errorTitle(error.code, dict), detail: errorBody(error, dict) });
 }
 
 export function notifySuccess(title: string, detail?: string): void {

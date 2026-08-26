@@ -1,4 +1,3 @@
-import type { CaptureTone } from "@/components/CaptureMeter";
 import type { RecorderState } from "@/ipc/types";
 
 /**
@@ -15,41 +14,43 @@ import type { RecorderState } from "@/ipc/types";
  */
 export type ListeningState = "recording" | "transcribing" | "auto" | "armed" | "off" | "error";
 
+/**
+ * The five bars of `CaptureMeter` mean ONE thing: sound is being captured, or was
+ * about to be.
+ *
+ * They used to be two components in one — the launcher's brand mark and the HUD's
+ * capture indicator — separated only by which red filled them. The brand half is
+ * `Wordmark`; this half never leaves the capture vocabulary.
+ */
+export type CaptureTone = "listening" | "armed" | "processing" | "danger" | "idle";
+
+/**
+ * How loudly the state's word is printed. A colour would put a Tailwind class in
+ * a framework-free module; the component owns the class, this owns the meaning —
+ * and being a field of `Presentation` makes it exhaustive, so a sixth state
+ * cannot silently inherit the neutral tone.
+ */
+export type WordEmphasis = "normal" | "muted" | "danger";
+
+/**
+ * What a state LOOKS like — and nothing about what it is called. The word and
+ * the announcement moved into `dict.common.listening`, keyed by the same state,
+ * so the two locales cannot disagree on the vocabulary while this file keeps
+ * the one thing that is not language: the colour, the motion and the emphasis.
+ */
 interface Presentation {
   tone: CaptureTone;
   animated: boolean;
-  word: string;
-  /** What a screen reader is told, which needs more than the on-screen word. */
-  announcement: string;
+  emphasis: WordEmphasis;
 }
 
 const PRESENTATION: Record<ListeningState, Presentation> = {
-  recording: {
-    tone: "listening",
-    animated: true,
-    word: "Пишу",
-    announcement: "Идёт запись системного звука",
-  },
-  auto: {
-    tone: "listening",
-    animated: true,
-    word: "Слушаю",
-    announcement: "Автослушание включено, звук пишется",
-  },
-  armed: {
-    tone: "armed",
-    animated: false,
-    word: "Наготове",
-    announcement: "Фоновый буфер держит последние секунды звука",
-  },
-  transcribing: {
-    tone: "processing",
-    animated: true,
-    word: "Распознаю",
-    announcement: "Распознаю речь",
-  },
-  off: { tone: "idle", animated: false, word: "Не слушает", announcement: "Ничего не пишется" },
-  error: { tone: "danger", animated: false, word: "Ошибка", announcement: "Ошибка" },
+  recording: { tone: "listening", animated: true, emphasis: "normal" },
+  auto: { tone: "listening", animated: true, emphasis: "normal" },
+  armed: { tone: "armed", animated: false, emphasis: "normal" },
+  transcribing: { tone: "processing", animated: true, emphasis: "normal" },
+  off: { tone: "idle", animated: false, emphasis: "muted" },
+  error: { tone: "danger", animated: false, emphasis: "danger" },
 };
 
 export function listeningState({
@@ -68,10 +69,6 @@ export function listeningState({
   if (autoListening) return "auto";
   if (hasError) return "error";
   return bufferEnabled ? "armed" : "off";
-}
-
-export function listeningAnnouncement(value: ListeningState): string {
-  return PRESENTATION[value].announcement;
 }
 
 export function listeningPresentation(value: ListeningState): Presentation {

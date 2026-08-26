@@ -74,10 +74,71 @@ fn load_skips_missing_and_malformed_ids() {
 #[test]
 fn traversal_id_never_leaves_the_store() {
     assert!(!is_valid_id("../settings.json"));
-    assert!(!is_valid_id("0000000000000000.json"));
-    assert!(!is_valid_id("00000000000000.png"), "короткий хеш");
-    assert!(!is_valid_id("00000000000000AA.png"), "верхний регистр");
-    assert!(is_valid_id("00000000000000aa.png"));
+    assert!(!is_valid_id(&format!("{}.json", "0".repeat(ID_HASH_HEX_LEN))));
+    assert!(!is_valid_id("00000000000000.png"), "хеш не той длины");
+    assert!(!is_valid_id(&format!("{}AA.png", "0".repeat(ID_HASH_HEX_LEN - 2))), "верхний регистр");
+    assert!(is_valid_id(&format!("{}aa.png", "0".repeat(ID_HASH_HEX_LEN - 2))));
+}
+
+/// The whole point of pinning the algorithm: the same bytes must produce the
+/// same file name in every build of every toolchain, forever.
+#[test]
+fn the_id_of_known_bytes_is_a_fixed_value() {
+    assert_eq!(content_id(b"harpyhare", PNG_EXTENSION), "414f4bbf52ccc797f4a32ccf0f1c1633.png");
+    assert_eq!(content_id(b"", PNG_EXTENSION), "e3b0c44298fc1c149afbf4c8996fb924.png");
+}
+
+#[test]
+fn a_new_id_is_thirty_two_hex_characters() {
+    let id = content_id(PNG_BYTES, PNG_EXTENSION);
+    let (hash, ext) = id.split_once(ID_EXTENSION_SEPARATOR).unwrap();
+    assert_eq!(hash.len(), ID_HASH_HEX_LEN);
+    assert_eq!(ext, PNG_EXTENSION);
+    assert!(!is_legacy_id(&id));
+}
+
+/// Ids written before the hash was pinned still live in `chats.json`, so they
+/// must keep resolving to their files on read.
+#[test]
+fn a_legacy_id_still_loads() {
+    let dir = temp_dir("legacy-load");
+    let legacy = format!("{}.png", "a1b2c3d4e5f60718");
+    assert!(is_valid_id(&legacy) && is_legacy_id(&legacy));
+    std::fs::write(dir.join(&legacy), PNG_BYTES).unwrap();
+    let loaded = load(&dir, std::slice::from_ref(&legacy));
+    assert_eq!(loaded.len(), 1);
+    assert_eq!(loaded[0].id, legacy);
+}
+
+/// The transition guard: an unreferenced legacy file that is still young is
+/// left alone, because a `chats.json` that failed to load hands `prune` a short
+/// keep list and would otherwise take the whole history's images with it.
+#[test]
+fn prune_spares_recent_legacy_files_and_removes_aged_ones() {
+    let dir = temp_dir("prune-legacy");
+    let recent = dir.join("a1b2c3d4e5f60718.png");
+    let aged = dir.join("b1b2c3d4e5f60718.png");
+    std::fs::write(&recent, PNG_BYTES).unwrap();
+    std::fs::write(&aged, PNG_BYTES).unwrap();
+    let long_ago = std::time::SystemTime::now() - LEGACY_ID_GRACE - Duration::from_secs(60);
+    std::fs::File::open(&aged)
+        .unwrap()
+        .set_modified(long_ago)
+        .unwrap();
+
+    prune(&dir, &[]);
+
+    assert!(recent.exists(), "свежий файл старого формата переживает уборку");
+    assert!(!aged.exists(), "просроченный файл старого формата удаляется");
+}
+
+/// New-format files get no grace: nothing but a real reference keeps them.
+#[test]
+fn prune_removes_an_unreferenced_new_format_file_immediately() {
+    let dir = temp_dir("prune-new");
+    let id = save(&dir, "image/png", PNG_BYTES).unwrap();
+    prune(&dir, &[]);
+    assert!(!dir.join(&id).exists());
 }
 
 #[test]

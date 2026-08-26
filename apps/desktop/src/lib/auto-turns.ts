@@ -4,14 +4,21 @@ export const NO_TURN_SUBMITTED = -1;
 
 const NOT_FOUND = -1;
 
-const SPEAKER_LABEL: Record<Speaker, string> = {
+/**
+ * The label as it goes INTO THE PROMPT, and it stays Russian on purpose.
+ *
+ * This is content, not interface: the preset prompts in `config/presets.json`
+ * are Russian and address the model in those very words, so translating the
+ * speaker tags with the UI would silently change what the model is told. The
+ * on-screen vocabulary is `dict.common.speakers` — `AutoTranscript` reads that
+ * one. The two used to be a single table (CLAUDE.md said so), and they part
+ * ways here because a second interface language is exactly the case where "the
+ * word the model sees" and "the word the user sees" stop being one question.
+ */
+const SPEAKER_PROMPT_LABEL: Record<Speaker, string> = {
   interviewer: "Интервьюер",
   user: "Я",
 };
-
-export function speakerLabel(speaker: Speaker): string {
-  return SPEAKER_LABEL[speaker];
-}
 
 const LABEL_SEPARATOR = ": ";
 const BLOCK_SEPARATOR = "\n";
@@ -56,7 +63,7 @@ export function renderTurns(turns: AutoTurn[]): string {
     return blocks.map((b) => b.text).join(SAME_SPEAKER_SEPARATOR);
   }
   return blocks
-    .map((b) => SPEAKER_LABEL[b.speaker] + LABEL_SEPARATOR + b.text)
+    .map((b) => SPEAKER_PROMPT_LABEL[b.speaker] + LABEL_SEPARATOR + b.text)
     .join(BLOCK_SEPARATOR);
 }
 

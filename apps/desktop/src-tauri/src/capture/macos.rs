@@ -5,8 +5,35 @@ use cidre::{
 };
 
 use super::{
-    AudioDeviceInfo, CallbackCtx, CaptureError, DeviceChangeHandler, SourceKind, StreamSpec,
+    AudioDeviceInfo, CallbackCtx, CaptureBackend, CaptureError, DeviceChangeHandler, SourceKind,
+    StreamSpec,
 };
+
+pub struct Backend;
+
+impl CaptureBackend for Backend {
+    type Source = Source;
+    type Running = Running;
+
+    fn open(
+        kind: SourceKind,
+        device_uid: Option<&str>,
+    ) -> Result<(Self::Source, StreamSpec), CaptureError> {
+        open(kind, device_uid)
+    }
+
+    fn start(source: Self::Source, ctx: Box<CallbackCtx>) -> Result<Self::Running, CaptureError> {
+        start(source, ctx)
+    }
+
+    fn list_devices(kind: SourceKind) -> Vec<AudioDeviceInfo> {
+        list_devices(kind)
+    }
+
+    fn watch_default_output_device(on_change: DeviceChangeHandler) {
+        watch_default_output_device(on_change);
+    }
+}
 
 // '!hog' — kAudioDevicePermissionsError, единственный код, по которому отказ TCC
 // узнаётся однозначно. Родственный 'nope' (kAudioHardwareIllegalOperationError)

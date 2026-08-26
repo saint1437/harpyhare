@@ -1,7 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
+import { useDocumentKeydown } from "@/hooks/useDocumentKeydown";
 import { matchesPrepared, prepareCombo } from "@/lib/hotkey-match";
-
-const KEYDOWN_EVENT = "keydown";
 
 /** Что именно сейчас можно отменить. Порядок — приоритет. */
 export type Cancellable = "recording" | "stream" | null;
@@ -29,23 +28,16 @@ export function useCancelKey(
 ): void {
   const prepared = useMemo(() => prepareCombo(combo), [combo]);
 
-  useEffect(() => {
-    if (target === null) return;
-    const onKey = (e: KeyboardEvent) => {
-      // Radix layers (popovers, dialogs) consume Escape in the document's
-      // capture phase and mark it preventDefault — that Esc closed a layer, it
-      // was not cancelling the recording or the stream. Without the check,
-      // closing the params popover killed the stream mid-answer.
-      if (e.defaultPrevented) return;
-      if (e.repeat) return;
-      if (!matchesPrepared(e, prepared)) return;
-      e.preventDefault();
-      if (target === "recording") onCancelRecording();
-      else onCancelStream();
-    };
-    document.addEventListener(KEYDOWN_EVENT, onKey);
-    return () => {
-      document.removeEventListener(KEYDOWN_EVENT, onKey);
-    };
-  }, [target, prepared, onCancelRecording, onCancelStream]);
+  useDocumentKeydown((e) => {
+    // Radix layers (popovers, dialogs) consume Escape in the document's
+    // capture phase and mark it preventDefault — that Esc closed a layer, it
+    // was not cancelling the recording or the stream. Without the check,
+    // closing the params popover killed the stream mid-answer.
+    if (e.defaultPrevented) return;
+    if (e.repeat) return;
+    if (!matchesPrepared(e, prepared)) return;
+    e.preventDefault();
+    if (target === "recording") onCancelRecording();
+    else onCancelStream();
+  }, target !== null);
 }

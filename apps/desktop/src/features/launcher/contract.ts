@@ -1,33 +1,26 @@
+import type { SecretsApi } from "@/features/settings/contract";
+import type { SettingsTabId } from "@/features/settings/settings-tabs";
 import type { ContextLibraryApi } from "@/hooks/useContextLibrary";
 import type { UpdaterApi } from "@/hooks/useUpdater";
-import type { Settings, UpdateInfo } from "@/ipc/types";
+import type { Settings } from "@/ipc/types";
 import type { ScreenId } from "./screens";
-import type { SettingsTabId } from "./settings-tabs";
 import type { LauncherReadiness } from "./useLauncherReadiness";
-
-export type SetSetting = <K extends keyof Settings>(key: K, value: Settings[K]) => void;
 
 export interface LauncherDestination {
   screen: ScreenId;
   tab?: SettingsTabId;
 }
 
-export interface SectionProps {
-  draft: Settings;
-  set: SetSetting;
-}
-
 export interface LauncherPanelProps {
   settings: Settings;
   contextLibrary: ContextLibraryApi;
   readiness: LauncherReadiness;
+  secrets: SecretsApi;
   updater: UpdaterApi;
   launching: boolean;
   saving: boolean;
-  /** Только состояние объекта статуса: сам текст отказа ушёл в уведомление. */
+  /** The status object's state only: the text of the failure went into a notification. */
   saveFailed: boolean;
-  onRedeem: (code: string) => Promise<string | null>;
-  onCheckUpdates: () => Promise<UpdateInfo | null>;
   onSave: (next: Settings) => void;
   onLaunch: (next: Settings) => void;
   onReplayOnboarding: () => void;

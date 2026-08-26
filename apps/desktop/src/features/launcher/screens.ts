@@ -7,16 +7,28 @@ import {
   SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
+import type { ScreenKey } from "@/i18n/launcher-types";
+import type { Dictionary } from "@/i18n/types";
 import { PLATFORM, type Platform } from "@/lib/platform";
 
+/**
+ * The order the sidebar draws them in. The groups carry no title of their own —
+ * the rail is icons only at every width, and the screen's name lives in its
+ * `title` and in the `ScreenShell` heading.
+ */
 export const SCREEN_GROUPS = ["start", "content", "system"] as const;
 
 export type ScreenGroup = (typeof SCREEN_GROUPS)[number];
 
+/**
+ * The registry keeps what a dictionary cannot: the icon, the group and the
+ * platforms a screen exists on. The label and the description are
+ * `dict.launcher.screens`, keyed by this same id — so the sidebar, `ScreenShell`
+ * and the search index all name a screen with one string per locale, and a
+ * screen added without a translation fails `tsc`.
+ */
 interface ScreenMeta {
-  id: string;
-  label: string;
-  description: string;
+  id: ScreenKey;
   icon: LucideIcon;
   group: ScreenGroup;
   platforms?: readonly Platform[];
@@ -25,49 +37,12 @@ interface ScreenMeta {
 const MACOS_ONLY: readonly Platform[] = ["macos"];
 
 export const LAUNCHER_SCREENS = [
-  {
-    id: "start",
-    label: "Старт",
-    description: "Что нужно сделать до запуска. Остальное уже настроено по умолчанию.",
-    icon: Rocket,
-    group: "start",
-  },
-  {
-    id: "contexts",
-    label: "Контексты",
-    description: "Справочные материалы, которые можно подмешать в системный промпт чата.",
-    icon: Library,
-    group: "content",
-  },
-  {
-    id: "presets",
-    label: "Пресеты",
-    description: "Препромпты: текст, который встаёт в начало системного промпта.",
-    icon: MessageSquareText,
-    group: "content",
-  },
-  {
-    id: "settings",
-    label: "Настройки",
-    description: "Доступ к API, распознавание речи, клавиши, поведение и вид.",
-    icon: SlidersHorizontal,
-    group: "system",
-  },
-  {
-    id: "permissions",
-    label: "Доступы",
-    description: "Системные разрешения, без которых часть приложения не работает.",
-    icon: ShieldCheck,
-    group: "system",
-    platforms: MACOS_ONLY,
-  },
-  {
-    id: "updates",
-    label: "Обновления",
-    description: "Версия приложения и установка новой.",
-    icon: Download,
-    group: "system",
-  },
+  { id: "start", icon: Rocket, group: "start" },
+  { id: "contexts", icon: Library, group: "content" },
+  { id: "presets", icon: MessageSquareText, group: "content" },
+  { id: "settings", icon: SlidersHorizontal, group: "system" },
+  { id: "permissions", icon: ShieldCheck, group: "system", platforms: MACOS_ONLY },
+  { id: "updates", icon: Download, group: "system" },
 ] as const satisfies readonly ScreenMeta[];
 
 export type ScreenId = (typeof LAUNCHER_SCREENS)[number]["id"];
@@ -84,6 +59,11 @@ export function screenGroup(group: ScreenGroup, platform: Platform = PLATFORM) {
 
 export function screenMeta(id: ScreenId) {
   return LAUNCHER_SCREENS.find((s) => s.id === id) ?? LAUNCHER_SCREENS[0];
+}
+
+/** The only way from a screen id to the two phrases that name it. */
+export function screenCopy(id: ScreenId, dict: Dictionary) {
+  return dict.launcher.screens[id];
 }
 
 export function screenVisible(id: ScreenId, platform: Platform = PLATFORM): boolean {

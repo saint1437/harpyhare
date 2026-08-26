@@ -1,10 +1,15 @@
-import { HOTKEY_ACTIONS, type HotkeyKind } from "@/ipc/bindings";
+import { permissionRowCopy, PERMISSION_ROWS } from "@/features/settings/permission-rows";
+import { SETTINGS_ENTRIES } from "@/features/settings/settings-registry";
+import { SETTINGS_TABS, type SettingsTabId } from "@/features/settings/settings-tabs";
+import { format } from "@/i18n";
+import type { Dictionary } from "@/i18n/types";
+import { HOTKEY_ACTIONS } from "@/ipc/types";
+import type { HotkeyKind } from "@/ipc/types";
 import { API_KEY_IDS, apiKeyInfo } from "@/lib/api-keys";
-import { hotkeyAction, type HotkeyActionId } from "@/lib/hotkeys";
+import { hotkeyAction, hotkeyHint, hotkeyLabel, type HotkeyActionId } from "@/lib/hotkeys";
 import { PLATFORM, type Platform } from "@/lib/platform";
-import { PERMISSION_ROWS } from "./permission-rows";
-import { SCREEN_GROUPS, screenGroup, screenMeta, screenVisible, type ScreenId } from "./screens";
-import { SETTINGS_TABS, settingsTabMeta, type SettingsTabId } from "./settings-tabs";
+import { screenCopy, SCREEN_GROUPS, screenGroup, screenVisible, type ScreenId } from "./screens";
+import { WINDOW_PAIRS } from "./window-pairs";
 
 export interface SearchHit {
   id: string;
@@ -27,8 +32,6 @@ interface SettingsRow {
   tab: SettingsTabId;
 }
 
-const SEARCH_LOCALE = "ru";
-const BREADCRUMB_SEPARATOR = " → ";
 const HIT_ID_SEPARATOR = ":";
 
 const SCREEN_HIT = "screen";
@@ -45,6 +48,9 @@ const PRESETS_SCREEN: ScreenId = "presets";
 const PERMISSIONS_SCREEN: ScreenId = "permissions";
 const CONTEXTS_SCREEN: ScreenId = "contexts";
 const QUICK_ACTIONS_TAB: SettingsTabId = "quick-actions";
+const QUICK_ACTION: HotkeyActionId = "quick_action";
+const ACCESS_TAB: SettingsTabId = "access";
+const WINDOW_TAB: SettingsTabId = "window";
 
 const TAB_BY_HOTKEY_KIND: Record<HotkeyKind, SettingsTabId> = {
   combo: "hotkeys",
@@ -55,114 +61,6 @@ const TAB_BY_HOTKEY_KIND: Record<HotkeyKind, SettingsTabId> = {
 
 const HOTKEYS_WITHOUT_SETTINGS_ROW: ReadonlySet<HotkeyActionId> = new Set(["opacity"]);
 
-const STEP_TITLE_SUFFIX = ": шаг";
-
-const WINDOW_STEP_ROWS = [
-  {
-    action: "move_window",
-    hint: "Модификатор со стрелками двигает окно, шаг — на сколько пикселей за нажатие.",
-  },
-  { action: "resize_window", hint: "Модификатор со стрелками меняет ширину и высоту окна." },
-  { action: "scroll_chat", hint: "Прокрутка переписки стрелками вверх и вниз." },
-] as const satisfies readonly { action: HotkeyActionId; hint: string }[];
-
-const SETTINGS_ROWS = [
-  { title: "Код доступа", hint: "Быстрый путь: заводить ключи не нужно.", tab: "access" },
-  {
-    title: "Код доступа активен",
-    hint: "Отвязка вернёт запросы на ваши ключи API.",
-    tab: "access",
-  },
-  {
-    title: "Устройство захвата",
-    hint: "Снимается звук только этого выхода. Что играет в другие устройства — в захват не попадёт.",
-    tab: "speech",
-  },
-  {
-    title: "Язык распознавания",
-    hint: "Whisper распознаёт точнее, когда язык задан явно.",
-    tab: "speech",
-  },
-  {
-    title: "Перевод на английский",
-    hint: "Речь на любом языке приходит в чат по-английски.",
-    tab: "speech",
-  },
-  {
-    title: "Отвечать без нажатия",
-    hint: "Иначе ответ уходит по клавише — вы решаете, на что отвечать.",
-    tab: "speech",
-  },
-  {
-    title: "Фоновый буфер",
-    hint: "Подхватывает сказанное за секунды до нажатия записи.",
-    tab: "speech",
-  },
-  { title: "Глубина буфера", hint: "Сколько секунд звука держится в памяти.", tab: "speech" },
-  {
-    title: "Включать при запуске",
-    hint: "Автослушание поднимется вместе с основным окном.",
-    tab: "speech",
-  },
-  { title: "Микрофон", hint: "Устройство, с которого слышно вас.", tab: "speech" },
-  {
-    title: "Пауза до конца реплики",
-    hint: "Сколько тишины считать концом фразы.",
-    tab: "speech",
-  },
-  { title: "Минимальная реплика", hint: "Короче — не отправляем на расшифровку.", tab: "speech" },
-  { title: "Максимальная реплика", hint: "Длиннее — режем на части.", tab: "speech" },
-  {
-    title: "Прикреплять вложения",
-    hint: "Быстрое действие отправит картинки из поля ввода вместе с заготовленным промптом.",
-    tab: "quick-actions",
-  },
-  {
-    title: "Отправлять сразу после распознавания",
-    hint: "Расшифровка уходит в чат без нажатия отправки.",
-    tab: "behavior",
-  },
-  {
-    title: "Открывать превью HTML",
-    hint: "Если в ответе есть HTML-блок, рядом с чатом открывается панель просмотра.",
-    tab: "behavior",
-  },
-  {
-    title: "Суфлёр продолжает с места остановки",
-    hint: "Иначе текст каждый раз начинается сверху.",
-    tab: "behavior",
-  },
-  {
-    title: "Показывать окно при демонстрации экрана",
-    hint: "По умолчанию окно вырезано из захвата — собеседники его не видят. Включите, только если хотите показать его намеренно.",
-    tab: "behavior",
-  },
-  {
-    title: "Тема",
-    hint: "«Как в системе» переключается вместе с оформлением macOS или Windows.",
-    tab: "appearance",
-  },
-  {
-    title: "Размер шрифта чата",
-    hint: "Влияет на текст переписки и код в ответах.",
-    tab: "appearance",
-  },
-  { title: "Прозрачность окна", hint: "Сквозь окно видно то, что под ним.", tab: "appearance" },
-  {
-    title: "Копировать в буфер обмена",
-    hint: "Расшифровки и снимки экрана.",
-    tab: "behavior",
-  },
-  {
-    title: "Первичная настройка",
-    hint: "Короткий проход по доступам, приватности и клавише записи.",
-    tab: "access",
-  },
-] as const satisfies readonly SettingsRow[];
-
-const QUICK_ACTION_HINT =
-  "Кнопки над полем ввода: каждая отправляет в чат свой заготовленный промпт.";
-
 const RANK_TITLE_PREFIX = 0;
 const RANK_TITLE_INSIDE = 1;
 const RANK_HINT = 2;
@@ -171,65 +69,75 @@ function hitId(kind: string, key: string): string {
   return [kind, key].join(HIT_ID_SEPARATOR);
 }
 
-function breadcrumbOf(screen: ScreenId, tab: SettingsTabId | null): string {
-  const label = screenMeta(screen).label;
-  return tab === null ? label : [label, settingsTabMeta(tab).label].join(BREADCRUMB_SEPARATOR);
+function breadcrumbOf(screen: ScreenId, tab: SettingsTabId | null, dict: Dictionary): string {
+  const label = screenCopy(screen, dict).label;
+  if (tab === null) return label;
+  return [label, dict.settings.tabs[tab].label].join(dict.launcher.search.breadcrumbSeparator);
 }
 
-function screenHits(platform: Platform): SearchHit[] {
+function screenHits(dict: Dictionary, platform: Platform): SearchHit[] {
   return SCREEN_GROUPS.flatMap((group) =>
-    screenGroup(group, platform).map((screen) => ({
-      id: hitId(SCREEN_HIT, screen.id),
-      title: screen.label,
-      hint: screen.description,
-      screen: screen.id,
-      tab: null,
-      breadcrumb: breadcrumbOf(screen.id, null),
-    })),
+    screenGroup(group, platform).map((screen) => {
+      const copy = screenCopy(screen.id, dict);
+      return {
+        id: hitId(SCREEN_HIT, screen.id),
+        title: copy.label,
+        hint: copy.description,
+        screen: screen.id,
+        tab: null,
+        breadcrumb: breadcrumbOf(screen.id, null, dict),
+      };
+    }),
   );
 }
 
-function hotkeyHits(): SearchHit[] {
+function hotkeyHits(dict: Dictionary): SearchHit[] {
   return HOTKEY_ACTIONS.filter((action) => !HOTKEYS_WITHOUT_SETTINGS_ROW.has(action.id)).map(
     (action) => {
       const tab = TAB_BY_HOTKEY_KIND[action.kind];
       return {
         id: hitId(HOTKEY_HIT, action.id),
-        title: action.label,
-        hint: action.hint,
+        title: hotkeyLabel(action, dict),
+        hint: hotkeyHint(action, dict),
         screen: SETTINGS_SCREEN,
         tab,
-        breadcrumb: breadcrumbOf(SETTINGS_SCREEN, tab),
+        breadcrumb: breadcrumbOf(SETTINGS_SCREEN, tab, dict),
       };
     },
   );
 }
 
-function tabHits(): SearchHit[] {
-  return SETTINGS_TABS.map((tab) => ({
-    id: hitId(TAB_HIT, tab.id),
-    title: tab.label,
-    hint: tab.description,
-    screen: SETTINGS_SCREEN,
-    tab: tab.id,
-    breadcrumb: breadcrumbOf(SETTINGS_SCREEN, tab.id),
-  }));
+function tabHits(dict: Dictionary): SearchHit[] {
+  return SETTINGS_TABS.map((tab) => {
+    const copy = dict.settings.tabs[tab.id];
+    return {
+      id: hitId(TAB_HIT, tab.id),
+      title: copy.label,
+      hint: copy.description,
+      screen: SETTINGS_SCREEN,
+      tab: tab.id,
+      breadcrumb: breadcrumbOf(SETTINGS_SCREEN, tab.id, dict),
+    };
+  });
 }
 
-function permissionHits(platform: Platform): SearchHit[] {
+function permissionHits(dict: Dictionary, platform: Platform): SearchHit[] {
   if (!screenVisible(PERMISSIONS_SCREEN, platform)) return [];
-  return PERMISSION_ROWS.map((row) => ({
-    id: hitId(PERMISSION_HIT, row.kind),
-    title: row.title,
-    hint: row.purpose,
-    screen: PERMISSIONS_SCREEN,
-    tab: null,
-    breadcrumb: breadcrumbOf(PERMISSIONS_SCREEN, null),
-  }));
+  return PERMISSION_ROWS.map((row) => {
+    const copy = permissionRowCopy(row.kind, dict);
+    return {
+      id: hitId(PERMISSION_HIT, row.kind),
+      title: copy.title,
+      hint: copy.purpose,
+      screen: PERMISSIONS_SCREEN,
+      tab: null,
+      breadcrumb: breadcrumbOf(PERMISSIONS_SCREEN, null, dict),
+    };
+  });
 }
 
-function contextDocHits(contextDocs: SearchSources["contextDocs"]): SearchHit[] {
-  const hint = screenMeta(CONTEXTS_SCREEN).description;
+function contextDocHits(contextDocs: SearchSources["contextDocs"], dict: Dictionary): SearchHit[] {
+  const hint = screenCopy(CONTEXTS_SCREEN, dict).description;
   return contextDocs
     .filter((doc) => doc.name.trim() !== "")
     .map((doc) => ({
@@ -238,48 +146,82 @@ function contextDocHits(contextDocs: SearchSources["contextDocs"]): SearchHit[] 
       hint,
       screen: CONTEXTS_SCREEN,
       tab: null,
-      breadcrumb: breadcrumbOf(CONTEXTS_SCREEN, null),
+      breadcrumb: breadcrumbOf(CONTEXTS_SCREEN, null, dict),
     }));
 }
 
-function apiKeyRows(): SettingsRow[] {
+/**
+ * The rows the registry does NOT cover — the access tab's own controls, whose
+ * "field" is a form rather than a value. Everything else comes from
+ * `SETTINGS_ENTRIES`, which is what the sections render.
+ */
+function accessRows(dict: Dictionary): SettingsRow[] {
+  const copy = dict.settings.apiKeys;
+  return [
+    { title: copy.accessCodeLabel, hint: copy.accessCodeHint, tab: ACCESS_TAB },
+    { title: copy.accessCodeActiveLabel, hint: copy.accessCodeActiveHint, tab: ACCESS_TAB },
+    { title: copy.replayLabel, hint: copy.replayHint, tab: ACCESS_TAB },
+  ];
+}
+
+function apiKeyRows(dict: Dictionary): SettingsRow[] {
+  const copy = dict.settings.apiKeys;
   return API_KEY_IDS.map((id): SettingsRow => {
-    const info = apiKeyInfo(id);
-    return { title: `Ключ ${info.name}`, hint: `Нужен для ${info.purpose}.`, tab: "access" };
+    const purpose = dict.common.apiKeys.purpose[id];
+    return {
+      title: format(copy.keyLabel, { name: apiKeyInfo(id).name }),
+      hint: format(copy.keyPurpose, { purpose }),
+      tab: ACCESS_TAB,
+    };
   });
 }
 
-function windowStepRows(): SettingsRow[] {
-  return WINDOW_STEP_ROWS.map(({ action, hint }): SettingsRow => ({
-    title: `${hotkeyAction(action).label}${STEP_TITLE_SUFFIX}`,
-    hint,
-    tab: "window",
-  }));
+function windowStepRows(dict: Dictionary): SettingsRow[] {
+  return WINDOW_PAIRS.map(({ action }): SettingsRow => {
+    const label = hotkeyLabel(hotkeyAction(action), dict);
+    return {
+      title: format(dict.launcher.search.windowStepTitle, { action: label }),
+      hint: dict.launcher.window.pairs[action],
+      tab: WINDOW_TAB,
+    };
+  });
 }
 
-function quickActionComboRow(): SettingsRow {
+function quickActionComboRow(dict: Dictionary): SettingsRow {
   return {
-    title: "Сочетание",
-    hint: hotkeyAction("quick_action").hint,
+    title: dict.launcher.quickActions.comboLabel,
+    hint: hotkeyHint(hotkeyAction(QUICK_ACTION), dict),
     tab: QUICK_ACTIONS_TAB,
   };
 }
 
-function settingsRowHits(): SearchHit[] {
-  return [...SETTINGS_ROWS, quickActionComboRow(), ...apiKeyRows(), ...windowStepRows()].map(
-    (row) => ({
-      id: hitId(SETTING_HIT, [row.tab, row.title].join(HIT_ID_SEPARATOR)),
-      title: row.title,
-      hint: row.hint,
-      screen: SETTINGS_SCREEN,
-      tab: row.tab,
-      breadcrumb: breadcrumbOf(SETTINGS_SCREEN, row.tab),
-    }),
-  );
+function registryRows(dict: Dictionary): SettingsRow[] {
+  return SETTINGS_ENTRIES.map((entry) => ({
+    title: dict.settings.entries[entry.id].label,
+    hint: dict.settings.entries[entry.id].hint,
+    tab: entry.tab,
+  }));
 }
 
-function presetHits(presets: SearchSources["presets"]): SearchHit[] {
-  const hint = screenMeta(PRESETS_SCREEN).description;
+function settingsRowHits(dict: Dictionary): SearchHit[] {
+  return [
+    ...registryRows(dict),
+    ...accessRows(dict),
+    quickActionComboRow(dict),
+    ...apiKeyRows(dict),
+    ...windowStepRows(dict),
+  ].map((row) => ({
+    id: hitId(SETTING_HIT, [row.tab, row.title].join(HIT_ID_SEPARATOR)),
+    title: row.title,
+    hint: row.hint,
+    screen: SETTINGS_SCREEN,
+    tab: row.tab,
+    breadcrumb: breadcrumbOf(SETTINGS_SCREEN, row.tab, dict),
+  }));
+}
+
+function presetHits(presets: SearchSources["presets"], dict: Dictionary): SearchHit[] {
+  const hint = screenCopy(PRESETS_SCREEN, dict).description;
   return presets
     .filter((preset) => preset.name.trim() !== "")
     .map((preset) => ({
@@ -288,58 +230,68 @@ function presetHits(presets: SearchSources["presets"]): SearchHit[] {
       hint,
       screen: PRESETS_SCREEN,
       tab: null,
-      breadcrumb: breadcrumbOf(PRESETS_SCREEN, null),
+      breadcrumb: breadcrumbOf(PRESETS_SCREEN, null, dict),
     }));
 }
 
-function quickActionHits(quickActions: SearchSources["quickActions"]): SearchHit[] {
+function quickActionHits(
+  quickActions: SearchSources["quickActions"],
+  dict: Dictionary,
+): SearchHit[] {
+  const hint = dict.launcher.quickActions.description;
   return quickActions
     .filter((action) => action.title.trim() !== "")
     .map((action) => ({
       id: hitId(QUICK_ACTION_HIT, action.id),
       title: action.title,
-      hint: QUICK_ACTION_HINT,
+      hint,
       screen: SETTINGS_SCREEN,
       tab: QUICK_ACTIONS_TAB,
-      breadcrumb: breadcrumbOf(SETTINGS_SCREEN, QUICK_ACTIONS_TAB),
+      breadcrumb: breadcrumbOf(SETTINGS_SCREEN, QUICK_ACTIONS_TAB, dict),
     }));
 }
 
-function launcherIndex(sources: SearchSources, platform: Platform): SearchHit[] {
+/**
+ * The whole index, and a pure function of its arguments: the dictionary arrives
+ * as a parameter rather than through `getDict()` so the tests can walk both
+ * locales — an untranslated hit is caught by running the same case twice.
+ */
+function launcherIndex(sources: SearchSources, dict: Dictionary, platform: Platform): SearchHit[] {
   return [
-    ...screenHits(platform),
-    ...tabHits(),
-    ...hotkeyHits(),
-    ...settingsRowHits(),
-    ...permissionHits(platform),
-    ...presetHits(sources.presets),
-    ...quickActionHits(sources.quickActions),
-    ...contextDocHits(sources.contextDocs),
+    ...screenHits(dict, platform),
+    ...tabHits(dict),
+    ...hotkeyHits(dict),
+    ...settingsRowHits(dict),
+    ...permissionHits(dict, platform),
+    ...presetHits(sources.presets, dict),
+    ...quickActionHits(sources.quickActions, dict),
+    ...contextDocHits(sources.contextDocs, dict),
   ];
 }
 
-function folded(text: string): string {
-  return text.toLocaleLowerCase(SEARCH_LOCALE);
+function folded(text: string, dict: Dictionary): string {
+  return text.toLocaleLowerCase(dict.locale);
 }
 
-function rankOf(hit: SearchHit, needle: string): number | null {
-  const title = folded(hit.title);
+function rankOf(hit: SearchHit, needle: string, dict: Dictionary): number | null {
+  const title = folded(hit.title, dict);
   if (title.startsWith(needle)) return RANK_TITLE_PREFIX;
   if (title.includes(needle)) return RANK_TITLE_INSIDE;
-  if (folded(hit.hint).includes(needle)) return RANK_HINT;
+  if (folded(hit.hint, dict).includes(needle)) return RANK_HINT;
   return null;
 }
 
 export function searchLauncher(
   query: string,
   sources: SearchSources,
+  dict: Dictionary,
   platform: Platform = PLATFORM,
 ): SearchHit[] {
-  const needle = folded(query.trim());
+  const needle = folded(query.trim(), dict);
   if (needle === "") return [];
   const ranked: { hit: SearchHit; rank: number }[] = [];
-  for (const hit of launcherIndex(sources, platform)) {
-    const rank = rankOf(hit, needle);
+  for (const hit of launcherIndex(sources, dict, platform)) {
+    const rank = rankOf(hit, needle, dict);
     if (rank !== null) ranked.push({ hit, rank });
   }
   ranked.sort((a, b) => a.rank - b.rank);

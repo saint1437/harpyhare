@@ -30,12 +30,41 @@ fn classify(path: &Path) -> Option<ImportKind> {
     }
 }
 
-pub fn is_supported_extension(path: &Path) -> bool {
-    classify(path).is_some()
-}
-
 pub(crate) fn too_large_message(max_bytes: u64) -> String {
     format!("Файл больше {} МБ", max_bytes / MEGABYTE)
+}
+
+/// The module's own Russian sentences, turned back into a code and a subject at
+/// the command boundary.
+///
+/// It compares against ITS OWN constants — the same module declares both sides,
+/// so this is not "parsing prose", it is the inverse of the four `Err(...)`
+/// above. Threading a typed error through `read_import_file` would have been
+/// the tidier shape, but it also runs through `chat_images::save`, whose errors
+/// are deliberately swallowed on the frontend; that refactor is a separate one.
+pub fn to_app_error(message: String) -> crate::error::AppError {
+    use crate::error::{param, params_of, subject, AppError, ErrorCode};
+    let subject = match message.as_str() {
+        ERR_UNSUPPORTED_EXTENSION => subject::IMPORT_UNSUPPORTED,
+        ERR_PDF_NO_TEXT => subject::IMPORT_PDF_NO_TEXT,
+        ERR_PDF_PARSE => subject::IMPORT_PDF_PARSE,
+        _ => {
+            for max in [TEXT_MAX_BYTES, PDF_MAX_BYTES, crate::chat_images::IMAGE_MAX_BYTES] {
+                if message == too_large_message(max) {
+                    return AppError::with_params(
+                        ErrorCode::Internal,
+                        message,
+                        params_of([
+                            (param::SUBJECT, subject::IMPORT_TOO_LARGE.to_string()),
+                            (param::LIMIT_MB, (max / MEGABYTE).to_string()),
+                        ]),
+                    );
+                }
+            }
+            return crate::error::internal(message);
+        }
+    };
+    AppError::with_subject(ErrorCode::Internal, message, subject)
 }
 
 pub fn read_import_file(path: &Path) -> Result<String, String> {

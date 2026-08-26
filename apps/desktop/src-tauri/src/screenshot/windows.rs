@@ -666,3 +666,11 @@ fn encode_png(rgb: &[u8], width: usize, height: usize) -> Result<Vec<u8>, String
     writer.finish().map_err(|_| PNG_ENCODE_FAILED.to_string())?;
     Ok(png)
 }
+
+pub struct Backend;
+
+impl super::ScreenshotBackend for Backend {
+    fn capture_region() -> Result<Option<Vec<u8>>, String> {
+        capture_region()
+    }
+}

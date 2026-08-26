@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useDict } from "@/hooks/useDict";
 import { hotkeyFromEvent, isModifierOnlyCode } from "@/lib/hotkey-capture";
 import { formatCombo } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
@@ -13,6 +14,7 @@ const CANCEL_CAPTURE_CODE = "Escape";
 const LISTEN_IN_CAPTURE_PHASE = true;
 
 export function HotkeyCapture({ value, onChange }: HotkeyCaptureProps) {
+  const copy = useDict().launcher.hotkeys;
   const [capturing, setCapturing] = useState(false);
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export function HotkeyCapture({ value, onChange }: HotkeyCaptureProps) {
       )}
     >
       {capturing && <span className="size-1.5 shrink-0 rounded-full bg-focus" aria-hidden />}
-      {capturing ? "Жду сочетание · Esc отменит" : label || "Не назначен"}
+      {capturing ? copy.capturing : label || copy.unassignedCombo}
     </Button>
   );
 }

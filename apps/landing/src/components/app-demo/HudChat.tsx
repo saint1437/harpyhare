@@ -31,7 +31,7 @@ function withoutBullet(line: string): string {
 function Caret() {
   return (
     <span
-      className="caret ml-0.5 inline-block h-3.5 w-0.5 translate-y-0.5 rounded-full bg-app-primary align-baseline"
+      className="caret ml-0.5 inline-block h-3.5 w-0.5 translate-y-0.5 rounded-full bg-app-primary-mark align-baseline"
       aria-hidden
     />
   );

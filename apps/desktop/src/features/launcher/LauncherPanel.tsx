@@ -1,16 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { NotificationStack } from "@/components/NotificationStack";
+import type { SetSetting } from "@/features/settings/contract";
+import { DEFAULT_SETTINGS_TAB, type SettingsTabId } from "@/features/settings/settings-tabs";
+import { useAutosavedDraft } from "@/features/settings/useAutosavedDraft";
 import { useAudioCheck } from "@/hooks/useAudioCheck";
 import { useConnectivity } from "@/hooks/useConnectivity";
+import { useDict } from "@/hooks/useDict";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
+import { format } from "@/i18n";
 import type { Settings } from "@/ipc/types";
 import { effectiveCombo } from "@/lib/hotkeys";
 import { notifyError } from "@/lib/notifications";
 import { isPresetFilled, mergePresets } from "@/lib/presets";
 import { isQuickActionFilled } from "@/lib/quick-actions";
 import { ContextLibraryPanel } from "./ContextLibraryPanel";
-import type { LauncherDestination, LauncherPanelProps, SetSetting } from "./contract";
+import type { LauncherDestination, LauncherPanelProps } from "./contract";
 import { LaunchBar } from "./LaunchBar";
 import { LauncherSearch } from "./LauncherSearch";
 import { DEFAULT_SCREEN, type ScreenId } from "./screens";
@@ -20,15 +25,12 @@ import { StartScreen } from "./screens/StartScreen";
 import { UpdatesScreen, type CheckState } from "./screens/UpdatesScreen";
 import { ScreenShell } from "./ScreenShell";
 import { PresetsSection, type PresetsUpdate } from "./sections/PresetsSection";
-import { DEFAULT_SETTINGS_TAB, type SettingsTabId } from "./settings-tabs";
 import { Sidebar, type SidebarNotice } from "./Sidebar";
 import type { SaveState } from "./StatusObject";
 import { panelId, panelProps } from "./useRovingTabs";
 
 const RECORD_ACTION = "record";
 const RISE_STEP_MS = 50;
-const AUTOSAVE_DEBOUNCE_MS = 600;
-const CHECK_FAILED_TITLE = "Не удалось проверить обновления";
 
 function riseDelay(order: number): CSSProperties {
   return { animationDelay: `${String(order * RISE_STEP_MS)}ms` };
@@ -52,16 +54,19 @@ function sameSettingValue(a: unknown, b: unknown): boolean {
   return a === b || JSON.stringify(a) === JSON.stringify(b);
 }
 
+function sameSettings(a: Settings, b: Settings): boolean {
+  return (Object.keys(a) as (keyof Settings)[]).every((key) => sameSettingValue(a[key], b[key]));
+}
+
 export function LauncherPanel({
   settings,
   contextLibrary,
   readiness,
+  secrets,
   updater,
   launching,
   saving,
   saveFailed,
-  onRedeem,
-  onCheckUpdates,
   onSave,
   onLaunch,
   onReplayOnboarding,
@@ -70,6 +75,8 @@ export function LauncherPanel({
   const [checkState, setCheckState] = useState<CheckState>("idle");
   const [screen, setScreen] = useState<ScreenId>(DEFAULT_SCREEN);
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>(DEFAULT_SETTINGS_TAB);
+
+  const dict = useDict();
 
   const official = useOfficialPresets();
   const audioCheck = useAudioCheck();
@@ -117,12 +124,14 @@ export function LauncherPanel({
         : [
             {
               screen: "updates",
-              label: `Доступна версия ${updater.info.version}`,
+              label: format(dict.launcher.shell.updateAvailable, {
+                version: updater.info.version,
+              }),
               kind: "info",
             } as const satisfies SidebarNotice,
           ]),
     ],
-    [readiness.blockers, updater.info],
+    [readiness.blockers, updater.info, dict],
   );
 
   const goTo = ({ screen: target, tab }: LauncherDestination) => {
@@ -134,14 +143,15 @@ export function LauncherPanel({
   // после того как `Settings::clamp` снял конфликтующий хоткей или обрезал
   // список быстрых действий, лаунчер продолжал показывать то, чего на диске уже
   // нет. Свой же черновик не перетираем — только то, что бэкенд изменил сам.
+  //
+  // Ветки «мы ещё ничего не сохраняли» больше нет: она существовала ровно для
+  // одного поля — токена доступа, который погашение кода писало за спиной формы.
+  // Секреты ушли из `Settings` в собственное хранилище, и подмешивать в черновик
+  // стало нечего.
   useEffect(() => {
     setDraft((d) => {
       const sent = lastSavedRef.current;
-      if (sent === null) {
-        return d.access_token === settings.access_token
-          ? d
-          : { ...d, access_token: settings.access_token };
-      }
+      if (sent === null) return d;
       const adopted = { ...d };
       let changed = false;
       for (const key of Object.keys(settings) as (keyof Settings)[]) {
@@ -154,34 +164,30 @@ export function LauncherPanel({
     });
   }, [settings]);
 
-  const onSaveRef = useRef(onSave);
-  useEffect(() => {
-    onSaveRef.current = onSave;
-  }, [onSave]);
-
-  const lastQueuedDraft = useRef(draft);
-  useEffect(() => {
-    if (launching || draft === lastQueuedDraft.current) return;
-    lastQueuedDraft.current = draft;
-    const timer = setTimeout(() => {
-      const next = normalizeDraft(draft);
-      lastSavedRef.current = next;
-      onSaveRef.current(next);
-    }, AUTOSAVE_DEBOUNCE_MS);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [draft, launching]);
+  // Only the copy being saved is normalised — the draft on screen keeps the
+  // half-filled preset or quick action the user is still typing into.
+  useAutosavedDraft(draft, launching, (next) => {
+    const normalized = normalizeDraft(next);
+    // Adopting a clamped answer builds a NEW draft object, which re-arms the
+    // timer — so the launcher used to write the very value Rust had just handed
+    // back (save → adopt → re-render → save). The guard is by VALUE against
+    // what is already on disk, never by skipping a render: an identity-based
+    // skip would swallow an edit made while the round trip was in flight.
+    if (sameSettings(normalized, settings)) return;
+    lastSavedRef.current = normalized;
+    onSave(normalized);
+  });
 
   const checkUpdates = () => {
     setCheckState("checking");
-    onCheckUpdates()
+    updater
+      .checkNow()
       .then((found) => {
         setCheckState(found ? "idle" : "latest");
       })
       .catch((e: unknown) => {
         setCheckState("idle");
-        notifyError(CHECK_FAILED_TITLE, String(e));
+        notifyError(dict.launcher.shell.updateCheckFailedTitle, String(e));
       });
   };
 
@@ -191,6 +197,48 @@ export function LauncherPanel({
 
   const changePresets = (update: PresetsUpdate) => {
     setDraft((d) => ({ ...d, prompt_presets: update(d.prompt_presets) }));
+  };
+
+  // Exhaustive by type, the way `SettingsScreen` renders its tabs: a chain of
+  // `screen === "…" &&` compiled just as happily with a screen missing, so
+  // adding one to LAUNCHER_SCREENS gave a sidebar item, a search hit and
+  // breadcrumbs — over an empty panel. The compiler now asks for the branch.
+  const panels: Record<ScreenId, ReactNode> = {
+    start: (
+      <StartScreen
+        readiness={readiness}
+        launching={launching}
+        audioCheck={audioCheck}
+        recordCombo={effectiveCombo(draft.hotkeys, RECORD_ACTION)}
+        onRedeem={secrets.redeem}
+        onNavigate={goTo}
+        onLaunch={() => {
+          onLaunch(normalizeDraft(draft));
+        }}
+      />
+    ),
+    contexts: (
+      <ScreenShell screen="contexts">
+        <ContextLibraryPanel api={contextLibrary} />
+      </ScreenShell>
+    ),
+    presets: (
+      <ScreenShell screen="presets">
+        <PresetsSection presets={draft.prompt_presets} onChange={changePresets} />
+      </ScreenShell>
+    ),
+    settings: (
+      <SettingsScreen
+        draft={draft}
+        set={set}
+        tab={settingsTab}
+        secrets={secrets}
+        onReplayOnboarding={onReplayOnboarding}
+        onTabChange={setSettingsTab}
+      />
+    ),
+    permissions: <PermissionsScreen permissions={readiness.permissions} />,
+    updates: <UpdatesScreen updater={updater} checkState={checkState} onCheck={checkUpdates} />,
   };
 
   return (
@@ -222,9 +270,7 @@ export function LauncherPanel({
       {connectivity.offline && (
         <div className="flex items-center gap-2.5 rounded-lg bg-surface px-3 py-2 ring-1 ring-inset ring-line">
           <span className="size-1.5 shrink-0 rounded-full bg-warning" aria-hidden />
-          <span className="min-w-0 text-body text-fg-muted">
-            Нет соединения — код доступа и обновления сейчас не проверить.
-          </span>
+          <span className="min-w-0 text-body text-fg-muted">{dict.launcher.shell.offline}</span>
         </div>
       )}
       {/* Единственная поверхность для отказов обоих окон: раньше здесь стоял
@@ -236,7 +282,7 @@ export function LauncherPanel({
         href={`#${panelId(screen)}`}
         className="sr-only rounded-md bg-elevated px-3 py-1.5 text-body text-fg shadow-pop focus:not-sr-only focus:absolute focus:top-10 focus:left-5 focus:z-40"
       >
-        К содержимому экрана
+        {dict.launcher.shell.skipToContent}
       </a>
 
       <div className="flex min-h-0 min-w-0 flex-1 gap-3 md:gap-4">
@@ -255,43 +301,7 @@ export function LauncherPanel({
             {...panelProps(screen)}
             className="flex min-h-0 min-w-0 flex-1 animate-in duration-150 fade-in-0 outline-none slide-in-from-bottom-1 motion-reduce:animate-none"
           >
-            {screen === "start" && (
-              <StartScreen
-                readiness={readiness}
-                launching={launching}
-                audioCheck={audioCheck}
-                recordCombo={effectiveCombo(draft.hotkeys, RECORD_ACTION)}
-                onRedeem={onRedeem}
-                onNavigate={goTo}
-                onLaunch={() => {
-                  onLaunch(normalizeDraft(draft));
-                }}
-              />
-            )}
-            {screen === "settings" && (
-              <SettingsScreen
-                draft={draft}
-                set={set}
-                tab={settingsTab}
-                onRedeem={onRedeem}
-                onReplayOnboarding={onReplayOnboarding}
-                onTabChange={setSettingsTab}
-              />
-            )}
-            {screen === "permissions" && <PermissionsScreen permissions={readiness.permissions} />}
-            {screen === "updates" && (
-              <UpdatesScreen updater={updater} checkState={checkState} onCheck={checkUpdates} />
-            )}
-            {screen === "contexts" && (
-              <ScreenShell screen="contexts">
-                <ContextLibraryPanel api={contextLibrary} />
-              </ScreenShell>
-            )}
-            {screen === "presets" && (
-              <ScreenShell screen="presets">
-                <PresetsSection presets={draft.prompt_presets} onChange={changePresets} />
-              </ScreenShell>
-            )}
+            {panels[screen]}
           </div>
         </div>
       </div>

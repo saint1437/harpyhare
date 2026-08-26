@@ -12,6 +12,7 @@ const SETTINGS_DEFAULTS_CONSTANT: &str = "SETTINGS_DEFAULTS";
 const MODIFIER_COMBOS_CONSTANT: &str = "MODIFIER_COMBOS";
 const HOTKEY_ACTIONS_CONSTANT: &str = "HOTKEY_ACTIONS";
 const QUICK_ACTION_LIMIT_CONSTANT: &str = "QUICK_ACTION_LIMIT";
+const SECRETS_STATUS_DEFAULTS_CONSTANT: &str = "SECRETS_STATUS_DEFAULTS";
 
 pub fn builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new()
@@ -41,9 +42,14 @@ pub fn builder() -> Builder<tauri::Wry> {
             recording::list_audio_output_devices,
             preferences::get_settings,
             preferences::set_settings,
+            preferences::get_secrets_status,
+            preferences::set_api_key,
+            preferences::clear_api_key,
+            preferences::clear_access_code,
             preferences::get_official_presets,
             preferences::set_ptt_suspended,
             preferences::redeem_access_code,
+            preferences::take_settings_recovery,
             window::set_window_size,
             window::close_app,
             window::set_window_collapsed,
@@ -51,6 +57,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             window::stop_main_window,
             screenshot::capture_region_screenshot,
             permissions::permissions_status,
+            permissions::probe_permission,
             permissions::request_permission,
             permissions::open_permission_settings,
             clipboard::copy_image_to_clipboard,
@@ -61,6 +68,8 @@ pub fn builder() -> Builder<tauri::Wry> {
             system::get_app_version,
         ])
         .typ::<crate::error::AppError>()
+        .typ::<crate::secrets::ApiKeyKind>()
+        .typ::<crate::secrets::SecretsStatus>()
         .typ::<crate::state::RecorderState>()
         .typ::<events::LlmDelta>()
         .typ::<events::LlmDone>()
@@ -88,6 +97,9 @@ pub fn builder() -> Builder<tauri::Wry> {
         .constant(MODIFIER_COMBOS_CONSTANT, hotkeys::MODIFIER_COMBOS)
         .constant(HOTKEY_ACTIONS_CONSTANT, hotkeys::HOTKEY_ACTIONS)
         .constant(QUICK_ACTION_LIMIT_CONSTANT, settings::QUICK_ACTION_LIMIT as u32)
+        // The "nothing is configured" status, so the frontend's initial state is
+        // derived from Rust like `SETTINGS_DEFAULTS` rather than typed out again.
+        .constant(SECRETS_STATUS_DEFAULTS_CONSTANT, crate::secrets::SecretsStatus::default())
         .error_handling(ErrorHandlingMode::Throw)
 }
 

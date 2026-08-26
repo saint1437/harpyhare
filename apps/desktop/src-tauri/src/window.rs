@@ -1,10 +1,12 @@
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager, WebviewWindow};
 
 use crate::app_state::{current_settings, App};
-use crate::{events, hotkey, hotkeys, platform, settings, window_geom};
+use crate::error::{internal, AppError};
+use crate::window_service::{CollapseLayout, Monitor, WindowFrame, WindowSurface};
+use crate::window_tween;
+use crate::{events, hotkey, hotkeys, platform, settings};
 
 pub const MAIN_WINDOW_LABEL: &str = "main";
 pub const LAUNCHER_WINDOW_LABEL: &str = "launcher";
@@ -18,23 +20,11 @@ const LAUNCHER_WINDOW_MIN_HEIGHT_LOGICAL_PX: f64 = 480.0;
 
 const SCREEN_CAPTURE_HIDE_SETTLE: Duration = Duration::from_millis(120);
 
-const RESIZE_TWEEN_STEPS: u32 = 14;
-const RESIZE_TWEEN_FRAME_INTERVAL: Duration = Duration::from_millis(13);
-const RESIZE_EPSILON_LOGICAL_PX: f64 = 1.0;
-
 /// Окно клубка. Больше самого кружка: круг рисуется в CSS с прозрачным полем,
 /// поэтому нативное скругление углов (22px на macOS, системное на Windows)
 /// до него не дотягивается и трогать его не нужно. Поле нужно ещё и тени
 /// кружка — ей есть куда лечь, не упираясь в край окна.
 const COLLAPSED_SIZE_LOGICAL_PX: f64 = 80.0;
-
-/// Твин длится RESIZE_TWEEN_STEPS кадров; минимальный размер возвращаем уже
-/// после него — иначе окно щёлкнет в минимум раньше, чем успеет вырасти.
-/// The frame interval is derived on purpose: retune the tween with another
-/// step and the delay would silently stop covering the expand animation.
-const MIN_SIZE_RESTORE_DELAY: Duration = Duration::from_millis(
-    (RESIZE_TWEEN_STEPS as u64 + 4) * RESIZE_TWEEN_FRAME_INTERVAL.as_millis() as u64,
-);
 
 pub fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(MAIN_WINDOW_LABEL)
@@ -58,7 +48,7 @@ pub fn apply_content_protection_all(app: &AppHandle, settings: &settings::Settin
     }
 }
 
-pub fn create_launcher_window(app: &AppHandle, settings: &settings::Settings) -> Result<(), String> {
+pub fn create_launcher_window(app: &AppHandle, settings: &settings::Settings) -> Result<(), AppError> {
     if launcher_window(app).is_some() {
         return Ok(());
     }
@@ -84,12 +74,12 @@ pub fn create_launcher_window(app: &AppHandle, settings: &settings::Settings) ->
     // `prefers-color-scheme` would report a value the user never chose.
     .content_protected(!settings.screen_share_visible)
     .build()
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| internal(e.to_string()))?;
     platform::merge_titlebar_into_content(app);
     Ok(())
 }
 
-fn create_main_window(app: &AppHandle, settings: &settings::Settings) -> Result<(), String> {
+fn create_main_window(app: &AppHandle, settings: &settings::Settings) -> Result<(), AppError> {
     if main_window(app).is_some() {
         return Ok(());
     }
@@ -115,7 +105,7 @@ fn create_main_window(app: &AppHandle, settings: &settings::Settings) -> Result<
     .content_protected(!settings.screen_share_visible)
     .center()
     .build()
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| internal(e.to_string()))?;
     platform::clip_native_window_corners(app);
     Ok(())
 }
@@ -163,7 +153,7 @@ pub fn show_and_focus_prompt(app: &AppHandle) {
     }
 }
 
-fn hide_main(app: &AppHandle) -> Result<(), String> {
+fn hide_main(app: &AppHandle) -> Result<(), AppError> {
     if let Some(w) = main_window(app) {
         let _ = w.hide();
     }
@@ -174,70 +164,69 @@ fn hide_main(app: &AppHandle) -> Result<(), String> {
 /// не отвечало на вопрос «меня сейчас слышно?», а именно в этом сценарии —
 /// когда сфокусировано чужое приложение — push-to-talk и задуман работать.
 pub fn on_toggle_visibility(app: &AppHandle) {
-    let collapsed = app.state::<App>().window_collapsed.load(Ordering::SeqCst);
+    let collapsed = app.state::<App>().window.is_collapsed();
     set_collapsed(app, !collapsed, true);
 }
 
-fn min_size(width: f64, height: f64) -> tauri::LogicalSize<f64> {
-    tauri::LogicalSize::new(width, height)
+/// The real window behind `WindowSurface`. `resize_to` goes through
+/// `set_window_size` rather than `set_size` on purpose: the tween, the epsilon
+/// and the monitor anchoring all live there.
+struct TauriWindowSurface {
+    app: AppHandle,
+    window: WebviewWindow,
+}
+
+impl WindowSurface for TauriWindowSurface {
+    fn set_min_size(&self, width: f64, height: f64) {
+        let _ = self
+            .window
+            .set_min_size(Some(tauri::LogicalSize::new(width, height)));
+    }
+
+    fn resize_to(&self, width: f64, height: f64) {
+        set_window_size(self.app.clone(), width, height);
+    }
+
+    fn show_and_focus(&self, focus: bool) {
+        let _ = self.window.show();
+        if focus {
+            let _ = self.window.set_focus();
+        }
+    }
+
+    fn restore_min_size_after_tween(&self, width: f64, height: f64, generation: u64) {
+        window_tween::restore_min_size_after_tween(
+            self.app.clone(),
+            self.window.clone(),
+            width,
+            height,
+            generation,
+        );
+    }
+}
+
+fn collapse_layout(settings: &settings::Settings) -> CollapseLayout {
+    CollapseLayout {
+        orb: COLLAPSED_SIZE_LOGICAL_PX,
+        expanded_width: settings.window_width,
+        expanded_height: settings.window_height,
+        min_width: settings::limits::window::WIDTH.min,
+        min_height: settings::limits::window::HEIGHT.min,
+    }
 }
 
 pub fn set_collapsed(app: &AppHandle, collapsed: bool, focus: bool) {
-    let Some(w) = main_window(app) else {
+    let Some(window) = main_window(app) else {
         return;
     };
-    let state = app.state::<App>();
-    if state.window_collapsed.swap(collapsed, Ordering::SeqCst) == collapsed {
-        return;
-    }
-    let my_gen = state.collapse_gen.fetch_add(1, Ordering::SeqCst) + 1;
-    events::collapsed_changed(app, collapsed);
-
-    if collapsed {
-        // Минимум надо опустить ДО твина: окно физически не может стать меньше
-        // своего min_inner_size, и без этого клубок просто не сожмётся.
-        let _ = w.set_min_size(Some(min_size(
-            COLLAPSED_SIZE_LOGICAL_PX,
-            COLLAPSED_SIZE_LOGICAL_PX,
-        )));
-        set_window_size(app.clone(), COLLAPSED_SIZE_LOGICAL_PX, COLLAPSED_SIZE_LOGICAL_PX);
-        return;
-    }
-
-    // Развернуть — это не только «стать больше». Хоткей сворачивания глобальный,
-    // и разворачивают окно чаще всего из ЧУЖОГО приложения: без set_focus окно
-    // вырастает, но ключевым не становится, и набранное уходит мимо. Каретку в
-    // поле ставит эффект на фронтенде — событие focus-prompt здесь пришло бы
-    // раньше, чем композер успел смонтироваться.
-    //
-    // Но клавиатурный фокус забирает только РУЧНОЙ разворот. Окно и так
-    // alwaysOnTop, то есть автоматически развернувшись оно уже видно, а отнимать
-    // клавиатуру у чужого приложения без просьбы — ровно то, из-за чего готовая
-    // расшифровка намеренно не поднимает окно (см. deliver_transcript).
-    let _ = w.show();
-    if focus {
-        let _ = w.set_focus();
-    }
-
-    let settings = current_settings(app);
-    set_window_size(app.clone(), settings.window_width, settings.window_height);
-    let restore = w.clone();
-    let restore_app = app.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(MIN_SIZE_RESTORE_DELAY);
-        // A generation, not a re-check of the flag: a quick double tap of the
-        // hotkey (expand → collapse, or the reverse within the delay) left a
-        // stale thread that snapped the minimum back to 300×520 mid-someone-
-        // else's tween — the tween aborted as superseded and the orb was stuck
-        // in a big window.
-        if restore_app.state::<App>().collapse_gen.load(Ordering::SeqCst) != my_gen {
-            return;
-        }
-        let _ = restore.set_min_size(Some(min_size(
-            settings::limits::window::WIDTH.min,
-            settings::limits::window::HEIGHT.min,
-        )));
-    });
+    let layout = collapse_layout(&current_settings(app));
+    let surface = TauriWindowSurface {
+        app: app.clone(),
+        window,
+    };
+    app.state::<App>()
+        .window
+        .set_collapsed(app, &surface, collapsed, focus, layout);
 }
 
 #[tauri::command]
@@ -264,20 +253,20 @@ pub fn on_toggle_teleprompter(app: &AppHandle) {
     events::toggle_teleprompter(app);
 }
 
-async fn on_main_thread<F>(app: &AppHandle, work: F) -> Result<(), String>
+async fn on_main_thread<F>(app: &AppHandle, work: F) -> Result<(), AppError>
 where
-    F: FnOnce(&AppHandle) -> Result<(), String> + Send + 'static,
+    F: FnOnce(&AppHandle) -> Result<(), AppError> + Send + 'static,
 {
     let (done, wait) = tokio::sync::oneshot::channel();
     let handle = app.clone();
     app.run_on_main_thread(move || {
         let _ = done.send(work(&handle));
     })
-    .map_err(|e| e.to_string())?;
-    wait.await.map_err(|e| e.to_string())?
+    .map_err(|e| internal(e.to_string()))?;
+    wait.await.map_err(|e| internal(e.to_string()))?
 }
 
-fn swap_to_main_window(app: &AppHandle) -> Result<(), String> {
+fn swap_to_main_window(app: &AppHandle) -> Result<(), AppError> {
     let settings = current_settings(app);
     create_main_window(app, &settings)?;
     register_main_window_hotkeys(app, &settings);
@@ -301,7 +290,7 @@ fn swap_to_main_window(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn swap_to_launcher_window(app: &AppHandle) -> Result<(), String> {
+fn swap_to_launcher_window(app: &AppHandle) -> Result<(), AppError> {
     // Off the main thread: stop() waits for auto mode's transition lock, and a
     // slow mic open (up to 5 s on Windows) may be running under it.
     let stop_app = app.clone();
@@ -317,13 +306,13 @@ fn swap_to_launcher_window(app: &AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn launch_main_window(app: AppHandle) -> Result<(), String> {
+pub async fn launch_main_window(app: AppHandle) -> Result<(), AppError> {
     on_main_thread(&app, swap_to_main_window).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn stop_main_window(app: AppHandle) -> Result<(), String> {
+pub async fn stop_main_window(app: AppHandle) -> Result<(), AppError> {
     on_main_thread(&app, swap_to_launcher_window).await
 }
 
@@ -333,118 +322,42 @@ pub fn close_app(app: AppHandle) {
     app.exit(0);
 }
 
-struct ResizeTween {
-    from_width: f64,
-    to_width: f64,
-    from_height: f64,
-    to_height: f64,
-    from_x: i32,
-    to_x: i32,
-    y: i32,
-}
-
 #[tauri::command]
 #[specta::specta]
 pub fn set_window_size(app: AppHandle, width: f64, height: f64) {
     let Some(w) = main_window(&app) else {
         return;
     };
-    let scale = w.scale_factor().unwrap_or(1.0);
-    let from_width = w.inner_size().map(|s| s.width as f64 / scale).unwrap_or(width);
-    let from_height = w.inner_size().map(|s| s.height as f64 / scale).unwrap_or(height);
-    let from_pos = w.outer_position().unwrap_or(tauri::PhysicalPosition::new(0, 0));
-
-    if (from_width - width).abs() < RESIZE_EPSILON_LOGICAL_PX
-        && (from_height - height).abs() < RESIZE_EPSILON_LOGICAL_PX
-    {
+    let planned = app
+        .state::<App>()
+        .window
+        .plan_resize(current_frame(&w, width, height), width, height, monitor_of(&w));
+    let Some((tween, generation)) = planned else {
         return;
-    }
-
-    let my_gen = app.state::<App>().resize_gen.fetch_add(1, Ordering::SeqCst) + 1;
-    let tween = ResizeTween {
-        from_width,
-        to_width: width,
-        from_height,
-        to_height: height,
-        from_x: from_pos.x,
-        to_x: anchored_target_x(&w, from_pos.x, width, scale),
-        y: from_pos.y,
     };
-    std::thread::spawn(move || run_resize_tween(app, w, tween, my_gen));
+    window_tween::start_resize(app.clone(), w, tween, generation);
 }
 
-fn anchored_target_x(w: &WebviewWindow, from_x: i32, width: f64, scale: f64) -> i32 {
-    let target_phys_w = (width * scale).round() as u32;
-    let (mon_x, mon_w) = w
-        .current_monitor()
-        .ok()
-        .flatten()
-        .map(|m| (m.position().x, m.size().width))
-        .unwrap_or((from_x, target_phys_w));
-    window_geom::clamp_window_x(from_x, target_phys_w, mon_x, mon_w)
-}
-
-fn ease_out_cubic(t: f64) -> f64 {
-    1.0 - (1.0 - t).powi(3)
-}
-
-fn frame_still_ours(w: &WebviewWindow, width: f64, height: f64) -> bool {
+/// The fallbacks are the requested size on purpose: a window that cannot report
+/// its own frame must not animate from zero.
+fn current_frame(w: &WebviewWindow, width: f64, height: f64) -> WindowFrame {
     let scale = w.scale_factor().unwrap_or(1.0);
-    let Ok(size) = w.inner_size() else {
-        return true;
-    };
-    (f64::from(size.width) / scale - width).abs() < RESIZE_EPSILON_LOGICAL_PX
-        && (f64::from(size.height) / scale - height).abs() < RESIZE_EPSILON_LOGICAL_PX
+    let size = w.inner_size().ok();
+    let position = w.outer_position().unwrap_or(tauri::PhysicalPosition::new(0, 0));
+    WindowFrame {
+        width: size.map(|s| s.width as f64 / scale).unwrap_or(width),
+        height: size.map(|s| s.height as f64 / scale).unwrap_or(height),
+        x: position.x,
+        y: position.y,
+        scale,
+    }
 }
 
-fn tween_superseded(
-    app: &AppHandle,
-    w: &WebviewWindow,
-    my_gen: u64,
-    applied: Option<(f64, f64)>,
-) -> bool {
-    if app.state::<App>().resize_gen.load(Ordering::SeqCst) != my_gen {
-        return true;
-    }
-    applied.is_some_and(|(width, height)| !frame_still_ours(w, width, height))
-}
-
-fn run_resize_tween(app: AppHandle, w: WebviewWindow, tween: ResizeTween, my_gen: u64) {
-    let mut applied: Option<(f64, f64)> = None;
-    for i in 1..=RESIZE_TWEEN_STEPS {
-        if tween_superseded(&app, &w, my_gen, applied) {
-            return;
-        }
-        let eased = ease_out_cubic(f64::from(i) / f64::from(RESIZE_TWEEN_STEPS));
-        let cur_w = tween.from_width + (tween.to_width - tween.from_width) * eased;
-        let cur_h = tween.from_height + (tween.to_height - tween.from_height) * eased;
-        let cur_x =
-            (f64::from(tween.from_x) + f64::from(tween.to_x - tween.from_x) * eased).round() as i32;
-        apply_window_frame(&app, &w, cur_x, tween.y, cur_w, cur_h);
-        applied = Some((cur_w, cur_h));
-        std::thread::sleep(RESIZE_TWEEN_FRAME_INTERVAL);
-    }
-    if tween_superseded(&app, &w, my_gen, applied) {
-        return;
-    }
-    apply_window_frame(
-        &app,
-        &w,
-        tween.to_x,
-        tween.y,
-        tween.to_width,
-        tween.to_height,
-    );
-}
-
-fn apply_window_frame(app: &AppHandle, w: &WebviewWindow, x: i32, y: i32, width: f64, height: f64) {
-    let win = w.clone();
-    let _ = app.run_on_main_thread(move || {
-        if win.outer_position().is_ok_and(|p| p.x != x || p.y != y) {
-            let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-        }
-        let _ = win.set_size(tauri::LogicalSize::new(width, height));
-    });
+fn monitor_of(w: &WebviewWindow) -> Option<Monitor> {
+    w.current_monitor().ok().flatten().map(|m| Monitor {
+        x: m.position().x,
+        width: m.size().width,
+    })
 }
 
 #[cfg(test)]

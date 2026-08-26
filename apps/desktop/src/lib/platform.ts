@@ -1,14 +1,12 @@
-export const PLATFORMS = ["macos", "windows"] as const;
+import { detectPlatform, type Platform } from "@harpyhare/platform";
 
-export type Platform = (typeof PLATFORMS)[number];
+export { PLATFORMS, type Platform } from "@harpyhare/platform";
 
-const DEFAULT_PLATFORM: Platform = "macos";
-const WINDOWS_USER_AGENT_MARKER = "windows";
-
-export function detectPlatform(userAgent: string): Platform {
-  return userAgent.toLowerCase().includes(WINDOWS_USER_AGENT_MARKER) ? "windows" : DEFAULT_PLATFORM;
-}
-
+/**
+ * The single source of the platform on the frontend. We never ask Rust for it:
+ * a value that depended on `#[cfg]` would make `bindings.ts` differ between the
+ * macOS and Windows build hosts (see the contract section of CLAUDE.md).
+ */
 export const PLATFORM: Platform = detectPlatform(navigator.userAgent);
 
 /**

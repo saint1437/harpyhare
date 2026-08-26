@@ -1,0 +1,262 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   THE HUD LAYER — the single source of truth for colour and type in the app.
+
+   This file used to be the token half of `apps/desktop/src/index.css`. It moved
+   here so that it can have TWO consumers instead of one:
+
+     • the desktop imports it (`@import "@harpyhare/tokens/hud.css"` at the top
+       of index.css) and paints with it directly — nothing is copied, nothing is
+       generated, the values that ship are the values below;
+     • the landing page GENERATES its `--app-*` replica out of it
+       (`apps/landing/scripts/sync-app-tokens.mjs`), because its demo needs the
+       same palette under a different prefix, next to a poster palette that
+       already owns the names `--fg`, `--surface`, `--border` and `--primary`.
+
+   The desktop stays the source: it is the only consumer that decides what a
+   token MEANS, and every value here is measured against the desktop's four
+   scopes by `apps/desktop/scripts/check-contrast.mjs`. The landing takes what
+   it is given and may only re-shade — never re-hue and never re-mean.
+
+   Structure — six blocks, and the two on the right of each row are the SAME
+   values under two different triggers:
+
+     :root                                                light, the default
+     @media (prefers-color-scheme: dark) :root:not([data-theme="light"])
+     :root[data-theme="dark"]                             dark, forced
+     body.launcher                              + the two dark launcher blocks
+
+   `:root` carries the HUD's surfaces; `body.launcher` re-bases the four surface
+   steps only. That single seam is why one stylesheet serves two windows.
+
+   WHY THE DARK VALUES ARE WRITTEN TWICE. `system` deliberately does not resolve
+   to an attribute in JS (`lib/window-controls.ts` says why: resolving it would
+   freeze the choice at load and stop following a mid-session OS switch), so the
+   page has three states — explicit `dark`, explicit `light`, and no attribute at
+   all. CSS cannot OR a media query with a selector, so one of the two themes
+   needs two arms; `light-dark()` would collapse them but neither the contrast
+   check nor the oldest supported WKWebView can read it. The copy is therefore
+   deliberate, and `hud.test.ts` asserts the two dark arms are declaration-for-
+   declaration identical — see its header.
+
+   Every value is measured, not eyeballed: `check-contrast.mjs` asserts AA
+   (4.5:1 text, 3:1 non-text) for both themes, both windows and BOTH dark arms,
+   and asserts every token sits inside the sRGB gamut. It runs in `npm test`.
+
+   Surfaces are opaque lightness steps, never `oklch(1 0 0 / n%)` alpha: the HUD
+   window is translucent over arbitrary foreign content, and an alpha step would
+   change lightness with whatever happens to be behind the window.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  color-scheme: light;
+
+  /* type — the HUD's scale. `--chat-font-size` is the only token the user can
+     move at runtime (an inline style on the root element), which is why it is a
+     variable of its own rather than a step of the scale. */
+  --chat-font-size: 13.5px;
+  --hud-text-hint: 10.5px;
+  --hud-text-caption: 11.5px;
+  --hud-text-body: 13px;
+  --hud-text-title: 16px;
+  --hud-text-display: 22px;
+
+  /* surfaces — HUD */
+  --base: oklch(0.968 0.005 40);
+  --surface: oklch(0.9925 0.003 40);
+  --elevated: oklch(0.995 0.002 40);
+  --inset: oklch(0.925 0.008 40);
+  --surface-active: oklch(0.945 0.006 40);
+  --overlay: oklch(0.25 0.01 40 / 45%);
+  --scrim-chip: oklch(0.25 0.01 40 / 62%);
+  --on-scrim: oklch(0.985 0.004 40);
+  --surface-preview: oklch(0.995 0.002 40);
+
+  /* lines */
+  --line: oklch(0.88 0.008 40);
+  --line-strong: oklch(0.598 0.012 40);
+
+  /* text */
+  --fg: oklch(0.245 0.012 40);
+  --fg-muted: oklch(0.44 0.012 40);
+  --fg-subtle: oklch(0.508 0.012 40);
+
+  /* accent — the brand oxblood. One job: the primary action. */
+  --accent: oklch(0.475 0.165 20);
+  --accent-hover: oklch(0.415 0.16 20);
+  --accent-on: oklch(0.985 0.006 30);
+  --accent-mark: oklch(0.43 0.165 20);
+
+  /* state — `listening` means exactly one thing: audio is being captured now.
+     It is cyan and not red on purpose: a red "recording" reads as "something is
+     wrong", and this palette already spends red on `--danger`. */
+  --listening: oklch(0.498 0.085 200);
+  --listening-dim: oklch(0.598 0.08 200);
+  --processing: var(--fg-muted);
+  --success: oklch(0.49 0.136 150);
+  --warning: oklch(0.545 0.113 80);
+  --danger: oklch(0.48 0.185 30);
+  --danger-on: oklch(0.985 0.004 40);
+
+  --focus: oklch(0.52 0.106 232);
+
+  /* elevation — tinted per theme; on light a soft warm grey, on dark a black
+     shadow plus a top inner light. */
+  --elev-btn: 0 1px 2px 0 oklch(0.245 0.012 40 / 14%);
+  --elev-raise: 0 1px 2px 0 oklch(0.245 0.012 40 / 8%);
+  --elev-pop:
+    0 12px 32px -8px oklch(0.245 0.012 40 / 18%), 0 4px 12px -4px oklch(0.245 0.012 40 / 12%);
+  --elev-modal:
+    0 24px 64px -16px oklch(0.245 0.012 40 / 24%), 0 8px 24px -8px oklch(0.245 0.012 40 / 16%);
+
+  /* syntax — re-derived from the palette's own hues so highlighted code sits
+     inside the system rather than beside it. */
+  --syn-comment: oklch(0.6 0.012 40);
+  --syn-keyword: oklch(0.47 0.15 20);
+  --syn-string: oklch(0.47 0.11 150);
+  --syn-number: oklch(0.5 0.104 80);
+  --syn-fn: oklch(0.48 0.098 232);
+  --syn-attr: oklch(0.5 0.085 200);
+  --syn-code-fg: oklch(0.3 0.012 40);
+}
+
+/* Dark, arm 1 of 2: the OS preference, unless the user forced light.
+   Byte-for-byte the same declarations as `:root[data-theme="dark"]` below —
+   asserted, not hoped for. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --base: oklch(0.235 0.005 40);
+    --surface: oklch(0.285 0.006 40);
+    --elevated: oklch(0.32 0.007 40);
+    --inset: oklch(0.185 0.005 40);
+    --surface-active: oklch(0.345 0.008 40);
+    --overlay: oklch(0.11 0.004 40 / 72%);
+    --scrim-chip: oklch(0.11 0.004 40 / 78%);
+    --on-scrim: oklch(0.985 0.004 40);
+    --surface-preview: oklch(0.995 0.002 40);
+
+    --line: oklch(0.315 0.006 40);
+    --line-strong: oklch(0.592 0.01 40);
+
+    --fg: oklch(0.955 0.006 40);
+    --fg-muted: oklch(0.79 0.008 40);
+    --fg-subtle: oklch(0.695 0.008 40);
+
+    --accent: oklch(0.55 0.16 20);
+    --accent-hover: oklch(0.495 0.15 20);
+    --accent-on: oklch(0.98 0.008 30);
+    --accent-mark: oklch(0.68 0.15 20);
+
+    --listening: oklch(0.775 0.11 200);
+    --listening-dim: oklch(0.6 0.085 200);
+    --success: oklch(0.715 0.15 150);
+    --warning: oklch(0.845 0.135 80);
+    --danger: oklch(0.72 0.175 30);
+    --danger-on: oklch(0.2 0.01 40);
+
+    --focus: oklch(0.75 0.115 232);
+
+    --elev-btn: inset 0 1px 0 oklch(1 0 0 / 12%), 0 1px 2px 0 oklch(0 0 0 / 30%);
+    --elev-raise: inset 0 1px 0 oklch(1 0 0 / 4%), 0 1px 2px 0 oklch(0 0 0 / 20%);
+    --elev-pop:
+      inset 0 1px 0 oklch(1 0 0 / 5%), 0 12px 32px -8px oklch(0 0 0 / 50%),
+      0 4px 12px -4px oklch(0 0 0 / 32%);
+    --elev-modal:
+      inset 0 1px 0 oklch(1 0 0 / 6%), 0 24px 64px -16px oklch(0 0 0 / 55%),
+      0 8px 24px -8px oklch(0 0 0 / 35%);
+
+    --syn-comment: oklch(0.62 0.01 40);
+    --syn-keyword: oklch(0.75 0.13 20);
+    --syn-string: oklch(0.78 0.12 150);
+    --syn-number: oklch(0.83 0.12 80);
+    --syn-fn: oklch(0.78 0.1 232);
+    --syn-attr: oklch(0.79 0.09 200);
+    --syn-code-fg: oklch(0.88 0.008 40);
+  }
+}
+
+/* Dark, arm 2 of 2: forced. It comes AFTER the media arm on purpose — the two
+   selectors score the same (0,2,0), so file order is what makes an explicit
+   choice beat the OS preference. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --base: oklch(0.235 0.005 40);
+  --surface: oklch(0.285 0.006 40);
+  --elevated: oklch(0.32 0.007 40);
+  --inset: oklch(0.185 0.005 40);
+  --surface-active: oklch(0.345 0.008 40);
+  --overlay: oklch(0.11 0.004 40 / 72%);
+  --scrim-chip: oklch(0.11 0.004 40 / 78%);
+  --on-scrim: oklch(0.985 0.004 40);
+  --surface-preview: oklch(0.995 0.002 40);
+
+  --line: oklch(0.315 0.006 40);
+  --line-strong: oklch(0.592 0.01 40);
+
+  --fg: oklch(0.955 0.006 40);
+  --fg-muted: oklch(0.79 0.008 40);
+  --fg-subtle: oklch(0.695 0.008 40);
+
+  --accent: oklch(0.55 0.16 20);
+  --accent-hover: oklch(0.495 0.15 20);
+  --accent-on: oklch(0.98 0.008 30);
+  --accent-mark: oklch(0.68 0.15 20);
+
+  --listening: oklch(0.775 0.11 200);
+  --listening-dim: oklch(0.6 0.085 200);
+  --success: oklch(0.715 0.15 150);
+  --warning: oklch(0.845 0.135 80);
+  --danger: oklch(0.72 0.175 30);
+  --danger-on: oklch(0.2 0.01 40);
+
+  --focus: oklch(0.75 0.115 232);
+
+  --elev-btn: inset 0 1px 0 oklch(1 0 0 / 12%), 0 1px 2px 0 oklch(0 0 0 / 30%);
+  --elev-raise: inset 0 1px 0 oklch(1 0 0 / 4%), 0 1px 2px 0 oklch(0 0 0 / 20%);
+  --elev-pop:
+    inset 0 1px 0 oklch(1 0 0 / 5%), 0 12px 32px -8px oklch(0 0 0 / 50%),
+    0 4px 12px -4px oklch(0 0 0 / 32%);
+  --elev-modal:
+    inset 0 1px 0 oklch(1 0 0 / 6%), 0 24px 64px -16px oklch(0 0 0 / 55%),
+    0 8px 24px -8px oklch(0 0 0 / 35%);
+
+  --syn-comment: oklch(0.62 0.01 40);
+  --syn-keyword: oklch(0.75 0.13 20);
+  --syn-string: oklch(0.78 0.12 150);
+  --syn-number: oklch(0.83 0.12 80);
+  --syn-fn: oklch(0.78 0.1 232);
+  --syn-attr: oklch(0.79 0.09 200);
+  --syn-code-fg: oklch(0.88 0.008 40);
+}
+
+/* The launcher is opaque and sits deeper than the HUD, so it re-bases the four
+   surface steps only. `--elevated` stays ABOVE `--surface`: that gap is the
+   elevation of menus and popovers over the form's cards. Equalise them and a
+   dropdown dissolves into the card it hangs over. */
+body.launcher {
+  --base: oklch(0.955 0.006 40);
+  --surface: oklch(0.99 0.004 40);
+  --elevated: oklch(0.995 0.002 40);
+  --inset: oklch(0.925 0.008 40);
+  --surface-active: oklch(0.925 0.006 40);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body.launcher {
+    --base: oklch(0.17 0.005 40);
+    --surface: oklch(0.215 0.006 40);
+    --elevated: oklch(0.258 0.007 40);
+    --inset: oklch(0.14 0.005 40);
+    --surface-active: oklch(0.3 0.008 40);
+  }
+}
+
+:root[data-theme="dark"] body.launcher {
+  --base: oklch(0.17 0.005 40);
+  --surface: oklch(0.215 0.006 40);
+  --elevated: oklch(0.258 0.007 40);
+  --inset: oklch(0.14 0.005 40);
+  --surface-active: oklch(0.3 0.008 40);
+}

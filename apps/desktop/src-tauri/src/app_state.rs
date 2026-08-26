@@ -1,91 +1,122 @@
-use std::collections::HashMap;
-use std::sync::{
-    atomic::{AtomicBool, AtomicU64},
-    Arc, Mutex,
-};
+use std::sync::Arc;
 
 use tauri::{AppHandle, Manager};
-use tokio_util::sync::CancellationToken;
 
-use crate::{access, auto, capture, chat, llm, settings, state, stt};
+use crate::error::AppError;
+use crate::llm_service::LlmService;
+use crate::recording_service::RecordingService;
+use crate::secrets::{Secrets, SecretsStore};
+use crate::settings::SettingsService;
+use crate::window_service::WindowService;
+use crate::{
+    access, auto, capture, llm, permissions, remote_presets, screenshot, secrets, settings, stt,
+    update,
+};
 
-const SETTINGS_FILE_NAME: &str = "settings.json";
+pub const SETTINGS_FILE_NAME: &str = "settings.json";
 const CHATS_FILE_NAME: &str = "chats.json";
 const CONTEXT_LIBRARY_FILE_NAME: &str = "context-library.json";
 
+const ERR_NO_APP_DATA_DIR: &str =
+    "Не удалось определить папку данных приложения — настройки и чаты негде хранить";
+
+/// The application's state: a composition of services, not a bag of mutexes.
+///
+/// **Lock acquisition order**, top to bottom — take them in this order and
+/// nothing here can deadlock. It was never written down before, and the audit
+/// named that the source of the next deadlock:
+///
+/// 1. `auto.transition` — held for the whole body of `auto::start`/`stop`,
+///    which takes settings, the capture and the microphone underneath it.
+/// 2. `settings` — read (`current_settings`) or updated; `SettingsService::update`
+///    holds it across the disk write, so nothing slower may be taken under it.
+///    `secrets` is its twin over `secrets.json` and is a LEAF: nothing is ever
+///    taken under it, and it is never taken under `settings` either — the two
+///    files are independent, and keeping it that way is what makes the pair
+///    deadlock-free without a rule to remember.
+/// 3. `recording` (recorder → stt_stream → last_recording, in that order).
+/// 4. `capture` (mode before device) and `auto.mic`.
+/// 5. `llm` (provider, catalogue, stream slots) / `stt` / `window` / `update` —
+///    leaves: none of them takes another lock while held.
+///
+/// Two rules ride on top of the order. `CaptureService::stop_taken` waits on a
+/// condvar for up to five seconds and therefore takes the device OUT of the
+/// lock before stopping it, so no one holds the capture lock across that wait.
+/// And a `MutexGuard` is never held across an `.await`: every client is cloned
+/// out of its service first (`llm.provider()`, `stt.engine()`).
 pub struct App {
-    pub settings: Mutex<settings::Settings>,
-    pub official_presets: Mutex<Vec<settings::PromptPreset>>,
-    pub recorder: Mutex<state::RecorderState>,
-    pub capture: Mutex<Option<capture::AudioCapture>>,
-    pub mic_capture: Mutex<Option<capture::AudioCapture>>,
-    pub auto: auto::AutoState,
-    pub last_recording: Mutex<Option<Vec<f32>>>,
-    pub llm_cancel: Mutex<HashMap<String, chat::LlmStreamSlot>>,
-    pub stt: Mutex<Arc<dyn stt::SttEngine>>,
-    pub llm: Mutex<Arc<dyn llm::LlmProvider>>,
-    pub stt_stream: Mutex<Option<SttStream>>,
-    pub models: llm::ModelCatalog,
-    pub recording_gen: AtomicU64,
-    pub resize_gen: AtomicU64,
-    pub capture_rebuild_pending: AtomicBool,
-    pub preview_html: Mutex<String>,
-    pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
-    pub update_installing: AtomicBool,
-    pub screenshot_capturing: AtomicBool,
-    /// A five-second audio check (audio_check.rs) is running: the recorder
-    /// stays Idle during it, so the capture being busy is visible only here.
-    pub audio_check_active: AtomicBool,
-    /// Свёрнут ли HUD в клубок. Живёт в Rust, потому что глобальный хоткей
-    /// сворачивания обрабатывается здесь же, а окно меняет только Rust.
-    pub window_collapsed: AtomicBool,
-    /// Collapse generation: the deferred min_inner_size restore after an
-    /// expand must stay silent when its set_collapsed is no longer the latest.
-    pub collapse_gen: AtomicU64,
+    /// The single mutation point for `Settings`, and the one-shot record of a
+    /// settings file that had to be renamed aside at startup.
+    pub settings: SettingsService,
+    /// The two API keys and the access token — everything `Settings` may not
+    /// carry, because `Settings` is what `get_settings` sends to the webview.
+    pub secrets: SecretsStore,
+    /// What `permissions_status` answers with. Filled by explicit probes and by
+    /// the background refresh the command kicks off — the command itself never
+    /// opens a device (see permissions.rs).
+    pub permissions: permissions::PermissionCache,
+    /// The official prompt presets, refreshed from the blob every 30 minutes.
+    pub presets: remote_presets::PresetCache,
+    /// The push-to-talk pipeline: the recorder FSM, the last recording, the
+    /// streaming transcription slot and the recording generation.
+    pub recording: RecordingService,
+    /// The system-audio capture and the mode saying who holds it.
+    pub capture: crate::capture_service::CaptureService,
+    /// Auto listening: the microphone, the generation and the in-flight counters.
+    pub auto: auto::AutoService,
+    /// The speech-to-text engine behind its port.
+    pub stt: stt::SttService,
+    /// The provider, the model catalogue and the per-chat cancellation registry.
+    pub llm: LlmService,
+    /// The HUD's geometry, its folded state and the preview HTML.
+    pub window: WindowService,
+    /// The update found by a check, and the install lock.
+    pub update: update::UpdateState,
+    /// The region screenshot's re-entry guard.
+    pub screenshot: screenshot::ScreenshotState,
 }
 
-pub struct SttStream {
-    pub(crate) handle: tauri::async_runtime::JoinHandle<Result<String, stt::SttError>>,
-    pub(crate) cancel: CancellationToken,
-    pub(crate) broken: Arc<AtomicBool>,
+/// Fallible on purpose: `expect("app_data_dir")` inside a command killed the
+/// command's thread and left the window alive and dead. There is no sane
+/// fallback for a machine with no resolvable home directory, but there is a
+/// difference between telling the user and vanishing.
+pub fn app_data_file(app: &AppHandle, file_name: &str) -> Result<std::path::PathBuf, AppError> {
+    app.path()
+        .app_data_dir()
+        .map(|dir| dir.join(file_name))
+        .map_err(|e| AppError::new(crate::error::ErrorCode::Internal, format!("{ERR_NO_APP_DATA_DIR}: {e}")))
 }
 
-pub fn app_data_file(app: &AppHandle, file_name: &str) -> std::path::PathBuf {
-    app.path().app_data_dir().expect("app_data_dir").join(file_name)
-}
-
-pub fn settings_path(app: &AppHandle) -> std::path::PathBuf {
+pub fn settings_path(app: &AppHandle) -> Result<std::path::PathBuf, AppError> {
     app_data_file(app, SETTINGS_FILE_NAME)
 }
 
-pub fn chats_path(app: &AppHandle) -> std::path::PathBuf {
+pub fn secrets_path(app: &AppHandle) -> Result<std::path::PathBuf, AppError> {
+    app_data_file(app, secrets::SECRETS_FILE_NAME)
+}
+
+pub fn chats_path(app: &AppHandle) -> Result<std::path::PathBuf, AppError> {
     app_data_file(app, CHATS_FILE_NAME)
 }
 
-pub fn context_library_path(app: &AppHandle) -> std::path::PathBuf {
+pub fn context_library_path(app: &AppHandle) -> Result<std::path::PathBuf, AppError> {
     app_data_file(app, CONTEXT_LIBRARY_FILE_NAME)
 }
 
-pub fn chat_images_dir(app: &AppHandle) -> std::path::PathBuf {
+pub fn chat_images_dir(app: &AppHandle) -> Result<std::path::PathBuf, AppError> {
     app_data_file(app, crate::chat_images::IMAGES_DIR_NAME)
 }
 
 pub fn current_settings(app: &AppHandle) -> settings::Settings {
-    app.state::<App>().settings.lock().unwrap().clone()
+    app.state::<App>().settings.get()
 }
 
 pub fn llm_provider(app: &AppHandle) -> Arc<dyn llm::LlmProvider> {
-    Arc::clone(&*app.state::<App>().llm.lock().unwrap())
+    app.state::<App>().llm.provider()
 }
 
 pub fn stt_engine(app: &AppHandle) -> Arc<dyn stt::SttEngine> {
-    Arc::clone(&*app.state::<App>().stt.lock().unwrap())
-}
-
-pub fn cancel_stt_stream(app: &AppHandle) {
-    if let Some(s) = app.state::<App>().stt_stream.lock().unwrap().take() {
-        s.cancel.cancel();
-    }
+    app.state::<App>().stt.engine()
 }
 
 fn optional_uid(uid: &str) -> Option<&str> {
@@ -102,7 +133,7 @@ pub fn build_mic_capture(
     )
 }
 
-pub fn build_capture(settings: &settings::Settings) -> Option<capture::AudioCapture> {
+pub fn build_capture(settings: &settings::Settings) -> Option<Box<dyn capture::CaptureDevice>> {
     let uid = optional_uid(&settings.capture_device_uid);
     match capture::AudioCapture::new(
         capture::SourceKind::Output,
@@ -111,7 +142,7 @@ pub fn build_capture(settings: &settings::Settings) -> Option<capture::AudioCapt
     ) {
         Ok(c) => {
             c.set_buffering(settings.buffer_enabled);
-            Some(c)
+            Some(Box::new(c))
         }
         Err(e) => {
             eprintln!("захват системного звука недоступен: {e}");
@@ -120,13 +151,13 @@ pub fn build_capture(settings: &settings::Settings) -> Option<capture::AudioCapt
     }
 }
 
-pub fn build_stt_client(s: &settings::Settings) -> Arc<dyn stt::SttEngine> {
-    let base = if s.access_token.is_empty() {
-        stt::GroqStt::new(s.groq_api_key.clone())
-    } else {
-        stt::GroqStt::new(s.access_token.clone())
+pub fn build_stt_client(s: &settings::Settings, secrets: &Secrets) -> Arc<dyn stt::SttEngine> {
+    let base = if secrets.has_access_token() {
+        stt::GroqStt::new(secrets.access_token.clone())
             .with_base_url(access::proxy_base_url())
             .with_proxy(true)
+    } else {
+        stt::GroqStt::new(secrets.groq_api_key.clone())
     };
     Arc::new(
         base.with_language(s.stt_language.clone())
@@ -134,48 +165,41 @@ pub fn build_stt_client(s: &settings::Settings) -> Arc<dyn stt::SttEngine> {
     )
 }
 
+/// Takes no `Settings` at all any more: nothing about the LLM client depends on
+/// them once the credentials moved out. Kept as a free function beside its STT
+/// twin so the pair stays visibly one decision.
 pub fn build_llm_client(
-    s: &settings::Settings,
+    secrets: &Secrets,
     catalog: llm::ModelCatalog,
 ) -> Arc<dyn llm::LlmProvider> {
-    let client = if s.access_token.is_empty() {
-        llm::AnthropicClient::new(s.anthropic_api_key.clone())
+    let client = if secrets.has_access_token() {
+        llm::AnthropicClient::for_proxy(secrets.access_token.clone(), access::proxy_base_url())
     } else {
-        llm::AnthropicClient::for_proxy(s.access_token.clone(), access::proxy_base_url())
+        llm::AnthropicClient::new(secrets.anthropic_api_key.clone())
     };
     Arc::new(client.with_catalog(catalog))
 }
 
 pub fn build_app_state(
-    settings: settings::Settings,
+    settings: SettingsService,
+    secrets: SecretsStore,
     official_presets: Vec<settings::PromptPreset>,
-    capture: Option<capture::AudioCapture>,
     stt: Arc<dyn stt::SttEngine>,
     llm: Arc<dyn llm::LlmProvider>,
     models: llm::ModelCatalog,
 ) -> App {
     App {
-        settings: Mutex::new(settings),
-        official_presets: Mutex::new(official_presets),
-        recorder: Mutex::new(state::RecorderState::Idle),
-        capture: Mutex::new(capture),
-        last_recording: Mutex::new(None),
-        llm_cancel: Mutex::new(HashMap::new()),
-        stt: Mutex::new(stt),
-        llm: Mutex::new(llm),
-        stt_stream: Mutex::new(None),
-        models,
-        recording_gen: AtomicU64::new(0),
-        resize_gen: AtomicU64::new(0),
-        capture_rebuild_pending: AtomicBool::new(false),
-        preview_html: Mutex::new(String::new()),
-        pending_update: Mutex::new(None),
-        update_installing: AtomicBool::new(false),
-        screenshot_capturing: AtomicBool::new(false),
-        audio_check_active: AtomicBool::new(false),
-        window_collapsed: AtomicBool::new(false),
-        collapse_gen: AtomicU64::new(0),
-        mic_capture: Mutex::new(None),
-        auto: auto::AutoState::default(),
+        settings,
+        secrets,
+        permissions: permissions::PermissionCache::default(),
+        presets: remote_presets::PresetCache::new(official_presets),
+        recording: RecordingService::default(),
+        capture: crate::capture_service::CaptureService::default(),
+        auto: auto::AutoService::default(),
+        stt: stt::SttService::new(stt),
+        llm: LlmService::new(llm, models),
+        window: WindowService::default(),
+        update: update::UpdateState::default(),
+        screenshot: screenshot::ScreenshotState::default(),
     }
 }
