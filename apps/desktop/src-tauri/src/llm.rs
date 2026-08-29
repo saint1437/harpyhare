@@ -20,6 +20,10 @@ const API_KEY_HEADER: &str = "x-api-key";
 const VERSION_HEADER: &str = "anthropic-version";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
+/// Set by hand because the bodies go out as pre-serialised bytes rather than
+/// through `RequestBuilder::json`, which is what used to set it.
+const JSON_CONTENT_TYPE: &str = "application/json";
+
 const MAX_TOKENS: u32 = 64000;
 
 /// Whose key was refused. A proper noun: the same in both dictionaries, which is
@@ -414,13 +418,24 @@ async fn pump_sse_stream(
             return Err(LlmError::Network(TRUNCATED_STREAM_ERROR.into()));
         };
         let bytes = chunk.map_err(|e| LlmError::Network(e.to_string()))?;
-        for out in parser.feed_bytes(&bytes) {
-            match out {
-                SseOut::TextDelta(t) => sink.text_delta(&t),
-                SseOut::InputTokens(n) => sink.input_tokens(n),
-                SseOut::Done => return Ok(()),
-                SseOut::ApiError(m) => return Err(LlmError::Api(m)),
+        // The former loop `return`ed out of the middle of the event list. A sink
+        // cannot, so the first terminal event is remembered and everything after
+        // it in the same chunk is ignored — which is exactly what the `return`
+        // did, and the parser's own state advances identically either way.
+        let mut finished: Option<Result<(), LlmError>> = None;
+        parser.feed_bytes(&bytes, &mut |out| {
+            if finished.is_some() {
+                return;
             }
+            match out {
+                SseOut::TextDelta(t) => sink.text_delta(t),
+                SseOut::InputTokens(n) => sink.input_tokens(n),
+                SseOut::Done => finished = Some(Ok(())),
+                SseOut::ApiError(m) => finished = Some(Err(LlmError::Api(m.to_string()))),
+            }
+        });
+        if let Some(result) = finished {
+            return result;
         }
     }
 }
@@ -518,11 +533,12 @@ impl AnthropicClient {
             .header(VERSION_HEADER, ANTHROPIC_VERSION)
     }
 
-    async fn post_count_tokens(&self, body: Value) -> Result<u32, LlmError> {
+    async fn post_count_tokens(&self, body: Vec<u8>) -> Result<u32, LlmError> {
         let resp = self
             .authorize(self.client.post(format!("{}{COUNT_TOKENS_PATH}", self.base_url)))
             .header(VERSION_HEADER, ANTHROPIC_VERSION)
-            .json(&body)
+            .header(reqwest::header::CONTENT_TYPE, JSON_CONTENT_TYPE)
+            .body(body)
             .send()
             .await
             .map_err(|e| LlmError::Network(e.to_string()))?;
@@ -534,13 +550,25 @@ impl AnthropicClient {
             .ok_or_else(|| LlmError::Api(UNKNOWN_API_ERROR.into()))
     }
 
+    /// One attempt at the stream, over a body that is ALREADY serialised.
+    ///
+    /// `send` consumes the request, so a retry needs a body of its own each
+    /// time — but cloning a `Vec<u8>` is a memcpy of a buffer we already hold,
+    /// where cloning the `serde_json::Value` deep-copied the whole tree and
+    /// every base64 image in it, and `.json(&body)` then walked that tree a
+    /// second time to serialise it. With a 12 MB ceiling on the request that
+    /// was three multi-megabyte passes for a single send.
     pub async fn stream_message(
         &self,
-        body: serde_json::Value,
+        body: Vec<u8>,
         cancel: CancellationToken,
         sink: &mut dyn LlmStreamSink,
     ) -> Result<(), LlmError> {
-        let send = self.messages_request().json(&body).send();
+        let send = self
+            .messages_request()
+            .header(reqwest::header::CONTENT_TYPE, JSON_CONTENT_TYPE)
+            .body(body)
+            .send();
         let resp = tokio::select! {
             r = send => r.map_err(|e| LlmError::Network(e.to_string()))?,
             _ = cancel.cancelled() => return Err(LlmError::Cancelled),
@@ -580,13 +608,15 @@ impl LlmProvider for AnthropicClient {
     ) -> Result<(), LlmError> {
         require_sendable_size(&request)?;
         let (thinking, web_search) = self.capability_fields(&request);
-        let body = build_request_body(
+        // Serialised once, outside the retry loop: the loop below only ever
+        // needs a fresh copy of the BYTES.
+        let body = encode_body(&build_request_body(
             &request.model,
             &request.system,
             &request.messages,
             thinking,
             web_search,
-        );
+        ))?;
         let mut guarded = UntilFirstDelta {
             inner: sink,
             produced: false,
@@ -613,13 +643,16 @@ impl LlmProvider for AnthropicClient {
     async fn count_tokens(&self, request: LlmRequest) -> Result<u32, LlmError> {
         require_sendable_size(&request)?;
         let (thinking, web_search) = self.capability_fields(&request);
-        let body = build_count_tokens_body(
+        // The same shape as `stream`, and it matters more here: the projection
+        // fires on every change to the history, carrying its whole base64 image
+        // load with it.
+        let body = encode_body(&build_count_tokens_body(
             &request.model,
             &request.system,
             &request.messages,
             thinking,
             web_search,
-        );
+        ))?;
         http::retry_with_backoff(self.retry, |_| self.post_count_tokens(body.clone())).await
     }
 
@@ -729,6 +762,14 @@ pub fn build_count_tokens_body(
     body
 }
 
+/// The body reaches the wire as bytes exactly once per request instead of once
+/// per attempt. A `Value` this module built itself cannot fail to serialise; the
+/// error is mapped rather than unwrapped so that a body which one day could
+/// would say so instead of taking the process down.
+fn encode_body(body: &Value) -> Result<Vec<u8>, LlmError> {
+    serde_json::to_vec(body).map_err(|e| LlmError::Api(e.to_string()))
+}
+
 pub fn build_request_body(
     model: &str,
     system: &str,
@@ -752,13 +793,25 @@ pub fn build_request_body(
     body
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum SseOut {
-    TextDelta(String),
+/// One thing the parser found in the stream.
+///
+/// The text carried here is BORROWED from the event currently being parsed.
+/// A delta's only destination is `push_str` into a buffer the caller owns, and
+/// an owned `String` per delta meant a throwaway allocation for every few
+/// characters of every answer — thousands of them per reply.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SseOut<'a> {
+    TextDelta(&'a str),
     InputTokens(u32),
     Done,
-    ApiError(String),
+    ApiError(&'a str),
 }
+
+/// Where the parser puts what it finds. A callback rather than a returned `Vec`
+/// for the same reason the payloads are borrowed: the caller consumes each event
+/// immediately and keeps nothing, so the vector allocated per network chunk was
+/// pure overhead.
+pub type SseSink<'s> = dyn FnMut(SseOut<'_>) + 's;
 
 #[derive(Default)]
 pub struct SseParser {
@@ -771,64 +824,77 @@ impl SseParser {
         Self::default()
     }
 
-    pub fn feed(&mut self, chunk: &str) -> Vec<SseOut> {
+    pub fn feed(&mut self, chunk: &str, out: &mut SseSink<'_>) {
         self.buf.push_str(chunk);
-        let mut out = Vec::new();
         let mut start = 0;
         while let Some(rel) = self.buf[start..].find(SSE_EVENT_SEPARATOR) {
             let pos = start + rel;
-            if let Some(parsed) = Self::parse_block(&self.buf[start..pos]) {
-                out.push(parsed);
-            }
+            Self::parse_block(&self.buf[start..pos], out);
             start = pos + SSE_EVENT_SEPARATOR.len();
         }
         self.buf.drain(..start);
-        out
     }
 
-    pub fn feed_bytes(&mut self, chunk: &[u8]) -> Vec<SseOut> {
-        let data = if self.tail.is_empty() {
-            chunk.to_vec()
-        } else {
-            let mut v = std::mem::take(&mut self.tail);
-            v.extend_from_slice(chunk);
-            v
-        };
-        match std::str::from_utf8(&data) {
-            Ok(s) => self.feed(s),
+    pub fn feed_bytes(&mut self, chunk: &[u8], out: &mut SseSink<'_>) {
+        // The common case by far: nothing was left over from the previous chunk,
+        // so a chunk that is whole UTF-8 can be read in place. Only a chunk that
+        // ends in the middle of a codepoint has to be joined with the next one,
+        // and only that branch allocates — the former unconditional
+        // `chunk.to_vec()` copied every byte of every network chunk, and
+        // `feed`'s `push_str` then copied them again.
+        if self.tail.is_empty() {
+            self.feed_utf8(chunk, out);
+            return;
+        }
+        let mut joined = std::mem::take(&mut self.tail);
+        joined.extend_from_slice(chunk);
+        self.feed_utf8(&joined, out);
+    }
+
+    fn feed_utf8(&mut self, data: &[u8], out: &mut SseSink<'_>) {
+        match std::str::from_utf8(data) {
+            Ok(s) => self.feed(s, out),
             Err(e) => {
                 let valid = e.valid_up_to();
                 self.tail = data[valid..].to_vec();
                 // `valid_up_to` guarantees this half is valid UTF-8; the fallback
                 // is here so a future change to the slicing degrades to a dropped
                 // chunk instead of killing the stream task.
-                match std::str::from_utf8(&data[..valid]) {
-                    Ok(s) => self.feed(s),
-                    Err(_) => Vec::new(),
+                if let Ok(s) = std::str::from_utf8(&data[..valid]) {
+                    self.feed(s, out);
                 }
             }
         }
     }
 
-    fn parse_block(block: &str) -> Option<SseOut> {
-        let data_line = block.lines().find(|l| l.starts_with(SSE_DATA_PREFIX))?;
-        let v: serde_json::Value = serde_json::from_str(&data_line[SSE_DATA_PREFIX.len()..]).ok()?;
-        match v["type"].as_str()? {
+    fn parse_block(block: &str, out: &mut SseSink<'_>) {
+        let Some(data_line) = block.lines().find(|l| l.starts_with(SSE_DATA_PREFIX)) else {
+            return;
+        };
+        let Ok(v) = serde_json::from_str::<Value>(&data_line[SSE_DATA_PREFIX.len()..]) else {
+            return;
+        };
+        let Some(kind) = v["type"].as_str() else { return };
+        match kind {
             "content_block_delta" if v["delta"]["type"] == "text_delta" => {
-                Some(SseOut::TextDelta(v["delta"]["text"].as_str()?.to_string()))
+                if let Some(text) = v["delta"]["text"].as_str() {
+                    out(SseOut::TextDelta(text));
+                }
             }
             "message_start" => {
                 let usage = &v["message"]["usage"];
                 let total = usage["input_tokens"].as_u64().unwrap_or(0)
                     + usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
                     + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
-                (total > 0).then_some(SseOut::InputTokens(total as u32))
+                if total > 0 {
+                    out(SseOut::InputTokens(total as u32));
+                }
             }
-            "message_stop" => Some(SseOut::Done),
-            "error" => Some(SseOut::ApiError(
-                v["error"]["message"].as_str().unwrap_or(UNKNOWN_API_ERROR).to_string(),
+            "message_stop" => out(SseOut::Done),
+            "error" => out(SseOut::ApiError(
+                v["error"]["message"].as_str().unwrap_or(UNKNOWN_API_ERROR),
             )),
-            _ => None,
+            _ => {}
         }
     }
 }

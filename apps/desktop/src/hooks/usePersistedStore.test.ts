@@ -127,6 +127,78 @@ describe("usePersistedStore", () => {
     expect(save).not.toHaveBeenCalled();
   });
 
+  // Сериализация документа неизбежна, а вот круг IPC и запись на диск — нет:
+  // библиотека контекста доходит до сотни материалов по 200 000 символов.
+  it("документ, совпавший с последним записанным, не пишется второй раз", async () => {
+    const save = vi.fn(() => Promise.resolve());
+    const { result } = renderHook(() => usePersistedStore(options({ save })));
+    await waitFor(() => {
+      expect(result.current.loaded.current).toBe(true);
+    });
+    save.mockClear();
+
+    act(() => {
+      result.current.setValue({ items: ["b"] });
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(DEBOUNCE_MS);
+      await Promise.resolve();
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+
+    // Новая ссылка, тот же документ: React перерисуется, диск — нет.
+    act(() => {
+      result.current.setValue({ items: ["b"] });
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(DEBOUNCE_MS);
+      await Promise.resolve();
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      result.current.setValue({ items: ["b", "c"] });
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(DEBOUNCE_MS);
+      await Promise.resolve();
+    });
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
+  // Упавшая запись — не запись: иначе повтор той же правки пропустили бы как
+  // «уже сохранено», и на диске не осталось бы ничего.
+  it("после отказа записи такой же документ пишется снова", async () => {
+    const save = vi.fn(() => Promise.reject(new Error("диск полон")));
+    const onSaveError = vi.fn();
+    const { result } = renderHook(() => usePersistedStore(options({ save, onSaveError })));
+    await waitFor(() => {
+      expect(result.current.loaded.current).toBe(true);
+    });
+    save.mockClear();
+
+    act(() => {
+      result.current.setValue({ items: ["b"] });
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(DEBOUNCE_MS);
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(onSaveError).toHaveBeenCalled();
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      result.current.setValue({ items: ["b"] });
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(DEBOUNCE_MS);
+      await Promise.resolve();
+    });
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
   it("отказ записи уходит в onSaveError, а не в неперехваченный промис", async () => {
     const onSaveError = vi.fn();
     const { result } = renderHook(() =>

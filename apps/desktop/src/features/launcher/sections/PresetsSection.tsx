@@ -1,5 +1,5 @@
 import { Check, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { IconButton } from "@/components/IconButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,14 +21,21 @@ function lengthLabel(text: string, dict: Dictionary): string {
   return trimmed === "" ? copy.lengthEmpty : format(copy.length, { count: String(trimmed.length) });
 }
 
-function PresetRow({
+/**
+ * Editing one preset rewrites the whole array and with it the launcher's draft,
+ * so the rows take the shared callbacks and their own index instead of a closure
+ * each — otherwise every row re-rendered on every keystroke in the editor.
+ */
+const PresetRow = memo(function PresetRow({
   preset,
+  index,
   onEdit,
   onRemove,
 }: {
   preset: PromptPreset;
-  onEdit: () => void;
-  onRemove: () => void;
+  index: number;
+  onEdit: (id: string) => void;
+  onRemove: (index: number) => void;
 }) {
   const dict = useDict();
   const copy = dict.launcher.presets;
@@ -42,16 +49,27 @@ function PresetRow({
         </span>
       </div>
       <div className="pointer-events-none flex shrink-0 items-center gap-1 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
-        <IconButton title={copy.edit} onClick={onEdit}>
+        <IconButton
+          title={copy.edit}
+          onClick={() => {
+            onEdit(preset.id);
+          }}
+        >
           <Pencil />
         </IconButton>
-        <IconButton title={copy.remove} className="hover:text-danger" onClick={onRemove}>
+        <IconButton
+          title={copy.remove}
+          className="hover:text-danger"
+          onClick={() => {
+            onRemove(index);
+          }}
+        >
           <Trash2 />
         </IconButton>
       </div>
     </div>
   );
-}
+});
 
 function PresetEditor({
   preset,
@@ -109,9 +127,15 @@ export function PresetsSection({
   const updateAt = (index: number, patch: Partial<PromptPreset>) => {
     onChange((ps) => ps.map((p, i) => (i === index ? { ...p, ...patch } : p)));
   };
-  const removeAt = (index: number) => {
-    onChange((ps) => ps.filter((_, i) => i !== index));
-  };
+  const removeAt = useCallback(
+    (index: number) => {
+      onChange((ps) => ps.filter((_, i) => i !== index));
+    },
+    [onChange],
+  );
+  const startEdit = useCallback((id: string) => {
+    setEditingId(id);
+  }, []);
   const add = () => {
     const id = crypto.randomUUID();
     onChange((ps) => [...ps, { id, name: "", text: "" }]);
@@ -147,12 +171,9 @@ export function PresetsSection({
             <PresetRow
               key={preset.id}
               preset={preset}
-              onEdit={() => {
-                setEditingId(preset.id);
-              }}
-              onRemove={() => {
-                removeAt(index);
-              }}
+              index={index}
+              onEdit={startEdit}
+              onRemove={removeAt}
             />
           ),
         )}

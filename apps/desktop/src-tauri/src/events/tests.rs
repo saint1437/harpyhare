@@ -19,8 +19,8 @@ fn every_helper_emits_its_own_documented_name() {
     update_available(&bus, UpdateInfo { version: "1.0.0".into(), notes: String::new() });
     update_progress(&bus, 10, Some(100));
     update_done(&bus, "1.0.0".into());
-    official_presets_updated(&bus, Vec::new());
-    screenshot_ready(&bus, ScreenshotReady { media_type: "image/png".into(), data_base64: String::new() });
+    official_presets_updated(&bus, PresetList::default());
+    screenshot_ready(&bus, ScreenshotReady { id: "0.png".into(), media_type: "image/png".into() });
     screenshot_error(&bus, AppError::new(ErrorCode::Permission, "нет прав"));
     focus_prompt(&bus);
     auto_turn(&bus, AutoTurnPayload { speaker: crate::auto::Speaker::User, text: "я".into(), seq: 0 });
@@ -70,6 +70,19 @@ fn the_llm_error_payload_carries_a_camel_case_code_beside_the_chat_id() {
     assert_eq!(payload["chatId"], "chat-7");
     assert_eq!(payload["code"], "badAccessCode");
     assert_eq!(payload["message"], "код не принят");
+}
+
+/// The payload is a reference into the chat-image store, not the picture. The
+/// PNG is on disk before this fires, and a base64 copy of it inside the event is
+/// exactly what the capture path stopped producing.
+#[test]
+fn the_screenshot_payload_carries_a_store_reference_and_no_bytes() {
+    let bus = RecordedEvents::default();
+    screenshot_ready(&bus, ScreenshotReady { id: "abc.png".into(), media_type: "image/png".into() });
+    let payload = bus.payload(EVENT_SCREENSHOT_READY).unwrap();
+    assert_eq!(payload["id"], "abc.png");
+    assert_eq!(payload["mediaType"], "image/png");
+    assert_eq!(payload.as_object().map(serde_json::Map::len), Some(2), "{payload}");
 }
 
 /// `resize-key.dim` is the Rust enum rendered lowercase, not a free string.

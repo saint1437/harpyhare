@@ -1,20 +1,30 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use tauri::{AppHandle, Manager};
 
 use crate::app_state::{build_llm_client, build_stt_client, App};
 use crate::capture_service::CaptureMode;
-use crate::error::AppError;
+use crate::error::{internal, AppError};
 use crate::recording::request_capture_rebuild;
 use crate::secrets::{ApiKeyKind, Secrets, SecretsStatus, SecretsStore};
 use crate::settings::{SettingsRecovery, SettingsService, SettingsUpdate};
 use crate::window::main_window;
 use crate::{access, hotkey, secrets, settings};
 
+#[cfg(debug_assertions)]
 const ENV_FILE_NAME: &str = ".env";
 const ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
 const GROQ_API_KEY_ENV: &str = "GROQ_API_KEY";
 
+/// The second probe is the checkout's own `.env`, at a path baked in from
+/// `CARGO_MANIFEST_DIR` — it exists on the machine that built the bundle and
+/// nowhere else, so on a user's machine it is a guaranteed-missing stat on the
+/// startup path. Debug builds keep it: that is the developer fallback for the
+/// API keys the root `CLAUDE.md` describes.
 pub fn load_dotenv_files() {
     let _ = dotenvy::dotenv();
+    #[cfg(debug_assertions)]
     if let Some(project_env) = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .map(|root| root.join(ENV_FILE_NAME))
@@ -46,8 +56,11 @@ pub fn load_settings_and_secrets(
     settings_path: &std::path::Path,
     secrets_path: &std::path::Path,
 ) -> StartupState {
-    let (settings, settings_recovery) = settings::load_or_recover(settings_path);
-    let load = secrets::load_or_migrate(secrets_path, settings_path);
+    let loaded = settings::load_or_recover(settings_path);
+    let settings = loaded.settings;
+    // The document's own version is what decides whether `settings.json` can
+    // still be hiding the three credential fields; see `secrets::load_or_migrate`.
+    let load = secrets::load_or_migrate(secrets_path, settings_path, loaded.document_version);
     let mut current = load.secrets;
 
     // Before the env fallback, deliberately: `.env` is a developer convenience
@@ -70,14 +83,17 @@ pub fn load_settings_and_secrets(
     StartupState {
         settings,
         secrets: current,
-        recovery: settings_recovery.or(load.recovery),
+        recovery: loaded.recovery.or(load.recovery),
     }
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn get_settings(app: AppHandle) -> settings::Settings {
-    app.state::<App>().settings.get()
+    // The one place a deep copy is unavoidable: the value is about to be
+    // serialized into the IPC reply, and serde has no `Arc` impl without the
+    // `rc` feature. Every other reader keeps the `Arc`.
+    (*app.state::<App>().settings.get()).clone()
 }
 
 /// What the frontend is allowed to know about the API keys and the access token:
@@ -97,10 +113,17 @@ pub fn take_settings_recovery(app: AppHandle) -> Option<SettingsRecovery> {
     app.state::<App>().settings.take_recovery()
 }
 
+// `async` because the very first call may still have to read the presets cache
+// off disk (or parse the bundled pool) — the work `spawn_warm_up` normally gets
+// to first. It answers with the shared pool, so no copy is made on the way to
+// the IPC reply. A `///` here would travel into `bindings.ts`, and this is a
+// backend implementation note, not part of the contract.
 #[tauri::command]
 #[specta::specta]
-pub fn get_official_presets(app: AppHandle) -> Vec<settings::PromptPreset> {
-    app.state::<App>().presets.get()
+pub async fn get_official_presets(app: AppHandle) -> crate::remote_presets::PresetList {
+    tokio::task::spawn_blocking(move || app.state::<App>().presets.get(&app))
+        .await
+        .unwrap_or_default()
 }
 
 /// What changing a setting has to make happen. Extracted from the seven `if`s
@@ -115,6 +138,11 @@ pub fn get_official_presets(app: AppHandle) -> Vec<settings::PromptPreset> {
 pub enum SettingsEffect {
     RebuildStt,
     ReregisterHotkeys,
+    /// Re-derives the packed snapshot `platform::arrow_action` reads inside the
+    /// OS keyboard hook. It is its own effect rather than a rider on
+    /// `ReregisterHotkeys` because the snapshot carries `move_step` too, and the
+    /// step changes without any binding changing.
+    RefreshArrowKeys,
     RebuildCapture,
     RestartAuto,
     ReapplyAutoBounds,
@@ -132,6 +160,9 @@ pub fn settings_effects(
     }
     if old.hotkeys != new.hotkeys {
         effects.push(SettingsEffect::ReregisterHotkeys);
+    }
+    if old.hotkeys != new.hotkeys || old.move_step != new.move_step {
+        effects.push(SettingsEffect::RefreshArrowKeys);
     }
     if old.capture_device_uid != new.capture_device_uid {
         effects.push(SettingsEffect::RebuildCapture);
@@ -177,6 +208,7 @@ fn apply_effect(app: &AppHandle, effect: SettingsEffect, update: &SettingsUpdate
                 crate::window::register_main_window_hotkeys(app, new);
             }
         }
+        SettingsEffect::RefreshArrowKeys => crate::platform::refresh_arrow_keys(new),
         SettingsEffect::RebuildCapture => request_capture_rebuild(app),
         SettingsEffect::RestartAuto => restart_auto_mode_off_thread(app),
         SettingsEffect::ReapplyAutoBounds => crate::auto::reapply_bounds(app),
@@ -192,7 +224,10 @@ fn apply_effect(app: &AppHandle, effect: SettingsEffect, update: &SettingsUpdate
 /// longer be overwritten by the launcher's autosave that cloned the settings
 /// before it. The credentials go through `apply_secrets_change` instead, over
 /// their own file and their own lock.
-pub fn apply_settings_change<F>(app: &AppHandle, mutate: F) -> Result<settings::Settings, AppError>
+pub fn apply_settings_change<F>(
+    app: &AppHandle,
+    mutate: F,
+) -> Result<Arc<settings::Settings>, AppError>
 where
     F: FnOnce(&mut settings::Settings),
 {
@@ -203,22 +238,65 @@ where
     Ok(update.new)
 }
 
+/// Both stores write through `settings::write_atomic_owner_only_bytes`, which
+/// ends in an **`sync_all` of the temporary file** — tens of milliseconds on a
+/// busy disk, and it runs inside the critical section, because that is what
+/// makes the write atomic against a concurrent update.
+///
+/// Tauri runs a non-`async` command inline on the main thread, so every command
+/// below used to put that fsync there: the launcher's debounced autosave, a
+/// window resize being recorded, an opacity hotkey bump. They are `async` now
+/// and the whole read → mutate → write → swap goes to a blocking thread — the
+/// same shape `storage.rs` uses for its document commands. **Nothing about the
+/// locking changed**; only the thread the critical section runs on did.
+async fn off_the_command_thread<T, F>(work: F) -> Result<T, AppError>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, AppError> + Send + 'static,
+{
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|e| internal(e.to_string()))?
+}
+
 #[tauri::command]
 #[specta::specta]
-pub fn set_settings(
+pub async fn set_settings(
     app: AppHandle,
     new_settings: settings::Settings,
 ) -> Result<settings::Settings, AppError> {
-    apply_settings_change(&app, |current| *current = new_settings)
+    let applied = off_the_command_thread(move || {
+        apply_settings_change(&app, |current| *current = new_settings)
+    })
+    .await?;
+    Ok((*applied).clone())
+}
+
+/// Whether the frontend has asked for push-to-talk to stand down.
+///
+/// `usePttSuspend` fires on `focusin` AND `focusout`, so this command used to
+/// arrive on every click into and out of the prompt — and each arrival cloned
+/// the whole `Settings` and made the OS unregister and re-register a system-wide
+/// shortcut, whether or not anything had changed. The flag is the dedupe.
+///
+/// It is cleared by `window::register_main_window_hotkeys`, which is the one
+/// place PTT registration is (re-)established: after it runs the key IS
+/// registered, so a stale `true` left behind by a closed HUD would otherwise
+/// make the next suspension a no-op.
+static PTT_SUSPENDED: AtomicBool = AtomicBool::new(false);
+
+pub fn clear_ptt_suspension() {
+    PTT_SUSPENDED.store(false, Ordering::Release);
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn set_ptt_suspended(app: AppHandle, suspended: bool) {
-    let hk = crate::hotkeys::effective(
-        &app.state::<App>().settings.get().hotkeys,
-        crate::hotkeys::ACTION_RECORD,
-    );
+    if PTT_SUSPENDED.swap(suspended, Ordering::AcqRel) == suspended {
+        return;
+    }
+    let settings = app.state::<App>().settings.get();
+    let hk = crate::hotkeys::effective(&settings.hotkeys, crate::hotkeys::ACTION_RECORD);
     if suspended {
         hotkey::unregister_hotkey(&app, &hk);
     } else {
@@ -272,18 +350,18 @@ where
 /// while the keys were ordinary fields of `Settings`.
 #[tauri::command]
 #[specta::specta]
-pub fn set_api_key(
+pub async fn set_api_key(
     app: AppHandle,
     kind: ApiKeyKind,
     value: String,
 ) -> Result<SecretsStatus, AppError> {
-    apply_secrets_change(&app, |s| s.set_key(kind, &value))
+    off_the_command_thread(move || apply_secrets_change(&app, |s| s.set_key(kind, &value))).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn clear_api_key(app: AppHandle, kind: ApiKeyKind) -> Result<SecretsStatus, AppError> {
-    apply_secrets_change(&app, |s| s.clear_key(kind))
+pub async fn clear_api_key(app: AppHandle, kind: ApiKeyKind) -> Result<SecretsStatus, AppError> {
+    off_the_command_thread(move || apply_secrets_change(&app, |s| s.clear_key(kind))).await
 }
 
 /// «Отвязать»: the token is dropped and both clients fall back to the user's own
@@ -291,8 +369,8 @@ pub fn clear_api_key(app: AppHandle, kind: ApiKeyKind) -> Result<SecretsStatus, 
 /// issued by the proxy, through `redeem_access_code`.
 #[tauri::command]
 #[specta::specta]
-pub fn clear_access_code(app: AppHandle) -> Result<SecretsStatus, AppError> {
-    apply_secrets_change(&app, Secrets::clear_access_token)
+pub async fn clear_access_code(app: AppHandle) -> Result<SecretsStatus, AppError> {
+    off_the_command_thread(move || apply_secrets_change(&app, Secrets::clear_access_token)).await
 }
 
 #[tauri::command]
@@ -304,12 +382,13 @@ pub async fn redeem_access_code(
 ) -> Result<SecretsStatus, AppError> {
     let base_url = access::proxy_base_url();
     let token = access::redeem(&base_url, &code, &idempotency_key).await?;
-    apply_secrets_change(&app, |s| s.access_token = token)
+    off_the_command_thread(move || apply_secrets_change(&app, |s| s.access_token = token)).await
 }
 
 // Opening a capture device is slow — the WASAPI thread start alone waits up to five
-// seconds — and `set_settings` is a synchronous command, so the rebuild must not run
-// on its thread. Same reason `launch_main_window` builds its capture in spawn_blocking.
+// seconds — and auto mode's restart also waits on its transition lock, so it must not
+// run on the thread applying the settings change. Same reason `launch_main_window`
+// builds its capture in spawn_blocking.
 fn restart_auto_mode_off_thread(app: &AppHandle) {
     if !crate::auto::is_active(app) {
         return;

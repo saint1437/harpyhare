@@ -15,7 +15,10 @@
 //!   library) is still read, recognised by shape. The envelope is unwrapped
 //!   before the string reaches the frontend, so the IPC contract is unchanged.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+
+use serde_json::value::RawValue;
 
 use crate::error::{AppError, CodedError, ErrorCode};
 use crate::settings::write_atomic_owner_only;
@@ -77,10 +80,47 @@ fn is_blank_document(raw: &str) -> bool {
     trimmed.is_empty() || trimmed == "null"
 }
 
-fn envelope_payload(value: &serde_json::Value) -> Option<&serde_json::Value> {
-    let object = value.as_object()?;
-    object.get(VERSION_KEY)?.as_u64()?;
-    object.get(PAYLOAD_KEY)
+/// The envelope on its way to disk.
+///
+/// `payload` is a `RawValue`, so neither half of this module ever builds a
+/// `serde_json::Value` DOM for a document that is the user's whole chat history:
+/// the frontend's own bytes are spliced in as they arrived.
+///
+/// `Serialize` is written out rather than derived for two reasons. The key
+/// constants above stay the single source of the format — a derive would have
+/// had to repeat "version" and "payload" as literals. And the field ORDER
+/// reproduces what the former `serde_json::json!` map emitted: serde_json's
+/// `Map` is a `BTreeMap` here, so its keys came out alphabetically, and the
+/// file this build writes for the frontend's (compact) document is therefore
+/// byte-for-byte the file the previous one wrote —
+/// `the_envelope_is_written_byte_for_byte_as_before` holds it there.
+struct Envelope<'a> {
+    payload: &'a RawValue,
+    version: u32,
+}
+
+impl serde::Serialize for Envelope<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut envelope = serializer.serialize_struct("Envelope", 2)?;
+        envelope.serialize_field(PAYLOAD_KEY, self.payload)?;
+        envelope.serialize_field(VERSION_KEY, &self.version)?;
+        envelope.end()
+    }
+}
+
+/// Recognises the envelope by reading only the TOP-LEVEL keys: the values come
+/// back as raw slices, so the payload — the whole history — is never parsed on
+/// its way back to the frontend.
+///
+/// The three conditions are exactly the ones the former `Value` version
+/// enforced, and each of them earns a test: the document is an object, `version`
+/// is a non-negative integer, and `payload` is present. Anything else is a bare
+/// pre-envelope document and is handed back untouched.
+fn envelope_payload(raw: &str) -> Option<&RawValue> {
+    let fields: HashMap<&str, &RawValue> = serde_json::from_str(raw).ok()?;
+    serde_json::from_str::<u64>(fields.get(VERSION_KEY)?.get()).ok()?;
+    fields.get(PAYLOAD_KEY).copied()
 }
 
 /// Reads a stored document. `Ok(None)` means — and only means — that the file
@@ -94,14 +134,20 @@ pub fn load(path: &Path) -> Result<Option<String>, StoreError> {
     if raw.trim().is_empty() {
         return Ok(None);
     }
-    let value: serde_json::Value = serde_json::from_str(&raw)
+    // This parse exists for its VALIDATION alone, which is why its result is
+    // dropped: a syntax error has to reach the user as `Corrupt` rather than be
+    // waved through as "a bare pre-envelope document" by the shape check below.
+    // `RawValue` validates the document whole without allocating a node per
+    // value the way the former `Value` parse did.
+    serde_json::from_str::<&RawValue>(&raw)
         .map_err(|e| StoreError::Corrupt(name_of(path), e.to_string()))?;
-    match envelope_payload(&value) {
-        Some(payload) => serde_json::to_string(payload)
-            .map(Some)
-            .map_err(|e| StoreError::Corrupt(name_of(path), e.to_string())),
-        None => Ok(Some(raw)),
+    if let Some(payload) = envelope_payload(&raw) {
+        // `get()` is the payload's own bytes off the disk. The former
+        // `to_string(payload)` re-serialised a DOM to arrive at the same text —
+        // this module writes the payload compactly, so it is the same text.
+        return Ok(Some(payload.get().to_string()));
     }
+    Ok(Some(raw))
 }
 
 fn rotate_backup(path: &Path) {
@@ -122,14 +168,16 @@ pub fn save(path: &Path, json: &str) -> Result<(), StoreError> {
             ERR_BLANK_OVER_EXISTING.into(),
         ));
     }
-    let payload: serde_json::Value = serde_json::from_str(json)
+    // The same validation as before — a document that is not JSON is refused
+    // and nothing is written — but without materialising the whole history as a
+    // `Value` tree only to serialise it straight back out.
+    let payload: &RawValue = serde_json::from_str(json)
         .map_err(|e| StoreError::Corrupt(name_of(path), e.to_string()))?;
-    let envelope = serde_json::json!({
-        VERSION_KEY: CURRENT_DOCUMENT_VERSION,
-        PAYLOAD_KEY: payload,
-    });
-    let encoded = serde_json::to_string(&envelope)
-        .map_err(|e| StoreError::Write(name_of(path), e.to_string()))?;
+    let encoded = serde_json::to_string(&Envelope {
+        payload,
+        version: CURRENT_DOCUMENT_VERSION,
+    })
+    .map_err(|e| StoreError::Write(name_of(path), e.to_string()))?;
     rotate_backup(path);
     write_atomic_owner_only(path, &encoded)
         .map_err(|e| StoreError::Write(name_of(path), e.to_string()))

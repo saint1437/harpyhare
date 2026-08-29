@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { useEffect } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ScrollMetrics } from "@/lib/chat-scroll";
 import type { ChatMessage } from "@/lib/chats";
 import { useChatScroll, type ChatScroller } from "./useChatScroll";
@@ -54,7 +54,29 @@ function mount(scroller: ChatScroller, initial: Props) {
   );
 }
 
-afterEach(cleanup);
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+
+/**
+ * Both frequent re-checks of the button are scheduled rather than immediate —
+ * the stream's growth is throttled (it is already frame-paced, so a frame is
+ * not a throttle) and `onScroll` is coalesced to one frame — because each of
+ * them reads the container's geometry and sets state. What the rules decide is
+ * unchanged; WHEN they decide it is, so the cases let the schedulers run.
+ */
+const LONGER_THAN_ANY_SYNC_MS = 500;
+
+function settleScrollSync() {
+  act(() => {
+    vi.advanceTimersByTime(LONGER_THAN_ANY_SYNC_MS);
+  });
+}
 
 describe("useChatScroll — доскролл вниз", () => {
   it("переключение чата доскроллит вниз", () => {
@@ -139,6 +161,7 @@ describe("useChatScroll — автоскролла во время стрима 
     // Ответ дорос до того, что в окно уже не помещается.
     setGeometry(AT_TOP);
     rerender({ chatId: "one", messages, partial: "длинный ответ" });
+    settleScrollSync();
     expect(result.current.showJump).toBe(true);
   });
 });
@@ -158,6 +181,7 @@ describe("useChatScroll — кнопка «↓ Вниз»", () => {
     // делает читатель, поднявшийся по истории.
     setGeometry(AT_TOP);
     rerender({ chatId: "one", messages, partial: "текст!" });
+    settleScrollSync();
     expect(result.current.showJump).toBe(true);
 
     jumps.mockClear();
@@ -174,12 +198,14 @@ describe("useChatScroll — кнопка «↓ Вниз»", () => {
     const { result, rerender } = mount(scroller, { chatId: "one", messages, partial: "текст" });
     setGeometry(AT_TOP);
     rerender({ chatId: "one", messages, partial: "текст!" });
+    settleScrollSync();
     expect(result.current.showJump).toBe(true);
 
     setGeometry({ scrollTop: 800, scrollHeight: 1000, clientHeight: 200 });
     act(() => {
       result.current.syncJump();
     });
+    settleScrollSync();
     expect(result.current.showJump).toBe(false);
   });
 });

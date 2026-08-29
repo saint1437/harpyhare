@@ -1,5 +1,5 @@
 import { Minus, Pause, Play, Plus, RotateCcw, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { IconButton } from "@/components/IconButton";
 import { useDict } from "@/hooks/useDict";
 import { matchesPrepared, prepareCombo } from "@/lib/hotkey-match";
@@ -41,11 +41,10 @@ export function Teleprompter({
   const [playing, setPlaying] = useState(true);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const offsetRef = useRef(initialOffset);
   const lastTsRef = useRef(0);
-  const rafRef = useRef(0);
-  const playingRef = useRef(playing);
-  playingRef.current = playing;
+  const maxOffsetRef = useRef(0);
   const speedRef = useRef(speed);
   speedRef.current = speed;
   const fontSizeRef = useRef(fontSize);
@@ -57,31 +56,64 @@ export function Teleprompter({
     if (scrollRef.current) scrollRef.current.scrollTop = offsetRef.current;
   }, []);
 
+  /**
+   * How far the reading can still travel. It is measured here and not inside
+   * the tick below: reading `scrollHeight`/`clientHeight` and then writing
+   * `scrollTop` in the same frame forces the layout the write had just
+   * invalidated, sixty times a second. Nothing changes it except the text, the
+   * font size and the window — and the observer covers the last of the three.
+   */
+  const measure = useCallback(() => {
+    const el = scrollRef.current;
+    maxOffsetRef.current = el === null ? 0 : el.scrollHeight - el.clientHeight;
+  }, []);
+
+  useLayoutEffect(measure, [measure, text, fontSize]);
+
   useEffect(() => {
+    const viewport = scrollRef.current;
+    const content = contentRef.current;
+    if (viewport === null || content === null) return;
+    // The viewport for the window's height, the column for the text's own —
+    // `scrollHeight` answers to the second and `clientHeight` to the first.
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    observer.observe(content);
+    return () => {
+      observer.disconnect();
+    };
+  }, [measure]);
+
+  /**
+   * The loop exists only while it has something to do. It used to reschedule
+   * itself outside the `playing` guard, so a paused teleprompter — and one that
+   * had reached the end, which pauses itself — went on waking the main thread
+   * sixty times a second above a window that was not moving.
+   */
+  useEffect(() => {
+    if (!playing) return;
+    lastTsRef.current = 0;
+    let raf = 0;
     const tick = (ts: number) => {
       const el = scrollRef.current;
       if (el) {
         const elapsed = lastTsRef.current === 0 ? 0 : ts - lastTsRef.current;
         lastTsRef.current = ts;
-        if (playingRef.current) {
-          const maxOffset = el.scrollHeight - el.clientHeight;
-          offsetRef.current = advanceOffset(
-            offsetRef.current,
-            speedRef.current,
-            elapsed,
-            maxOffset,
-          );
-          el.scrollTop = offsetRef.current;
-          if (offsetRef.current >= maxOffset) setPlaying(false);
+        const maxOffset = maxOffsetRef.current;
+        offsetRef.current = advanceOffset(offsetRef.current, speedRef.current, elapsed, maxOffset);
+        el.scrollTop = offsetRef.current;
+        if (offsetRef.current >= maxOffset) {
+          setPlaying(false);
+          return;
         }
       }
-      rafRef.current = requestAnimationFrame(tick);
+      raf = requestAnimationFrame(tick);
     };
-    rafRef.current = requestAnimationFrame(tick);
+    raf = requestAnimationFrame(tick);
     return () => {
-      cancelAnimationFrame(rafRef.current);
+      cancelAnimationFrame(raf);
     };
-  }, []);
+  }, [playing]);
 
   useEffect(() => {
     return () => {
@@ -127,6 +159,7 @@ export function Teleprompter({
           style={{ maskImage: EDGE_FADE, WebkitMaskImage: EDGE_FADE }}
         >
           <div
+            ref={contentRef}
             className="mx-auto max-w-[26ch] px-8 text-center leading-[1.7] font-medium tracking-wide whitespace-pre-wrap text-fg/90"
             style={{ fontSize, paddingTop: "46vh", paddingBottom: "54vh" }}
           >

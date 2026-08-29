@@ -1,5 +1,5 @@
 import { Copy, MessagesSquare, RotateCw, Trash2 } from "lucide-react";
-import { lazy, memo, Suspense, useEffect, useMemo, useRef } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef } from "react";
 import type { ReactNode, RefObject } from "react";
 import { IconButton } from "@/components/IconButton";
 import { ThinkingIndicator } from "@/features/hud/ThinkingIndicator";
@@ -27,7 +27,7 @@ const AnswerMarkdown = lazy(() => import("./AnswerMarkdown"));
  * other things, rebuilds every image's data URL). The fallback is the answer's
  * raw text, so nothing disappears while the chunk arrives.
  */
-function LazyAnswer({
+const LazyAnswer = memo(function LazyAnswer({
   text,
   streaming,
   onTogglePreview,
@@ -43,7 +43,7 @@ function LazyAnswer({
       </Suspense>
     </div>
   );
-}
+});
 
 export interface AnswerPanelProps {
   messages: ChatMessage[];
@@ -66,7 +66,16 @@ export interface AnswerPanelProps {
 const RECORD_ACTION = "record";
 const FALLBACK_SCROLL_STEP_PX = 120;
 
-const FLOATING_CHIP_CLASS = "border bg-elevated/95 shadow-pop backdrop-blur-sm";
+/**
+ * No `backdrop-blur`: the plate is `--elevated` at 95%, so there is nothing
+ * legible behind it to blur — and in a transparent frameless window a blur
+ * promotes its element into a WKWebView compositing layer of its own. One chip
+ * hangs on EVERY message, hidden or not, so the GPU cost grew with the length
+ * of the conversation for an effect five per cent of a pixel deep. (The
+ * teleprompter's full-window blur stays: `--overlay` is 45%/72% and the chat
+ * really does show through it.)
+ */
+const FLOATING_CHIP_CLASS = "border bg-elevated/95 shadow-pop";
 /**
  * Показ по наведению — без transition: анимация прозрачности в прозрачном
  * безрамочном окне поднимает элемент в отдельный слой WKWebView, и при схлопывании
@@ -292,61 +301,109 @@ function JumpToBottomButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+interface MessageHandlers {
+  onTogglePreview: (code: string) => void;
+  onCopyMessage: (index: number) => void;
+  onRemoveMessage: (index: number) => void;
+  onResendMessage: (index: number) => void;
+}
+
+/**
+ * One settled message, and it is `memo`ised because the panel above it is not:
+ * `partial` changes on every frame of the reveal, so without a barrier here the
+ * whole conversation went back through markdown — and through a `useDict()`
+ * subscription per `MessageActions` — sixty times a second. The handlers are
+ * built here, from the index and the panel's own stable callbacks, precisely so
+ * that the barrier holds: an inline arrow in the `.map` above would be a new
+ * prop on every pass and `memo` would never match.
+ */
+const MessageRow = memo(function MessageRow({
+  message,
+  index,
+  streaming,
+  onTogglePreview,
+  onCopyMessage,
+  onRemoveMessage,
+  onResendMessage,
+}: MessageHandlers & { message: ChatMessage; index: number; streaming: boolean }) {
+  const copy = useCallback(() => {
+    onCopyMessage(index);
+  }, [onCopyMessage, index]);
+  const remove = useCallback(() => {
+    onRemoveMessage(index);
+  }, [onRemoveMessage, index]);
+  const resend = useCallback(() => {
+    onResendMessage(index);
+  }, [onResendMessage, index]);
+
+  return (
+    <MessageShell
+      align={message.role === "user" ? "end" : "start"}
+      onCopy={isMessageCopyable(message) ? copy : null}
+      onRemove={remove}
+      onResend={message.role === "user" && !streaming ? resend : null}
+    >
+      {message.role === "user" ? (
+        <UserBubble text={message.text} images={message.images} />
+      ) : (
+        <LazyAnswer text={message.text} streaming={false} onTogglePreview={onTogglePreview} />
+      )}
+    </MessageShell>
+  );
+});
+
+/**
+ * The history as a whole, so that a reveal frame does not even RECONCILE it:
+ * `messages` keeps its array identity through `patchChat`, the four callbacks
+ * are the HUD's `useCallback`s, and `streaming` flips twice per answer — so this
+ * bails out for the entire stream and the tail below is the only thing React
+ * walks per frame.
+ */
+const MessageList = memo(function MessageList({
+  messages,
+  streaming,
+  ...handlers
+}: MessageHandlers & { messages: ChatMessage[]; streaming: boolean }) {
+  return (
+    <>
+      {messages.map((m, i) => (
+        <MessageRow key={i} message={m} index={i} streaming={streaming} {...handlers} />
+      ))}
+    </>
+  );
+});
+
 function ChatMessages({
   messages,
   partial,
   streaming,
   streamStartedAt,
-  onTogglePreview,
-  onCopyMessage,
-  onRemoveMessage,
-  onResendMessage,
-}: {
+  ...handlers
+}: MessageHandlers & {
   messages: ChatMessage[];
   partial: string | null;
   streaming: boolean;
   streamStartedAt?: number;
-  onTogglePreview: (code: string) => void;
-  onCopyMessage: (index: number) => void;
-  onRemoveMessage: (index: number) => void;
-  onResendMessage: (index: number) => void;
 }) {
+  /**
+   * `Date.now()` written into the JSX below is a FRESH number on every render,
+   * and `useElapsedSeconds` keys its `setInterval` on `startedAt`: the timer was
+   * torn down and rebuilt on every pass. The fallback is resolved once per wait
+   * instead — it only ever applies if a stream somehow began without recording
+   * when it did.
+   */
+  const fallbackStartedAt = useRef(0);
+  if (!streaming) fallbackStartedAt.current = 0;
+  else if (fallbackStartedAt.current === 0) fallbackStartedAt.current = Date.now();
+
   return (
     <>
-      {messages.map((m, i) => (
-        <MessageShell
-          key={i}
-          align={m.role === "user" ? "end" : "start"}
-          onCopy={
-            isMessageCopyable(m)
-              ? () => {
-                  onCopyMessage(i);
-                }
-              : null
-          }
-          onRemove={() => {
-            onRemoveMessage(i);
-          }}
-          onResend={
-            m.role === "user" && !streaming
-              ? () => {
-                  onResendMessage(i);
-                }
-              : null
-          }
-        >
-          {m.role === "user" ? (
-            <UserBubble text={m.text} images={m.images} />
-          ) : (
-            <LazyAnswer text={m.text} streaming={false} onTogglePreview={onTogglePreview} />
-          )}
-        </MessageShell>
-      ))}
+      <MessageList messages={messages} streaming={streaming} {...handlers} />
       {partial !== null && partial !== "" && (
-        <LazyAnswer text={partial} streaming onTogglePreview={onTogglePreview} />
+        <LazyAnswer text={partial} streaming onTogglePreview={handlers.onTogglePreview} />
       )}
       {streaming && (partial === null || partial === "") && (
-        <ThinkingIndicator startedAt={streamStartedAt ?? Date.now()} />
+        <ThinkingIndicator startedAt={streamStartedAt ?? fallbackStartedAt.current} />
       )}
     </>
   );

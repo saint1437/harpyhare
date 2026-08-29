@@ -2,7 +2,7 @@ import { permissionRowCopy, PERMISSION_ROWS } from "@/features/settings/permissi
 import { SETTINGS_ENTRIES } from "@/features/settings/settings-registry";
 import { SETTINGS_TABS, type SettingsTabId } from "@/features/settings/settings-tabs";
 import { format } from "@/i18n";
-import type { Dictionary } from "@/i18n/types";
+import type { Dictionary, Locale } from "@/i18n/types";
 import { HOTKEY_ACTIONS } from "@/ipc/types";
 import type { HotkeyKind } from "@/ipc/types";
 import { API_KEY_IDS, apiKeyInfo } from "@/lib/api-keys";
@@ -251,13 +251,38 @@ function quickActionHits(
     }));
 }
 
+/** A hit plus the two case-folded strings a query is actually matched against. */
+interface IndexedHit {
+  hit: SearchHit;
+  foldedTitle: string;
+  foldedHint: string;
+}
+
+export interface LauncherIndex {
+  locale: Locale;
+  entries: IndexedHit[];
+}
+
+function folded(text: string, locale: Locale): string {
+  return text.toLocaleLowerCase(locale);
+}
+
 /**
  * The whole index, and a pure function of its arguments: the dictionary arrives
  * as a parameter rather than through `getDict()` so the tests can walk both
  * locales — an untranslated hit is caught by running the same case twice.
+ *
+ * Nothing in here depends on the query, and none of it is cheap: every hit costs
+ * a breadcrumb (dictionary lookups plus a join) and two passes through
+ * `toLocaleLowerCase`, the ICU path. It is therefore built ONCE per
+ * `(sources, dict, platform)` and handed to `searchIndex` on every keystroke.
  */
-function launcherIndex(sources: SearchSources, dict: Dictionary, platform: Platform): SearchHit[] {
-  return [
+export function launcherIndex(
+  sources: SearchSources,
+  dict: Dictionary,
+  platform: Platform = PLATFORM,
+): LauncherIndex {
+  const hits = [
     ...screenHits(dict, platform),
     ...tabHits(dict),
     ...hotkeyHits(dict),
@@ -267,33 +292,42 @@ function launcherIndex(sources: SearchSources, dict: Dictionary, platform: Platf
     ...quickActionHits(sources.quickActions, dict),
     ...contextDocHits(sources.contextDocs, dict),
   ];
+  return {
+    locale: dict.locale,
+    entries: hits.map((hit) => ({
+      hit,
+      foldedTitle: folded(hit.title, dict.locale),
+      foldedHint: folded(hit.hint, dict.locale),
+    })),
+  };
 }
 
-function folded(text: string, dict: Dictionary): string {
-  return text.toLocaleLowerCase(dict.locale);
-}
-
-function rankOf(hit: SearchHit, needle: string, dict: Dictionary): number | null {
-  const title = folded(hit.title, dict);
-  if (title.startsWith(needle)) return RANK_TITLE_PREFIX;
-  if (title.includes(needle)) return RANK_TITLE_INSIDE;
-  if (folded(hit.hint, dict).includes(needle)) return RANK_HINT;
+function rankOf(entry: IndexedHit, needle: string): number | null {
+  if (entry.foldedTitle.startsWith(needle)) return RANK_TITLE_PREFIX;
+  if (entry.foldedTitle.includes(needle)) return RANK_TITLE_INSIDE;
+  if (entry.foldedHint.includes(needle)) return RANK_HINT;
   return null;
 }
 
+/** The per-keystroke half: it walks a prebuilt index and never rebuilds one. */
+export function searchIndex(query: string, index: LauncherIndex): SearchHit[] {
+  const needle = folded(query.trim(), index.locale);
+  if (needle === "") return [];
+  const ranked: { hit: SearchHit; rank: number }[] = [];
+  for (const entry of index.entries) {
+    const rank = rankOf(entry, needle);
+    if (rank !== null) ranked.push({ hit: entry.hit, rank });
+  }
+  ranked.sort((a, b) => a.rank - b.rank);
+  return ranked.map((entry) => entry.hit);
+}
+
+/** Index and search in one call — a pure function of its arguments, as before. */
 export function searchLauncher(
   query: string,
   sources: SearchSources,
   dict: Dictionary,
   platform: Platform = PLATFORM,
 ): SearchHit[] {
-  const needle = folded(query.trim(), dict);
-  if (needle === "") return [];
-  const ranked: { hit: SearchHit; rank: number }[] = [];
-  for (const hit of launcherIndex(sources, dict, platform)) {
-    const rank = rankOf(hit, needle, dict);
-    if (rank !== null) ranked.push({ hit, rank });
-  }
-  ranked.sort((a, b) => a.rank - b.rank);
-  return ranked.map((entry) => entry.hit);
+  return searchIndex(query, launcherIndex(sources, dict, platform));
 }

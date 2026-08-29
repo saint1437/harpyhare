@@ -236,13 +236,25 @@ pub struct SecretsLoad {
     pub recovery: Option<SettingsRecovery>,
 }
 
+/// The `settings.json` schema version that first shipped WITHOUT the three
+/// credential fields — `settings::migrate_v1_to_v2` is the step that removes
+/// them. A document already at this version (or later) cannot be carrying a
+/// legacy secret, which is what lets the startup skip re-reading it.
+const SETTINGS_SCHEMA_AFTER_SPLIT: u32 = 2;
+
 struct LegacyFields {
     present: bool,
     secrets: Secrets,
 }
 
+impl LegacyFields {
+    fn absent() -> Self {
+        Self { present: false, secrets: Secrets::default() }
+    }
+}
+
 fn legacy_fields(settings_path: &Path) -> LegacyFields {
-    let empty = LegacyFields { present: false, secrets: Secrets::default() };
+    let empty = LegacyFields::absent();
     let Ok(raw) = std::fs::read_to_string(settings_path) else {
         return empty;
     };
@@ -276,8 +288,25 @@ fn legacy_fields(settings_path: &Path) -> LegacyFields {
 /// use it; absent → look for the fields in the old `settings.json` so an update
 /// does not log the user out; unreadable → the bytes are renamed out of the way
 /// and reported, and the legacy file is still consulted.
-pub fn load_or_migrate(secrets_path: &Path, settings_path: &Path) -> SecretsLoad {
-    let legacy = legacy_fields(settings_path);
+///
+/// `settings_document_version` is the version the settings FILE was at before
+/// its migration chain ran (`settings::LoadedSettings::document_version`), and
+/// it is what keeps this cheap. `legacy_fields` used to run unconditionally at
+/// the top of this function, so every cold start read and JSON-parsed
+/// `settings.json` a second time — the startup had already parsed it as
+/// `Settings` — to answer a question settled for good the moment the document
+/// reached v2. The read now happens only for a document that can still answer
+/// "yes"; the migration path for a genuinely old install is unchanged.
+pub fn load_or_migrate(
+    secrets_path: &Path,
+    settings_path: &Path,
+    settings_document_version: u32,
+) -> SecretsLoad {
+    let legacy = if settings_document_version >= SETTINGS_SCHEMA_AFTER_SPLIT {
+        LegacyFields::absent()
+    } else {
+        legacy_fields(settings_path)
+    };
     let mut recovery = None;
 
     match std::fs::read_to_string(secrets_path) {

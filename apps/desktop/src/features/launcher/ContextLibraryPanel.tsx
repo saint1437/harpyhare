@@ -11,6 +11,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -38,9 +39,7 @@ import { onFileDrop } from "@/ipc/events";
 import { arrayBufferToBase64 } from "@/lib/base64";
 import {
   docNameFromFileName,
-  docsInFolder,
   isPdfFileName,
-  rootDocs,
   type ContextDoc,
   docLimitNotice,
   libraryIsFull,
@@ -55,6 +54,7 @@ const DROP_FOLDER_ATTR = "data-drop-folder";
 const IMPORT_ACCEPT = ".md,.markdown,.txt,.pdf";
 const THOUSAND = 1000;
 const THOUSANDS_FRACTION_DIGITS = 1;
+const NO_DOCS: ContextDoc[] = [];
 
 interface DocDraft {
   id: string | null;
@@ -78,8 +78,13 @@ function dropTargetAt(x: number, y: number): string | null {
   return host ? (host.getAttribute(DROP_FOLDER_ATTR) ?? ROOT_FOLDER_ID) : null;
 }
 
+/**
+ * `addDoc` alone, never the whole api: the api carries `library`, so every doc
+ * added re-registered `onDragDropEvent` through an async IPC round trip — and
+ * during a multi-file drop that killed the listener handling that very drop.
+ */
 function useNativeFileDrop(
-  api: ContextLibraryApi,
+  addDoc: ContextLibraryApi["addDoc"],
   setDropTarget: (t: string | null) => void,
 ): void {
   useEffect(
@@ -99,21 +104,23 @@ function useNativeFileDrop(
         for (const path of event.paths) {
           void readContextImportFile(path)
             .then((text) => {
-              api.addDoc({ name: docNameFromFileName(path), text, folderId: target });
+              addDoc({ name: docNameFromFileName(path), text, folderId: target });
             })
             .catch((e: unknown) => {
               notifyImportFailure(docNameFromFileName(path), e);
             });
         }
       }),
-    [api, setDropTarget],
+    [addDoc, setDropTarget],
   );
 }
 
 const DOC_DRAG_THRESHOLD_PX = 5;
 
+const NO_FRAME = 0;
+
 function useDocDrag(
-  api: ContextLibraryApi,
+  moveDoc: ContextLibraryApi["moveDoc"],
   setDropTarget: (t: string | null) => void,
 ): { dragDocId: string | null; startDrag: (docId: string, x: number, y: number) => void } {
   const [dragDocId, setDragDocId] = useState<string | null>(null);
@@ -121,6 +128,18 @@ function useDocDrag(
   const startDrag = useCallback(
     (docId: string, startX: number, startY: number) => {
       let active = false;
+      // `dropTargetAt` is `elementFromPoint` + `closest`, i.e. a forced style and
+      // layout flush, and mousemove fires far more often than the screen is
+      // painted — so the hit test is coalesced to one per frame. The pointer is
+      // only ever over one folder per frame anyway.
+      let frame = NO_FRAME;
+      let last: { x: number; y: number } | null = null;
+      const hitTest = () => {
+        frame = NO_FRAME;
+        if (last === null) return;
+        setDropTarget(dropTargetAt(last.x, last.y));
+        last = null;
+      };
       const onMove = (e: MouseEvent) => {
         if (!active && Math.hypot(e.clientX - startX, e.clientY - startY) < DOC_DRAG_THRESHOLD_PX)
           return;
@@ -128,14 +147,18 @@ function useDocDrag(
           active = true;
           setDragDocId(docId);
         }
-        setDropTarget(dropTargetAt(e.clientX, e.clientY));
+        last = { x: e.clientX, y: e.clientY };
+        if (frame === NO_FRAME) frame = requestAnimationFrame(hitTest);
       };
       const onUp = (e: MouseEvent) => {
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
+        if (frame !== NO_FRAME) cancelAnimationFrame(frame);
+        frame = NO_FRAME;
+        last = null;
         if (active) {
           const target = dropTargetAt(e.clientX, e.clientY);
-          if (target !== null) api.moveDoc(docId, target);
+          if (target !== null) moveDoc(docId, target);
         }
         setDragDocId(null);
         setDropTarget(null);
@@ -143,7 +166,7 @@ function useDocDrag(
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     },
-    [api, setDropTarget],
+    [moveDoc, setDropTarget],
   );
 
   return { dragDocId, startDrag };
@@ -162,19 +185,24 @@ async function extractPickedFile(file: File): Promise<string> {
   return readContextPdfBytes(arrayBufferToBase64(await file.arrayBuffer()));
 }
 
+// In parallel, like the OS-drop path above: ten picked PDFs used to be ten
+// sequential `read_context_pdf_bytes` round trips. The per-file catch already
+// isolates a failure, so one bad file still costs only itself.
 async function importPickedFiles(
   api: ContextLibraryApi,
   files: FileList,
   folderId: string,
 ): Promise<void> {
-  for (const file of Array.from(files)) {
-    try {
-      const text = await extractPickedFile(file);
-      api.addDoc({ name: docNameFromFileName(file.name), text, folderId });
-    } catch (e: unknown) {
-      notifyImportFailure(docNameFromFileName(file.name), e);
-    }
-  }
+  await Promise.all(
+    Array.from(files).map(async (file) => {
+      try {
+        const text = await extractPickedFile(file);
+        api.addDoc({ name: docNameFromFileName(file.name), text, folderId });
+      } catch (e: unknown) {
+        notifyImportFailure(docNameFromFileName(file.name), e);
+      }
+    }),
+  );
 }
 
 function RowIconBadge({ children }: { children: ReactNode }) {
@@ -319,21 +347,26 @@ function FolderHeader({
   );
 }
 
+/**
+ * The draft lives here, not in the panel: `text` runs to DOC_TEXT_LIMIT_CHARS,
+ * and while it sat one level up every keystroke re-rendered the list beside the
+ * editor — the root docs, every folder block and up to a hundred rows. Only the
+ * finished value leaves, on Save.
+ */
 function DocEditor({
-  draft,
+  initial,
   folders,
-  onChange,
   onSave,
   onCancel,
 }: {
-  draft: DocDraft;
+  initial: DocDraft;
   folders: { id: string; name: string }[];
-  onChange: (d: DocDraft) => void;
-  onSave: () => void;
+  onSave: (draft: DocDraft) => void;
   onCancel: () => void;
 }) {
   const dict = useDict();
   const copy = dict.launcher.contexts;
+  const [draft, setDraft] = useState(initial);
   return (
     <div className={cn("flex flex-col gap-2 p-3", SURFACE_CARD_CLASS)}>
       <SectionLabel>{draft.id === null ? copy.editorNewTitle : copy.editorTitle}</SectionLabel>
@@ -343,13 +376,13 @@ function DocEditor({
           placeholder={copy.docNamePlaceholder}
           value={draft.name}
           onChange={(e) => {
-            onChange({ ...draft, name: e.target.value });
+            setDraft({ ...draft, name: e.target.value });
           }}
         />
         <Select
           value={draft.folderId === ROOT_FOLDER_ID ? ROOT_SELECT_VALUE : draft.folderId}
           onValueChange={(v) => {
-            onChange({ ...draft, folderId: v === ROOT_SELECT_VALUE ? ROOT_FOLDER_ID : v });
+            setDraft({ ...draft, folderId: v === ROOT_SELECT_VALUE ? ROOT_FOLDER_ID : v });
           }}
         >
           <SelectTrigger className="w-[160px] shrink-0">
@@ -370,7 +403,7 @@ function DocEditor({
         placeholder={copy.docTextPlaceholder}
         value={draft.text}
         onChange={(e) => {
-          onChange({ ...draft, text: e.target.value });
+          setDraft({ ...draft, text: e.target.value });
         }}
         className="max-h-56 overflow-y-auto"
       />
@@ -380,7 +413,12 @@ function DocEditor({
           <Button variant="ghost" size="sm" onClick={onCancel}>
             {dict.common.actions.cancel}
           </Button>
-          <Button size="sm" onClick={onSave}>
+          <Button
+            size="sm"
+            onClick={() => {
+              onSave(draft);
+            }}
+          >
             {dict.common.actions.save}
           </Button>
         </div>
@@ -422,22 +460,33 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
   const dict = useDict();
   const copy = dict.launcher.contexts;
   const { library } = api;
-  const [docDraft, setDocDraft] = useState<DocDraft | null>(null);
+  // The seed the editor opens with, and its identity — reopening on another doc
+  // while the editor is up has to remount it, which is what the key is for.
+  const [editing, setEditing] = useState<{ key: number; seed: DocDraft } | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editorKey = useRef(0);
 
-  useNativeFileDrop(api, setDropTarget);
-  const { dragDocId, startDrag } = useDocDrag(api, setDropTarget);
+  useNativeFileDrop(api.addDoc, setDropTarget);
+  const { dragDocId, startDrag } = useDocDrag(api.moveDoc, setDropTarget);
 
-  const saveDocDraft = () => {
-    if (!docDraft) return;
-    if (docDraft.id === null) {
-      api.addDoc({ name: docDraft.name, text: docDraft.text, folderId: docDraft.folderId });
+  const openEditor = (seed: DocDraft) => {
+    editorKey.current += 1;
+    setEditing({ key: editorKey.current, seed });
+  };
+
+  const closeEditor = () => {
+    setEditing(null);
+  };
+
+  const saveDoc = (draft: DocDraft) => {
+    if (draft.id === null) {
+      api.addDoc({ name: draft.name, text: draft.text, folderId: draft.folderId });
     } else {
-      api.updateDoc(docDraft.id, { name: docDraft.name, text: docDraft.text });
-      api.moveDoc(docDraft.id, docDraft.folderId);
+      api.updateDoc(draft.id, { name: draft.name, text: draft.text });
+      api.moveDoc(draft.id, draft.folderId);
     }
-    setDocDraft(null);
+    setEditing(null);
   };
 
   const onPickFiles = (e: ChangeEvent<HTMLInputElement>) => {
@@ -455,7 +504,7 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
         startDrag(doc.id, x, y);
       }}
       onEdit={() => {
-        setDocDraft({ id: doc.id, name: doc.name, text: doc.text, folderId: doc.folderId });
+        openEditor({ id: doc.id, name: doc.name, text: doc.text, folderId: doc.folderId });
       }}
       onRemove={() => {
         api.removeDoc(doc.id);
@@ -465,10 +514,21 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
 
   const empty = library.docs.length === 0 && library.folders.length === 0;
   const full = libraryIsFull(library);
-  const roots = rootDocs(library);
+  // One pass over the documents instead of one pass PER FOLDER: the blocks used
+  // to cost O(folders × docs) on every render of the panel.
+  const docsByFolder = useMemo(() => {
+    const grouped = new Map<string, ContextDoc[]>();
+    for (const doc of library.docs) {
+      const bucket = grouped.get(doc.folderId);
+      if (bucket === undefined) grouped.set(doc.folderId, [doc]);
+      else bucket.push(doc);
+    }
+    return grouped;
+  }, [library.docs]);
+  const roots = docsByFolder.get(ROOT_FOLDER_ID) ?? NO_DOCS;
   const folderBlocks = library.folders.map((f) => ({
     folder: f,
-    docs: docsInFolder(library, f.id),
+    docs: docsByFolder.get(f.id) ?? NO_DOCS,
   }));
 
   return (
@@ -485,7 +545,7 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
             size="compact"
             disabled={full}
             onClick={() => {
-              setDocDraft({ id: null, name: "", text: "", folderId: ROOT_FOLDER_ID });
+              openEditor({ id: null, name: "", text: "", folderId: ROOT_FOLDER_ID });
             }}
           >
             <Plus /> {copy.addDoc}
@@ -522,19 +582,17 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
         />
       </div>
 
-      {docDraft && (
+      {editing && (
         <DocEditor
-          draft={docDraft}
+          key={editing.key}
+          initial={editing.seed}
           folders={library.folders}
-          onChange={setDocDraft}
-          onSave={saveDocDraft}
-          onCancel={() => {
-            setDocDraft(null);
-          }}
+          onSave={saveDoc}
+          onCancel={closeEditor}
         />
       )}
 
-      {empty && !docDraft ? (
+      {empty && !editing ? (
         <EmptyDropZone
           onPick={() => {
             fileInputRef.current?.click();

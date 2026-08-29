@@ -74,12 +74,19 @@ fn extension_for(media_type: &str) -> Option<&'static str> {
 /// compiler built the binary — the id is written into `chats.json` and has to
 /// keep meaning the same file across toolchain updates.
 fn content_id(bytes: &[u8], extension: &str) -> String {
+    use std::fmt::Write as _;
     let digest = Sha256::digest(bytes);
-    let mut hash = String::with_capacity(ID_HASH_HEX_LEN);
+    // Written straight into the pre-sized buffer: `format!` per byte allocated
+    // sixteen short `String`s for every image, and a second `format!` copied the
+    // result again to glue the extension on.
+    let mut id = String::with_capacity(ID_HASH_HEX_LEN + 1 + extension.len());
     for byte in digest.iter().take(ID_HASH_HEX_LEN / 2) {
-        hash.push_str(&format!("{byte:02x}"));
+        // Writing into a `String` cannot fail; there is no error to report.
+        let _ = write!(id, "{byte:02x}");
     }
-    format!("{hash}{ID_EXTENSION_SEPARATOR}{extension}")
+    id.push(ID_EXTENSION_SEPARATOR);
+    id.push_str(extension);
+    id
 }
 
 fn split_id(id: &str) -> Option<(&str, &str)> {

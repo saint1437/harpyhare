@@ -4,6 +4,13 @@ fn dir() -> tempfile::TempDir {
     tempfile::tempdir().unwrap()
 }
 
+/// The version `preferences::load_settings_and_secrets` hands `load_or_migrate`
+/// in production — read from the file itself rather than typed out beside the
+/// JSON, so a test cannot claim a shape its fixture does not have.
+fn document_version(settings_path: &Path) -> u32 {
+    crate::settings::load_or_recover(settings_path).document_version
+}
+
 fn filled() -> Secrets {
     Secrets {
         anthropic_api_key: "sk-ant-api03-secret-value-9f2a".into(),
@@ -181,7 +188,11 @@ fn save_load_roundtrip_with_owner_only_perms() {
 #[test]
 fn a_missing_secrets_file_and_a_missing_settings_file_give_defaults() {
     let dir = dir();
-    let load = load_or_migrate(&dir.path().join("secrets.json"), &dir.path().join("s.json"));
+    let load = load_or_migrate(
+        &dir.path().join("secrets.json"),
+        &dir.path().join("s.json"),
+        document_version(&dir.path().join("s.json")),
+    );
     assert_eq!(load.secrets, Secrets::default());
     assert!(!load.needs_write);
     assert!(!load.settings_needs_rewrite);
@@ -203,7 +214,7 @@ fn the_secrets_are_lifted_out_of_a_legacy_settings_file() {
     )
     .unwrap();
 
-    let load = load_or_migrate(&secrets_path, &settings_path);
+    let load = load_or_migrate(&secrets_path, &settings_path, document_version(&settings_path));
     assert_eq!(load.secrets.anthropic_api_key, "sk-ant-old");
     assert_eq!(load.secrets.groq_api_key, "gsk_old");
     assert_eq!(load.secrets.access_token, "itk_paid");
@@ -218,7 +229,11 @@ fn a_pre_versioning_settings_file_is_migrated_too() {
     let dir = dir();
     let settings_path = dir.path().join("settings.json");
     std::fs::write(&settings_path, r#"{"groq_api_key":"gsk_ancient"}"#).unwrap();
-    let load = load_or_migrate(&dir.path().join("secrets.json"), &settings_path);
+    let load = load_or_migrate(
+        &dir.path().join("secrets.json"),
+        &settings_path,
+        document_version(&settings_path),
+    );
     assert_eq!(load.secrets.groq_api_key, "gsk_ancient");
     assert!(load.needs_write);
 }
@@ -235,7 +250,7 @@ fn an_existing_secrets_file_wins_over_leftovers_in_settings() {
         .save(&secrets_path)
         .unwrap();
 
-    let load = load_or_migrate(&secrets_path, &settings_path);
+    let load = load_or_migrate(&secrets_path, &settings_path, document_version(&settings_path));
     assert_eq!(load.secrets.access_token, "itk_current");
     assert!(!load.needs_write, "перезаписывать актуальный файл нечем");
     assert!(load.settings_needs_rewrite, "но чистить settings.json всё равно надо");
@@ -246,7 +261,11 @@ fn a_settings_file_without_the_fields_asks_for_no_rewrite() {
     let dir = dir();
     let settings_path = dir.path().join("settings.json");
     std::fs::write(&settings_path, r#"{"schema_version":2,"auto_send":true}"#).unwrap();
-    let load = load_or_migrate(&dir.path().join("secrets.json"), &settings_path);
+    let load = load_or_migrate(
+        &dir.path().join("secrets.json"),
+        &settings_path,
+        document_version(&settings_path),
+    );
     assert!(!load.needs_write);
     assert!(!load.settings_needs_rewrite);
 }
@@ -258,9 +277,51 @@ fn empty_legacy_fields_are_scrubbed_without_being_migrated() {
     let dir = dir();
     let settings_path = dir.path().join("settings.json");
     std::fs::write(&settings_path, r#"{"anthropic_api_key":"","access_token":""}"#).unwrap();
-    let load = load_or_migrate(&dir.path().join("secrets.json"), &settings_path);
+    let load = load_or_migrate(
+        &dir.path().join("secrets.json"),
+        &settings_path,
+        document_version(&settings_path),
+    );
     assert!(!load.needs_write);
     assert!(load.settings_needs_rewrite);
+}
+
+/// The gate that keeps the cold start from reading `settings.json` twice: a
+/// document already at the post-split version is never opened, so even a file
+/// that (impossibly) still holds the fields is left alone. The branch above —
+/// a genuinely old install — is what must keep working, and does.
+#[test]
+fn a_document_past_the_split_is_not_read_at_all() {
+    let dir = dir();
+    let settings_path = dir.path().join("settings.json");
+    std::fs::write(&settings_path, r#"{"groq_api_key":"gsk_would_be_lifted"}"#).unwrap();
+
+    let load = load_or_migrate(
+        &dir.path().join("secrets.json"),
+        &settings_path,
+        SETTINGS_SCHEMA_AFTER_SPLIT,
+    );
+    assert_eq!(load.secrets, Secrets::default(), "файл версии 2+ не читается");
+    assert!(!load.needs_write);
+    assert!(!load.settings_needs_rewrite);
+}
+
+/// And the version really is the one the file carries: the fixture above is a
+/// v0 document, so the production path DOES read it.
+#[test]
+fn the_same_file_is_read_when_its_own_version_predates_the_split() {
+    let dir = dir();
+    let settings_path = dir.path().join("settings.json");
+    std::fs::write(&settings_path, r#"{"groq_api_key":"gsk_would_be_lifted"}"#).unwrap();
+    assert!(document_version(&settings_path) < SETTINGS_SCHEMA_AFTER_SPLIT);
+
+    let load = load_or_migrate(
+        &dir.path().join("secrets.json"),
+        &settings_path,
+        document_version(&settings_path),
+    );
+    assert_eq!(load.secrets.groq_api_key, "gsk_would_be_lifted");
+    assert!(load.needs_write);
 }
 
 /// Same policy as `settings::load_or_recover`: the bytes survive under a new
@@ -274,7 +335,7 @@ fn a_corrupt_secrets_file_is_renamed_aside_and_reported() {
     std::fs::write(&secrets_path, broken).unwrap();
     std::fs::write(&settings_path, r#"{"groq_api_key":"gsk_legacy"}"#).unwrap();
 
-    let load = load_or_migrate(&secrets_path, &settings_path);
+    let load = load_or_migrate(&secrets_path, &settings_path, document_version(&settings_path));
     let recovery = load.recovery.expect("факт порчи обязан дойти до фронта");
     assert!(!secrets_path.exists(), "битый файл убран с дороги");
     assert_eq!(std::fs::read_to_string(&recovery.backup_path).unwrap(), broken);

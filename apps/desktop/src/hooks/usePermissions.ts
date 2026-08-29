@@ -23,6 +23,14 @@ const UNKNOWN_STATUS: PermissionsStatus = {
 const GRANT_POLL_INTERVAL_MS = 1200;
 const GRANT_POLL_TIMEOUT_MS = 25_000;
 
+/**
+ * The same cost, seen from the other side: focus is a cheap, bursty event (a
+ * click back into the window, a dialog closing, the launcher regaining focus
+ * after a poll tick), and it used to fire `ensure_capture` every single time,
+ * with nothing stopping two probes from overlapping.
+ */
+const FOCUS_REFRESH_MIN_GAP_MS = 1000;
+
 export interface PermissionsApi {
   status: PermissionsStatus;
   loaded: boolean;
@@ -42,6 +50,8 @@ export function usePermissions(): PermissionsApi {
   const [awaiting, setAwaiting] = useState<PermissionKind | null>(null);
   const [loaded, setLoaded] = useState(false);
   const alive = useRef(true);
+  const probing = useRef(false);
+  const probedAt = useRef(0);
 
   useEffect(() => {
     alive.current = true;
@@ -51,10 +61,16 @@ export function usePermissions(): PermissionsApi {
   }, []);
 
   const refresh = useCallback(async () => {
-    const fresh = await permissionsStatus();
-    if (!alive.current) return;
-    setStatus(fresh);
-    setLoaded(true);
+    probing.current = true;
+    try {
+      const fresh = await permissionsStatus();
+      if (!alive.current) return;
+      setStatus(fresh);
+      setLoaded(true);
+    } finally {
+      probing.current = false;
+      probedAt.current = performance.now();
+    }
   }, []);
 
   useEffect(() => {
@@ -69,7 +85,11 @@ export function usePermissions(): PermissionsApi {
    * to close.
    */
   useEffect(() => {
-    const onFocus = () => void refresh();
+    const onFocus = () => {
+      if (probing.current) return;
+      if (performance.now() - probedAt.current < FOCUS_REFRESH_MIN_GAP_MS) return;
+      void refresh();
+    };
     window.addEventListener("focus", onFocus);
     return () => {
       window.removeEventListener("focus", onFocus);

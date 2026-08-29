@@ -10,7 +10,22 @@ vi.mock("@/ipc/commands", () => ({
   openExternal: vi.fn(),
 }));
 
-const { dataUrlBuilds } = vi.hoisted(() => ({ dataUrlBuilds: { count: 0 } }));
+const { dataUrlBuilds, copyableChecks } = vi.hoisted(() => ({
+  dataUrlBuilds: { count: 0 },
+  copyableChecks: { count: 0 },
+}));
+
+/** Called once per rendered message row — the cheapest render counter there is. */
+vi.mock("@/lib/message-clipboard", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/message-clipboard")>();
+  return {
+    ...actual,
+    isMessageCopyable: (message: Parameters<typeof actual.isMessageCopyable>[0]) => {
+      copyableChecks.count += 1;
+      return actual.isMessageCopyable(message);
+    },
+  };
+});
 
 vi.mock("@/lib/composer", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/composer")>();
@@ -315,5 +330,60 @@ describe("AnswerPanel — кнопки сообщений", () => {
       expect(minePlate).toContain(shared);
       expect(theirsPlate).toContain(shared);
     }
+  });
+});
+
+describe("AnswerPanel — что переживает кадр потока", () => {
+  const STABLE = "Начало\n\n```js\nconst a = 1;\n```\n\n";
+  const NOTHING: ChatMessage[] = [];
+  const HISTORY: ChatMessage[] = [
+    userMsg,
+    { role: "assistant", text: "Прошлый ответ", images: [] },
+  ];
+  // Ровно то, чем они являются в HUD: useCallback-и, стабильные между кадрами.
+  const NOOP = () => undefined;
+
+  function streamPanel(partial: string, messages: ChatMessage[] = NOTHING) {
+    return (
+      <AnswerPanel
+        messages={messages}
+        recordCombo="Cmd+R"
+        partial={partial}
+        streaming
+        scrollModifier="Alt"
+        onTogglePreview={NOOP}
+        onCopyMessage={NOOP}
+        onRemoveMessage={NOOP}
+        onResendMessage={NOOP}
+      />
+    );
+  }
+
+  // `components` собирался в теле рендера, и вместе с объектом заново рождался
+  // ТИП компонента `pre`: memo(MarkdownChunk) не попадал никогда, устоявшийся
+  // префикс переразбирался, а каждый код-блок перемонтировался — шестьдесят раз
+  // в секунду. Тождество узла <pre> и есть проверка, что memo держит.
+  it("код-блок в устоявшемся префиксе не перемонтируется на каждом кадре", async () => {
+    const { container, rerender } = render(streamPanel(STABLE + "Хвост"));
+    await settleMarkdown();
+    const pre = container.querySelector("pre");
+    expect(pre).toBeTruthy();
+    expect(container.querySelector("code.hljs")).toBeTruthy();
+
+    rerender(streamPanel(STABLE + "Хвост подлиннее"));
+    rerender(streamPanel(STABLE + "Хвост ещё длиннее"));
+
+    expect(container.querySelector("pre")).toBe(pre);
+  });
+
+  it("история не перерисовывается, пока растёт ответ", async () => {
+    const { rerender } = render(streamPanel("от", HISTORY));
+    await settleMarkdown();
+    copyableChecks.count = 0;
+
+    rerender(streamPanel("отв", HISTORY));
+    rerender(streamPanel("ответ", HISTORY));
+
+    expect(copyableChecks.count).toBe(0);
   });
 });

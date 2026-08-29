@@ -299,3 +299,54 @@ fn segmenter_flush_returns_speech_in_flight() {
     assert!(flushed.len() >= samples_for_ms(400));
     assert!(seg.flush().is_none(), "flush must not repeat the same speech");
 }
+
+#[test]
+fn f32_to_i16le_into_appends_and_matches_the_allocating_form() {
+    let head = vec![0xAAu8, 0xBB];
+    let samples = vec![0.0f32, 0.5, -0.5, 1.0, -1.0];
+
+    let mut out = head.clone();
+    f32_to_i16le_into(&samples, &mut out);
+    f32_to_i16le_into(&samples, &mut out);
+
+    assert_eq!(&out[..head.len()], &head[..], "приписывает, а не затирает");
+    let body = f32_to_i16le_bytes(&samples);
+    assert_eq!(&out[head.len()..], [body.clone(), body].concat());
+    assert_eq!(i16le_len(samples.len()), samples.len() * 2);
+}
+
+/// The segmenter runs 100 frames a second per source with the `segmenting`
+/// mutex held, so neither cutting a frame nor finishing an utterance may
+/// allocate: the frame buffer is traded with a spare and the utterance is
+/// drained rather than taken.
+#[test]
+fn segmenter_keeps_its_buffers_across_utterances() {
+    let mut seg = SpeechSegmenter::new(test_bounds());
+    assert!(seg.pending.capacity() >= seg.frame);
+    assert!(seg.spare.capacity() >= seg.frame);
+    let utterance_capacity = seg.utterance.capacity();
+    assert!(utterance_capacity > 0, "буфер реплики выделен заранее");
+
+    seg.push(&voiced(400));
+    let ready = seg.push(&quiet(400));
+    assert_eq!(ready.len(), 1);
+
+    assert!(seg.pending.capacity() >= seg.frame, "кадровый буфер уцелел");
+    assert!(seg.spare.capacity() >= seg.frame, "запасной кадр уцелел");
+    assert!(seg.utterance.is_empty());
+    assert_eq!(
+        seg.utterance.capacity(),
+        utterance_capacity,
+        "буфер реплики переиспользуется, а не отдаётся наружу"
+    );
+}
+
+/// Same for the max-duration cut, which takes the other exit out of the buffer.
+#[test]
+fn segmenter_keeps_its_buffer_across_a_max_duration_cut() {
+    let mut seg = SpeechSegmenter::new(test_bounds());
+    let utterance_capacity = seg.utterance.capacity();
+    let ready = seg.push(&voiced(2500));
+    assert_eq!(ready.len(), 1);
+    assert_eq!(seg.utterance.capacity(), utterance_capacity);
+}

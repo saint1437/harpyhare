@@ -170,6 +170,12 @@ fn speech() -> Vec<f32> {
     vec![0.5; 1600]
 }
 
+/// The same samples as the pipeline hands them on: one shared buffer, not a
+/// copy per reader.
+fn recorded() -> Recording {
+    Recording::new(speech())
+}
+
 impl Rig {
     fn new() -> Self {
         let (device, state) = FakeCapture::installable();
@@ -198,7 +204,7 @@ impl Rig {
             .on_ptt_pressed(&self.bus, &self.capture, &self.host, stt)
     }
 
-    fn release(&self) -> Option<Vec<f32>> {
+    fn release(&self) -> Option<Recording> {
         self.service
             .on_ptt_released(&self.bus, &self.capture, &self.host)
     }
@@ -367,7 +373,7 @@ fn a_release_past_the_minimum_hands_the_samples_over() {
     rig.press(FakeStt::silent());
     rig.device.set_recording_secs(2.0);
 
-    assert_eq!(rig.release(), Some(speech()));
+    assert_eq!(rig.release(), Some(recorded()));
     assert_eq!(rig.service.state(), RecorderState::Transcribing);
     assert!(rig.service.has_last_recording(), "«Повторить» нужен буфер");
     assert_eq!(
@@ -510,7 +516,7 @@ fn the_watchdog_transcribes_at_the_ceiling() {
 
     assert_eq!(
         tick(&rig, 1, state::MAX_RECORDING_SECS),
-        WatchdogTick::Transcribe(speech())
+        WatchdogTick::Transcribe(recorded())
     );
     assert_eq!(rig.service.state(), RecorderState::Transcribing);
     assert!(!rig.host.cancel_hotkey.load(Ordering::Acquire));
@@ -660,4 +666,72 @@ async fn retry_re_uploads_the_last_recording() {
     assert_eq!(stt.classic_calls.load(Ordering::Acquire), uploads + 1);
     assert_eq!(rig.count("transcript-ready"), 2);
     assert_eq!(rig.service.state(), RecorderState::Idle);
+}
+
+// --- what the pipeline does with the buffer ----------------------------------
+
+/// At the ten-minute ceiling the recording is 38 MB. Handing "Retry" its own
+/// copy meant allocating and memcpy'ing all of it between the key release and
+/// the start of the upload, doubling peak RSS at the one moment the user is
+/// waiting on the app.
+#[test]
+fn the_retry_buffer_shares_the_recording_instead_of_copying_it() {
+    let rig = Rig::new();
+    rig.press(FakeStt::silent());
+    rig.device.set_recording_secs(2.0);
+
+    let samples = rig.release().expect("запись уходит на расшифровку");
+    let kept = rig
+        .service
+        .last_recording
+        .lock_safe()
+        .clone()
+        .expect("«Повторить» держит ту же запись");
+
+    assert!(Arc::ptr_eq(&samples, &kept), "одна аллокация, а не две копии");
+}
+
+/// The sink used to build a `Vec` and a multipart item per resampler output —
+/// one chunk frame, one TLS record and one write every 21 ms. It coalesces now,
+/// and the two things that must not change are the bytes on the wire and the
+/// tail: the capture drops the sink at the end of a session, and whatever is
+/// still buffered has to go out before the body channel closes.
+#[test]
+fn the_streaming_sink_coalesces_without_changing_the_bytes() {
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<SttBodyChunk>(STT_STREAM_CHANNEL_CAPACITY);
+    let broken = Arc::new(AtomicBool::new(false));
+    let mut sink = SttStreamSink {
+        tx,
+        broken: Arc::clone(&broken),
+        buf: Vec::new(),
+        flush_at: audio::i16le_len(audio::samples_for_ms(STT_STREAM_FLUSH_MS)),
+    };
+
+    const CHUNK_MS: usize = 21;
+    const ROUNDS: usize = 30;
+    let chunk: Vec<f32> = (0..audio::samples_for_ms(CHUNK_MS))
+        .map(|i| (i % 100) as f32 / 200.0 - 0.25)
+        .collect();
+    for _ in 0..ROUNDS {
+        sink.push(&chunk);
+    }
+    drop(sink);
+
+    let mut items: Vec<Vec<u8>> = Vec::new();
+    while let Ok(item) = rx.try_recv() {
+        items.push(item.expect("сток не сообщает об ошибках ввода-вывода"));
+    }
+
+    assert!(!broken.load(Ordering::Relaxed), "канал не переполнялся");
+    assert_eq!(
+        items.concat(),
+        audio::f32_to_i16le_bytes(&chunk.repeat(ROUNDS)),
+        "байты в теле запроса не изменились — изменилась только нарезка"
+    );
+    assert!(items.len() < ROUNDS, "нарезка стала крупнее, а не поштучной");
+    assert!(
+        items.len() <= CHUNK_MS * ROUNDS / STT_STREAM_FLUSH_MS + 1,
+        "не больше одного куска на {STT_STREAM_FLUSH_MS} мс плюс хвост, получено {}",
+        items.len()
+    );
 }

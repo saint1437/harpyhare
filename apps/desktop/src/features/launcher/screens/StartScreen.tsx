@@ -5,7 +5,6 @@ import { StateBadge, type StateTone } from "@/components/StateBadge";
 import { Button } from "@/components/ui/button";
 import { SettingGroup } from "@/features/settings/fields";
 import { RequestPermissionButton } from "@/features/settings/RequestPermissionButton";
-import type { AudioCheckApi } from "@/hooks/useAudioCheck";
 import { useDict } from "@/hooks/useDict";
 import type { PermissionsApi } from "@/hooks/usePermissions";
 import { format } from "@/i18n";
@@ -152,7 +151,6 @@ function PermissionControl({
 export function StartScreen({
   readiness,
   launching,
-  audioCheck,
   recordCombo,
   onRedeem,
   onNavigate,
@@ -160,7 +158,6 @@ export function StartScreen({
 }: {
   readiness: LauncherReadiness;
   launching: boolean;
-  audioCheck: AudioCheckApi;
   recordCombo: string;
   onRedeem: (code: string) => Promise<string | null>;
   onNavigate: (destination: LauncherDestination) => void;
@@ -189,7 +186,7 @@ export function StartScreen({
         ))}
       </SettingGroup>
 
-      <AudioCheckCard autoModeEnabled={readiness.autoModeEnabled} check={audioCheck} />
+      <AudioCheckCard autoModeEnabled={readiness.autoModeEnabled} />
 
       {/* Пуш-ту-ток нигде не объяснялся, а экран, где он описан, уничтожается ровно в
           тот момент, когда знание становится нужным. Комбинация и подпись берутся из

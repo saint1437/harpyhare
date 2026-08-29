@@ -128,3 +128,45 @@ fn save_refuses_a_document_that_is_not_json() {
     assert!(matches!(save(&path, "не json"), Err(StoreError::Corrupt(..))));
     assert!(!path.exists());
 }
+
+/// The envelope switched to `RawValue` to stop building a DOM of the whole
+/// history on every save; the file it produces must be the same file, down to
+/// the byte, or an older build would read what this one wrote differently.
+#[test]
+fn the_envelope_is_written_byte_for_byte_as_before() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("chats.json");
+    save(&path, r#"[{"id":"a"}]"#).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        r#"{"payload":[{"id":"a"}],"version":1}"#
+    );
+}
+
+/// The payload comes back as the bytes that were on disk. Whitespace inside it
+/// is not normalised any more — the frontend parses the string either way, and
+/// re-serialising it was the cost this change removed.
+#[test]
+fn load_returns_the_payload_verbatim() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("chats.json");
+    std::fs::write(&path, "{\"version\":1,\"payload\":[ {\"id\": \"a\"} ]}").unwrap();
+    assert_eq!(load(&path).unwrap().unwrap(), "[ {\"id\": \"a\"} ]");
+}
+
+/// `version` has to be a non-negative integer for the object to be an envelope
+/// — the shape check is what tells a wrapped document from a bare one, and a
+/// document that merely has a `version` string is the bare kind.
+#[test]
+fn load_does_not_mistake_a_non_integer_version_for_an_envelope() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("context-library.json");
+    for legacy in [
+        r#"{"version":"1","payload":[]}"#,
+        r#"{"version":-1,"payload":[]}"#,
+        r#"{"version":1.5,"payload":[]}"#,
+    ] {
+        std::fs::write(&path, legacy).unwrap();
+        assert_eq!(load(&path).unwrap().unwrap(), legacy, "документ: {legacy}");
+    }
+}

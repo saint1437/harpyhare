@@ -61,8 +61,26 @@ async function readDocument<T>(document: PersistedDocument<T>): Promise<T | null
   return await document.hydrate(restored);
 }
 
-function writeDocument<T>(document: PersistedDocument<T>, value: T): void {
-  void document.save(document.serialize(value)).catch((e: unknown) => {
+/**
+ * The debounce fires on every publish, and plenty of them serialise to exactly
+ * the document already on disk — an edit typed and undone, a store that
+ * republishes an equal value. `context-library.json` is up to a hundred
+ * materials of two hundred thousand characters, so the IPC round trip and the
+ * disk write behind it are worth a string comparison we get for the price of
+ * the serialisation we owed anyway.
+ */
+function writeDocument<T>(
+  document: PersistedDocument<T>,
+  value: T,
+  lastWritten: RefObject<string | null>,
+): void {
+  const json = document.serialize(value);
+  if (json === lastWritten.current) return;
+  lastWritten.current = json;
+  void document.save(json).catch((e: unknown) => {
+    // A write that failed is not a write: forget it, or the retry the next
+    // identical edit would have carried gets skipped as a no-op.
+    if (lastWritten.current === json) lastWritten.current = null;
     document.onSaveError?.(String(e));
   });
 }
@@ -90,6 +108,7 @@ export function usePersistedStore<T>(options: PersistedStoreOptions<T>): Persist
   const loaded = useRef(false);
   const opts = useLatestRef(options);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const lastWritten = useRef<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -115,7 +134,7 @@ export function usePersistedStore<T>(options: PersistedStoreOptions<T>): Persist
     const o = opts.current;
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      writeDocument(opts.current, value);
+      writeDocument(opts.current, value, lastWritten);
     }, o.debounceMs ?? DEFAULT_SAVE_DEBOUNCE_MS);
     return () => {
       clearTimeout(saveTimer.current);
@@ -146,6 +165,7 @@ export function usePersistedExternalStore<T>(
   const loaded = useRef(false);
   const opts = useLatestRef(options);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const lastWritten = useRef<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -168,7 +188,7 @@ export function usePersistedExternalStore<T>(
       const o = opts.current;
       clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
-        writeDocument(opts.current, opts.current.read());
+        writeDocument(opts.current, opts.current.read(), lastWritten);
       }, o.debounceMs ?? DEFAULT_SAVE_DEBOUNCE_MS);
     });
     return () => {

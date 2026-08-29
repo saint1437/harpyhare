@@ -2,7 +2,7 @@
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "defaultBase": "main",
   "namedInputs": {
-    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "default": ["{projectRoot}/**/*", "!{projectRoot}/src-tauri/**/*", "sharedGlobals"],
     "production": [
       "default",
       "!{projectRoot}/**/*.test.*",

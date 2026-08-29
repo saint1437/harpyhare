@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { memo, useState } from "react";
 import { SelectItem } from "@/components/ui/select";
 import { useDict } from "@/hooks/useDict";
 import { format } from "@/i18n";
@@ -68,13 +69,27 @@ function DeviceSelect({
   onChange: (uid: string) => void;
 }) {
   const dict = useDict();
+  const [opened, setOpened] = useState(false);
   const { queryKey, list } = DEVICE_SOURCES[source];
-  const { data } = useQuery({ queryKey, queryFn: list, staleTime: AUDIO_DEVICES_STALE_MS });
+  // Enumerating the devices is a round trip into the audio stack, and the tab
+  // used to pay for it the moment it rendered — for a list Radix does not even
+  // mount until the select is opened. The one case that cannot wait is a saved
+  // uid: without the list its name is unknown, and the collapsed trigger would
+  // read «Недоступное устройство» about a device that is perfectly available.
+  const { data } = useQuery({
+    queryKey,
+    queryFn: list,
+    staleTime: AUDIO_DEVICES_STALE_MS,
+    enabled: opened || uid !== "",
+  });
   const devices = withSavedDevice(data ?? [], uid, dict.settings.devices.missing);
   return (
     <SettingSelect
       ariaLabel={label}
       value={uid === "" ? SYSTEM_DEFAULT : uid}
+      onOpenChange={(open) => {
+        if (open) setOpened(true);
+      }}
       onValueChange={(v) => {
         onChange(v === SYSTEM_DEFAULT ? "" : v);
       }}
@@ -89,20 +104,41 @@ function DeviceSelect({
   );
 }
 
+interface SettingEntryRowProps {
+  entry: SettingsEntry;
+  draft: Settings;
+  set: SetSetting;
+}
+
+/**
+ * A row reads exactly one setting, plus at most the one switch its enabled or
+ * disabled state hangs off — but `draft` is a NEW object after every slider step
+ * and every keystroke anywhere in the launcher, so the default comparison would
+ * re-render all thirty rows, Radix selects and sliders included, at input rate.
+ */
+function sameEntryValues(a: SettingEntryRowProps, b: SettingEntryRowProps): boolean {
+  if (a.entry !== b.entry || a.set !== b.set) return false;
+  const field = a.entry.field;
+  if (a.draft[field.key] !== b.draft[field.key]) return false;
+  const dependency =
+    field.kind === "slider"
+      ? field.enabledBy
+      : field.kind === "select"
+        ? field.disabledBy
+        : undefined;
+  return dependency === undefined || a.draft[dependency] === b.draft[dependency];
+}
+
 /**
  * One registry entry, rendered. Every control names itself with the entry's
  * label, so the row on screen and the row in the search index cannot say
  * different things.
  */
-export function SettingEntryRow({
+export const SettingEntryRow = memo(function SettingEntryRow({
   entry,
   draft,
   set,
-}: {
-  entry: SettingsEntry;
-  draft: Settings;
-  set: SetSetting;
-}) {
+}: SettingEntryRowProps) {
   const dict = useDict();
   const { label, hint: entryHint } = dict.settings.entries[entry.id];
   const field = entry.field;
@@ -182,7 +218,7 @@ export function SettingEntryRow({
       </SettingSelect>
     </SettingRow>
   );
-}
+}, sameEntryValues);
 
 function SettingsGroupCard({
   group,

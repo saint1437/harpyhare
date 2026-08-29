@@ -9,8 +9,8 @@ export interface ReleasePlatform {
   updaterArtifactSuffix: string;
 }
 
-export declare const RELEASES_REPO: string;
-export declare const RELEASES_REPO_URL: string;
+export { RELEASES_REPO, RELEASES_REPO_URL } from "./client.js";
+
 export declare const ASSET_SLUG: string;
 export declare const UPDATER_MANIFEST_NAME: string;
 export declare const SIGNATURE_SUFFIX: string;

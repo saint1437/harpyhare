@@ -32,12 +32,17 @@
  *   • In the demo, `DEMO_GROUNDS` is now the app's own four surface steps —
  *     they became opaque lightness steps with the palette, so they are grounds
  *     a ratio can be taken against at all; as `oklch(1 0 0 / n%)` tints they
- *     were not. `--app-fg`, `--app-muted-fg`, `--app-destructive` and
- *     `--app-recording` are text on all four (4.5:1); `--app-primary-mark` is
- *     the mark (3:1); each fill carries its own label (`--app-primary-fg` on
- *     `--app-primary`, `--app-destructive-fg` on `--app-destructive` — the
- *     app's dark danger is a LIGHT red and takes dark type, which is the pair
- *     the old replica got wrong).
+ *     were not. The requirements below are now the DESKTOP'S OWN, pair for
+ *     pair (`apps/desktop/scripts/check-contrast.mjs`), because the demo now
+ *     paints the same states the app does: three text weights plus the two
+ *     state colours that carry words (`--app-fg`, `--app-muted-fg`,
+ *     `--app-subtle-fg`, `--app-destructive`, `--app-recording`) at 4.5:1, and
+ *     every small graphical mark — the orb's ring, the capture bars, the state
+ *     glyphs, the focus outline, an `outline` button's border — at 3:1. Each
+ *     fill still carries its own label (`--app-primary-fg` on `--app-primary`
+ *     and on its hover step, `--app-destructive-fg` on `--app-destructive` —
+ *     the app's dark danger is a LIGHT red and takes dark type, which is the
+ *     pair the old replica got wrong).
  *
  * `--app-primary` AS A MARK: the shortfall that is now fixed. It used to paint
  * the status dots, the caret, the equaliser bars and the toggle at 1.56–2.48:1
@@ -94,12 +99,26 @@ process.exit(
         { fg: ["border", "border-strong", "primary"], bg: PAGE_GROUNDS, min: 3 },
         { fg: "ink", bg: "primary", min: 4.5 },
         {
-          fg: ["app-fg", "app-muted-fg", "app-destructive", "app-recording"],
+          fg: ["app-fg", "app-muted-fg", "app-subtle-fg", "app-destructive", "app-recording"],
           bg: DEMO_GROUNDS,
           min: 4.5,
         },
-        { fg: ["app-primary-mark", "app-destructive", "app-recording"], bg: DEMO_GROUNDS, min: 3 },
-        { fg: "app-primary-fg", bg: "app-primary", min: 4.5 },
+        {
+          fg: [
+            "app-primary-mark",
+            "app-recording",
+            "app-recording-dim",
+            "app-success",
+            "app-warning",
+            "app-destructive",
+            "app-border-strong",
+            "app-focus",
+          ],
+          bg: DEMO_GROUNDS,
+          min: 3,
+        },
+        { fg: "app-primary-fg", bg: ["app-primary", "app-primary-hover"], min: 4.5 },
+        { fg: "app-primary", bg: "app-bg", min: 3 },
         { fg: "app-destructive-fg", bg: "app-destructive", min: 4.5 },
       ],
     }),

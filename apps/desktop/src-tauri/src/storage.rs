@@ -14,28 +14,55 @@ fn loaded_or_empty(document: Option<String>) -> String {
     document.unwrap_or_default()
 }
 
-#[tauri::command]
-#[specta::specta]
-pub fn load_chats(app: AppHandle) -> Result<String, AppError> {
-    Ok(loaded_or_empty(chats::load(&chats_path(&app)?)?))
+/// The document store is disk work, and it goes to a blocking thread for the
+/// same reason the image commands below do.
+///
+/// These four used to be plain `pub fn` commands — alone among their neighbours
+/// — so Tauri ran their whole body inline on the IPC thread: a JSON parse of the
+/// entire history, a whole-file `fs::copy` for the `.bak` rotation and an atomic
+/// write, all before the thread could serve another message. The frontend fires
+/// `save_chats` 500 ms after ANY chat change, draft typing included, so on a
+/// large `chats.json` both windows stalled on every pause in typing.
+///
+/// The path is resolved before the move because `chats_path`/`context_library_path`
+/// need the `AppHandle` and are cheap; only the disk half crosses the thread.
+async fn load_document(path: std::path::PathBuf) -> Result<String, AppError> {
+    let document = tokio::task::spawn_blocking(move || chats::load(&path))
+        .await
+        .map_err(|e| internal(e.to_string()))?
+        .map_err(AppError::from)?;
+    Ok(loaded_or_empty(document))
+}
+
+async fn save_document(path: std::path::PathBuf, json: String) -> Result<(), AppError> {
+    tokio::task::spawn_blocking(move || chats::save(&path, &json))
+        .await
+        .map_err(|e| internal(e.to_string()))?
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn save_chats(app: AppHandle, json: String) -> Result<(), AppError> {
-    chats::save(&chats_path(&app)?, &json).map_err(AppError::from)
+pub async fn load_chats(app: AppHandle) -> Result<String, AppError> {
+    load_document(chats_path(&app)?).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn load_context_library(app: AppHandle) -> Result<String, AppError> {
-    Ok(loaded_or_empty(chats::load(&context_library_path(&app)?)?))
+pub async fn save_chats(app: AppHandle, json: String) -> Result<(), AppError> {
+    save_document(chats_path(&app)?, json).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn save_context_library(app: AppHandle, json: String) -> Result<(), AppError> {
-    chats::save(&context_library_path(&app)?, &json).map_err(AppError::from)
+pub async fn load_context_library(app: AppHandle) -> Result<String, AppError> {
+    load_document(context_library_path(&app)?).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn save_context_library(app: AppHandle, json: String) -> Result<(), AppError> {
+    save_document(context_library_path(&app)?, json).await
 }
 
 #[tauri::command]

@@ -208,6 +208,20 @@ fn parallel_saves_of_one_image_share_the_id_and_the_file() {
     assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "лишних файлов не осталось");
 }
 
+/// The capture path writes straight into this store now, so its media type has
+/// to be one the store accepts. A mismatch would fail every region screenshot
+/// at runtime and nothing on either side of the boundary would say why.
+#[test]
+fn the_screenshot_media_type_is_one_the_store_accepts() {
+    let dir = temp_dir("screenshot");
+
+    let id = save(&dir, crate::screenshot::SCREENSHOT_MEDIA_TYPE, PNG_BYTES)
+        .expect("снимок области кладётся в хранилище");
+
+    assert!(is_valid_id(&id), "{id}");
+    assert_eq!(load(&dir, std::slice::from_ref(&id)).len(), 1, "и читается обратно по id");
+}
+
 #[test]
 fn oversized_image_is_rejected_without_touching_the_store() {
     let dir = temp_dir("oversized");

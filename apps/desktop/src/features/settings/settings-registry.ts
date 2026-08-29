@@ -1,4 +1,4 @@
-import { applyLanguage, LANGUAGES } from "@/i18n";
+import { adoptLanguage, LANGUAGES } from "@/i18n";
 import type {
   OptionLabelKey,
   ReadoutKey,
@@ -318,7 +318,18 @@ export const SETTINGS_ENTRIES = [
       // theme beside it: the draft autosaves 600 ms later and the store adopts
       // the language on the way back, and a picker whose effect arrives a round
       // trip after the click reads as a control that did not work.
-      apply: applyLanguage,
+      //
+      // The one difference from the theme is that a language this window has
+      // never shown is a chunk of its own (`i18n/index.ts`): `adoptLanguage`
+      // fetches the dictionary and only then swaps it, so the swap is still one
+      // synchronous step and no frame is rendered against a half-loaded
+      // dictionary. `void` and not `await`, because the row's own `set` must
+      // answer the click in the same tick — the fetch has ~600 ms of autosave to
+      // land in, and `state/settings` awaits the same dictionary again before it
+      // publishes the snapshot.
+      apply: (value: string) => {
+        void adoptLanguage(value);
+      },
     },
   },
   {

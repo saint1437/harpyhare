@@ -75,6 +75,15 @@ impl PermissionCache {
         *self.probed_at.lock_safe() = Some(Instant::now());
     }
 
+    /// Records the screen answer WITHOUT stamping `probed_at`. The screen check
+    /// is a preflight with no device behind it, so it can be answered eagerly —
+    /// but the two device probes have not run, and marking the cache as probed
+    /// would make `permissions_status` skip the awaited first probe and answer
+    /// the launcher's readiness gate with `unknown` for audio.
+    fn store_screen(&self, screen: PermissionState) {
+        self.state.lock_safe().screen = screen;
+    }
+
     fn is_stale(&self) -> bool {
         self.probed_at
             .lock_safe()
@@ -156,9 +165,16 @@ fn probing_would_disturb_audio(app: &AppHandle) -> bool {
 fn probe_now(app: &AppHandle, kind: Option<PermissionKind>) -> PermissionsStatus {
     let cache = &app.state::<App>().permissions;
     let mut status = cache.snapshot();
-    // The screen check is a cheap preflight with no device behind it, so it is
-    // refreshed unconditionally.
-    status.screen = screen_state(app);
+    // The screen check is a cheap preflight with no device behind it, but it was
+    // refreshed on EVERY pass through here — including the ones that turn
+    // straight back below — so `CGPreflightScreenCaptureAccess` ran at least
+    // once a second for as long as the launcher polled its readiness gate. It
+    // answers to the same TTL as the two device probes now; a grant or a window
+    // focus goes through `invalidate_cache`, which makes the cache stale at once
+    // and lets the very next call through.
+    if cache.is_stale() && kind.is_none_or(|k| k == PermissionKind::Screen) {
+        status.screen = screen_state(app);
+    }
     if probing_would_disturb_audio(app) {
         return status;
     }
@@ -235,12 +251,21 @@ pub async fn permissions_status(app: AppHandle) -> PermissionsStatus {
     app.state::<App>().permissions.snapshot()
 }
 
-/// Fills the cache while the launcher's webview is still booting, so its first
-/// `permissions_status` is a hit rather than the one call that has to wait.
+/// Answers the ONE permission that can be answered for free while the launcher's
+/// webview is still booting.
+///
+/// It used to run the full probe. That means `audio_state` → `ensure_capture` →
+/// `build_capture`, and `microphone_state` → `build_mic_capture`: two device
+/// opens at every launch, hundreds of milliseconds each and up to five seconds
+/// on Windows, and on macOS the microphone open blinks the recording indicator
+/// in the menu bar before the user has asked for anything. Neither answer is
+/// needed until the readiness gate asks — and `permissions_status` awaits a full
+/// probe on its first call precisely so that it does not have to be pre-filled.
 pub fn warm_cache(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        refresh_blocking(&app, None);
+        let screen = screen_state(&app);
+        app.state::<App>().permissions.store_screen(screen);
     });
 }
 

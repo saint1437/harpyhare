@@ -155,7 +155,7 @@ export interface EventMap {
   "toggle-teleprompter": null;
   "resize-key": { dim: "width" | "height"; dir: 1 | -1 };
   "official-presets-updated": PromptPreset[];
-  "screenshot-ready": { mediaType: string; dataBase64: string };
+  "screenshot-ready": { id: string; mediaType: string };
   "screenshot-error": AppError;
   "focus-prompt": null;
   "auto-turn": AutoTurn;

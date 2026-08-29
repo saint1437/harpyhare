@@ -31,8 +31,11 @@ fn every_field_with_a_side_effect_asks_for_exactly_its_own() {
                     combo: "F8".into(),
                 }]
             },
-            &[ReregisterHotkeys],
+            &[ReregisterHotkeys, RefreshArrowKeys],
         ),
+        // The arrow snapshot carries the step as well as the two modifier
+        // bindings, so it is the one effect a `move_step` change produces.
+        ("move_step", |s| s.move_step = 33, &[RefreshArrowKeys]),
         ("capture_device_uid", |s| s.capture_device_uid = "uid".into(), &[RebuildCapture]),
         ("auto_mic_device_uid", |s| s.auto_mic_device_uid = "mic".into(), &[RestartAuto]),
         ("auto_silence_ms", |s| s.auto_silence_ms = 900, &[ReapplyAutoBounds]),

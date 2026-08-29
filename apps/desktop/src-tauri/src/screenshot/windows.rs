@@ -1,14 +1,14 @@
 use std::ffi::c_void;
 use std::sync::OnceLock;
 
-use png::{BitDepth, ColorType, Encoder};
+use png::{BitDepth, ColorType, Compression, Encoder};
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection, CreateSolidBrush, DeleteDC,
-    DeleteObject, EndPaint, FrameRect, GdiFlush, GetDC, InvalidateRect, ReleaseDC, SelectObject,
-    BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT, DIB_RGB_COLORS, HBITMAP, HDC, HGDIOBJ,
-    PAINTSTRUCT, SRCCOPY,
+    AlphaBlend, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection, CreateSolidBrush,
+    DeleteDC, DeleteObject, EndPaint, FrameRect, GdiFlush, GetDC, InvalidateRect, ReleaseDC,
+    SelectObject, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, CAPTUREBLT,
+    DIB_RGB_COLORS, HBITMAP, HDC, HGDIOBJ, PAINTSTRUCT, SRCCOPY,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::{
@@ -23,6 +23,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCCREATE, WM_PAINT,
     WM_RBUTTONDOWN, WNDCLASSW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
+
+use super::resample::{self, RgbImage};
 
 const OVERLAY_CLASS_NAME: PCWSTR = w!("HarpyRegionCaptureOverlay");
 const OVERLAY_WINDOW_TITLE: PCWSTR = w!("");
@@ -45,10 +47,23 @@ const MIN_SELECTION_PX: i32 = 3;
 const BITS_PER_PIXEL: u16 = 32;
 const COLOR_PLANES: u16 = 1;
 const SOURCE_CHANNELS: usize = 4;
-const OUTPUT_CHANNELS: usize = 3;
 const CHANNEL_BLUE: usize = 0;
 const CHANNEL_GREEN: usize = 1;
 const CHANNEL_RED: usize = 2;
+const OUTPUT_RED_INDEX: usize = 0;
+const OUTPUT_GREEN_INDEX: usize = 1;
+const OUTPUT_BLUE_INDEX: usize = 2;
+const MAX_ALPHA: u32 = u8::MAX as u32;
+/// The veil source is one pixel that `AlphaBlend` stretches over the area being
+/// darkened — see `veil_source`.
+const VEIL_SOURCE_SIDE_PX: i32 = 1;
+const VEIL_SOURCE_ORIGIN: i32 = 0;
+const VEIL_SOURCE_CHANNEL: u8 = 0;
+const NO_BLEND_FLAGS: u8 = 0;
+const NO_SOURCE_ALPHA_CHANNEL: u8 = 0;
+/// The clip minus the selection: a strip above, a strip below, and one on each
+/// side of the hole.
+const VEIL_PARTS: usize = 4;
 const DIB_SECTION_OFFSET: u32 = 0;
 
 const COORDINATE_MASK: u32 = 0xFFFF;
@@ -69,15 +84,17 @@ const CLASS_FAILED: &str = "не удалось создать класс ове
 const WINDOW_FAILED: &str = "не удалось создать окно выделения";
 const PNG_ENCODE_FAILED: &str = "не удалось закодировать PNG";
 
-pub fn capture_region() -> Result<Option<Vec<u8>>, String> {
+/// Main thread only, and it stops at the raw pixels on purpose: everything the
+/// PNG costs happens in `encode_png`, off this thread.
+pub fn capture_region() -> Result<Option<RgbImage>, String> {
     apply_dpi_awareness();
     let bounds = virtual_screen_bounds()?;
     let screen = ScreenDc::open()?;
     let original = capture_virtual_screen(&screen, &bounds)?;
-    let dimmed = dimmed_copy(&original, screen.handle())?;
+    let veil = veil_source(screen.handle())?;
     let back = Canvas::create(screen.handle(), bounds.width, bounds.height)?;
-    match run_overlay(&original, &dimmed, &back, &bounds)? {
-        Some(area) => crop_to_png(&original, area).map(Some),
+    match run_overlay(&original, &veil, &back, &bounds)? {
+        Some(area) => Ok(Some(crop_to_rgb(&original, area))),
         None => Ok(None),
     }
 }
@@ -244,14 +261,63 @@ fn capture_virtual_screen(screen: &ScreenDc, bounds: &VirtualScreen) -> Result<C
     Ok(canvas)
 }
 
-fn dimmed_copy(source: &Canvas, reference: HDC) -> Result<Canvas, String> {
-    let mut dimmed = Canvas::create(reference, source.width, source.height)?;
+/// The one number the veil is specified by, spelled the way `AlphaBlend` wants
+/// it. Blending an opaque BLACK source leaves `dst * (MAX_ALPHA - alpha) /
+/// MAX_ALPHA`, so the alpha that keeps `kept_percent` of the screen is the
+/// complement of that percentage — derived here rather than written down a
+/// second time, because a veil whose two definitions disagree is a veil that
+/// changes darkness the day somebody edits one of them.
+const fn veil_alpha() -> u8 {
     let kept_percent = FULL_PERCENT - VEIL_STRENGTH_PERCENT;
-    let original = source.pixels();
-    for (veiled, sample) in dimmed.pixels_mut().iter_mut().zip(original.iter()) {
-        *veiled = (u32::from(*sample) * kept_percent / FULL_PERCENT) as u8;
+    (MAX_ALPHA - kept_percent * MAX_ALPHA / FULL_PERCENT) as u8
+}
+
+/// The two spellings of the veil must describe the same darkness, and this is
+/// where they are held together.
+///
+/// It is a compile-time assertion rather than a unit test because `cargo test`
+/// runs on macOS and never builds this file — a `#[test]` here would be run by
+/// no machine at all. `cargo clippy --all-targets` on the Windows runner (and
+/// `cargo xwin` locally) evaluates it on every build. The tolerance is the
+/// rounding an 8-bit alpha cannot avoid: 55% of the screen survives the blend
+/// as 140/255, which reads back as 54%.
+const VEIL_ROUNDING_TOLERANCE_PERCENT: u32 = 1;
+const _: () = {
+    let kept_percent = FULL_PERCENT - VEIL_STRENGTH_PERCENT;
+    let kept_by_blend = (MAX_ALPHA - veil_alpha() as u32) * FULL_PERCENT / MAX_ALPHA;
+    assert!(kept_by_blend + VEIL_ROUNDING_TOLERANCE_PERCENT >= kept_percent);
+    assert!(kept_percent + VEIL_ROUNDING_TOLERANCE_PERCENT >= kept_by_blend);
+};
+
+fn veil_blend() -> BLENDFUNCTION {
+    BLENDFUNCTION {
+        BlendOp: AC_SRC_OVER as u8,
+        BlendFlags: NO_BLEND_FLAGS,
+        SourceConstantAlpha: veil_alpha(),
+        // The source is opaque black and carries no alpha channel of its own:
+        // the constant alpha above is the whole of the blend.
+        AlphaFormat: NO_SOURCE_ALPHA_CHANNEL,
     }
-    Ok(dimmed)
+}
+
+/// One black pixel, stretched over whatever has to be darkened.
+///
+/// The veil used to be a materialised second copy of the virtual screen with
+/// every byte scaled down — ~33 MB of DIB on a 4K desktop, more across several
+/// monitors, plus a full ~33 M-byte pass over it on the main thread before the
+/// selector even appeared. (A 256-entry lookup table had already taken the
+/// multiply and the divide out of that pass; the copy itself is what is gone
+/// now.) `AlphaBlend` does the same arithmetic inside GDI, straight into the
+/// back buffer and only over the pixels a paint actually touches, so the
+/// dimmed image never exists.
+///
+/// `CreateDIBSection` hands back zeroed memory, which is already the black this
+/// wants; the fill is written out anyway because the colour IS the veil, not an
+/// accident of the allocator.
+fn veil_source(reference: HDC) -> Result<Canvas, String> {
+    let mut veil = Canvas::create(reference, VEIL_SOURCE_SIDE_PX, VEIL_SOURCE_SIDE_PX)?;
+    veil.pixels_mut().fill(VEIL_SOURCE_CHANNEL);
+    Ok(veil)
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -263,7 +329,7 @@ enum Outcome {
 
 struct Overlay {
     original: HDC,
-    dimmed: HDC,
+    veil: HDC,
     back: HDC,
     width: i32,
     height: i32,
@@ -275,10 +341,10 @@ struct Overlay {
 }
 
 impl Overlay {
-    fn new(original: &Canvas, dimmed: &Canvas, back: &Canvas, bounds: &VirtualScreen) -> Self {
+    fn new(original: &Canvas, veil: &Canvas, back: &Canvas, bounds: &VirtualScreen) -> Self {
         Self {
             original: original.dc,
-            dimmed: dimmed.dc,
+            veil: veil.dc,
             back: back.dc,
             width: bounds.width,
             height: bounds.height,
@@ -476,11 +542,11 @@ impl Drop for OverlayWindow {
 
 fn run_overlay(
     original: &Canvas,
-    dimmed: &Canvas,
+    veil: &Canvas,
     back: &Canvas,
     bounds: &VirtualScreen,
 ) -> Result<Option<RECT>, String> {
-    let mut state = Overlay::new(original, dimmed, back, bounds);
+    let mut state = Overlay::new(original, veil, back, bounds);
     let handle: *mut Overlay = &mut state;
     let window = OverlayWindow::open(bounds, handle)?;
     window.present();
@@ -589,18 +655,60 @@ unsafe fn paint_overlay(window: HWND, state: &Overlay) {
     }
 }
 
+/// `clip` with `hole` cut out of it: the strip above the hole, the strip below
+/// it, and the two beside it. Veiling these rather than the whole clip is what
+/// keeps the selected area from being painted twice on every mouse move — once
+/// darkened and once restored from the original, which is what the composite
+/// had to do while the veil was a whole second image to blit from.
+fn clip_around(clip: RECT, hole: Option<RECT>) -> [Option<RECT>; VEIL_PARTS] {
+    let Some(hole) = hole else {
+        return [Some(clip), None, None, None];
+    };
+    [
+        non_empty(RECT { bottom: hole.top, ..clip }),
+        non_empty(RECT { top: hole.bottom, ..clip }),
+        non_empty(RECT { right: hole.left, top: hole.top, bottom: hole.bottom, ..clip }),
+        non_empty(RECT { left: hole.right, top: hole.top, bottom: hole.bottom, ..clip }),
+    ]
+}
+
 unsafe fn compose_overlay(state: &Overlay, clip: RECT) {
     let Some(clip) = non_empty(clip) else {
         return;
     };
-    unsafe { blit(state.back, state.dimmed, clip) };
-    let Some(selection) = state.selection() else {
+    // The true screen first, then the veil everywhere the selection does not
+    // stand. The selection is left exactly as captured, so nothing has to be
+    // repainted over a darkened copy of itself.
+    unsafe { blit(state.back, state.original, clip) };
+    let selection = state.selection();
+    let hole = selection.and_then(|area| intersection(area, clip));
+    for part in clip_around(clip, hole).into_iter().flatten() {
+        unsafe { draw_veil(state.back, state.veil, part) };
+    }
+    let Some(selection) = selection else {
         return;
     };
-    if let Some(visible) = intersection(selection, clip) {
-        unsafe { blit(state.back, state.original, visible) };
-    }
     unsafe { draw_selection_frame(state.back, selection) };
+}
+
+/// The single veil pixel, stretched across `area`. GDI reads the source once
+/// and blends it per destination pixel — no intermediate image of any size.
+unsafe fn draw_veil(target: HDC, veil: HDC, area: RECT) {
+    unsafe {
+        let _ = AlphaBlend(
+            target,
+            area.left,
+            area.top,
+            area.right - area.left,
+            area.bottom - area.top,
+            veil,
+            VEIL_SOURCE_ORIGIN,
+            VEIL_SOURCE_ORIGIN,
+            VEIL_SOURCE_SIDE_PX,
+            VEIL_SOURCE_SIDE_PX,
+            veil_blend(),
+        );
+    }
 }
 
 unsafe fn blit(target: HDC, source: HDC, area: RECT) {
@@ -633,35 +741,53 @@ unsafe fn draw_selection_frame(target: HDC, selection: RECT) {
     }
 }
 
-fn crop_to_png(source: &Canvas, area: RECT) -> Result<Vec<u8>, String> {
+/// BGRA rows out of the screen copy, RGB rows in. One allocation and a straight
+/// row-by-row write: pushing three channels at a time meant ~25 M capacity
+/// checks for a full-screen selection, and this still runs on the main thread.
+fn crop_to_rgb(source: &Canvas, area: RECT) -> RgbImage {
     let width = (area.right - area.left) as usize;
     let height = (area.bottom - area.top) as usize;
     let stride = source.width as usize * SOURCE_CHANNELS;
     let pixels = source.pixels();
-    let mut rgb = Vec::with_capacity(width * height * OUTPUT_CHANNELS);
+    let row_len = width * resample::CHANNELS;
+    let mut rgb = vec![0u8; row_len * height];
     for row in 0..height {
         let start = (area.top as usize + row) * stride + area.left as usize * SOURCE_CHANNELS;
         let line = &pixels[start..start + width * SOURCE_CHANNELS];
         let (samples, _) = line.as_chunks::<SOURCE_CHANNELS>();
-        for sample in samples {
-            rgb.push(sample[CHANNEL_RED]);
-            rgb.push(sample[CHANNEL_GREEN]);
-            rgb.push(sample[CHANNEL_BLUE]);
+        let target = &mut rgb[row * row_len..(row + 1) * row_len];
+        for (sample, out) in samples
+            .iter()
+            .zip(target.chunks_exact_mut(resample::CHANNELS))
+        {
+            out[OUTPUT_RED_INDEX] = sample[CHANNEL_RED];
+            out[OUTPUT_GREEN_INDEX] = sample[CHANNEL_GREEN];
+            out[OUTPUT_BLUE_INDEX] = sample[CHANNEL_BLUE];
         }
     }
-    encode_png(&rgb, width, height)
+    RgbImage {
+        pixels: rgb,
+        width,
+        height,
+    }
 }
 
-fn encode_png(rgb: &[u8], width: usize, height: usize) -> Result<Vec<u8>, String> {
+fn encode_png(capture: RgbImage) -> Result<Vec<u8>, String> {
+    let image = resample::cap_long_edge(capture, resample::MAX_LONG_EDGE_PX);
     let mut png = Vec::new();
-    let mut encoder = Encoder::new(&mut png, width as u32, height as u32);
+    let mut encoder = Encoder::new(&mut png, image.width as u32, image.height as u32);
     encoder.set_color(ColorType::Rgb);
     encoder.set_depth(BitDepth::Eight);
+    // The crate's default is level-6 deflate, which on a full-screen selection
+    // is the single most expensive thing in the whole shot. The PNG lives just
+    // long enough to be base64'd into an event, so the few per cent of size the
+    // slow levels buy are paid for in latency and thrown away.
+    encoder.set_compression(Compression::Fast);
     let mut writer = encoder
         .write_header()
         .map_err(|_| PNG_ENCODE_FAILED.to_string())?;
     writer
-        .write_image_data(rgb)
+        .write_image_data(&image.pixels)
         .map_err(|_| PNG_ENCODE_FAILED.to_string())?;
     writer.finish().map_err(|_| PNG_ENCODE_FAILED.to_string())?;
     Ok(png)
@@ -670,7 +796,16 @@ fn encode_png(rgb: &[u8], width: usize, height: usize) -> Result<Vec<u8>, String
 pub struct Backend;
 
 impl super::ScreenshotBackend for Backend {
-    fn capture_region() -> Result<Option<Vec<u8>>, String> {
+    /// The cropped rows themselves: the overlay's GDI objects are already gone
+    /// by the time this crosses back to the caller, so nothing about the
+    /// capture's lifecycle keeps the encode on the main thread.
+    type Capture = RgbImage;
+
+    fn capture_region() -> Result<Option<Self::Capture>, String> {
         capture_region()
+    }
+
+    fn encode_png(capture: Self::Capture) -> Result<Vec<u8>, String> {
+        encode_png(capture)
     }
 }

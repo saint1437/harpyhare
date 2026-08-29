@@ -8,7 +8,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::app_state::{build_capture, current_settings, llm_provider, stt_engine, App};
 use crate::error::{AppError, ErrorCode};
-use crate::recording_service::{RecordingHost, WatchdogTick};
+use crate::recording_service::{self, RecordingHost, WatchdogTick};
 use crate::{auto, capture, hotkey};
 
 /// The shared "no capture" text for auto.rs and audio_check.rs: the user-facing
@@ -162,7 +162,7 @@ pub fn cancel_recording(app: AppHandle) {
     on_cancel(&app);
 }
 
-fn spawn_transcription(app: AppHandle, samples: Vec<f32>) {
+fn spawn_transcription(app: AppHandle, samples: recording_service::Recording) {
     tauri::async_runtime::spawn(async move {
         let stt = stt_engine(&app);
         let host = TauriRecordingHost(app.clone());

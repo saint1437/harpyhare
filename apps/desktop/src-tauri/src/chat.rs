@@ -144,6 +144,31 @@ pub async fn send_to_claude(
     app.state::<App>().llm.end_stream(&chat_id, epoch);
 }
 
+/// Above this, the projection is not worth its upload.
+///
+/// `count_tokens` exists to draw one gauge, and the query behind it refires on
+/// every change to the history — so a chat carrying a single screenshot pushed
+/// its whole base64 payload upstream again for every message added to it. A
+/// history this size is a history with images in it: pure text does not reach
+/// two megabytes before it has outgrown every model's window anyway, so the
+/// ceiling costs the projection nothing in the case it was written for and
+/// takes the repeated multi-megabyte upload out of the case it was not.
+///
+/// The skip is expressible in the return type as it stands: `0` is what
+/// `useProjectedContextTokens` already answers with when it has no figure, and
+/// the HUD reads `projected || lastInputTokens` — so a skipped projection lands
+/// on exactly the fallback the frontend already has for "not measured yet".
+const MAX_PROJECTED_REQUEST_BYTES: usize = 2 * 1024 * 1024;
+
+/// Answered instead of a projection when the history is too big to be worth
+/// uploading. Named rather than a bare literal because it is a contract with the
+/// frontend, not an absence of an answer.
+const NO_PROJECTION: u32 = 0;
+
+fn worth_projecting(request: &llm::LlmRequest) -> bool {
+    llm::request_size_bytes(request) <= MAX_PROJECTED_REQUEST_BYTES
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn count_chat_tokens(
@@ -153,16 +178,20 @@ pub async fn count_chat_tokens(
     model: String,
     options: llm::RequestOptions,
 ) -> Result<u32, AppError> {
+    let request = llm::LlmRequest {
+        model,
+        system,
+        messages,
+        options,
+    };
+    if !worth_projecting(&request) {
+        return Ok(NO_PROJECTION);
+    }
     // The code, not just the prose: this command feeds the context-fullness
     // indicator, and the frontend has to tell "no network" from "the key is
     // wrong" to decide whether hiding the gauge is temporary.
     llm_provider(&app)
-        .count_tokens(llm::LlmRequest {
-            model,
-            system,
-            messages,
-            options,
-        })
+        .count_tokens(request)
         .await
         .map_err(AppError::from)
 }
@@ -187,3 +216,6 @@ pub async fn list_models(app: AppHandle) -> Vec<llm::ModelInfo> {
         _ => app.state::<App>().llm.cached_models(),
     }
 }
+
+#[cfg(test)]
+mod tests;

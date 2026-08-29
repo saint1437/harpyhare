@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { useDict } from "@/hooks/useDict";
 import { format } from "@/i18n";
 import { cn } from "@/lib/utils";
-import { searchLauncher, type SearchHit, type SearchSources } from "./search";
+import { launcherIndex, searchIndex, type SearchHit, type SearchSources } from "./search";
 
 const MAX_RESULTS = 8;
 const FIRST_INDEX = 0;
@@ -29,7 +29,11 @@ export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(FIRST_INDEX);
 
-  const hits = useMemo(() => searchLauncher(query, sources, dict), [query, sources, dict]);
+  // The corpus does not depend on the query: screens, tabs, hotkeys, every
+  // settings row, every preset and up to a hundred library materials used to be
+  // rebuilt — and case-folded — on every keystroke.
+  const index = useMemo(() => launcherIndex(sources, dict), [sources, dict]);
+  const hits = useMemo(() => searchIndex(query, index), [query, index]);
   const shown = hits.slice(FIRST_INDEX, MAX_RESULTS);
   const activeIndex = Math.min(active, shown.length - 1);
   const listVisible = open && query.trim() !== "";

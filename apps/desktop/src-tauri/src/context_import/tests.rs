@@ -136,3 +136,24 @@ fn normalize_collapses_blank_runs_and_trims() {
 fn normalize_yields_empty_for_whitespace_only() {
     assert_eq!(normalize_extracted_text("  \n\n\t\r\n \u{c}"), "");
 }
+
+/// `\r` used to be stripped by a `replace` over the whole document, so it went
+/// wherever it appeared and not only before a newline. The single-pass version
+/// has to keep doing that — a bare CR inside a line is a real thing in text
+/// pulled out of a PDF.
+#[test]
+fn normalize_drops_a_carriage_return_in_the_middle_of_a_line() {
+    assert_eq!(normalize_extracted_text("one\rtwo\r\nthree"), "onetwo\nthree");
+}
+
+/// Indentation is content and survives; what is trimmed is each line's TAIL,
+/// plus the document's own leading and trailing whitespace at the very end —
+/// which is why the first line loses its indent and the third keeps it. A line
+/// made only of whitespace is blank and collapses a run.
+#[test]
+fn normalize_keeps_indentation_and_trims_only_line_ends() {
+    assert_eq!(
+        normalize_extracted_text("  first   \n\t\n  indented  "),
+        "first\n\n  indented"
+    );
+}

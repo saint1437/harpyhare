@@ -69,7 +69,28 @@ struct ActiveTween {
     generation: u64,
     step: u32,
     applied: Option<(f64, f64)>,
+    applied_device: Option<DeviceFrame>,
     next_frame: Instant,
+}
+
+/// The frame as the compositor will see it. Two eased steps that round to the
+/// same device pixels are the same frame, and the ease-out's last steps do
+/// exactly that: they differ by well under a physical pixel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DeviceFrame {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+fn device_frame(x: i32, y: i32, width: f64, height: f64, scale: f64) -> DeviceFrame {
+    DeviceFrame {
+        x,
+        y,
+        width: (width * scale).round() as u32,
+        height: (height * scale).round() as u32,
+    }
 }
 
 struct PendingRestore {
@@ -178,6 +199,7 @@ fn accept(job: Job, current: &mut Option<ActiveTween>, restore: &mut Option<Pend
                 generation,
                 step: 0,
                 applied: None,
+                applied_device: None,
                 next_frame: Instant::now(),
             });
         }
@@ -224,7 +246,11 @@ fn advance(current: &mut Option<ActiveTween>) {
     if active.next_frame > Instant::now() {
         return;
     }
-    if superseded(active) {
+    // Read once and reuse: the scale decides both whether the tween is still
+    // ours and whether the next step is worth applying, and it used to be
+    // fetched from the animator thread twice over per frame.
+    let scale = active.window.scale_factor().unwrap_or(1.0);
+    if superseded(active, scale) {
         *current = None;
         return;
     }
@@ -241,7 +267,14 @@ fn advance(current: &mut Option<ActiveTween>) {
             (f64::from(t.from_x) + f64::from(t.to_x - t.from_x) * eased).round() as i32,
         )
     };
-    apply_window_frame(&active.app, &active.window, x, t.y, width, height);
+    // The tail of an ease-out lands on the same device pixels several steps
+    // running. Applying such a step wakes the main event loop, clones the
+    // window and makes the webview relay out for a change nobody can see.
+    let device = device_frame(x, t.y, width, height, scale);
+    if active.applied_device != Some(device) {
+        apply_window_frame(&active.app, &active.window, x, t.y, width, height);
+        active.applied_device = Some(device);
+    }
     if last {
         *current = None;
         return;
@@ -250,7 +283,7 @@ fn advance(current: &mut Option<ActiveTween>) {
     active.next_frame = Instant::now() + RESIZE_TWEEN_FRAME_INTERVAL;
 }
 
-fn superseded(active: &ActiveTween) -> bool {
+fn superseded(active: &ActiveTween, scale: f64) -> bool {
     if active.app.state::<App>().window.resize_generation() != active.generation {
         return true;
     }
@@ -258,15 +291,14 @@ fn superseded(active: &ActiveTween) -> bool {
     // the window's size, so the animation is no longer describing reality.
     active
         .applied
-        .is_some_and(|(width, height)| !frame_still_ours(&active.window, width, height))
+        .is_some_and(|(width, height)| !frame_still_ours(&active.window, scale, width, height))
 }
 
 pub fn ease_out_cubic(t: f64) -> f64 {
     1.0 - (1.0 - t).powi(3)
 }
 
-fn frame_still_ours(w: &WebviewWindow, width: f64, height: f64) -> bool {
-    let scale = w.scale_factor().unwrap_or(1.0);
+fn frame_still_ours(w: &WebviewWindow, scale: f64, width: f64, height: f64) -> bool {
     let Ok(size) = w.inner_size() else {
         return true;
     };

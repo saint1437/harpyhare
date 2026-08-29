@@ -86,6 +86,39 @@ const REPLICA = [
   // Cyan, not red. `--listening` means "audio is being captured right now" and
   // is kept off the danger hue on purpose.
   { name: "app-recording", utility: "app-recording", from: "--listening" },
+  // The dimmer half of the capture cyan. The app spends it on "armed" — the
+  // background buffer is holding audio but nothing is being sent — and the demo
+  // needs the same second step, or "standing by" and "recording" collapse into
+  // one colour and the orb loses a state.
+  { name: "app-recording-dim", utility: "app-recording-dim", from: "--listening-dim" },
+  // The third text weight. `--app-muted-fg` was carrying both the app's
+  // `--fg-muted` (body prose) and its `--fg-subtle` (captions, hints, the
+  // status word when nothing is listening), which flattened a distinction the
+  // app makes on nearly every surface.
+  { name: "app-subtle-fg", utility: "app-subtle", from: "--fg-subtle" },
+  // The hairline that carries structure rather than separation: an `outline`
+  // button's border, the orb's ring when it is off, the slider track.
+  { name: "app-border-strong", utility: "app-border-strong", from: "--line-strong" },
+  // The accent's hover step. Painting hover as `bg-app-primary/90` — what the
+  // demo did — lightens the fill over a dark ground, while the app darkens it.
+  { name: "app-primary-hover", utility: "app-primary-hover", from: "--accent-hover" },
+  // The two remaining state colours. `StateBadge` is the app's universal state
+  // atom and it is always colour + glyph + word; without these two the demo can
+  // only say "fine" and "broken".
+  { name: "app-success", utility: "app-success", from: "--success" },
+  { name: "app-warning", utility: "app-warning", from: "--warning" },
+  // The focus ring. The app draws focus as an `outline`, never a `ring` —
+  // rings are clipped by the `overflow-hidden` every card carries — and the
+  // demo had no focus-visible styling at all, which is a keyboard trap in a
+  // widget that now owns arrow keys and Escape.
+  { name: "app-focus", utility: "app-focus", from: "--focus" },
+  // The two scrims. `--overlay` grounds the teleprompter and the dialogs;
+  // `--scrim-chip` is the disc a remove-X sits on over a thumbnail, and it
+  // carries `--on-scrim` rather than `--app-fg` because it is painted over
+  // arbitrary image content.
+  { name: "app-overlay", utility: "app-overlay", from: "--overlay" },
+  { name: "app-scrim", utility: "app-scrim", from: "--scrim-chip" },
+  { name: "app-on-scrim", utility: "app-on-scrim", from: "--on-scrim" },
 ];
 
 /** The type scale, same idea: the page's name, the app's token. */
@@ -96,6 +129,10 @@ const TYPE = [
   // The app lets the user move this one at runtime; the demo takes its default.
   { name: "text-app-chat", from: "--chat-font-size" },
   { name: "text-app-title", from: "--hud-text-title" },
+  // The onboarding heading and the orb's big `⌘R` chip. Only the demo's
+  // largest surfaces use it, which is why it was possible to omit it before
+  // there were any.
+  { name: "text-app-display", from: "--hud-text-display" },
 ];
 
 const HUD = hudScope("dark · HUD");

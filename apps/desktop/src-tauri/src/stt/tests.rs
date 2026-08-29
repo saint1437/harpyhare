@@ -7,6 +7,13 @@ const NO_RETRY: RetryPolicy =
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+/// Every engine in this file gets a connection pool of its own — see
+/// `GroqStt::with_isolated_client` for why a shared one makes these tests
+/// flaky.
+fn groq(api_key: &str) -> GroqStt {
+    GroqStt::new(api_key.into()).with_isolated_client()
+}
+
 fn samples() -> Vec<f32> {
     vec![0.1f32; 16000]
 }
@@ -33,7 +40,7 @@ async fn transcribe_returns_text_on_success() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "привет мир"})))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("gsk_test".into()).with_base_url(server.uri());
+    let stt = groq("gsk_test").with_base_url(server.uri());
     assert_eq!(stt.transcribe(&samples()).await.unwrap(), "привет мир");
 }
 
@@ -47,7 +54,7 @@ async fn transcribe_sends_language_field_by_default() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "ок"})))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("k".into()).with_base_url(server.uri());
+    let stt = groq("k").with_base_url(server.uri());
     assert_eq!(stt.transcribe(&samples()).await.unwrap(), "ок");
 }
 
@@ -60,7 +67,7 @@ async fn empty_language_means_autodetect_field_omitted() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "auto"})))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("k".into())
+    let stt = groq("k")
         .with_base_url(server.uri())
         .with_language(String::new());
     assert_eq!(stt.transcribe(&samples()).await.unwrap(), "auto");
@@ -77,7 +84,7 @@ async fn translate_uses_translations_endpoint_and_large_v3() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "hello"})))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("k".into())
+    let stt = groq("k")
         .with_base_url(server.uri())
         .with_translate(true);
     assert_eq!(stt.transcribe(&samples()).await.unwrap(), "hello");
@@ -94,7 +101,7 @@ async fn transcribe_stream_sends_chunked_body_and_parses_text() {
         )
         .mount(&server)
         .await;
-    let stt = GroqStt::new("gsk_test".into()).with_base_url(server.uri());
+    let stt = groq("gsk_test").with_base_url(server.uri());
 
     let chunks: Vec<Result<Vec<u8>, std::io::Error>> = vec![
         Ok(crate::audio::wav_header_streaming().to_vec()),
@@ -117,7 +124,7 @@ async fn transcribe_stream_cancel_aborts() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "x"})))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("k".into()).with_base_url(server.uri());
+    let stt = groq("k").with_base_url(server.uri());
     let endless =
         futures_util::stream::repeat_with(|| Ok::<Vec<u8>, std::io::Error>(vec![0u8; 512]))
             .then(|c| async {
@@ -144,7 +151,7 @@ async fn transcribe_maps_401_to_bad_key() {
         .respond_with(ResponseTemplate::new(401))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("bad".into()).with_base_url(server.uri());
+    let stt = groq("bad").with_base_url(server.uri());
     assert!(matches!(stt.transcribe(&samples()).await, Err(SttError::BadApiKey)));
 }
 
@@ -157,7 +164,7 @@ async fn proxy_mode_401_maps_to_bad_access_code_with_body_message() {
         })))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("itk_bad".into())
+    let stt = groq("itk_bad")
         .with_base_url(server.uri())
         .with_proxy(true);
     match stt.transcribe(&samples()).await {
@@ -174,7 +181,7 @@ async fn transcribe_maps_429_and_5xx_to_retryable() {
             .respond_with(ResponseTemplate::new(code))
             .mount(&server)
             .await;
-        let stt = GroqStt::new("k".into())
+        let stt = groq("k")
             .with_base_url(server.uri())
             .with_retry(NO_RETRY);
         assert!(matches!(stt.transcribe(&samples()).await, Err(SttError::Retryable(..))));
@@ -188,7 +195,7 @@ async fn transcribe_200_without_text_field_is_error() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"unexpected": true})))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("k".into()).with_base_url(server.uri());
+    let stt = groq("k").with_base_url(server.uri());
     assert!(matches!(stt.transcribe(&samples()).await, Err(SttError::Other(_))));
 }
 
@@ -199,8 +206,34 @@ async fn transcribe_maps_timeout_to_network() {
         .respond_with(ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(3)))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("k".into())
+    let stt = groq("k")
         .with_base_url(server.uri())
         .with_timeout(std::time::Duration::from_millis(200));
     assert!(matches!(stt.transcribe(&samples()).await, Err(SttError::Network(_))));
+}
+
+/// The encoded WAV is held once and every attempt clones a handle to it rather
+/// than the ~19 MB buffer. The handle still has to produce a fresh, complete
+/// body per attempt — this is what says so.
+#[tokio::test]
+async fn a_retried_transcribe_sends_the_whole_audio_again() {
+    const RETRY_ONCE: RetryPolicy =
+        RetryPolicy::new(2, std::time::Duration::from_millis(1), std::time::Duration::from_millis(2));
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        // `RIFF` is the WAV header: the second attempt carries the audio, not an
+        // empty body left behind by the first.
+        .and(BodyHas("RIFF"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "ещё раз"})))
+        .mount(&server)
+        .await;
+    let stt = groq("k")
+        .with_base_url(server.uri())
+        .with_retry(RETRY_ONCE);
+    assert_eq!(stt.transcribe(&samples()).await.unwrap(), "ещё раз");
 }

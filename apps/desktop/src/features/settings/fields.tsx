@@ -86,17 +86,25 @@ export function SettingSelect({
   value,
   ariaLabel,
   disabled,
+  onOpenChange,
   onValueChange,
   children,
 }: {
   value: string;
   ariaLabel: string;
   disabled?: boolean;
+  /** Radix only mounts the list on open, so a row can load its options there. */
+  onOpenChange?: (open: boolean) => void;
   onValueChange: (value: string) => void;
   children: ReactNode;
 }) {
   return (
-    <Select value={value} disabled={disabled} onValueChange={onValueChange}>
+    <Select
+      value={value}
+      disabled={disabled}
+      onOpenChange={onOpenChange}
+      onValueChange={onValueChange}
+    >
       <SelectTrigger size="sm" aria-label={ariaLabel} className="w-full min-w-0">
         <SelectValue />
       </SelectTrigger>

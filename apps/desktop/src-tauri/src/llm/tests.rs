@@ -5,6 +5,45 @@ fn adaptive() -> Option<Value> {
     Some(json!({"type": "adaptive"}))
 }
 
+/// `stream_message` takes the body already serialised — the retry loop in
+/// `stream` encodes it once and clones the bytes, so the per-attempt deep copy
+/// of the `Value` (and of every base64 image in it) is gone.
+fn body_bytes(body: Value) -> Vec<u8> {
+    serde_json::to_vec(&body).unwrap()
+}
+
+/// The owned mirror of `SseOut`. The parser hands out borrowed slices through a
+/// callback now — no `Vec` per chunk and no `String` per delta — so the tests
+/// that want to compare whole event lists copy them out here.
+#[derive(Debug, PartialEq)]
+enum Event {
+    TextDelta(String),
+    InputTokens(u32),
+    Done,
+    ApiError(String),
+}
+
+fn owned(out: SseOut<'_>) -> Event {
+    match out {
+        SseOut::TextDelta(t) => Event::TextDelta(t.to_string()),
+        SseOut::InputTokens(n) => Event::InputTokens(n),
+        SseOut::Done => Event::Done,
+        SseOut::ApiError(m) => Event::ApiError(m.to_string()),
+    }
+}
+
+fn feed(parser: &mut SseParser, chunk: &str) -> Vec<Event> {
+    let mut events = Vec::new();
+    parser.feed(chunk, &mut |e| events.push(owned(e)));
+    events
+}
+
+fn feed_bytes(parser: &mut SseParser, chunk: &[u8]) -> Vec<Event> {
+    let mut events = Vec::new();
+    parser.feed_bytes(chunk, &mut |e| events.push(owned(e)));
+    events
+}
+
 #[derive(Default)]
 struct TestSink {
     text: String,
@@ -254,28 +293,28 @@ const SSE_FIXTURE: &str = "event: message_start\ndata: {\"type\":\"message_start
 #[test]
 fn sse_parser_extracts_text_deltas_and_done() {
     let mut p = SseParser::new();
-    let out = p.feed(SSE_FIXTURE);
+    let out = feed(&mut p, SSE_FIXTURE);
     let texts: Vec<_> = out
         .iter()
         .filter_map(|e| match e {
-            SseOut::TextDelta(t) => Some(t.as_str()),
+            Event::TextDelta(t) => Some(t.as_str()),
             _ => None,
         })
         .collect();
     assert_eq!(texts, vec!["При", "вет!"]);
-    assert!(matches!(out.last(), Some(SseOut::Done)));
+    assert!(matches!(out.last(), Some(Event::Done)));
 }
 
 #[test]
 fn sse_parser_handles_chunk_split_mid_event() {
     let mut p = SseParser::new();
     let (a, b) = SSE_FIXTURE.split_at(95);
-    let mut out = p.feed(a);
-    out.extend(p.feed(b));
+    let mut out = feed(&mut p, a);
+    out.extend(feed(&mut p, b));
     let text: String = out
         .iter()
         .filter_map(|e| match e {
-            SseOut::TextDelta(t) => Some(t.clone()),
+            Event::TextDelta(t) => Some(t.clone()),
             _ => None,
         })
         .collect();
@@ -285,8 +324,8 @@ fn sse_parser_handles_chunk_split_mid_event() {
 #[test]
 fn sse_parser_surfaces_api_error_event() {
     let mut p = SseParser::new();
-    let out = p.feed("event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n");
-    assert!(matches!(&out[0], SseOut::ApiError(m) if m.contains("Overloaded")));
+    let out = feed(&mut p, "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n");
+    assert!(matches!(&out[0], Event::ApiError(m) if m.contains("Overloaded")));
 }
 
 #[test]
@@ -302,14 +341,14 @@ fn empty_text_with_images_has_no_text_block() {
 fn sse_message_start_usage_summed_with_cache() {
     let mut p = SseParser::new();
     let block = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":100,\"cache_read_input_tokens\":2000,\"cache_creation_input_tokens\":30}}}\n\n";
-    assert_eq!(p.feed(block), vec![SseOut::InputTokens(2130)]);
+    assert_eq!(feed(&mut p, block), vec![Event::InputTokens(2130)]);
 }
 
 #[test]
 fn sse_message_start_without_usage_ignored() {
     let mut p = SseParser::new();
     let block = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\"}}\n\n";
-    assert_eq!(p.feed(block), vec![]);
+    assert_eq!(feed(&mut p, block), vec![]);
 }
 
 #[test]
@@ -319,9 +358,9 @@ fn feed_bytes_handles_utf8_split_across_chunks() {
     let cut = raw.find("Привет").unwrap() + 3;
     assert!(std::str::from_utf8(&bytes[..cut]).is_err(), "разрез должен попадать в середину символа");
     let mut p = SseParser::new();
-    let mut out = p.feed_bytes(&bytes[..cut]);
-    out.extend(p.feed_bytes(&bytes[cut..]));
-    assert_eq!(out, vec![SseOut::TextDelta("Привет".to_string())]);
+    let mut out = feed_bytes(&mut p, &bytes[..cut]);
+    out.extend(feed_bytes(&mut p, &bytes[cut..]));
+    assert_eq!(out, vec![Event::TextDelta("Привет".to_string())]);
 }
 
 #[test]
@@ -329,9 +368,9 @@ fn sse_parser_handles_chunk_split_mid_data_json() {
     let raw = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n";
     let mid = raw.find("text_delta").unwrap() + 5;
     let mut p = SseParser::new();
-    let mut out = p.feed(&raw[..mid]);
-    out.extend(p.feed(&raw[mid..]));
-    assert_eq!(out, vec![SseOut::TextDelta("hi".to_string())]);
+    let mut out = feed(&mut p, &raw[..mid]);
+    out.extend(feed(&mut p, &raw[mid..]));
+    assert_eq!(out, vec![Event::TextDelta("hi".to_string())]);
 }
 
 #[tokio::test]
@@ -343,6 +382,10 @@ async fn stream_collects_deltas_via_callback() {
         .and(path("/v1/messages"))
         .and(header("x-api-key", "sk-test"))
         .and(header("anthropic-version", "2023-06-01"))
+        // The body goes out as pre-serialised bytes now, so this header is set
+        // by hand where `RequestBuilder::json` used to add it. Anthropic rejects
+        // the request without it, and nothing else would notice it had gone.
+        .and(header("content-type", "application/json"))
         .respond_with(
             ResponseTemplate::new(200)
                 .insert_header("content-type", "text/event-stream")
@@ -357,7 +400,7 @@ async fn stream_collects_deltas_via_callback() {
     let mut sink = TestSink::default();
     client
         .stream_message(
-            build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None),
+            body_bytes(build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None)),
             cancel,
             &mut sink,
         )
@@ -386,7 +429,7 @@ async fn stream_times_out_on_silent_server() {
     let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
     let err = client
         .stream_message(
-            build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None),
+            body_bytes(build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None)),
             tokio_util::sync::CancellationToken::new(),
             &mut TestSink::default(),
         )
@@ -414,7 +457,7 @@ async fn stream_eof_without_message_stop_is_error() {
     let mut sink = TestSink::default();
     let err = client
         .stream_message(
-            build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None),
+            body_bytes(build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None)),
             tokio_util::sync::CancellationToken::new(),
             &mut sink,
         )
@@ -440,7 +483,7 @@ async fn stream_surfaces_api_error_message_from_body() {
     let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
     let err = client
         .stream_message(
-            build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None),
+            body_bytes(build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None)),
             tokio_util::sync::CancellationToken::new(),
             &mut TestSink::default(),
         )
@@ -465,7 +508,7 @@ async fn stream_maps_401() {
     let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
     let err = client
         .stream_message(
-            build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None),
+            body_bytes(build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None)),
             tokio_util::sync::CancellationToken::new(),
             &mut TestSink::default(),
         )
@@ -498,7 +541,7 @@ async fn proxy_mode_authorizes_with_bearer_not_api_key() {
     let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
     client
         .stream_message(
-            build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None),
+            body_bytes(build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None)),
             tokio_util::sync::CancellationToken::new(),
             &mut TestSink::default(),
         )
@@ -521,7 +564,7 @@ async fn proxy_mode_401_is_a_bad_access_code_carrying_the_worker_message() {
     let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
     let err = client
         .stream_message(
-            build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None),
+            body_bytes(build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None)),
             tokio_util::sync::CancellationToken::new(),
             &mut TestSink::default(),
         )
@@ -565,7 +608,7 @@ async fn stream_cancellation_stops_early() {
     let msgs = vec![ChatMessage { role: "user".into(), text: "q".into(), images: vec![] }];
     let err = client
         .stream_message(
-            build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None),
+            body_bytes(build_request_body("claude-opus-4-8", "s", &msgs, adaptive(), None)),
             cancel,
             &mut TestSink::default(),
         )
@@ -804,4 +847,89 @@ async fn a_direct_overload_keeps_the_bundled_wording() {
         .await
         .unwrap_err();
     assert!(err.to_string().contains("429"), "got: {err}");
+}
+
+/// `count_tokens` sends the same hand-set `content-type` and reads the figure
+/// back. It is the second caller that stopped going through
+/// `RequestBuilder::json`, and the only test that had touched it until now
+/// asserted a refusal that never reaches the network.
+#[tokio::test]
+async fn count_tokens_posts_json_and_reads_the_figure() {
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages/count_tokens"))
+        .and(header("content-type", "application/json"))
+        .and(header("anthropic-version", "2023-06-01"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "input_tokens": 4242
+        })))
+        .mount(&server)
+        .await;
+    let client = AnthropicClient::new("k".into()).with_base_url(server.uri());
+    assert_eq!(
+        client.count_tokens(request_of("q".into(), 0)).await.unwrap(),
+        4242
+    );
+}
+
+/// A retried `count_tokens` must send the body again, which is the whole reason
+/// the encoded bytes are cloned per attempt rather than serialised once and
+/// moved.
+#[tokio::test]
+async fn a_retried_count_tokens_sends_the_body_again() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages/count_tokens"))
+        .respond_with(ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages/count_tokens"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "input_tokens": 7
+        })))
+        .mount(&server)
+        .await;
+    let client = AnthropicClient::new("k".into())
+        .with_base_url(server.uri())
+        .with_retry(TWO_FAST_TRIES);
+    assert_eq!(client.count_tokens(request_of("q".into(), 0)).await.unwrap(), 7);
+}
+
+/// The parser reports through a callback now, so `pump_sse_stream` cannot
+/// `return` out of the middle of an event list the way the old `for` loop did —
+/// it remembers the first terminal event instead. Anything the server put after
+/// `message_stop` in the same chunk must still be dropped.
+#[tokio::test]
+async fn text_after_message_stop_in_the_same_chunk_is_ignored() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let body = format!(
+        "{SSE_FIXTURE}event: content_block_delta\ndata: {{\"type\":\"content_block_delta\",\"delta\":{{\"type\":\"text_delta\",\"text\":\"хвост\"}}}}\n\n"
+    );
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_raw(body.into_bytes(), "text/event-stream"),
+        )
+        .mount(&server)
+        .await;
+    let client = AnthropicClient::new("k".into()).with_base_url(server.uri());
+    let mut sink = TestSink::default();
+    client
+        .stream(
+            request_of("q".into(), 0),
+            tokio_util::sync::CancellationToken::new(),
+            &mut sink,
+        )
+        .await
+        .unwrap();
+    assert_eq!(sink.text, "Привет!");
 }

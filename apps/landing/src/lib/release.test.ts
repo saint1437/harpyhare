@@ -1,15 +1,15 @@
 import { installerAssetName } from "@harpyhare/release-contract";
 import { describe, expect, it } from "vitest";
 import { PLATFORMS } from "./platform";
+import { RELEASES_PAGE } from "./release";
 import {
   parseRelease,
   pickPlatformAsset,
-  RELEASES_PAGE,
   stripVersionPrefix,
   toReleaseInfo,
   type GitHubAsset,
   type GitHubRelease,
-} from "./release";
+} from "./release-server";
 
 const DMG: GitHubAsset = {
   name: "harpyhare_0.9.0_aarch64.dmg",

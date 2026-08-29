@@ -124,6 +124,9 @@ const GLOBAL_HOTKEYS: &[(&str, GlobalRegistrar, GlobalUnregistrar)] = &[
 ];
 
 pub fn register_main_window_hotkeys(app: &AppHandle, s: &settings::Settings) {
+    // PTT is about to be registered, so whatever the prompt's focus left behind
+    // must not claim it is suspended — see `preferences::PTT_SUSPENDED`.
+    crate::preferences::clear_ptt_suspension();
     for (action, register, _) in GLOBAL_HOTKEYS {
         let combo = hotkeys::effective(&s.hotkeys, action);
         if combo.is_empty() {

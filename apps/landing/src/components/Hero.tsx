@@ -70,7 +70,7 @@ export function Hero({ dict, release }: { dict: Dictionary; release: ReleaseInfo
           />
 
           <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-            <VersionNote release={release} />
+            <VersionNote version={release?.version ?? null} />
             <a
               href={RELEASES_PAGE}
               target="_blank"

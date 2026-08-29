@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import { loadLanguage, LOCALES } from "./i18n";
 
 const jestTimersShimForTestingLibrary = {
   advanceTimersByTime: (ms: number) => vi.advanceTimersByTime(ms),
@@ -70,3 +71,19 @@ if ((globalThis as Record<string, unknown>)[RESIZE_OBSERVER_GLOBAL] === undefine
     writable: true,
   });
 }
+
+/**
+ * Both dictionaries, in memory before the first test module is evaluated.
+ *
+ * The app itself fetches the one language it needs and no more — every locale
+ * but the source one is a separate chunk, awaited once at the window's boot
+ * (`i18n/index.ts`, `render-root.tsx`). The suite cannot work that way: it reads
+ * both dictionaries SYNCHRONOUSLY, at module scope (`const ru = dictionary("ru")`
+ * on the first lines of a test file) and inside cases that call
+ * `applyLanguage("en")` and assert an English string on the very next line.
+ *
+ * A setup file finishes evaluating before any test file is imported, so this
+ * top-level await is what lets all of those call sites stay exactly as they
+ * were, asserting exactly what they asserted, against a synchronous dictionary.
+ */
+await Promise.all(LOCALES.map((locale) => loadLanguage(locale)));

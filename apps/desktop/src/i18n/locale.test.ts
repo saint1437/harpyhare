@@ -113,3 +113,54 @@ describe("локаль переживает перезапуск окна", () =
     setItem.mockRestore();
   });
 });
+
+/**
+ * What a real window does, and what this suite's own setup deliberately hides:
+ * only the source locale is in the bundle, and the other one is a chunk fetched
+ * before the first render (`i18n/index.ts`, `render-root.tsx`). `test-setup.ts`
+ * preloads both so that the twenty-odd synchronous `dictionary("en")` call sites
+ * can stay synchronous, so a fresh module registry is the only way back to the
+ * state a window actually boots in.
+ */
+describe("локаль вне сборки приезжает отдельным чанком", () => {
+  async function freshI18n(): Promise<typeof import(".")> {
+    vi.resetModules();
+    return import(".");
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("до всякой загрузки словарь есть — исходный", async () => {
+    const i18n = await freshI18n();
+    expect(i18n.getLocale()).toBe("ru");
+    expect(i18n.getDict()).toBe(i18n.dictionary("ru"));
+  });
+
+  // Переключение на незагруженный словарь оставило бы интерфейс пустым, поэтому
+  // синхронный applyLanguage отказывается, а не подставляет undefined.
+  it("синхронное переключение на незагруженный словарь ничего не ломает", async () => {
+    const i18n = await freshI18n();
+    expect(i18n.applyLanguage("en", "en-US")).toBe("ru");
+    expect(i18n.getLocale()).toBe("ru");
+    expect(i18n.getDict().locale).toBe("ru");
+  });
+
+  it("adoptLanguage сначала дожидается словаря, потом переключает", async () => {
+    const i18n = await freshI18n();
+    expect(await i18n.adoptLanguage("en", "en-US")).toBe("en");
+    expect(i18n.getLocale()).toBe("en");
+    expect(i18n.getDict()).toBe(i18n.dictionary("en"));
+  });
+
+  // Ровно последовательность state/settings.adopt: сначала loadLanguage, потом
+  // синхронный applyLanguage внутри публикации снапшота — в один тик.
+  it("loadLanguage делает следующий applyLanguage синхронным", async () => {
+    const i18n = await freshI18n();
+    expect(await i18n.loadLanguage("en", "en-US")).toBe("en");
+    expect(i18n.getLocale()).toBe("ru");
+    expect(i18n.applyLanguage("en", "en-US")).toBe("en");
+    expect(i18n.getDict().locale).toBe("en");
+  });
+});

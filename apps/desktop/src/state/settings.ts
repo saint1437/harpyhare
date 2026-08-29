@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { applyLanguage, format, getDict } from "@/i18n";
+import { applyLanguage, format, getDict, loadLanguage } from "@/i18n";
 import {
   getSettings as ipcGetSettings,
   setSettings as ipcSetSettings,
@@ -88,8 +88,25 @@ function adopt(fresh: Settings): void {
   // between the two windows (the HUD paints opacity and the chat font, the
   // launcher paints the theme alone), while the dictionary is the same question
   // in both and is answered by one module store.
+  //
+  // It stays a SYNCHRONOUS call inside the publish, and the dictionary it needs
+  // is loaded by whoever is about to walk through this door (`awaitDictionary`
+  // below). Awaiting here instead would land the dictionary one tick after the
+  // snapshot — a frame of the old language under the new settings, which is the
+  // flash `i18n/index.ts` records having fixed from the other end.
   applyLanguage(fresh.language);
   applyVisuals(fresh);
+}
+
+/**
+ * The one thing that must happen before `adopt`, and the only asynchrony the
+ * language costs this module: a locale the window has never shown is a chunk of
+ * its own (`i18n/index.ts`). Cheap and synchronous-in-effect whenever the
+ * snapshot carries the language already on screen, which is every adoption but
+ * the one that follows a change.
+ */
+async function awaitDictionary(fresh: Settings): Promise<void> {
+  await loadLanguage(fresh.language);
 }
 
 export function subscribeSettings(listener: () => void): () => void {
@@ -131,7 +148,9 @@ async function reportSettingsRecovery(): Promise<void> {
 
 export async function loadSettings(): Promise<void> {
   try {
-    adopt(await ipcGetSettings());
+    const fresh = await ipcGetSettings();
+    await awaitDictionary(fresh);
+    adopt(fresh);
   } catch {
     // Rust has already replaced an unreadable settings.json with the defaults
     // (and says so through `takeSettingsRecovery`), so a rejection here is the
@@ -146,7 +165,9 @@ export async function loadSettings(): Promise<void> {
 /** `null` on success, the failure's text otherwise. */
 export async function saveSettings(next: Settings): Promise<string | null> {
   try {
-    adopt(await ipcSetSettings(next));
+    const applied = await ipcSetSettings(next);
+    await awaitDictionary(applied);
+    adopt(applied);
     return null;
   } catch (e) {
     // The optimistic bumps have already been painted by hand; roll the DOM back
@@ -168,6 +189,13 @@ export function saveSettingsDebounced(step: SettingsStep): void {
       .then((applied) => {
         // A bump that landed while the write was in flight owns the state now;
         // adopting the older clamp would undo it on screen.
+        //
+        // No `awaitDictionary` here, and it is not an omission: a bump is a
+        // patch of the window's geometry or opacity, never of `language`, so
+        // `applied.language` is the one already on screen and its dictionary is
+        // already loaded. Route a language change through this path and it would
+        // need the await — and the check above would then have to be repeated
+        // after it, since that await is a window another bump can land in.
         if (state.settings === next) adopt(applied);
       })
       // The bump is already on screen and in state; a failed write only leaves

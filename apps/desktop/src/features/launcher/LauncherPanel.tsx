@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { NotificationStack } from "@/components/NotificationStack";
 import type { SetSetting } from "@/features/settings/contract";
 import { DEFAULT_SETTINGS_TAB, type SettingsTabId } from "@/features/settings/settings-tabs";
 import { useAutosavedDraft } from "@/features/settings/useAutosavedDraft";
-import { useAudioCheck } from "@/hooks/useAudioCheck";
 import { useConnectivity } from "@/hooks/useConnectivity";
 import { useDict } from "@/hooks/useDict";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
@@ -14,6 +13,8 @@ import { effectiveCombo } from "@/lib/hotkeys";
 import { notifyError } from "@/lib/notifications";
 import { isPresetFilled, mergePresets } from "@/lib/presets";
 import { isQuickActionFilled } from "@/lib/quick-actions";
+import { useAudioCheckControl } from "./audio-check";
+import { AudioCheckProvider } from "./AudioCheckProvider";
 import { ContextLibraryPanel } from "./ContextLibraryPanel";
 import type { LauncherDestination, LauncherPanelProps } from "./contract";
 import { LaunchBar } from "./LaunchBar";
@@ -58,7 +59,20 @@ function sameSettings(a: Settings, b: Settings): boolean {
   return (Object.keys(a) as (keyof Settings)[]).every((key) => sameSettingValue(a[key], b[key]));
 }
 
-export function LauncherPanel({
+/**
+ * The sound check is mounted here, above the body, and the body is handed to it
+ * as a ready-made element: the level ticking ten times a second then stops at
+ * `AudioCheckProvider` instead of walking the whole launcher (see `audio-check`).
+ */
+export function LauncherPanel(props: LauncherPanelProps) {
+  return (
+    <AudioCheckProvider>
+      <LauncherPanelBody {...props} />
+    </AudioCheckProvider>
+  );
+}
+
+function LauncherPanelBody({
   settings,
   contextLibrary,
   readiness,
@@ -79,7 +93,7 @@ export function LauncherPanel({
   const dict = useDict();
 
   const official = useOfficialPresets();
-  const audioCheck = useAudioCheck();
+  const audioCheck = useAudioCheckControl();
   // Что именно ушло в `set_settings` последним — и для адоптации клампа, и для
   // повтора неудавшегося сохранения.
   const lastSavedRef = useRef<Settings | null>(null);
@@ -95,10 +109,10 @@ export function LauncherPanel({
         ? "idle"
         : "saved";
 
-  const retrySave = () => {
+  const retrySave = useCallback(() => {
     const pending = lastSavedRef.current;
     if (pending !== null) onSave(pending);
-  };
+  }, [onSave]);
 
   const searchSources = useMemo(
     () => ({
@@ -134,10 +148,10 @@ export function LauncherPanel({
     [readiness.blockers, updater.info, dict],
   );
 
-  const goTo = ({ screen: target, tab }: LauncherDestination) => {
+  const goTo = useCallback(({ screen: target, tab }: LauncherDestination) => {
     setScreen(target);
     if (tab !== undefined) setSettingsTab(tab);
-  };
+  }, []);
 
   // Rust возвращает КЛАМПНУТЫЕ настройки, и адоптировать их обязательно: иначе
   // после того как `Settings::clamp` снял конфликтующий хоткей или обрезал
@@ -178,7 +192,7 @@ export function LauncherPanel({
     onSave(normalized);
   });
 
-  const checkUpdates = () => {
+  const checkUpdates = useCallback(() => {
     setCheckState("checking");
     updater
       .checkNow()
@@ -189,26 +203,33 @@ export function LauncherPanel({
         setCheckState("idle");
         notifyError(dict.launcher.shell.updateCheckFailedTitle, String(e));
       });
-  };
+  }, [updater, dict]);
 
-  const set: SetSetting = (key, value) => {
+  // Stable by construction: the rows of the active tab are memoised on their own
+  // value plus this callback, and a `set` rebuilt on every render would make
+  // every one of those memos useless.
+  const set: SetSetting = useCallback((key, value) => {
     setDraft((d) => ({ ...d, [key]: value }));
-  };
+  }, []);
 
-  const changePresets = (update: PresetsUpdate) => {
+  const changePresets = useCallback((update: PresetsUpdate) => {
     setDraft((d) => ({ ...d, prompt_presets: update(d.prompt_presets) }));
-  };
+  }, []);
 
   // Exhaustive by type, the way `SettingsScreen` renders its tabs: a chain of
   // `screen === "…" &&` compiled just as happily with a screen missing, so
   // adding one to LAUNCHER_SCREENS gave a sidebar item, a search hit and
   // breadcrumbs — over an empty panel. The compiler now asks for the branch.
-  const panels: Record<ScreenId, ReactNode> = {
-    start: (
+  //
+  // The branches are thunks rather than elements: as a record of elements all six
+  // screens were built on every render — `effectiveCombo` and all — while five of
+  // them were thrown away unrendered. Only the active one is called, and the
+  // record still has to name every screen.
+  const panels: Record<ScreenId, () => ReactNode> = {
+    start: () => (
       <StartScreen
         readiness={readiness}
         launching={launching}
-        audioCheck={audioCheck}
         recordCombo={effectiveCombo(draft.hotkeys, RECORD_ACTION)}
         onRedeem={secrets.redeem}
         onNavigate={goTo}
@@ -217,17 +238,17 @@ export function LauncherPanel({
         }}
       />
     ),
-    contexts: (
+    contexts: () => (
       <ScreenShell screen="contexts">
         <ContextLibraryPanel api={contextLibrary} />
       </ScreenShell>
     ),
-    presets: (
+    presets: () => (
       <ScreenShell screen="presets">
         <PresetsSection presets={draft.prompt_presets} onChange={changePresets} />
       </ScreenShell>
     ),
-    settings: (
+    settings: () => (
       <SettingsScreen
         draft={draft}
         set={set}
@@ -237,8 +258,10 @@ export function LauncherPanel({
         onTabChange={setSettingsTab}
       />
     ),
-    permissions: <PermissionsScreen permissions={readiness.permissions} />,
-    updates: <UpdatesScreen updater={updater} checkState={checkState} onCheck={checkUpdates} />,
+    permissions: () => <PermissionsScreen permissions={readiness.permissions} />,
+    updates: () => (
+      <UpdatesScreen updater={updater} checkState={checkState} onCheck={checkUpdates} />
+    ),
   };
 
   return (
@@ -301,7 +324,7 @@ export function LauncherPanel({
             {...panelProps(screen)}
             className="flex min-h-0 min-w-0 flex-1 animate-in duration-150 fade-in-0 outline-none slide-in-from-bottom-1 motion-reduce:animate-none"
           >
-            {panels[screen]}
+            {panels[screen]()}
           </div>
         </div>
       </div>

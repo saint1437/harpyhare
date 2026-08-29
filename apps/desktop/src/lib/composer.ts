@@ -13,7 +13,6 @@ const TRANSCRIPT_SEPARATOR = " ";
 const DOWNSCALE_JPEG_QUALITY = 0.85;
 const MIN_CANVAS_SIDE_PX = 1;
 
-const SCREENSHOT_FILE_NAME = "screenshot";
 const ENDS_WITH_WHITESPACE = /\s$/;
 
 export interface ImagePayload {
@@ -76,17 +75,6 @@ export async function downscaleToJpegDataUrl(file: File, factor: number): Promis
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
   return canvas.toDataURL(DOWNSCALE_MEDIA_TYPE, DOWNSCALE_JPEG_QUALITY);
-}
-
-/** A screenshot arrives from Rust as a data URL; attaching it needs a `File`. */
-export function dataUrlToFile(dataUrl: string, mediaType: string): File {
-  const marker = DATA_URL_BASE64_MARKER + DATA_URL_BASE64_SEPARATOR;
-  const markerIdx = dataUrl.indexOf(marker);
-  const base64 = markerIdx >= 0 ? dataUrl.slice(markerIdx + marker.length) : dataUrl;
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new File([bytes], SCREENSHOT_FILE_NAME, { type: mediaType });
 }
 
 export function appendTranscript(draft: string, transcript: string): string {

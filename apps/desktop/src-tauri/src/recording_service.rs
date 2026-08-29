@@ -32,8 +32,24 @@ use crate::{audio, capture, stt};
 
 const ERR_NO_AUDIO_BUFFER: &str = "нет аудио-буфера";
 const STT_STREAM_CHANNEL_CAPACITY: usize = 256;
+/// How much 16 kHz audio the streaming sink gathers before it hands a piece to
+/// the upload. The capture delivers a resampled chunk about every 21 ms and each
+/// one used to become its own multipart item — a chunk frame, a TLS record and a
+/// write every 21 ms for the length of the recording. Whisper's latency is
+/// dominated by inference, not by upload cadence, so coalescing a quarter of a
+/// second costs nothing the user can perceive.
+const STT_STREAM_FLUSH_MS: usize = 250;
 
 type SttBodyChunk = Result<Vec<u8>, std::io::Error>;
+
+/// A finished recording, resampled to 16 kHz mono.
+///
+/// It is an `Arc` and not a `Vec` because it has three readers — the upload, the
+/// "Retry" copy and (at the ceiling) the watchdog — and at the ten-minute limit
+/// it is 38 MB. Cloning it used to mean a 38 MB allocation and memcpy between
+/// the key release and the start of the upload, doubling peak RSS at exactly the
+/// moment the user is waiting.
+pub type Recording = Arc<Vec<f32>>;
 
 /// The streaming transcription that is running while the key is held: the task
 /// uploading the body, its cancellation token, and the flag the chunk sink
@@ -98,7 +114,7 @@ pub enum WatchdogTick {
     Stop,
     KeepWatching,
     /// The ceiling was reached and the capture has been stopped: transcribe.
-    Transcribe(Vec<f32>),
+    Transcribe(Recording),
 }
 
 /// Owns the recorder FSM, the last recording, the streaming transcription slot
@@ -109,7 +125,7 @@ pub enum WatchdogTick {
 #[derive(Default)]
 pub struct RecordingService {
     recorder: Mutex<RecorderState>,
-    last_recording: Mutex<Option<Vec<f32>>>,
+    last_recording: Mutex<Option<Recording>>,
     stt_stream: Mutex<Option<SttStream>>,
     /// Bumped on every started recording. The watchdog carries its own value and
     /// stops the moment it stops being the current one.
@@ -206,7 +222,7 @@ impl RecordingService {
         bus: &B,
         capture: &CaptureService,
         host: &impl RecordingHost,
-    ) -> Option<Vec<f32>> {
+    ) -> Option<Recording> {
         let duration_secs = capture.recording_secs();
         let action = self
             .recorder
@@ -267,7 +283,7 @@ impl RecordingService {
         capture: &CaptureService,
         host: &impl RecordingHost,
         stt: Arc<dyn stt::SttEngine>,
-        samples: Vec<f32>,
+        samples: Recording,
     ) {
         let t = std::time::Instant::now();
         let stream = self.stt_stream.lock_safe().take();
@@ -313,7 +329,8 @@ impl RecordingService {
         host: &impl RecordingHost,
         stt: Arc<dyn stt::SttEngine>,
     ) {
-        let Some(samples) = self.last_recording.lock_safe().clone() else {
+        // A refcount bump under the lock, not a second copy of the recording.
+        let Some(samples) = self.last_recording.lock_safe().as_ref().map(Arc::clone) else {
             return;
         };
         {
@@ -333,7 +350,7 @@ impl RecordingService {
         bus: &B,
         capture: &CaptureService,
         action: state::Action,
-    ) -> Option<Vec<f32>> {
+    ) -> Option<Recording> {
         match action {
             state::Action::Discard => {
                 self.discard_recording(bus, capture);
@@ -355,7 +372,7 @@ impl RecordingService {
         &self,
         bus: &B,
         capture: &CaptureService,
-    ) -> Option<Vec<f32>> {
+    ) -> Option<Recording> {
         events::state_changed(bus, RecorderState::Transcribing);
         let s16k = match stop_capture_for_transcription(capture) {
             Ok(v) => v,
@@ -370,7 +387,11 @@ impl RecordingService {
             self.finish_transcription(bus, capture, Err(capture::silence_error()));
             return None;
         }
-        *self.last_recording.lock_safe() = Some(s16k.clone());
+        // Two owners of one buffer, not two buffers: `last_recording` is the
+        // copy "Retry" re-uploads, and the caller takes the same allocation on
+        // to the transcription.
+        let s16k = Recording::new(s16k);
+        *self.last_recording.lock_safe() = Some(Arc::clone(&s16k));
         Some(s16k)
     }
 
@@ -380,7 +401,7 @@ impl RecordingService {
         capture: &CaptureService,
         host: &impl RecordingHost,
         stt: Arc<dyn stt::SttEngine>,
-        samples: Vec<f32>,
+        samples: Recording,
     ) {
         let t = std::time::Instant::now();
         let res = stt.transcribe(&samples).await;
@@ -454,14 +475,57 @@ impl RecordingService {
         }) {
             old.cancel.cancel();
         }
-        Box::new(move |samples: &[f32]| {
-            if broken.load(Ordering::Relaxed) {
-                return;
-            }
-            if tx.try_send(Ok(audio::f32_to_i16le_bytes(samples))).is_err() {
-                broken.store(true, Ordering::Relaxed);
-            }
-        })
+        let flush_at = audio::i16le_len(audio::samples_for_ms(STT_STREAM_FLUSH_MS));
+        let mut sink = SttStreamSink {
+            tx,
+            broken,
+            buf: Vec::with_capacity(flush_at),
+            flush_at,
+        };
+        Box::new(move |samples: &[f32]| sink.push(samples))
+    }
+}
+
+/// The sink the capture feeds 16 kHz chunks into while the key is held.
+///
+/// It is a struct rather than a set of captured locals for one reason: the tail
+/// has to reach the upload. The capture drops the sink when the session ends and
+/// the body channel closes with it, so `Drop` is the only place a partly filled
+/// buffer can still be sent.
+struct SttStreamSink {
+    tx: tokio::sync::mpsc::Sender<SttBodyChunk>,
+    broken: Arc<AtomicBool>,
+    buf: Vec<u8>,
+    flush_at: usize,
+}
+
+impl SttStreamSink {
+    fn push(&mut self, samples: &[f32]) {
+        if self.broken.load(Ordering::Relaxed) {
+            return;
+        }
+        audio::f32_to_i16le_into(samples, &mut self.buf);
+        if self.buf.len() >= self.flush_at {
+            self.send();
+        }
+    }
+
+    fn send(&mut self) {
+        if self.buf.is_empty() {
+            return;
+        }
+        let body = std::mem::replace(&mut self.buf, Vec::with_capacity(self.flush_at));
+        if self.tx.try_send(Ok(body)).is_err() {
+            self.broken.store(true, Ordering::Relaxed);
+        }
+    }
+}
+
+impl Drop for SttStreamSink {
+    fn drop(&mut self) {
+        if !self.broken.load(Ordering::Relaxed) {
+            self.send();
+        }
     }
 }
 

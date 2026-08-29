@@ -55,7 +55,7 @@ import { answerArrival, orbState, transcriptArrival } from "@/lib/orb";
 import { mergePresets } from "@/lib/presets";
 import { SHELL_COLUMN_GAP_PX, SHELL_PADDING_PX } from "@/lib/shell-layout";
 import { applyChatFontSize, applyOpacity, applyTheme } from "@/lib/window-controls";
-import { addDraftImage } from "@/state/chat-attachments";
+import { addDraftStoredImage } from "@/state/chat-attachments";
 import {
   appendAssistantMessage,
   duplicateChat,
@@ -261,8 +261,8 @@ export function HudApp() {
   const presetsRef = useLatestRef(presets);
   const libraryRef = useLatestRef(contextLibrary.library);
 
-  const onScreenshotImage = useCallback((dataUrl: string, mediaType: string) => {
-    void addDraftImage(getActiveChatId(), dataUrl, mediaType);
+  const onScreenshotImage = useCallback((id: string, mediaType: string) => {
+    void addDraftStoredImage(getActiveChatId(), id, mediaType);
   }, []);
   const screenshot = useRegionScreenshot(onScreenshotImage);
 

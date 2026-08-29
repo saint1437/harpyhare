@@ -105,7 +105,6 @@ fn setup_app(handle: &AppHandle) {
         secrets::SECRETS_FILE_NAME,
     );
     let startup = preferences::load_settings_and_secrets(&path, &secrets_path);
-    let official_presets = remote_presets::load_initial(handle);
     let models: llm::ModelCatalog = Arc::new(Mutex::new(llm::fallback_models()));
     let stt = app_state::build_stt_client(&startup.settings, &startup.secrets);
     let llm = app_state::build_llm_client(&startup.secrets, Arc::clone(&models));
@@ -113,14 +112,22 @@ fn setup_app(handle: &AppHandle) {
     handle.manage(app_state::build_app_state(
         preferences::build_settings_service(path, startup.settings, startup.recovery),
         preferences::build_secrets_store(secrets_path, startup.secrets),
-        official_presets,
         stt,
         llm,
         models,
     ));
-    if let Err(e) = window::create_launcher_window(handle, &app_state::current_settings(handle)) {
+    // The window comes first, and everything below it is either off-thread or
+    // cheap. The presets used to be read and parsed right here — 145 KB of
+    // embedded JSON in the worst case — thirteen lines before the user saw
+    // anything; they are lazy now (`remote_presets::PresetCache`) and warmed on
+    // a blocking thread once the window exists.
+    let settings = app_state::current_settings(handle);
+    if let Err(e) = window::create_launcher_window(handle, &settings) {
         eprintln!("не удалось создать окно лаунчера: {e}");
     }
+    // Seeds what the OS keyboard hook reads; the hook is installed just below.
+    platform::refresh_arrow_keys(&settings);
+    remote_presets::spawn_warm_up(handle.clone());
     permissions::warm_cache(handle);
     recording::install_default_output_device_listener(handle);
     platform::install_move_keys_monitor(handle.clone());

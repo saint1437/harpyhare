@@ -30,7 +30,11 @@ base64 = "0.22.1"
 hound = "3.5.1"
 rubato = "3.0.0"
 futures-util = "0.3.32"
-tokio = { version = "1.52.3", features = ["full"] }
+# Only the pieces this crate actually uses: `spawn`/`spawn_blocking` (rt-multi-thread),
+# `select!`/`join!`/`#[tokio::test]` (macros), `sleep`/`interval` (time), `mpsc`/`oneshot`
+# (sync). `net`/`io-util` still arrive through reqwest and tauri via feature unification;
+# what this drops is `fs`, `process`, `signal` and `io-std`.
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "time", "sync"] }
 tokio-util = "0.7.18"
 reqwest = { version = "0.13.4", features = ["json", "multipart", "stream"] }
 async-trait = "0.1.89"
@@ -38,9 +42,11 @@ dotenvy = "0.15.7"
 ringbuf = "0.4.8"
 tauri-plugin-updater = "2.10.1"
 pdf-extract = "0.12"
-specta-typescript = "0.0.12"
 specta = "2.0.0-rc"
-tauri-specta = { version = "2.0.0-rc", features = ["typescript"] }
+# The TypeScript exporter is only reachable from `bindings::tests`, so the
+# `typescript` feature (and specta-typescript with it) is re-enabled below under
+# [dev-dependencies] instead of being compiled into every release build.
+tauri-specta = { version = "2.0.0-rc", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cidre = "0.15.2"
@@ -76,6 +82,25 @@ windows = { version = "0.61", features = [
 [dev-dependencies]
 tempfile = "3.27.0"
 wiremock = "0.6.5"
+# `cargo test` regenerates src/ipc/bindings.ts (bindings::tests), which is the only
+# place the exporter is used.
+specta-typescript = "0.0.12"
+tauri-specta = { version = "2.0.0-rc", features = ["typescript"] }
+
+# Debug builds are the bulk of target/ (18 GB measured). Line tables keep backtraces and
+# panic locations while dropping the type/variable DWARF nobody steps through here.
+# Dependencies are built once, so they are worth optimising; the crate itself stays at
+# opt-level 0 so incremental rebuilds stay cheap.
+#
+# `split-debuginfo` is deliberately NOT set: `unpacked` is already cargo's dev default on
+# macOS, and on x86_64-pc-windows-msvc rustc rejects it outright ("`-Csplit-debuginfo=
+# unpacked` is unstable on this platform") — the windows CI job runs `cargo clippy
+# --all-targets`, i.e. the dev profile, so setting it here would fail that job for nothing.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 2
 
 [profile.release]
 lto = "thin"

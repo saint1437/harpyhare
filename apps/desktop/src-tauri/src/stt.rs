@@ -1,6 +1,16 @@
 use crate::audio;
 use crate::http::{self, Retryable, RetryPolicy};
 
+/// The encoded WAV, held as a refcounted buffer so a retry clones a handle
+/// instead of the recording.
+///
+/// `bytes` is not a direct dependency and `reqwest` does not re-export it, but
+/// `tokio-util` does — and the whole graph resolves to a single `bytes`, so this
+/// is the very type `reqwest::Body` is built from. Going through the re-export
+/// keeps `Cargo.toml` unchanged and cannot drift into a second version of the
+/// crate the way a separately declared dependency could.
+type WavBytes = tokio_util::bytes::Bytes;
+
 const GROQ_BASE_URL: &str = "https://api.groq.com";
 const TRANSCRIPTIONS_ENDPOINT: &str = "/openai/v1/audio/transcriptions";
 const TRANSLATIONS_ENDPOINT: &str = "/openai/v1/audio/translations";
@@ -19,7 +29,11 @@ const CANCELLED_MESSAGE: &str = "отменено";
 
 const DEFAULT_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 const WARM_UP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
-const STREAM_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(11 * 60);
+
+/// The per-request deadline for the streaming upload. It is the same value as
+/// the client's read timeout, and single-sourced from there: the two have to
+/// agree, or the request would be cut off by whichever is shorter.
+const STREAM_REQUEST_TIMEOUT: std::time::Duration = http::STREAMING_READ_TIMEOUT;
 
 /// Only the buffered `transcribe` is retried. `transcribe_stream` cannot be:
 /// its body is a one-shot channel of live microphone chunks, and there is
@@ -144,19 +158,17 @@ pub struct GroqStt {
     retry: RetryPolicy,
 }
 
-/// The streaming upload lives for the whole recording (up to ten minutes), so
-/// this client cannot take the shared 60-second read timeout.
-fn warm_pooled_client() -> reqwest::Client {
-    http::build_client(STREAM_REQUEST_TIMEOUT)
-}
-
 impl GroqStt {
     pub fn new(api_key: String) -> Self {
         Self {
             api_key,
             base_url: GROQ_BASE_URL.into(),
             timeout: DEFAULT_REQUEST_TIMEOUT,
-            client: warm_pooled_client(),
+            // Cloned out of the process-wide pool, not built here: this
+            // constructor runs again on every `stt_language`/`stt_translate`
+            // change, and a fresh client would drop the warm Groq connections
+            // each time.
+            client: http::shared_streaming(),
             language: DEFAULT_LANGUAGE.into(),
             translate: false,
             proxy: false,
@@ -167,6 +179,24 @@ impl GroqStt {
     /// Tests that assert a status mapping do not want three attempts of it.
     pub fn with_retry(mut self, retry: RetryPolicy) -> Self {
         self.retry = retry;
+        self
+    }
+
+    /// A connection pool of this engine's own. A seam for the tests, and it must
+    /// stay one — production wants the shared pool `new` takes.
+    ///
+    /// The two situations are opposites. In the app there is exactly ONE Groq
+    /// host, the pool is deliberately kept warm forever, and that is what takes
+    /// a TLS handshake out of the "release the key → text" path. In the suite
+    /// every test starts a `MockServer` on an EPHEMERAL port and drops it; the
+    /// OS recycles those ports, and a process-wide pool then hands a later test
+    /// an idle connection to a server that no longer exists. A multipart POST
+    /// cannot be replayed on a second connection, so the request fails outright
+    /// — measured at three flaky runs in twelve under CPU load, against none
+    /// with a client per engine.
+    #[cfg(test)]
+    pub fn with_isolated_client(mut self) -> Self {
+        self.client = http::build_client(STREAM_REQUEST_TIMEOUT);
         self
     }
 
@@ -260,8 +290,13 @@ impl GroqStt {
             .to_string())
     }
 
-    async fn transcribe_once(&self, wav: Vec<u8>) -> Result<String, SttError> {
-        let part = reqwest::multipart::Part::bytes(wav)
+    /// Takes the encoded WAV as a refcounted buffer so that a retry costs a
+    /// pointer bump rather than a fresh copy of it. `Part::bytes` would have
+    /// wanted an owned `Vec` back; `Body::from(Bytes)` builds the same reusable
+    /// body from a handle — `Part::bytes` reaches it by the identical route,
+    /// converting its `Vec` into `Bytes` first.
+    async fn transcribe_once(&self, wav: WavBytes) -> Result<String, SttError> {
+        let part = reqwest::multipart::Part::stream(reqwest::Body::from(wav))
             .mime_str(WAV_MIME)
             .map_err(|e| SttError::Other(e.to_string()))?;
         let resp = self
@@ -316,7 +351,23 @@ impl SttEngine for GroqStt {
     }
 
     async fn transcribe(&self, samples: &[f32]) -> Result<String, SttError> {
-        let wav = audio::encode_wav_16k_mono(samples).map_err(|e| SttError::Other(e.to_string()))?;
+        // `hound` walks the whole recording sample by sample — up to ~9.6 M of
+        // them at the documented ten-minute ceiling — and this runs at the
+        // moment the app is also draining capture events and opening the LLM
+        // stream, so the encode goes to a blocking thread rather than parking a
+        // Tokio worker. The port hands us a borrowed slice and `spawn_blocking`
+        // needs `'static`, so the samples are copied in; that copy is a plain
+        // memcpy and is an order of magnitude cheaper than the encode it moves
+        // off the runtime.
+        let owned = samples.to_vec();
+        let wav = tokio::task::spawn_blocking(move || audio::encode_wav_16k_mono(&owned))
+            .await
+            .map_err(|e| SttError::Other(e.to_string()))?
+            .map_err(|e| SttError::Other(e.to_string()))?;
+        // One refcounted buffer for every attempt, the first included. The
+        // former `wav.clone()` copied the entire encoded WAV — ~19 MB at that
+        // same ceiling — per try, and paid it even when there was no retry.
+        let wav = WavBytes::from(wav);
         http::retry_with_backoff(self.retry, |_| self.transcribe_once(wav.clone())).await
     }
 }

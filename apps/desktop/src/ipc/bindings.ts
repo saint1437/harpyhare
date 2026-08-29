@@ -344,9 +344,19 @@ export type ResizeKeyPayload = {
 	dir: number,
 };
 
+/**
+ *  A REFERENCE into the chat-image store, not the picture.
+ * 
+ *  The shot is already on disk by the time this goes out (`screenshot::deliver`),
+ *  so what crosses the boundary is an id the frontend resolves through
+ *  `load_chat_images` — the very path a chat restored from disk takes. The
+ *  payload used to carry the whole PNG as base64, which the frontend decoded,
+ *  re-encoded and shipped straight back to `save_chat_image` for this same
+ *  store to write.
+ */
 export type ScreenshotReady = {
+	id: string,
 	mediaType: string,
-	dataBase64: string,
 };
 
 /**

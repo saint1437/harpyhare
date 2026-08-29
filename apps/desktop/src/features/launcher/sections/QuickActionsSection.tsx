@@ -1,4 +1,5 @@
 import { Plus, Trash2 } from "lucide-react";
+import { memo, useCallback } from "react";
 import { IconButton } from "@/components/IconButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,7 @@ import { SettingGroup, SettingRow, SettingSelect } from "@/features/settings/fie
 import { settingsEntry } from "@/features/settings/settings-registry";
 import { SettingEntryRow } from "@/features/settings/SettingsRows";
 import { useDict } from "@/hooks/useDict";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import { format } from "@/i18n";
 import { MODIFIER_COMBOS, QUICK_ACTION_LIMIT } from "@/ipc/types";
 import type { QuickAction } from "@/ipc/types";
@@ -40,16 +42,24 @@ function comboByActionId(actions: QuickAction[], modifier: string): Map<string, 
   return combos;
 }
 
-function QuickActionRow({
+/**
+ * The row takes its index and two callbacks shared by the whole list rather than
+ * a closure of its own: a keystroke here rebuilds `quick_actions` and with it the
+ * launcher's whole draft, and per-row closures would re-render every other row's
+ * input and textarea at typing speed.
+ */
+const QuickActionRow = memo(function QuickActionRow({
   action,
   combo,
+  index,
   onChange,
   onRemove,
 }: {
   action: QuickAction;
   combo: string;
-  onChange: (patch: Partial<QuickAction>) => void;
-  onRemove: () => void;
+  index: number;
+  onChange: (index: number, patch: Partial<QuickAction>) => void;
+  onRemove: (index: number) => void;
 }) {
   const copy = useDict().launcher.quickActions;
   return (
@@ -60,13 +70,19 @@ function QuickActionRow({
           placeholder={copy.titlePlaceholder}
           value={action.title}
           onChange={(e) => {
-            onChange({ title: e.target.value });
+            onChange(index, { title: e.target.value });
           }}
         />
         <span className="min-w-10 shrink-0 text-right font-mono text-caption text-fg-subtle tabular-nums">
           {combo}
         </span>
-        <IconButton title={copy.remove} className="hover:text-danger" onClick={onRemove}>
+        <IconButton
+          title={copy.remove}
+          className="hover:text-danger"
+          onClick={() => {
+            onRemove(index);
+          }}
+        >
           <Trash2 />
         </IconButton>
       </div>
@@ -76,13 +92,13 @@ function QuickActionRow({
         placeholder={copy.promptPlaceholder}
         value={action.prompt}
         onChange={(e) => {
-          onChange({ prompt: e.target.value });
+          onChange(index, { prompt: e.target.value });
         }}
         className="max-h-64 overflow-y-auto"
       />
     </div>
   );
-}
+});
 
 export function QuickActionsSection({ draft, set }: SectionProps) {
   const dict = useDict();
@@ -94,21 +110,30 @@ export function QuickActionsSection({ draft, set }: SectionProps) {
   const combos = comboByActionId(actions, modifier);
   const atLimit = actions.length >= QUICK_ACTION_LIMIT;
 
-  const updateAt = (index: number, patch: Partial<QuickAction>) => {
-    set(
-      "quick_actions",
-      actions.map((a, i) => (i === index ? { ...a, ...patch } : a)),
-    );
-  };
-  const removeAt = (index: number) => {
-    set(
-      "quick_actions",
-      actions.filter((_, i) => i !== index),
-    );
-  };
-  const add = () => {
-    set("quick_actions", [...actions, newQuickAction()]);
-  };
+  // Stable across a keystroke: the list is read through a ref so the callbacks do
+  // not have to be rebuilt every time one of its titles changes.
+  const actionsRef = useLatestRef(actions);
+  const updateAt = useCallback(
+    (index: number, patch: Partial<QuickAction>) => {
+      set(
+        "quick_actions",
+        actionsRef.current.map((a, i) => (i === index ? { ...a, ...patch } : a)),
+      );
+    },
+    [set, actionsRef],
+  );
+  const removeAt = useCallback(
+    (index: number) => {
+      set(
+        "quick_actions",
+        actionsRef.current.filter((_, i) => i !== index),
+      );
+    },
+    [set, actionsRef],
+  );
+  const add = useCallback(() => {
+    set("quick_actions", [...actionsRef.current, newQuickAction()]);
+  }, [set, actionsRef]);
 
   return (
     <SettingGroup title={copy.title} description={copy.description}>
@@ -142,12 +167,9 @@ export function QuickActionsSection({ draft, set }: SectionProps) {
           key={quickAction.id}
           action={quickAction}
           combo={combos.get(quickAction.id) ?? ""}
-          onChange={(patch) => {
-            updateAt(index, patch);
-          }}
-          onRemove={() => {
-            removeAt(index);
-          }}
+          index={index}
+          onChange={updateAt}
+          onRemove={removeAt}
         />
       ))}
       <div className="flex items-center gap-3 px-3 py-2">

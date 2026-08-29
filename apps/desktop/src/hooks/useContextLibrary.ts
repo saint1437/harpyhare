@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { usePersistedStore } from "@/hooks/usePersistedStore";
 import { getDict } from "@/i18n";
 import { loadContextLibrary, saveContextLibrary } from "@/ipc/commands";
@@ -44,49 +44,74 @@ export function useContextLibrary(): ContextLibraryApi {
     },
   });
 
-  return {
-    library,
-    addFolder: useCallback(
-      (name) => {
-        setLibrary((lib) => addFolder(lib, name));
-      },
-      [setLibrary],
-    ),
-    renameFolder: useCallback(
-      (id, name) => {
-        setLibrary((lib) => renameFolder(lib, id, name));
-      },
-      [setLibrary],
-    ),
-    removeFolder: useCallback(
-      (id) => {
-        setLibrary((lib) => removeFolder(lib, id));
-      },
-      [setLibrary],
-    ),
-    addDoc: useCallback(
-      (doc) => {
-        setLibrary((lib) => addDoc(lib, doc));
-      },
-      [setLibrary],
-    ),
-    updateDoc: useCallback(
-      (id, patch) => {
-        setLibrary((lib) => updateDoc(lib, id, patch));
-      },
-      [setLibrary],
-    ),
-    removeDoc: useCallback(
-      (id) => {
-        setLibrary((lib) => removeDoc(lib, id));
-      },
-      [setLibrary],
-    ),
-    moveDoc: useCallback(
-      (id, folderId) => {
-        setLibrary((lib) => moveDoc(lib, id, folderId));
-      },
-      [setLibrary],
-    ),
-  };
+  const addFolderCb = useCallback(
+    (name: string) => {
+      setLibrary((lib) => addFolder(lib, name));
+    },
+    [setLibrary],
+  );
+  const renameFolderCb = useCallback(
+    (id: string, name: string) => {
+      setLibrary((lib) => renameFolder(lib, id, name));
+    },
+    [setLibrary],
+  );
+  const removeFolderCb = useCallback(
+    (id: string) => {
+      setLibrary((lib) => removeFolder(lib, id));
+    },
+    [setLibrary],
+  );
+  const addDocCb = useCallback(
+    (doc: { name: string; text: string; folderId: string }) => {
+      setLibrary((lib) => addDoc(lib, doc));
+    },
+    [setLibrary],
+  );
+  const updateDocCb = useCallback(
+    (id: string, patch: Partial<Pick<ContextDoc, "name" | "text">>) => {
+      setLibrary((lib) => updateDoc(lib, id, patch));
+    },
+    [setLibrary],
+  );
+  const removeDocCb = useCallback(
+    (id: string) => {
+      setLibrary((lib) => removeDoc(lib, id));
+    },
+    [setLibrary],
+  );
+  const moveDocCb = useCallback(
+    (id: string, folderId: string) => {
+      setLibrary((lib) => moveDoc(lib, id, folderId));
+    },
+    [setLibrary],
+  );
+
+  // The object itself has to be stable, not only the callbacks in it: it is a
+  // dependency of `ContextLibraryPanel`'s native-drop effect, so a new identity
+  // on every `LauncherApp` render (a permission poll tick, a window focus, an
+  // update-progress event) tore down `onDragDropEvent` and re-registered it
+  // through an async IPC round trip — including once per file MID-DROP.
+  return useMemo(
+    () => ({
+      library,
+      addFolder: addFolderCb,
+      renameFolder: renameFolderCb,
+      removeFolder: removeFolderCb,
+      addDoc: addDocCb,
+      updateDoc: updateDocCb,
+      removeDoc: removeDocCb,
+      moveDoc: moveDocCb,
+    }),
+    [
+      library,
+      addFolderCb,
+      renameFolderCb,
+      removeFolderCb,
+      addDocCb,
+      updateDocCb,
+      removeDocCb,
+      moveDocCb,
+    ],
+  );
 }

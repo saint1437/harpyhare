@@ -21,7 +21,15 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const HTTP2_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(30);
 pub const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// The second client profile. A streaming multipart upload lives for the whole
+/// recording (up to ten minutes of push-to-talk), so it cannot take the shared
+/// 60-second read timeout — and `read_timeout` is a client-level setting in
+/// reqwest, which is why the profile needs a client of its own rather than a
+/// per-request option.
+pub const STREAMING_READ_TIMEOUT: Duration = Duration::from_secs(11 * 60);
+
 static SHARED: OnceLock<reqwest::Client> = OnceLock::new();
+static SHARED_STREAMING: OnceLock<reqwest::Client> = OnceLock::new();
 
 /// The single place the client is configured. `read_timeout` is a client-level
 /// setting in reqwest (there is no per-request equivalent), which is why the two
@@ -52,6 +60,17 @@ pub fn build_client(read_timeout: Duration) -> reqwest::Client {
 pub fn shared() -> reqwest::Client {
     SHARED
         .get_or_init(|| build_client(DEFAULT_READ_TIMEOUT))
+        .clone()
+}
+
+/// The same warm client for the `STREAMING_READ_TIMEOUT` profile. `GroqStt` is
+/// rebuilt whenever the key, the language or the translation toggle changes, and
+/// while it built its own client each time, every such change threw away the
+/// warm Groq pool — so the next push-to-talk paid a full TLS handshake inside
+/// the "release the key → text" latency path.
+pub fn shared_streaming() -> reqwest::Client {
+    SHARED_STREAMING
+        .get_or_init(|| build_client(STREAMING_READ_TIMEOUT))
         .clone()
 }
 

@@ -138,8 +138,10 @@ fn digit_family_shares_a_modifier_with_the_arrow_and_plus_minus_families() {
 fn two_digit_families_collide_on_a_shared_modifier() {
     let first = digit_family_action("первое");
     let second = digit_family_action("второе");
-    assert!(key_spaces_overlap(&first, "Cmd", &second, "Cmd"));
-    assert!(!key_spaces_overlap(&first, "Cmd", &second, "Alt"));
+    let cmd = ComboParts::new("Cmd");
+    let alt = ComboParts::new("Alt");
+    assert!(key_spaces_overlap(&first, &cmd, &second, &cmd));
+    assert!(!key_spaces_overlap(&first, &cmd, &second, &alt));
 }
 
 #[test]
@@ -188,11 +190,67 @@ fn normalize_takes_a_combo_away_from_an_untouched_default() {
     );
 }
 
+/// The pairwise loop compares combos that were split ONCE up front, so the
+/// canonicalisation `conflict` performs has to survive that move: `Cmd+KeyX`
+/// and `cmd+x` are still the same key, and the later claimant still wins it.
+#[test]
+fn normalize_resolves_a_conflict_written_in_another_spelling() {
+    let mut bindings =
+        vec![binding(ACTION_TOGGLE_WINDOW, "Cmd+KeyX"), binding(ACTION_RECORD, "cmd+x")];
+    normalize(&mut bindings);
+    assert_eq!(effective(&bindings, ACTION_RECORD), "cmd+x");
+    assert_eq!(effective(&bindings, ACTION_TOGGLE_WINDOW), "", "прежний владелец теряет сочетание");
+}
+
+/// And the scope rule survives it too: recording and teleprompter never coexist
+/// on screen, so both may hold the same combo — through `normalize`, not only
+/// through `conflict`.
+#[test]
+fn normalize_lets_the_two_transient_scopes_share_one_combo() {
+    let mut bindings = vec![
+        binding(ACTION_CANCEL_RECORDING, "Cmd+Shift+K"),
+        binding(ACTION_TELEPROMPTER_CLOSE, "Cmd+Shift+K"),
+    ];
+    normalize(&mut bindings);
+    assert_eq!(effective(&bindings, ACTION_CANCEL_RECORDING), "Cmd+Shift+K");
+    assert_eq!(effective(&bindings, ACTION_TELEPROMPTER_CLOSE), "Cmd+Shift+K");
+}
+
 #[test]
 fn normalize_leaves_untouched_defaults_out_of_the_list() {
     let mut bindings = vec![binding(ACTION_RECORD, &effective(&[], ACTION_RECORD))];
     normalize(&mut bindings);
     assert!(bindings.is_empty(), "совпадающее с дефолтом не хранится");
+}
+
+/// `Settings::clamp_after` skips this sweep whenever a write leaves the hotkey
+/// map alone, and the whole argument for that is right here: normalizing an
+/// already-normalized map cannot change it. The output's ORDER is not the same
+/// as the input's (the result is rebuilt in `HOTKEY_ACTIONS` order, and
+/// `claimed` reads it back-to-front), so this is not self-evident — it holds
+/// because a first pass leaves no colliding pair for a second one to resolve.
+#[test]
+fn normalize_is_a_fixed_point_of_itself() {
+    let cases: Vec<Vec<HotkeyBinding>> = vec![
+        vec![],
+        vec![binding("нет такого", "Cmd+Q"), binding(ACTION_RECORD, "F8"), binding(ACTION_RECORD, "F7")],
+        vec![binding(ACTION_TOGGLE_WINDOW, "Cmd+Shift+X"), binding(ACTION_RECORD, "Cmd+Shift+X")],
+        // A user combo that takes an untouched default away from its owner.
+        vec![binding(ACTION_SEND, &effective(&[], ACTION_TELEPROMPTER))],
+        // Two modifier families on one modifier, i.e. a collision resolved
+        // without either side naming a key.
+        vec![binding(ACTION_MOVE_WINDOW, MODIFIER_ALT), binding(ACTION_SCROLL_CHAT, MODIFIER_ALT)],
+        // Entries `normalize` deletes rather than rewrites: a redundant repeat
+        // of the default, and a combo the previous line already took.
+        vec![binding(ACTION_RECORD, &effective(&[], ACTION_RECORD))],
+    ];
+    for case in cases {
+        let mut once = case.clone();
+        normalize(&mut once);
+        let mut twice = once.clone();
+        normalize(&mut twice);
+        assert_eq!(once, twice, "повторная нормализация обязана ничего не менять: {case:?}");
+    }
 }
 
 #[test]

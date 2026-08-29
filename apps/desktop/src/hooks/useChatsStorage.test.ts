@@ -14,7 +14,7 @@ vi.mock("@/ipc/commands", () => ({
   pruneChatImages: (keep: string[]) => pruneChatImages(keep),
 }));
 
-import { addDraftImage } from "@/state/chat-attachments";
+import { addDraftAttachments, addDraftStoredImage } from "@/state/chat-attachments";
 import {
   getActiveChat,
   getActiveChatId,
@@ -29,6 +29,19 @@ import { useChatsStorage } from "./useChatsStorage";
 const IMAGE_ID = "00000000000000aa.png";
 const DRAFT_MARKER = "черновик после сбоя";
 const SAVE_WAIT_MS = 3000;
+/** `btoa` of three zero bytes — what a pasted 3-byte PNG encodes to. */
+const IMAGE_BASE64 = "AAAA";
+
+/**
+ * A paste of one PNG. This is the path that still hands bytes to
+ * `save_chat_image`; the screenshot path arrives as a reference instead.
+ */
+function pastedPng(): DataTransferItemList {
+  const file = new File([new Uint8Array(3)], "x.png", { type: "image/png" });
+  return [
+    { kind: "file", type: "image/png", getAsFile: () => file },
+  ] as unknown as DataTransferItemList;
+}
 
 /** Mounting the storage hook is what starts the load; the store is the result. */
 function mount() {
@@ -122,10 +135,10 @@ describe("useChatsStorage — картинки переживают переза
     await mountLoaded();
 
     await act(async () => {
-      await addDraftImage(getActiveChatId(), "data:image/png;base64,AAAA", "image/png");
+      await addDraftAttachments(getActiveChatId(), pastedPng());
     });
 
-    expect(saveChatImage).toHaveBeenCalledWith("image/png", "AAAA");
+    expect(saveChatImage).toHaveBeenCalledWith("image/png", IMAGE_BASE64);
     expect(getActiveChat().draftAttachments).toHaveLength(1);
     expect(getActiveChat().draftAttachments[0]?.id).toBe("");
     expect(getActiveChat().draftAttachments[0]?.payload.data).toBe("AAAA");
@@ -151,11 +164,66 @@ describe("useChatsStorage — картинки переживают переза
     await mountLoaded();
 
     await act(async () => {
-      await addDraftImage(getActiveChatId(), "data:image/png;base64,AAAA", "image/png");
+      await addDraftAttachments(getActiveChatId(), pastedPng());
     });
 
-    expect(saveChatImage).toHaveBeenCalledWith("image/png", "AAAA");
+    expect(saveChatImage).toHaveBeenCalledWith("image/png", IMAGE_BASE64);
     expect(getActiveChat().draftAttachments[0]?.id).toBe(IMAGE_ID);
+  });
+});
+
+/**
+ * The снимок области приходит СССЫЛКОЙ: файл уже лежит в хранилище, а байты
+ * фронтенд берёт тем же `load_chat_images`, которым поднимает картинки
+ * восстановленного чата. Ни `save_chat_image`, ни base64 в событии тут больше
+ * не участвуют.
+ */
+describe("useChatsStorage — снимок области приходит ссылкой", () => {
+  it("вложение собирается из хранилища, а не пишется туда заново", async () => {
+    vi.useRealTimers();
+    loadChatImages.mockResolvedValue([{ id: IMAGE_ID, dataBase64: IMAGE_BASE64 }]);
+    await mountLoaded();
+    loadChatImages.mockClear();
+
+    await act(async () => {
+      await addDraftStoredImage(getActiveChatId(), IMAGE_ID, "image/png");
+    });
+
+    expect(loadChatImages).toHaveBeenCalledWith([IMAGE_ID]);
+    expect(saveChatImage).not.toHaveBeenCalled();
+    const attachment = getActiveChat().draftAttachments[0];
+    expect(attachment?.id).toBe(IMAGE_ID);
+    expect(attachment?.payload).toEqual({ media_type: "image/png", data: IMAGE_BASE64 });
+    expect(attachment?.preview).toBe(`data:image/png;base64,${IMAGE_BASE64}`);
+  });
+
+  it("ссылка без файла не даёт вложения — байтов нет ни для миниатюры, ни для запроса", async () => {
+    vi.useRealTimers();
+    await mountLoaded();
+    loadChatImages.mockResolvedValue([]);
+
+    await act(async () => {
+      await addDraftStoredImage(getActiveChatId(), IMAGE_ID, "image/png");
+    });
+
+    expect(getActiveChat().draftAttachments).toEqual([]);
+  });
+
+  it("уборка не трогает файл, на который ссылается черновик", async () => {
+    vi.useRealTimers();
+    loadChatImages.mockResolvedValue([{ id: IMAGE_ID, dataBase64: IMAGE_BASE64 }]);
+    await mountLoaded();
+
+    await act(async () => {
+      await addDraftStoredImage(getActiveChatId(), IMAGE_ID, "image/png");
+    });
+
+    const saved = await waitFor(() => {
+      const json = saveChats.mock.calls.at(-1)?.[0];
+      expect(json).toBeDefined();
+      return JSON.parse(json ?? "[]") as { draftAttachments: { id: string }[] }[];
+    });
+    expect(saved[0]?.draftAttachments).toEqual([{ id: IMAGE_ID, media_type: "image/png" }]);
   });
 });
 
@@ -180,13 +248,12 @@ describe("useChatsStorage", () => {
     expect(saveChats).toHaveBeenCalledTimes(1);
   });
 
-  it("addDraftImage добавляет вложение в черновик активного чата", async () => {
+  it("addDraftStoredImage добавляет вложение в черновик активного чата", async () => {
     vi.useRealTimers();
+    loadChatImages.mockResolvedValue([{ id: IMAGE_ID, dataBase64: IMAGE_BASE64 }]);
     await mountLoaded();
-    const dataUrl =
-      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
     await act(async () => {
-      await addDraftImage(getActiveChatId(), dataUrl, "image/png");
+      await addDraftStoredImage(getActiveChatId(), IMAGE_ID, "image/png");
     });
     expect(getActiveChat().draftAttachments).toHaveLength(1);
     expect(getActiveChat().draftAttachments[0]?.payload.media_type).toBe("image/png");
@@ -232,5 +299,34 @@ describe("useChatsStorage — активный чат переживает вы�
     await waitFor(() => {
       expect(localStorage.getItem(STORAGE_KEY)).toBe("two");
     });
+  });
+
+  // Черновик живёт в том же сторе, поэтому каждый символ публикует изменение —
+  // а id меняется только на переключении. Подложенное снаружи значение видно,
+  // что записи не было: раньше её делал любой чих в сторе.
+  it("правка черновика не переписывает запомненный id", async () => {
+    loadChats.mockResolvedValue(TWO_CHATS);
+    mount();
+    await waitFor(() => {
+      expect(getChats().length).toBe(2);
+    });
+    act(() => {
+      selectChat("two");
+    });
+    await waitFor(() => {
+      expect(localStorage.getItem(STORAGE_KEY)).toBe("two");
+    });
+
+    localStorage.setItem(STORAGE_KEY, "подложено");
+    act(() => {
+      patchChat("two", { draft: "п" });
+      patchChat("two", { draft: "пр" });
+    });
+    expect(localStorage.getItem(STORAGE_KEY)).toBe("подложено");
+
+    act(() => {
+      selectChat("one");
+    });
+    expect(localStorage.getItem(STORAGE_KEY)).toBe("one");
   });
 });

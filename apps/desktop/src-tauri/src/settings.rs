@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use crate::error::{AppError, CodedError, ErrorCode};
 use crate::sync::MutexExt;
@@ -383,7 +383,42 @@ fn migrate_onboarding_done(value: &mut serde_json::Value) {
 }
 
 impl Settings {
+    /// Brings every field back inside its bounds. Standalone: with no
+    /// predecessor to compare against, the hotkey map is swept unconditionally.
     pub fn clamp(&mut self) {
+        self.clamp_fields();
+        crate::hotkeys::normalize(&mut self.hotkeys);
+    }
+
+    /// `clamp` for a value edited out of an already-clamped `previous` — the
+    /// shape every write has, since `SettingsService::update` clones what it
+    /// holds, mutates the clone and clamps it back.
+    ///
+    /// `hotkeys::normalize` is the expensive half of clamping: it fills the map
+    /// out to the whole of `HOTKEY_ACTIONS` and compares every pair of them
+    /// (~150), while almost no write touches a hotkey at all — opacity, window
+    /// geometry, a model choice, a preset edit, a permission flag. A map that is
+    /// still byte-for-byte `previous`'s is ALREADY in normal form, because
+    /// `previous` came out of a clamp and `normalize` is idempotent
+    /// (`hotkeys::tests::normalize_is_a_fixed_point_of_itself`), so sweeping it
+    /// again can only reproduce it.
+    ///
+    /// That precondition is the whole of the soundness argument, and it is
+    /// enforced by the only type that calls this: `SettingsService` clamps in
+    /// `new` and clamps on every `update`, so what it hands over as `previous`
+    /// is never a map `normalize` would still change. `clamp` stays
+    /// unconditional for every other caller (`load`, the tests), which have no
+    /// predecessor to prove anything about.
+    fn clamp_after(&mut self, previous: &Settings) {
+        self.clamp_fields();
+        if self.hotkeys != previous.hotkeys {
+            crate::hotkeys::normalize(&mut self.hotkeys);
+        }
+    }
+
+    /// Everything clamping does except the hotkey sweep: per-field bounds that
+    /// depend on nothing but the field they touch.
+    fn clamp_fields(&mut self) {
         self.window_opacity = limits::window::OPACITY.clamp(self.window_opacity);
         self.window_width = limits::window::WIDTH.clamp(self.window_width);
         self.window_height = limits::window::HEIGHT.clamp(self.window_height);
@@ -410,27 +445,41 @@ impl Settings {
             self.language = defaults::LANGUAGE.into();
         }
         self.quick_actions.truncate(QUICK_ACTION_LIMIT);
-        crate::hotkeys::normalize(&mut self.hotkeys);
     }
 
     pub fn load(path: &Path) -> std::io::Result<Self> {
-        let mut settings = match std::fs::read_to_string(path) {
-            Ok(raw) => Self::parse(&raw)
+        Self::load_with_version(path).map(|(settings, _)| settings)
+    }
+
+    /// The same read, plus the version the FILE was at before the migration
+    /// chain ran. `parse` stamps its result with the current version, so this is
+    /// the only place that still knows a document predates a given format step
+    /// — see `LoadedSettings::document_version`.
+    fn load_with_version(path: &Path) -> std::io::Result<(Self, u32)> {
+        let (mut settings, version) = match std::fs::read_to_string(path) {
+            Ok(raw) => Self::parse_with_version(&raw)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Settings::default(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                (Settings::default(), CURRENT_SCHEMA_VERSION)
+            }
             Err(e) => return Err(e),
         };
         settings.clamp();
-        Ok(settings)
+        Ok((settings, version))
     }
 
     pub fn parse(raw: &str) -> Result<Self, SettingsError> {
+        Self::parse_with_version(raw).map(|(settings, _)| settings)
+    }
+
+    fn parse_with_version(raw: &str) -> Result<(Self, u32), SettingsError> {
         let mut value: serde_json::Value =
             serde_json::from_str(raw).map_err(|e| SettingsError::Corrupt(e.to_string()))?;
         let from = document_version(&value);
         migrate(&mut value, from);
-        serde_json::from_value::<Settings>(value)
-            .map_err(|e| SettingsError::Corrupt(e.to_string()))
+        let settings = serde_json::from_value::<Settings>(value)
+            .map_err(|e| SettingsError::Corrupt(e.to_string()))?;
+        Ok((settings, from))
     }
 
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
@@ -465,16 +514,44 @@ fn unix_now_secs() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
+/// Everything the startup read of `settings.json` produced.
+///
+/// `document_version` is the version the FILE was at **before** the migration
+/// chain ran, and it is the only surviving evidence of that: `Settings::parse`
+/// stamps the value it returns with the current version, so `schema_version` on
+/// the returned struct always reads "current". `secrets::load_or_migrate` needs
+/// exactly this fact — a document already past the split cannot be hiding a
+/// credential — to skip reading and parsing the same file a second time on
+/// every cold start. A missing or quarantined file reports the current version:
+/// there are no bytes left to migrate anything out of.
+pub struct LoadedSettings {
+    pub settings: Settings,
+    pub recovery: Option<SettingsRecovery>,
+    pub document_version: u32,
+}
+
 /// Three outcomes, not two: no file → defaults; parsed → settings; unreadable →
 /// the bytes are renamed out of the way, the reason is logged AND reported, and
 /// defaults are used. The old `unwrap_or_else(|_| default())` silently made the
 /// third case look like the first, and the first `set_settings` overwrote the
 /// keys and the access token with defaults.
-pub fn load_or_recover(path: &Path) -> (Settings, Option<SettingsRecovery>) {
-    match Settings::load(path) {
-        Ok(settings) => (settings, None),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Settings::default(), None),
-        Err(e) => (Settings::default(), Some(quarantine(path, e.to_string()))),
+pub fn load_or_recover(path: &Path) -> LoadedSettings {
+    match Settings::load_with_version(path) {
+        Ok((settings, document_version)) => LoadedSettings {
+            settings,
+            recovery: None,
+            document_version,
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => LoadedSettings {
+            settings: Settings::default(),
+            recovery: None,
+            document_version: CURRENT_SCHEMA_VERSION,
+        },
+        Err(e) => LoadedSettings {
+            settings: Settings::default(),
+            recovery: Some(quarantine(path, e.to_string())),
+            document_version: CURRENT_SCHEMA_VERSION,
+        },
     }
 }
 
@@ -507,9 +584,20 @@ pub(crate) fn quarantine(path: &Path, reason: String) -> SettingsRecovery {
 /// concurrent updates of two different fields both survive. The secrets have
 /// since moved to `secrets::SecretsStore`, which is the same construction over
 /// its own file.
+///
+/// **The value behind the lock is an `Arc`, and that is a performance decision
+/// with a shape.** `Settings` is three `Vec`s and a dozen `String`s — the prompt
+/// presets alone can be tens of kilobytes — while the ~25 places that read it
+/// typically want one field. `get` used to deep-copy all of it, and
+/// `update` copied it three more times *inside* the critical section that also
+/// holds the fsync. Handing out an `Arc` makes a read a refcount bump, leaves
+/// exactly one deep copy per write (the one the mutation needs), and changes
+/// nothing about the locking: the swap still happens under the same guard, after
+/// the file is on disk. Readers keep a consistent snapshot because the stored
+/// `Arc` is replaced wholesale, never mutated in place.
 pub struct SettingsService {
     path: PathBuf,
-    current: Mutex<Settings>,
+    current: Mutex<Arc<Settings>>,
     /// Set once at startup when `settings.json` could not be parsed and had to
     /// be renamed aside. Pulled by the launcher through `take_settings_recovery`
     /// — an event would fire before any window is listening.
@@ -520,15 +608,22 @@ pub struct SettingsService {
 /// effects to run and `new` to answer the frontend with the clamped value.
 #[derive(Debug, Clone)]
 pub struct SettingsUpdate {
-    pub old: Settings,
-    pub new: Settings,
+    pub old: Arc<Settings>,
+    pub new: Arc<Settings>,
 }
 
 impl SettingsService {
-    pub fn new(path: PathBuf, settings: Settings, recovery: Option<SettingsRecovery>) -> Self {
+    /// The value is clamped on the way in, and that is not belt-and-braces:
+    /// `update` skips the hotkey sweep for a write that leaves the map alone
+    /// (`Settings::clamp_after`), which is only sound while everything this
+    /// service holds is already normalized. Startup hands over a clamped value
+    /// or a default, so this costs one sweep at launch and turns a promise the
+    /// caller has to keep into an invariant the service enforces itself.
+    pub fn new(path: PathBuf, mut settings: Settings, recovery: Option<SettingsRecovery>) -> Self {
+        settings.clamp();
         Self {
             path,
-            current: Mutex::new(settings),
+            current: Mutex::new(Arc::new(settings)),
             recovery: Mutex::new(recovery),
         }
     }
@@ -539,14 +634,8 @@ impl SettingsService {
         self.recovery.lock_safe().take()
     }
 
-    pub fn get(&self) -> Settings {
-        self.current.lock_safe().clone()
-    }
-
-    /// For the raw-input path only (`platform::arrow_action`): the low-level
-    /// keyboard hook must never block, so a contended lock means "no decision".
-    pub fn try_get(&self) -> Option<Settings> {
-        self.current.try_lock().ok().map(|s| s.clone())
+    pub fn get(&self) -> Arc<Settings> {
+        Arc::clone(&self.current.lock_safe())
     }
 
     pub fn path(&self) -> &Path {
@@ -558,16 +647,22 @@ impl SettingsService {
         F: FnOnce(&mut Settings),
     {
         let mut guard = self.current.lock_safe();
-        let old = guard.clone();
-        let mut next = old.clone();
+        let old = Arc::clone(&guard);
+        // The one deep copy a write cannot avoid: the mutation needs a `&mut`,
+        // and the old value has to stay intact for `SettingsUpdate.old`.
+        let mut next = (*old).clone();
         mutate(&mut next);
-        next.clamp();
-        if next == old {
-            return Ok(SettingsUpdate { old, new: next });
+        next.clamp_after(&old);
+        if next == *old {
+            return Ok(SettingsUpdate {
+                new: Arc::clone(&old),
+                old,
+            });
         }
         next.save(&self.path)
             .map_err(|e| SettingsError::Write(e.to_string()))?;
-        *guard = next.clone();
+        let next = Arc::new(next);
+        *guard = Arc::clone(&next);
         Ok(SettingsUpdate { old, new: next })
     }
 }
@@ -622,16 +717,34 @@ fn write_tmp_file(tmp: &Path, contents: &[u8]) -> std::io::Result<()> {
     file.sync_all()
 }
 
-pub(crate) fn write_atomic_owner_only_bytes(path: &Path, contents: &[u8]) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+fn write_and_rename(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     let tmp = unique_tmp_path(path);
     let outcome = write_tmp_file(&tmp, contents).and_then(|()| std::fs::rename(&tmp, path));
     if outcome.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
     outcome
+}
+
+/// The data directory is created on demand rather than before every write.
+///
+/// This one writer serves settings.json, secrets.json, chats.json and the
+/// presets cache, and the frontend debounces saves down to one every few hundred
+/// milliseconds — so `create_dir_all` used to run on every keystroke pause, for
+/// a directory that has existed since the first write of the install. It is now
+/// the recovery path for the only failure it ever actually fixed: `create_new`
+/// (or the `rename`) answering `NotFound` because the parent is not there yet.
+pub(crate) fn write_atomic_owner_only_bytes(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    match write_and_rename(path, contents) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let Some(parent) = path.parent() else {
+                return Err(e);
+            };
+            std::fs::create_dir_all(parent)?;
+            write_and_rename(path, contents)
+        }
+        outcome => outcome,
+    }
 }
 
 #[cfg(test)]

@@ -182,6 +182,48 @@ fn clamp_resolves_hotkey_collisions_in_favour_of_the_latest_binding() {
     assert_eq!(crate::hotkeys::effective(&s.hotkeys, ACTION_TOGGLE_WINDOW), "");
 }
 
+/// `SettingsService::update` clamps against the snapshot it already holds, and
+/// skips the hotkey sweep when the write left the map alone. That skip is
+/// observable only against a `previous` that is NOT in normal form — the
+/// service can never hold one (it clamps in `new` and on every write), so the
+/// pair is built by hand here: it is the only way to tell "skipped" from "ran".
+#[test]
+fn clamp_after_leaves_an_untouched_hotkey_map_alone() {
+    use crate::hotkeys::{effective, HotkeyBinding, ACTION_RECORD};
+    // A binding `normalize` deletes rather than keeps: it repeats the default.
+    let redundant =
+        vec![HotkeyBinding { action: ACTION_RECORD.into(), combo: effective(&[], ACTION_RECORD) }];
+    let previous = Settings { hotkeys: redundant.clone(), ..Default::default() };
+
+    let mut next = Settings { skipped_version: "9.9.9".into(), ..previous.clone() };
+    next.clamp_after(&previous);
+    assert_eq!(next.hotkeys, redundant, "запись, не трогавшая хоткеи, не пересобирает их");
+
+    let mut swept = next.clone();
+    swept.clamp();
+    assert!(swept.hotkeys.is_empty(), "…а безусловный clamp этот же список вычистил бы");
+}
+
+/// The other half of the same decision: a write that DOES touch the map is
+/// resolved exactly as an unconditional clamp would resolve it.
+#[test]
+fn clamp_after_resolves_a_changed_hotkey_map_exactly_like_clamp() {
+    use crate::hotkeys::{HotkeyBinding, ACTION_RECORD, ACTION_TOGGLE_WINDOW};
+    let previous = Settings::default();
+    let mut next = Settings {
+        hotkeys: vec![
+            HotkeyBinding { action: ACTION_TOGGLE_WINDOW.into(), combo: "Cmd+Shift+X".into() },
+            HotkeyBinding { action: ACTION_RECORD.into(), combo: "Cmd+Shift+X".into() },
+        ],
+        ..Default::default()
+    };
+    let mut reference = next.clone();
+    reference.clamp();
+
+    next.clamp_after(&previous);
+    assert_eq!(next, reference, "разрешение конфликтов не зависит от того, есть ли предыдущее значение");
+}
+
 #[test]
 fn clamp_resets_unknown_theme() {
     let mut s = Settings { theme: "neon".into(), ..Default::default() };
@@ -370,6 +412,11 @@ fn load_clamps_out_of_range_values() {
 fn save_creates_parent_directories() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("nested/deeper/settings.json");
+    Settings::default().save(&path).unwrap();
+    assert!(path.exists());
+    assert_eq!(leftover_tmp_files(path.parent().unwrap()), 0);
+    // And the second write goes through without the directory being made again
+    // — the `create_dir_all` is the `NotFound` recovery, not a per-write step.
     Settings::default().save(&path).unwrap();
     assert!(path.exists());
     assert_eq!(leftover_tmp_files(path.parent().unwrap()), 0);
@@ -614,9 +661,14 @@ fn a_legacy_file_still_loads_and_migrates_end_to_end() {
 #[test]
 fn a_missing_file_gives_defaults_and_no_recovery_record() {
     let dir = tempfile::tempdir().unwrap();
-    let (s, recovery) = load_or_recover(&dir.path().join("absent.json"));
-    assert_eq!(s, Settings::default());
-    assert!(recovery.is_none());
+    let loaded = load_or_recover(&dir.path().join("absent.json"));
+    assert_eq!(loaded.settings, Settings::default());
+    assert!(loaded.recovery.is_none());
+    assert_eq!(
+        loaded.document_version,
+        CURRENT_SCHEMA_VERSION,
+        "нечего мигрировать: файла нет"
+    );
 }
 
 #[test]
@@ -624,9 +676,13 @@ fn a_readable_file_gives_settings_and_no_recovery_record() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("s.json");
     std::fs::write(&path, r#"{"skipped_version":"1.2.3"}"#).unwrap();
-    let (s, recovery) = load_or_recover(&path);
-    assert_eq!(s.skipped_version, "1.2.3");
-    assert!(recovery.is_none());
+    let loaded = load_or_recover(&path);
+    assert_eq!(loaded.settings.skipped_version, "1.2.3");
+    assert!(loaded.recovery.is_none());
+    // The FILE had no `schema_version`, and the migrated struct always reports
+    // the current one — only `document_version` still knows the difference.
+    assert_eq!(loaded.settings.schema_version, CURRENT_SCHEMA_VERSION);
+    assert_eq!(loaded.document_version, SCHEMA_VERSION_LEGACY);
 }
 
 /// The regression this whole outcome exists for: a paid access token used to be
@@ -639,9 +695,14 @@ fn a_corrupt_file_is_renamed_aside_and_reported() {
     let broken = r#"{"access_token": "itk_paid", "#;
     std::fs::write(&path, broken).unwrap();
 
-    let (s, recovery) = load_or_recover(&path);
-    assert_eq!(s, Settings::default(), "битый файл не выдаёт мусорных настроек");
-    let recovery = recovery.expect("факт порчи обязан дойти до фронта");
+    let loaded = load_or_recover(&path);
+    assert_eq!(loaded.settings, Settings::default(), "битый файл не выдаёт мусорных настроек");
+    assert_eq!(
+        loaded.document_version,
+        CURRENT_SCHEMA_VERSION,
+        "байты убраны в сторону — мигрировать из них уже нечего"
+    );
+    let recovery = loaded.recovery.expect("факт порчи обязан дойти до фронта");
     assert!(!path.exists(), "битый файл убран с дороги");
     let backup = std::path::Path::new(&recovery.backup_path);
     assert_eq!(std::fs::read_to_string(backup).unwrap(), broken);
@@ -655,8 +716,8 @@ fn a_field_with_the_wrong_type_counts_as_corruption_not_as_a_missing_field() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("settings.json");
     std::fs::write(&path, r#"{"window_width":"960","access_token":"itk_paid"}"#).unwrap();
-    let (_, recovery) = load_or_recover(&path);
-    assert!(recovery.is_some(), "неверный тип поля не должен молча стирать файл");
+    let loaded = load_or_recover(&path);
+    assert!(loaded.recovery.is_some(), "неверный тип поля не должен молча стирать файл");
 }
 
 // ---------- SettingsService ----------
@@ -679,6 +740,62 @@ fn update_clamps_persists_and_returns_both_halves() {
         limits::window::WIDTH.max,
         "изменение обязано лежать на диске, а не только в памяти"
     );
+}
+
+/// The `Arc` behind the lock is not an implementation detail the tests may
+/// ignore: a reader holds a SNAPSHOT, and a write must replace it rather than
+/// mutate it under whoever is still reading.
+#[test]
+fn a_read_shares_the_snapshot_and_a_write_replaces_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let svc = service(&dir);
+    let first = svc.get();
+    assert!(Arc::ptr_eq(&first, &svc.get()), "чтение — счётчик ссылок, а не копия");
+
+    let applied = svc.update(|s| s.window_width = 1000.0).unwrap();
+    assert!(Arc::ptr_eq(&applied.old, &first), "old — тот же снимок, что был у читателя");
+    assert!(!Arc::ptr_eq(&applied.new, &first));
+    assert!(Arc::ptr_eq(&applied.new, &svc.get()));
+    assert_eq!(
+        first.window_width,
+        limits::window::WIDTH.default,
+        "снимок читателя не меняется под ним"
+    );
+}
+
+/// An update that changes nothing hands both halves back as the SAME snapshot,
+/// so `settings_effects` compares a value with itself and asks for nothing.
+#[test]
+fn an_update_that_changes_nothing_returns_one_snapshot_twice() {
+    let dir = tempfile::tempdir().unwrap();
+    let svc = service(&dir);
+    let applied = svc.update(|_| {}).unwrap();
+    assert!(Arc::ptr_eq(&applied.old, &applied.new));
+    assert!(Arc::ptr_eq(&applied.new, &svc.get()));
+}
+
+/// The skip lives in `update`, so the conflict rule is pinned there as well:
+/// assigning a taken combo still takes it from its previous owner, and the
+/// resolved map then survives a write that has nothing to do with hotkeys.
+#[test]
+fn update_resolves_hotkey_conflicts_and_carries_the_result_through_later_writes() {
+    use crate::hotkeys::{effective, HotkeyBinding, ACTION_RECORD, ACTION_TOGGLE_WINDOW};
+    let dir = tempfile::tempdir().unwrap();
+    let svc = service(&dir);
+
+    let assigned = svc
+        .update(|s| {
+            s.hotkeys = vec![
+                HotkeyBinding { action: ACTION_TOGGLE_WINDOW.into(), combo: "Cmd+Shift+X".into() },
+                HotkeyBinding { action: ACTION_RECORD.into(), combo: "Cmd+Shift+X".into() },
+            ];
+        })
+        .unwrap();
+    assert_eq!(effective(&assigned.new.hotkeys, ACTION_RECORD), "Cmd+Shift+X");
+    assert_eq!(effective(&assigned.new.hotkeys, ACTION_TOGGLE_WINDOW), "", "прежний владелец остаётся без хоткея");
+
+    let unrelated = svc.update(|s| s.skipped_version = "9.9.9".into()).unwrap();
+    assert_eq!(unrelated.new.hotkeys, assigned.new.hotkeys, "чужая запись не трогает разрешённую карту");
 }
 
 #[test]
@@ -750,13 +867,6 @@ fn a_counter_incremented_from_two_threads_loses_no_increment() {
     // 100 increments from the default, clamped at the registry maximum.
     let expected = limits::window::MOVE_STEP.clamp(limits::window::MOVE_STEP.default + 100);
     assert_eq!(svc.get().move_step, expected);
-}
-
-#[test]
-fn try_get_answers_when_the_lock_is_free() {
-    let dir = tempfile::tempdir().unwrap();
-    let svc = service(&dir);
-    assert!(svc.try_get().is_some());
 }
 
 /// The mode is set at `open` time rather than by a later `chmod`, and that is

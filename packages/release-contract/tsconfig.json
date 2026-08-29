@@ -6,5 +6,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["contract.d.ts", "*.test.ts", "vitest.config.ts"]
+  "include": ["contract.d.ts", "client.d.ts", "*.test.ts", "vitest.config.ts"]
 }

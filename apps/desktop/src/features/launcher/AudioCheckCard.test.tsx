@@ -18,16 +18,21 @@ vi.mock("@/ipc/commands", () => ({
   checkAudioSource: (source: AudioSource) => checkAudioSource(source),
 }));
 
-import { useAudioCheck } from "@/hooks/useAudioCheck";
 import { format, getDict } from "@/i18n";
 import { errorTitle } from "@/i18n/errors";
 import { dismissAllNotifications, getNotifications } from "@/lib/notifications";
 import { AudioCheckCard } from "./AudioCheckCard";
+import { AudioCheckProvider } from "./AudioCheckProvider";
 
-// Хук поднят в LauncherPanel, чтобы шапка могла сказать «Слушаю», пока проверка
-// открывает настоящий тап. Тест по-прежнему проверяет связку хук + карточка.
+// The hook is mounted in the provider so the header can say «Слушаю» while the
+// check holds a real tap, and so the live level reaches only the meter. The test
+// still exercises the pair — hook and card — through that provider.
 function Card({ autoModeEnabled }: { autoModeEnabled: boolean }) {
-  return <AudioCheckCard autoModeEnabled={autoModeEnabled} check={useAudioCheck()} />;
+  return (
+    <AudioCheckProvider>
+      <AudioCheckCard autoModeEnabled={autoModeEnabled} />
+    </AudioCheckProvider>
+  );
 }
 
 function copy() {

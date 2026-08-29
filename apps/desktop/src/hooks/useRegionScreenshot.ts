@@ -8,15 +8,22 @@ export interface RegionScreenshotApi {
   capture: () => void;
 }
 
+/**
+ * `screenshot-ready` hands over a REFERENCE into the chat-image store, not the
+ * picture: the backend has already written the shot, and the composer resolves
+ * the id through `load_chat_images` like it does for any image restored from
+ * disk. The hook used to glue a data URL out of the event's base64, which was
+ * the first of the copies that path made of a multi-megabyte buffer.
+ */
 export function useRegionScreenshot(
-  onImage: (dataUrl: string, mediaType: string) => void,
+  onImage: (id: string, mediaType: string) => void,
 ): RegionScreenshotApi {
   const onImageRef = useLatestRef(onImage);
 
   useEffect(
     () =>
       onEvent("screenshot-ready", (p) => {
-        onImageRef.current(`data:${p.mediaType};base64,${p.dataBase64}`, p.mediaType);
+        onImageRef.current(p.id, p.mediaType);
       }),
     [onImageRef],
   );

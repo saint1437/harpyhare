@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use tauri::AppHandle;
+use tauri::{AppHandle, WebviewWindow};
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HINSTANCE, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Dwm::{
@@ -18,7 +18,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     KBDLLHOOKSTRUCT, SW_SHOWNORMAL, WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
 };
 
-use super::{ModifierMask, PlatformBackend, handle_arrow_key};
+use super::{ModifierMask, PlatformBackend, handle_arrow_key_on};
 use crate::window::main_window;
 
 const KEY_PRESSED_MASK: u16 = 0x8000;
@@ -87,11 +87,8 @@ fn is_key_down(message: WPARAM) -> bool {
     message.0 as u32 == WM_KEYDOWN || message.0 as u32 == WM_SYSKEYDOWN
 }
 
-fn hud_is_focused(app: &AppHandle) -> bool {
-    let Some(w) = main_window(app) else {
-        return false;
-    };
-    let Ok(hwnd) = w.hwnd() else {
+fn hud_is_focused(window: &WebviewWindow) -> bool {
+    let Ok(hwnd) = window.hwnd() else {
         return false;
     };
     let foreground = unsafe { GetForegroundWindow() };
@@ -103,12 +100,18 @@ unsafe extern "system" fn arrow_keys_hook(code: i32, wparam: WPARAM, lparam: LPA
     if code == HC_ACTION as i32 && is_key_down(wparam) {
         let event = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
         if let (Some((dx, dy)), Some(app)) = (arrow_delta(event.vkCode), HOOK_APP.get()) {
-            let focused = hud_is_focused(app);
-            if cfg!(debug_assertions) && !focused {
-                eprintln!("[стрелки] окно HUD не активно — событие пропущено дальше");
-            }
-            if focused && handle_arrow_key(app, pressed_modifiers(), dx, dy) {
-                return SWALLOW_EVENT;
+            // ONE window lookup for the whole press. The focus test and the
+            // move/resize both need the HUD, and this body runs inside a
+            // `WH_KEYBOARD_LL` hook the OS unhooks if it outstays
+            // `LowLevelHooksTimeout`.
+            if let Some(window) = main_window(app) {
+                let focused = hud_is_focused(&window);
+                if cfg!(debug_assertions) && !focused {
+                    eprintln!("[стрелки] окно HUD не активно — событие пропущено дальше");
+                }
+                if focused && handle_arrow_key_on(&window, pressed_modifiers(), dx, dy) {
+                    return SWALLOW_EVENT;
+                }
             }
         }
     }

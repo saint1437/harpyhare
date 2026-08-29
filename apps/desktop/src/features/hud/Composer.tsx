@@ -107,8 +107,13 @@ function usePromptAutosize(ref: RefObject<HTMLTextAreaElement | null>, value: st
   const fit = useCallback(() => {
     const el = ref.current;
     if (!el) return;
+    // Collapsing the box is how its natural height is read at all; what must
+    // not happen is writing a height back when it did not change, because the
+    // observer below wakes on exactly that write.
+    const applied = el.style.height;
     el.style.height = "0px";
-    el.style.height = `${String(Math.min(el.scrollHeight, PROMPT_MAX_HEIGHT_PX))}px`;
+    const fitted = `${String(Math.min(el.scrollHeight, PROMPT_MAX_HEIGHT_PX))}px`;
+    el.style.height = fitted === applied ? applied : fitted;
   }, [ref]);
 
   useLayoutEffect(fit, [fit, value]);
@@ -116,7 +121,19 @@ function usePromptAutosize(ref: RefObject<HTMLTextAreaElement | null>, value: st
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const observer = new ResizeObserver(fit);
+    /**
+     * `fit` writes the height and the observer wakes on the height — measuring
+     * again on our own write is the feedback half of that loop, and it ran on
+     * every keystroke. Only a WIDTH change can alter how the text wraps, and a
+     * resizable window is the only reason the observer exists.
+     */
+    let lastWidth = el.clientWidth;
+    const observer = new ResizeObserver(() => {
+      const width = el.clientWidth;
+      if (width === lastWidth) return;
+      lastWidth = width;
+      fit();
+    });
     observer.observe(el);
     return () => {
       observer.disconnect();

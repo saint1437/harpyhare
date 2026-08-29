@@ -54,11 +54,16 @@ statically analysable value). That is why the version number and the direct inst
 right in the HTML: search engines see them, and the button never flashes a loading state.
 
 - `src/lib/platform.ts` — platforms, labels, requirements and the pure `detectPlatform`. Covered by tests.
-- `src/lib/release.ts` — parsing the API response and picking the installer (`pickPlatformAsset`:
-  macOS — `.dmg`; Windows — `-setup.exe`, then `.msi`, then `.exe`; updater assets are filtered
-  out). Covered by tests.
-- `src/lib/release-server.ts` — the fetch itself; on any error it returns `null` and the buttons
-  lead to the releases page.
+- `src/lib/release.ts` — the browser's half: `downloadHref` and `RELEASES_PAGE`, nothing that has
+  to recognise an asset name. It reads the repository slug from
+  `@harpyhare/release-contract/client`, the package's browser-safe entry point, and not from its
+  main one: three Client Components import this module, and the main entry would ship them the
+  whole naming scheme (`darwin-aarch64`, `windows-x86_64`, `.app.tar.gz`, the suffix fields) plus
+  three `Object.values(...)` results nothing in a browser reads. Covered by tests.
+- `src/lib/release-server.ts` — the fetch itself and everything that matches an asset name
+  (`pickPlatformAsset` through `isPlatformInstallerName` from `@harpyhare/release-contract`, which
+  derives the suffixes from the same manifest the release script builds them with). On any error it
+  returns `null` and the buttons lead to the releases page.
 - `src/hooks/usePlatform.ts` — the only place that reads `navigator`. Server rendering always
   returns macOS; on the client the button order is adjusted to the visitor's OS. That is why
   `DownloadChoice`/`DownloadButton`/`VersionNote`/`PlatformRequirements` are client components while
@@ -132,12 +137,51 @@ toggle under the mockup — and it is derived by dropping 0.06 of OKLCH lightnes
 steps and nothing else, so hue, chroma, text and marks stay the app's.
 
 Alongside the colours, `@theme inline` declares the two families (`--font-sans` Golos Text,
-`--font-display` Unbounded, both loaded through `next/font/google` in `components/RootHtml.tsx`).
+`--font-display` Unbounded, both loaded through `next/font/google` in `lib/fonts-cyrillic.ts` and
+`lib/fonts-latin.ts` — see "Fonts, per locale" below).
 The shadows and the outlined display type are **plain classes**, not theme tokens:
 `.shadow-poster`, `.shadow-poster-lg` and `.text-stroke` in `globals.css`. `.text-stroke` paints
 the text transparent and relies on `-webkit-text-stroke`, with an `@supports` fallback that
 repaints it solid — without it a headline would simply be blank in a browser that lacks the
 property.
+
+### Fonts, per locale
+
+Each locale's layout imports one font module and one only: `lib/fonts-cyrillic.ts` for `/`
+(`subsets: ["cyrillic", "latin"]`) and `lib/fonts-latin.ts` for `/en` (`["latin"]`). The split has
+to be at module level — the preload set is collected from the `next/font` calls in a route's module
+graph, so one module choosing between two declarations at render time still preloads all four
+files.
+
+**The split alone does not reach the HTML under Turbopack, so the links are emitted by hand.**
+`next build --webpack` writes a per-route `next-font-manifest.json`; `next build` (Turbopack, the
+default and what ships) writes the project-wide union of every declaration under every route key,
+and `/`, `/en` and `_not-found` all listed the same four files. So every declaration passes
+`preload: false` — which suppresses the automatic links while still self-hosting the font and
+writing the `@font-face` rules — and `components/RootHtml.tsx` calls `preload()` over the module's
+own `FONT_PRELOADS`. Measured on the built HTML: `/` keeps its four (142,464 B, Russian is its
+language) and `/en` drops to two (88,976 B), **53,488 B of top-priority font bytes off the critical
+path**.
+
+`FONT_PRELOADS` is generated, because a preload must name the very file the `@font-face` rule
+names and those names are content-hashed — a stale one is a 404 at the highest priority *and* an
+unpreloaded font, which is worse than no preload. `scripts/sync-font-preloads.mjs` reads the URLs
+back out of the built CSS:
+
+```bash
+node scripts/sync-font-preloads.mjs           # regenerate, after a build
+node scripts/sync-font-preloads.mjs --check    # fail if stale — in `npm test`, and after `next build`
+```
+
+`--check` has two layers. Without a build it still holds the source to its part of the bargain
+(every declaration really passes `preload: false`, every declared subset is one the script can
+locate, no `.p.` name — the copy `next/font` emits for a subset it preloads itself — and the Latin
+list is a subset of the Cyrillic one). With a build it compares every URL against the CSS. The
+landing's `build` script runs it straight after `next build`, so a font that moved fails the build
+instead of shipping a dead link.
+
+`app/not-found.tsx` preloads nothing on purpose: Next renders it into the not-found boundary of
+every route, so anything it preloads is preloaded on `/en` too.
 
 ### What the demo used to look like, and what changed
 
@@ -162,7 +206,63 @@ The "recording" change is the one with meaning behind it: in the app, cyan means
 captured right now" and red means "something is wrong", and the page had been advertising the
 former in the colour of the latter.
 
-**`npm test` runs three palette checks before vitest.** `scripts/sync-app-tokens.mjs --check`:
+### The second pass: eleven colours the replica did not have
+
+Adopting the package fixed the colours the demo was already painting. It did not add the ones it
+was not: the demo could only say "fine" and "broken", had no third text weight, no focus ring, and
+no dim half of the capture cyan — so "the buffer is holding audio" and "audio is being sent" were
+the same colour, which is the one distinction the product is about.
+
+| new token | from the app's | what it paints |
+| --- | --- | --- |
+| `--app-recording-dim` | `--listening-dim` | the "standing by" bars and the orb's ring |
+| `--app-subtle-fg` | `--fg-subtle` | captions and hints, which used to borrow `--app-muted-fg` |
+| `--app-border-strong` | `--line-strong` | an `outline` button's border, the slider track, the idle orb |
+| `--app-primary-hover` | `--accent-hover` | the accent's hover step — the demo lightened where the app darkens |
+| `--app-success`, `--app-warning` | `--success`, `--warning` | `StateBadge`, which is colour + glyph + word |
+| `--app-focus` | `--focus` | the focus **outline** — the demo had no focus-visible styling at all |
+| `--app-overlay`, `--app-scrim`, `--app-on-scrim` | same | the teleprompter's ground and the remove-X disc |
+| `--text-app-display` | `--hud-text-display` | 22px, the largest thing in the window |
+
+`scripts/check-contrast.mjs` now holds the replica to the **desktop's own pairs**, pair for pair:
+three text weights plus the two state colours that carry words at 4.5:1, and every small mark —
+ring, bars, glyphs, focus outline, `outline` border — at 3:1. 585 checks across five scopes.
+
+## What the demo actually is
+
+`src/components/app-demo/` is a working mock of the product, not a picture of it. Every string in
+it is a literal the app also shows (`apps/desktop/src/i18n/**` is the source; `demo-ru.ts` and
+`demo-en.ts` are transcriptions), and every state the window can be IN is reachable.
+
+**The window sits on a desktop.** The frame is `.app-desktop`; the window is an element inside it,
+translucent (`.app-hud-shell`, at the opacity the settings slider controls) and rounded. It used to
+fill the frame edge to edge, which quietly cost the page the two claims the surrounding section
+spends its words on — that the HUD floats and that you can see through it.
+
+**The collapsed mode is an orb, not a hidden window.** `⌘⇧H` shrinks the window to 80px holding a
+56px ball with seven states: capture **breathes**, work **spins**, an unread answer is a mark, and
+everything else is still. The demo used to draw a scrim over the frame captioned "window hidden" —
+a behaviour the product deliberately does not have, because a hidden window cannot answer the one
+question you have while it is gone: *can it still hear me?*
+
+**The keys work.** Live only while focus is inside the frame — a page cannot register OS-global
+shortcuts and should not pretend to — but inside that scope the combos are the app's,
+`preventDefault` included: `⌘R` holds to record, `⌘⇧H` collapses, `⌘⏎` sends, `⌘1…9` fire quick
+actions, `⌘⇧L` toggles auto listening, `⌘⇧T` opens the teleprompter, `Esc` cancels the recording
+first and the answer second. While collapsed, the keys that act on a chat you cannot see are dead,
+exactly as they are in the app.
+
+**One stream per chat, not one per window.** Switching tabs does not stop what the chat you left
+is generating. That is what makes a tab's busy dot mean anything, and it is the only way an answer
+can land somewhere you are not looking — which is the whole reason the orb has an `answer` state.
+
+Two states have no in-app trigger, because in the app they are things that happen *to* you: losing
+the network and an error from a provider. Those get a chip **below** the frame, kept visibly
+outside it so the window never grows an affordance the product lacks.
+
+**`npm test` runs four checks before vitest** — three over the palette, one over the fonts.
+`scripts/sync-font-preloads.mjs --check` is the fourth and is described under "Fonts, per locale".
+`scripts/sync-app-tokens.mjs --check`:
 the generated replica still matches the package. `scripts/check-tokens.mjs`: every colour utility
 in `src/` resolves to a token declared in `globals.css` — a class naming a token that does not
 exist is an error nowhere, Tailwind generates nothing, the element renders unstyled, and neither
@@ -208,7 +308,12 @@ a base `rounded-full` and used to lose. `src/lib/cn.test.ts` pins the semantics.
   up weeks later as a traffic dip, and the snapshot is the alarm.
 - `app/routes.test.ts` — `sitemap.ts`, `robots.ts`, `manifest.ts`, all three checked against the
   single `SITE_URL`.
-- `components/app-demo/useDemoRun.ts` — the demo's state machine, the most involved piece of
-  logic on the site: the recording → transcribing → streaming run, cancellation, the tab limit,
-  per-chat drafts and the timer cleanup on unmount. It runs on fake timers with a cut-down copy
-  fixture.
+- `lib/format.ts` — `{name}` substitution, the app's own helper. A hole with no value is removed
+  along with any punctuation left dangling in front of it, which is what lets a template read as a
+  finished sentence when the provider gave no details.
+- `components/app-demo/useDemoRun.ts` — the demo's state machine, the most involved piece of logic
+  on the site: the recording → transcribing → streaming run and its 300ms discard, cancellation,
+  per-chat streams running in parallel, the tab limit, per-chat drafts, the six listening states
+  and the seven orb states, the collapse round-trip with its two auto-expand paths, notification
+  collapsing and expiry, auto listening, and the timer cleanup on unmount. It runs on fake timers
+  with a cut-down copy fixture.

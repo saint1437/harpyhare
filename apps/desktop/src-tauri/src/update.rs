@@ -164,7 +164,9 @@ async fn notify_if_update_found(app: &AppHandle) {
 }
 
 fn skipped_version(app: &AppHandle) -> String {
-    crate::app_state::current_settings(app).skipped_version
+    // `current_settings` hands out an `Arc`, so the one field this wants has to
+    // be copied out rather than moved.
+    crate::app_state::current_settings(app).skipped_version.clone()
 }
 
 pub fn should_notify(found_version: &str, skipped_version: &str) -> bool {

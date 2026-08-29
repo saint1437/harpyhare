@@ -20,11 +20,13 @@ const host = process.env["TAURI_DEV_HOST"];
  * needs them rather than at start.
  *
  * Matching is on the package folder inside node_modules — a substring test on
- * the whole path would put `react-markdown` into the react chunk.
+ * the whole path would put `react-markdown` into the react chunk. The flip side
+ * of that precision: an umbrella package is a package of its own, so `radix-ui`
+ * has to be named beside `"@radix-ui/*"` rather than being covered by it.
  */
 const VENDOR_CHUNKS: Record<string, readonly string[]> = {
   "vendor-react": ["react", "react-dom", "scheduler", "react-is"],
-  "vendor-highlight": ["highlight.js", "lowlight", "rehype-highlight"],
+  "vendor-highlight": ["highlight.js", "lowlight"],
   "vendor-markdown": [
     "react-markdown",
     "remark-gfm",
@@ -49,6 +51,7 @@ const VENDOR_CHUNKS: Record<string, readonly string[]> = {
     "estree-util-is-identifier-name",
   ],
   "vendor-radix": [
+    "radix-ui",
     "@radix-ui/*",
     "@floating-ui/*",
     "aria-hidden",
@@ -104,6 +107,14 @@ export default defineConfig(async () => ({
     alias: { "@": path.resolve(__dirname, "./src") },
   },
   build: {
+    // The only runtimes are WKWebView and Evergreen WebView2, and tsconfig.json
+    // already pins the source at ES2020 for the same reason; vite's default
+    // matrix (edge88/firefox78/chrome87/safari14) downlevels for browsers that
+    // never load this bundle.
+    target: "es2022",
+    // Every chunk is gzipped on every build purely to colour the size report,
+    // and nothing — CI least of all — reads it.
+    reportCompressedSize: false,
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, "index.html"),

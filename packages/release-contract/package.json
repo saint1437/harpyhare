@@ -9,11 +9,17 @@
       "types": "./contract.d.ts",
       "default": "./contract.js"
     },
+    "./client": {
+      "types": "./client.d.ts",
+      "default": "./client.js"
+    },
     "./release-assets.json": "./release-assets.json"
   },
   "files": [
     "contract.js",
     "contract.d.ts",
+    "client.js",
+    "client.d.ts",
     "release-assets.json"
   ],
   "scripts": {

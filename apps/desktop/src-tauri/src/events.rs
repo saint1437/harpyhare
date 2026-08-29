@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Emitter};
 
 use crate::error::{AppError, ErrorCode};
-use crate::settings::PromptPreset;
+use crate::remote_presets::PresetList;
 use crate::state::RecorderState;
 use crate::update::UpdateInfo;
 
@@ -83,11 +83,19 @@ impl EventBus for RecordedEvents {
     }
 }
 
+/// A REFERENCE into the chat-image store, not the picture.
+///
+/// The shot is already on disk by the time this goes out (`screenshot::deliver`),
+/// so what crosses the boundary is an id the frontend resolves through
+/// `load_chat_images` — the very path a chat restored from disk takes. The
+/// payload used to carry the whole PNG as base64, which the frontend decoded,
+/// re-encoded and shipped straight back to `save_chat_image` for this same
+/// store to write.
 #[derive(Clone, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ScreenshotReady {
+    pub id: String,
     pub media_type: String,
-    pub data_base64: String,
 }
 
 #[derive(Clone, serde::Serialize, specta::Type)]
@@ -289,7 +297,10 @@ pub fn update_done(bus: &impl EventBus, version: String) {
     bus.emit_event(EVENT_UPDATE_DONE, UpdateDone { version });
 }
 
-pub fn official_presets_updated(bus: &impl EventBus, presets: Vec<PromptPreset>) {
+/// The payload is the shared pool, not a copy of it: this fires on every
+/// 30-minute refresh that changed anything, and the pool is up to ~145 KB of
+/// preset text. It still serializes as a plain `PromptPreset[]`.
+pub fn official_presets_updated(bus: &impl EventBus, presets: PresetList) {
     bus.emit_event(EVENT_OFFICIAL_PRESETS_UPDATED, presets);
 }
 

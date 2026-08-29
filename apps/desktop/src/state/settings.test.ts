@@ -1,6 +1,8 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useDict } from "@/hooks/useDict";
+import { applyLanguage } from "@/i18n";
 import { DEFAULT_SETTINGS, type Settings } from "@/ipc/types";
 
 const getSettings = vi.fn(() => Promise.resolve(DEFAULT_SETTINGS));
@@ -248,5 +250,34 @@ describe("state/settings", () => {
     expect(setSettings).toHaveBeenCalledTimes(1);
     expect(setSettings.mock.calls[0]?.[0]?.window_width).toBe(1020);
     vi.useRealTimers();
+  });
+
+  /**
+   * Инвариант, ради которого loadLanguage вынесен ПЕРЕД adopt, а не внутрь него:
+   * снапшот настроек и словарь публикуются в одном тике и приезжают одним
+   * кадром. Словарь языка, которого окно ещё не показывало, — отдельный чанк
+   * (`i18n/index.ts`), и достаточно дождаться его на такт позже, чтобы между
+   * двумя рендерами успел показаться кадр с новыми настройками и старым языком.
+   * Именно эта вспышка описана в `i18n/index.ts` как найденная запуском.
+   */
+  it("настройки и словарь доезжают одним кадром — языку негде мигнуть", async () => {
+    applyLanguage("ru");
+    getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, language: "en" });
+    const frames: string[] = [];
+    const { result } = renderHook(() => {
+      useSettingsBootstrap(applyVisuals);
+      const settings = useSettings();
+      frames.push(`${settings.language}/${useDict().locale}`);
+      return settings;
+    });
+    try {
+      await waitFor(() => {
+        expect(result.current.language).toBe("en");
+      });
+      expect(frames.at(-1)).toBe("en/en");
+      expect(frames).not.toContain("en/ru");
+    } finally {
+      applyLanguage("ru");
+    }
   });
 });

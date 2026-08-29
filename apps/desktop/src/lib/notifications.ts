@@ -188,13 +188,18 @@ function publish(next: readonly Entry[]): void {
 }
 
 function tick(): void {
-  const aged = entries.map((entry) => ({ ...entry, remainingMs: entry.remainingMs - TICK_MS }));
-  const alive = aged.filter((entry) => entry.remainingMs > 0);
+  let expired = false;
+  // The countdown is entry-private — nothing outside this module reads it and
+  // `snapshot` holds the items, not the entries — so ageing in place is
+  // invisible, and it keeps the common branch free of allocation.
+  for (const entry of entries) {
+    entry.remainingMs -= TICK_MS;
+    if (entry.remainingMs <= 0) expired = true;
+  }
   // Nothing expired: the countdown moved but the snapshot did not, and a
   // notified listener five times a second would re-render both windows for
   // nothing.
-  if (alive.length === aged.length) entries = aged;
-  else publish(alive);
+  if (expired) publish(entries.filter((entry) => entry.remainingMs > 0));
 }
 
 export function subscribeNotifications(listener: () => void): () => void {

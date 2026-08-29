@@ -55,7 +55,8 @@ pub struct App {
     /// the background refresh the command kicks off — the command itself never
     /// opens a device (see permissions.rs).
     pub permissions: permissions::PermissionCache,
-    /// The official prompt presets, refreshed from the blob every 30 minutes.
+    /// The official prompt presets, read on first use and refreshed from the
+    /// blob every 30 minutes.
     pub presets: remote_presets::PresetCache,
     /// The push-to-talk pipeline: the recorder FSM, the last recording, the
     /// streaming transcription slot and the recording generation.
@@ -107,7 +108,10 @@ pub fn chat_images_dir(app: &AppHandle) -> Result<std::path::PathBuf, AppError> 
     app_data_file(app, crate::chat_images::IMAGES_DIR_NAME)
 }
 
-pub fn current_settings(app: &AppHandle) -> settings::Settings {
+/// An `Arc`, not a copy: `Settings` is three `Vec`s and a dozen `String`s, and
+/// most of the ~25 call sites here want one field out of it. `Deref` makes the
+/// difference invisible at almost all of them.
+pub fn current_settings(app: &AppHandle) -> Arc<settings::Settings> {
     app.state::<App>().settings.get()
 }
 
@@ -183,7 +187,6 @@ pub fn build_llm_client(
 pub fn build_app_state(
     settings: SettingsService,
     secrets: SecretsStore,
-    official_presets: Vec<settings::PromptPreset>,
     stt: Arc<dyn stt::SttEngine>,
     llm: Arc<dyn llm::LlmProvider>,
     models: llm::ModelCatalog,
@@ -192,7 +195,7 @@ pub fn build_app_state(
         settings,
         secrets,
         permissions: permissions::PermissionCache::default(),
-        presets: remote_presets::PresetCache::new(official_presets),
+        presets: remote_presets::PresetCache::default(),
         recording: RecordingService::default(),
         capture: crate::capture_service::CaptureService::default(),
         auto: auto::AutoService::default(),

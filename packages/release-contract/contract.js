@@ -15,8 +15,15 @@ import contract from "./release-assets.json" with { type: "json" };
  * side of it — plain JS with a `.d.ts` beside it, because the release script is
  * `node scripts/release.mjs` and a `.ts` entry would be unreachable from there.
  */
-export const RELEASES_REPO = contract.releasesRepo;
-export const RELEASES_REPO_URL = `https://github.com/${RELEASES_REPO}`;
+
+/**
+ * Re-exported, not declared: `./client.js` is the browser-safe half of this
+ * contract and owns these two, so that a Client Component reaching for the
+ * repository URL does not pull the `platforms` block and the three derived
+ * lists below into its chunk. Its header says why that mattered.
+ */
+export { RELEASES_REPO, RELEASES_REPO_URL } from "./client.js";
+
 export const ASSET_SLUG = contract.assetSlug;
 export const UPDATER_MANIFEST_NAME = contract.updaterManifestName;
 export const SIGNATURE_SUFFIX = contract.signatureSuffix;

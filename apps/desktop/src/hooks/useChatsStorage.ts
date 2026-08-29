@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { usePersistedExternalStore } from "@/hooks/usePersistedStore";
 import { getDict } from "@/i18n";
 import { loadChatImages, loadChats, pruneChatImages, saveChats } from "@/ipc/commands";
@@ -54,12 +54,19 @@ async function withStoredImages(stored: Chat[]): Promise<Chat[] | null> {
  * reach the component that mounted this hook.
  */
 function useRememberActiveChat(loaded: RefObject<boolean>): void {
+  const written = useRef<string | null>(null);
   useEffect(
     () =>
       subscribeChats(() => {
         if (!loaded.current) return;
         const id = getActiveChatId();
-        if (id !== "") localStorage.setItem(ACTIVE_CHAT_STORAGE_KEY, id);
+        // The draft lives in this store too, so a keystroke publishes here just
+        // like a tab switch does — while the id it writes only ever changes on
+        // the switch. Without remembering the last one, typing a message costs
+        // one synchronous `localStorage` write per character.
+        if (id === "" || id === written.current) return;
+        written.current = id;
+        localStorage.setItem(ACTIVE_CHAT_STORAGE_KEY, id);
       }),
     [loaded],
   );

@@ -1,4 +1,5 @@
 import { Info, RotateCcw } from "lucide-react";
+import { memo } from "react";
 import { IconButton } from "@/components/IconButton";
 import type { SectionProps } from "@/features/settings/contract";
 import { SettingGroup, SettingRow } from "@/features/settings/fields";
@@ -18,7 +19,13 @@ import {
 import { HotkeyCapture } from "../HotkeyCapture";
 import { useHotkeyEditor, type HotkeyEditor } from "../useHotkeyEditor";
 
-export function HotkeyRow({ action, editor }: { action: HotkeyAction; editor: HotkeyEditor }) {
+export const HotkeyRow = memo(function HotkeyRow({
+  action,
+  editor,
+}: {
+  action: HotkeyAction;
+  editor: HotkeyEditor;
+}) {
   const dict = useDict();
   const combo = effectiveCombo(editor.bindings, action.id);
   const fallback = defaultCombo(action.id);
@@ -50,7 +57,7 @@ export function HotkeyRow({ action, editor }: { action: HotkeyAction; editor: Ho
       </div>
     </SettingRow>
   );
-}
+});
 
 /**
  * The note is rendered where the user ACTED, not where the victim lived — hence

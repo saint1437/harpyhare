@@ -1,11 +1,11 @@
 import { AudioLines, Mic, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SettingGroup, SettingRow } from "@/features/settings/fields";
-import type { AudioCheckApi } from "@/hooks/useAudioCheck";
 import { useDict } from "@/hooks/useDict";
 import { format } from "@/i18n";
 import type { Dictionary } from "@/i18n/types";
 import type { AudioCheck, AudioSource } from "@/ipc/types";
+import { useAudioCheckControl, useAudioLevel } from "./audio-check";
 
 const LEVEL_SCALE = 100;
 
@@ -38,7 +38,9 @@ function rowHint(
   return heardResult(result, dict);
 }
 
-function LevelMeter({ level }: { level: number }) {
+/** The one reader of the live level, and the only thing a level tick re-renders. */
+function LevelMeter() {
+  const level = useAudioLevel();
   return (
     <span className="h-1 w-10 shrink-0 overflow-hidden rounded-full bg-inset" aria-hidden>
       <span
@@ -49,13 +51,8 @@ function LevelMeter({ level }: { level: number }) {
   );
 }
 
-export function AudioCheckCard({
-  autoModeEnabled,
-  check,
-}: {
-  autoModeEnabled: boolean;
-  check: AudioCheckApi;
-}) {
+export function AudioCheckCard({ autoModeEnabled }: { autoModeEnabled: boolean }) {
+  const check = useAudioCheckControl();
   const dict = useDict();
   const copy = dict.launcher.audioCheck;
   const sources = SOURCES.filter((meta) => meta.source !== "microphone" || autoModeEnabled);
@@ -72,7 +69,7 @@ export function AudioCheckCard({
             hint={rowHint(meta.source, shown, check.result, dict)}
           >
             <div className="flex items-center justify-end gap-2">
-              {running && <LevelMeter level={check.level} />}
+              {running && <LevelMeter />}
               <Button
                 size="sm"
                 variant="outline"

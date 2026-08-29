@@ -24,11 +24,13 @@ afterEach(() => {
 });
 
 describe("useRegionScreenshot", () => {
-  it("собирает data URL из payload события и отдаёт его в колбэк", () => {
+  // Событие несёт ССЫЛКУ в хранилище картинок, а не сам снимок: файл уже
+  // записан бэкендом, и хук передаёт дальше id, а не собранный data URL.
+  it("отдаёт в колбэк ссылку из payload события", () => {
     const onImage = vi.fn();
     renderHook(() => useRegionScreenshot(onImage));
-    emitIpcEvent("screenshot-ready", { mediaType: "image/png", dataBase64: "iVBORw0K" });
-    expect(onImage).toHaveBeenCalledWith("data:image/png;base64,iVBORw0K", "image/png");
+    emitIpcEvent("screenshot-ready", { id: "00000000000000aa.png", mediaType: "image/png" });
+    expect(onImage).toHaveBeenCalledWith("00000000000000aa.png", "image/png");
   });
 
   // Хук больше не хранит отказ: снимок области — разовое действие, и его

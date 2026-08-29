@@ -1,8 +1,10 @@
-use tauri::{AppHandle, Manager};
+use std::sync::atomic::{AtomicU32, Ordering};
 
-use crate::app_state::App;
+use tauri::{AppHandle, Manager, WebviewWindow};
+
 use crate::events;
 use crate::hotkeys;
+use crate::settings::Settings;
 use crate::window::main_window;
 
 #[cfg(target_os = "macos")]
@@ -113,56 +115,144 @@ enum ArrowAction {
     Resize,
 }
 
-fn arrow_action(app: &AppHandle, active: ModifierMask) -> Option<ArrowAction> {
+/// Everything the arrow decision needs, in one word.
+///
+/// The decision is taken **inside the OS keyboard hook** — an `NSEvent` monitor
+/// on macOS, a `WH_KEYBOARD_LL` hook on Windows, and Windows silently unhooks a
+/// hook that outstays `LowLevelHooksTimeout`. It used to take the settings lock,
+/// deep-clone the whole `Settings` (prompt preset texts included), build two
+/// `String`s through `hotkeys::effective` and parse both of them — on every
+/// arrow press with a modifier held, key repeat included. All three inputs are
+/// `Copy`-sized, so they live in one atomic that the hook reads and nothing else
+/// touches; the derivation runs on the settings-change path instead
+/// (`preferences::SettingsEffect::RefreshArrowKeys`, seeded at startup).
+///
+/// An unwritten snapshot is two empty masks, and an empty mask matches no
+/// non-empty modifier state — the same "no decision" the contended lock used to
+/// produce.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ArrowKeys {
+    move_mask: ModifierMask,
+    resize_mask: ModifierMask,
+    move_step: u32,
+}
+
+/// The layout of the packed word: two 8-bit masks, then the step. `move_step` is
+/// clamped to `limits::window::MOVE_STEP` (max 200) long before it gets here.
+const ARROW_MASK_BITS: u32 = 0xff;
+const ARROW_RESIZE_MASK_SHIFT: u32 = 8;
+const ARROW_MOVE_STEP_SHIFT: u32 = 16;
+const ARROW_MOVE_STEP_BITS: u32 = 0xffff;
+
+static ARROW_KEYS: AtomicU32 = AtomicU32::new(0);
+
+impl ArrowKeys {
+    fn pack(self) -> u32 {
+        u32::from(self.move_mask.0)
+            | (u32::from(self.resize_mask.0) << ARROW_RESIZE_MASK_SHIFT)
+            | ((self.move_step & ARROW_MOVE_STEP_BITS) << ARROW_MOVE_STEP_SHIFT)
+    }
+
+    fn unpack(bits: u32) -> Self {
+        Self {
+            move_mask: ModifierMask((bits & ARROW_MASK_BITS) as u8),
+            resize_mask: ModifierMask(((bits >> ARROW_RESIZE_MASK_SHIFT) & ARROW_MASK_BITS) as u8),
+            move_step: (bits >> ARROW_MOVE_STEP_SHIFT) & ARROW_MOVE_STEP_BITS,
+        }
+    }
+
+    fn of(settings: &Settings) -> Self {
+        Self {
+            move_mask: modifier_mask(&hotkeys::effective(
+                &settings.hotkeys,
+                hotkeys::ACTION_MOVE_WINDOW,
+            )),
+            resize_mask: modifier_mask(&hotkeys::effective(
+                &settings.hotkeys,
+                hotkeys::ACTION_RESIZE_WINDOW,
+            )),
+            move_step: settings.move_step,
+        }
+    }
+}
+
+/// Re-derives what the keyboard hook reads. The only writer.
+pub fn refresh_arrow_keys(settings: &Settings) {
+    ARROW_KEYS.store(ArrowKeys::of(settings).pack(), Ordering::Release);
+}
+
+fn arrow_action(active: ModifierMask) -> Option<ArrowAction> {
     if active.is_empty() {
         return None;
     }
-    // The low-level keyboard hook must fit inside LowLevelHooksTimeout, so a
-    // contended settings lock means "no decision", never a wait.
-    let s = app.state::<App>().settings.try_get()?;
-    let move_mask = modifier_mask(&hotkeys::effective(&s.hotkeys, hotkeys::ACTION_MOVE_WINDOW));
-    let resize_mask = modifier_mask(&hotkeys::effective(&s.hotkeys, hotkeys::ACTION_RESIZE_WINDOW));
+    let keys = ArrowKeys::unpack(ARROW_KEYS.load(Ordering::Acquire));
     if cfg!(debug_assertions) {
-        eprintln!("[стрелки] зажато {active}, сдвиг на {move_mask}, размер на {resize_mask}");
+        eprintln!(
+            "[стрелки] зажато {active}, сдвиг на {}, размер на {}",
+            keys.move_mask, keys.resize_mask
+        );
     }
-    if active == move_mask {
-        return Some(ArrowAction::Move(s.move_step as i32));
+    if active == keys.move_mask {
+        return Some(ArrowAction::Move(keys.move_step as i32));
     }
-    if active == resize_mask {
+    if active == keys.resize_mask {
         return Some(ArrowAction::Resize);
     }
     None
 }
 
-fn apply_arrow_action(app: &AppHandle, action: ArrowAction, dx: i32, dy: i32) {
+fn apply_arrow_action(window: &WebviewWindow, action: ArrowAction, dx: i32, dy: i32) {
     match action {
         ArrowAction::Move(step) => {
-            let Some(w) = main_window(app) else {
-                return;
-            };
-            if let Ok(pos) = w.outer_position() {
-                let _ = w.set_position(tauri::PhysicalPosition::new(
+            if let Ok(pos) = window.outer_position() {
+                let _ = window.set_position(tauri::PhysicalPosition::new(
                     pos.x + dx * step,
                     pos.y + dy * step,
                 ));
             }
         }
-        ArrowAction::Resize => events::resize_key(app, dx, dy),
+        ArrowAction::Resize => events::resize_key(window.app_handle(), dx, dy),
     }
 }
 
-pub fn handle_arrow_key(app: &AppHandle, active: ModifierMask, dx: i32, dy: i32) -> bool {
-    let Some(action) = arrow_action(app, active) else {
-        return false;
-    };
-    if main_window(app).is_none() {
-        return false;
-    }
+fn dispatch_arrow_action(window: &WebviewWindow, action: ArrowAction, dx: i32, dy: i32) {
     // `run_on_main_thread` posts to the event loop and returns at once, so the
     // async task that used to wrap it bought nothing and cost one spawn per
     // keypress — with key repeat, dozens a second.
-    let handle = app.clone();
-    let _ = app.run_on_main_thread(move || apply_arrow_action(&handle, action, dx, dy));
+    let target = window.clone();
+    let _ = window
+        .app_handle()
+        .run_on_main_thread(move || apply_arrow_action(&target, action, dx, dy));
+}
+
+/// The macOS monitor's entry point. It has no focus test of its own, so the HUD
+/// is resolved here — once, and only after the modifiers have already matched:
+/// bare arrows travel through this hook on every keystroke and must not pay for
+/// a window lookup.
+pub fn handle_arrow_key(app: &AppHandle, active: ModifierMask, dx: i32, dy: i32) -> bool {
+    let Some(action) = arrow_action(active) else {
+        return false;
+    };
+    let Some(window) = main_window(app) else {
+        return false;
+    };
+    dispatch_arrow_action(&window, action, dx, dy);
+    true
+}
+
+/// The Windows hook's entry point: it has to resolve the HUD anyway to answer
+/// "is it focused", so it hands the window over rather than making the shared
+/// path look it up a second and a third time.
+pub fn handle_arrow_key_on(
+    window: &WebviewWindow,
+    active: ModifierMask,
+    dx: i32,
+    dy: i32,
+) -> bool {
+    let Some(action) = arrow_action(active) else {
+        return false;
+    };
+    dispatch_arrow_action(window, action, dx, dy);
     true
 }
 

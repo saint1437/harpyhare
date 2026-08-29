@@ -405,14 +405,6 @@ fn canonical_key(token: &str) -> String {
     upper
 }
 
-fn keys_equal(a: &Option<String>, b: &Option<String>) -> bool {
-    match (a, b) {
-        (Some(a), Some(b)) => canonical_key(a) == canonical_key(b),
-        (None, None) => true,
-        _ => false,
-    }
-}
-
 fn is_arrow(key: &str) -> bool {
     ARROW_KEYS.iter().any(|k| k.eq_ignore_ascii_case(key))
 }
@@ -435,42 +427,68 @@ fn scopes_coexist(a: HotkeyScope, b: HotkeyScope) -> bool {
     )
 }
 
-fn key_spaces_overlap(a: &HotkeyAction, combo_a: &str, b: &HotkeyAction, combo_b: &str) -> bool {
-    if combo_a.trim().is_empty() || combo_b.trim().is_empty() {
+/// One combo, taken apart exactly once.
+///
+/// `normalize` compares every action against every other one — around 150 pairs
+/// — and the comparison used to `split_combo` both sides on every pass, which
+/// meant ~300 vectors and about a thousand short strings per settings save,
+/// inside the mutex that also holds the fsync. The parts a comparison can ask
+/// for are all decided here instead, so the pairwise loop allocates nothing.
+///
+/// `key` is stored already canonicalised (`KeyA` → `A`), because equality
+/// between two `Combo` bindings is defined on the canonical form.
+struct ComboParts {
+    /// An empty combo is "unbound" and can never collide with anything.
+    blank: bool,
+    modifiers: Vec<String>,
+    key: Option<String>,
+    arrow: bool,
+    plus_minus: bool,
+    digit: bool,
+}
+
+impl ComboParts {
+    fn new(combo: &str) -> Self {
+        let blank = combo.trim().is_empty();
+        let (modifiers, key) = split_combo(combo);
+        Self {
+            blank,
+            arrow: key.as_deref().is_some_and(is_arrow),
+            plus_minus: key.as_deref().is_some_and(is_plus_minus),
+            digit: key.as_deref().is_some_and(is_digit),
+            key: key.map(|k| canonical_key(&k)),
+            modifiers,
+        }
+    }
+}
+
+fn key_spaces_overlap(a: &HotkeyAction, pa: &ComboParts, b: &HotkeyAction, pb: &ComboParts) -> bool {
+    if pa.blank || pb.blank {
         return false;
     }
-    let (mods_a, key_a) = split_combo(combo_a);
-    let (mods_b, key_b) = split_combo(combo_b);
+    let same_modifiers = pa.modifiers == pb.modifiers;
     match (a.kind, b.kind) {
-        (HotkeyKind::Combo, HotkeyKind::Combo) => mods_a == mods_b && keys_equal(&key_a, &key_b),
+        (HotkeyKind::Combo, HotkeyKind::Combo) => same_modifiers && pa.key == pb.key,
         (HotkeyKind::ModifierArrows, HotkeyKind::ModifierArrows)
         | (HotkeyKind::ModifierPlusMinus, HotkeyKind::ModifierPlusMinus)
-        | (HotkeyKind::ModifierDigits, HotkeyKind::ModifierDigits) => mods_a == mods_b,
+        | (HotkeyKind::ModifierDigits, HotkeyKind::ModifierDigits) => same_modifiers,
         (HotkeyKind::ModifierArrows, HotkeyKind::ModifierPlusMinus)
         | (HotkeyKind::ModifierPlusMinus, HotkeyKind::ModifierArrows)
         | (HotkeyKind::ModifierArrows, HotkeyKind::ModifierDigits)
         | (HotkeyKind::ModifierDigits, HotkeyKind::ModifierArrows)
         | (HotkeyKind::ModifierPlusMinus, HotkeyKind::ModifierDigits)
         | (HotkeyKind::ModifierDigits, HotkeyKind::ModifierPlusMinus) => false,
-        (HotkeyKind::Combo, HotkeyKind::ModifierArrows) => {
-            mods_a == mods_b && key_a.as_deref().is_some_and(is_arrow)
-        }
-        (HotkeyKind::ModifierArrows, HotkeyKind::Combo) => {
-            mods_a == mods_b && key_b.as_deref().is_some_and(is_arrow)
-        }
-        (HotkeyKind::Combo, HotkeyKind::ModifierPlusMinus) => {
-            mods_a == mods_b && key_a.as_deref().is_some_and(is_plus_minus)
-        }
-        (HotkeyKind::ModifierPlusMinus, HotkeyKind::Combo) => {
-            mods_a == mods_b && key_b.as_deref().is_some_and(is_plus_minus)
-        }
-        (HotkeyKind::Combo, HotkeyKind::ModifierDigits) => {
-            mods_a == mods_b && key_a.as_deref().is_some_and(is_digit)
-        }
-        (HotkeyKind::ModifierDigits, HotkeyKind::Combo) => {
-            mods_a == mods_b && key_b.as_deref().is_some_and(is_digit)
-        }
+        (HotkeyKind::Combo, HotkeyKind::ModifierArrows) => same_modifiers && pa.arrow,
+        (HotkeyKind::ModifierArrows, HotkeyKind::Combo) => same_modifiers && pb.arrow,
+        (HotkeyKind::Combo, HotkeyKind::ModifierPlusMinus) => same_modifiers && pa.plus_minus,
+        (HotkeyKind::ModifierPlusMinus, HotkeyKind::Combo) => same_modifiers && pb.plus_minus,
+        (HotkeyKind::Combo, HotkeyKind::ModifierDigits) => same_modifiers && pa.digit,
+        (HotkeyKind::ModifierDigits, HotkeyKind::Combo) => same_modifiers && pb.digit,
     }
+}
+
+fn actions_collide(a: &HotkeyAction, pa: &ComboParts, b: &HotkeyAction, pb: &ComboParts) -> bool {
+    a.id != b.id && scopes_coexist(a.scope, b.scope) && key_spaces_overlap(a, pa, b, pb)
 }
 
 pub fn conflict(a_id: &str, combo_a: &str, b_id: &str, combo_b: &str) -> bool {
@@ -480,30 +498,46 @@ pub fn conflict(a_id: &str, combo_a: &str, b_id: &str, combo_b: &str) -> bool {
     let (Some(a), Some(b)) = (action(a_id), action(b_id)) else {
         return false;
     };
-    scopes_coexist(a.scope, b.scope) && key_spaces_overlap(a, combo_a, b, combo_b)
+    actions_collide(a, &ComboParts::new(combo_a), b, &ComboParts::new(combo_b))
+}
+
+/// A combo that lost a conflict is cleared, and a cleared combo collides with
+/// nothing — so the entry stays in `accepted` (later actions still have to see
+/// that this one is settled) with parts that can never match.
+fn unbound_parts() -> ComboParts {
+    ComboParts::new("")
 }
 
 pub fn normalize(bindings: &mut Vec<HotkeyBinding>) {
-    let mut claimed: Vec<(&'static str, String)> = Vec::new();
+    // The action is carried as a `&'static` reference rather than looked up by
+    // id inside the comparison: `conflict` used to run two linear scans of
+    // `HOTKEY_ACTIONS` for every one of the ~150 pairs.
+    let mut claimed: Vec<(&'static HotkeyAction, String)> = Vec::new();
     for binding in bindings.iter().rev() {
         let Some(action) = action(&binding.action) else { continue };
-        if claimed.iter().any(|(id, _)| *id == action.id) {
+        if claimed.iter().any(|(kept, _)| kept.id == action.id) {
             continue;
         }
-        claimed.push((action.id, binding.combo.trim().to_string()));
+        claimed.push((action, binding.combo.trim().to_string()));
     }
     for action in HOTKEY_ACTIONS {
-        if !claimed.iter().any(|(id, _)| *id == action.id) {
-            claimed.push((action.id, action.default_combo.current().to_string()));
+        if !claimed.iter().any(|(kept, _)| kept.id == action.id) {
+            claimed.push((action, action.default_combo.current().to_string()));
         }
     }
 
-    let mut accepted: Vec<(&'static str, String)> = Vec::new();
-    for (id, combo) in claimed {
+    let mut accepted: Vec<(&'static HotkeyAction, String, ComboParts)> =
+        Vec::with_capacity(claimed.len());
+    for (action, combo) in claimed {
+        let parts = ComboParts::new(&combo);
         let taken = accepted
             .iter()
-            .any(|(kept_id, kept_combo)| conflict(id, &combo, kept_id, kept_combo));
-        accepted.push((id, if taken { String::new() } else { combo }));
+            .any(|(kept, _, kept_parts)| actions_collide(action, &parts, kept, kept_parts));
+        if taken {
+            accepted.push((action, String::new(), unbound_parts()));
+        } else {
+            accepted.push((action, combo, parts));
+        }
     }
 
     *bindings = HOTKEY_ACTIONS
@@ -511,8 +545,8 @@ pub fn normalize(bindings: &mut Vec<HotkeyBinding>) {
         .filter_map(|action| {
             let combo = accepted
                 .iter()
-                .find(|(id, _)| *id == action.id)
-                .map(|(_, combo)| combo.clone())
+                .find(|(kept, _, _)| kept.id == action.id)
+                .map(|(_, combo, _)| combo.clone())
                 .unwrap_or_else(|| action.default_combo.current().to_string());
             (combo != action.default_combo.current())
                 .then(|| HotkeyBinding { action: action.id.to_string(), combo })

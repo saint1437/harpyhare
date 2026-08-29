@@ -59,14 +59,49 @@ compile_error!(
 pub const REQUIRES_PERMISSION: bool = cfg!(target_os = "macos");
 use crate::sync::{CondvarExt, MutexExt};
 
-const RING_SECONDS: usize = 8;
+/// The ring only has to bridge the gap between two consumer drains, and the
+/// consumer is now woken by the callback rather than by a poll — one second is
+/// still ~200x the `CONSUMER_IDLE_SLEEP` safety net.
+const RING_SECONDS: usize = 1;
+/// The hard ceiling, and the one that actually bounds the worst case: the ring's
+/// element count scales with the device, so `sample_rate * channels` is ~384 KB
+/// for 48 kHz stereo but ~12 MB for a 7.1 tap at 96 kHz — and auto mode holds two
+/// captures open at once.
+const RING_MAX_BYTES: usize = 1 << 20;
+/// How much audio the callback lets pile up before it wakes the consumer.
+const WAKE_THRESHOLD_MS: usize = 10;
 const CONSUMER_THREAD_NAME: &str = "audio-consumer";
-const RAW_SCRATCH_CAPACITY: usize = 32 * 1024;
+/// `raw` carries only the tail of a pop that did not land on a frame boundary —
+/// always fewer samples than the device has channels.
+const RAW_REMAINDER_CAPACITY: usize = 64;
 const MONO_SCRATCH_CAPACITY: usize = 16 * 1024;
 const READ_BUF_SAMPLES: usize = 16 * 1024;
-const OUT_PREALLOC_SECONDS: usize = 30;
+/// The watchdog polls once a second, so a session can overrun the ceiling by
+/// about that much before it is cut off.
+const OUT_PREALLOC_HEADROOM_SECS: usize = 2;
 const CONSUMER_IDLE_SLEEP: Duration = Duration::from_millis(5);
 const STOP_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// The consumer's output buffer is sized for the recording ceiling instead of a
+/// thirty-second guess. `state::MAX_RECORDING_SECS` is where the watchdog cuts a
+/// session off, so nothing can exceed it, while every growth step on the way
+/// there memcpy'd the whole recording so far on the consumer thread with the
+/// capture still live — the last one moved ~19 MB. What is reserved here is
+/// address space, not resident memory: the pages are faulted in only as the
+/// recording actually fills them.
+fn out_capacity() -> usize {
+    let secs = crate::state::MAX_RECORDING_SECS as usize + OUT_PREALLOC_HEADROOM_SECS;
+    secs * audio::TARGET_SAMPLE_RATE as usize
+}
+
+/// How many `f32`s the ring holds for a stream of this shape.
+fn ring_capacity(spec: &StreamSpec) -> usize {
+    let channels = spec.channels.max(1);
+    let per_second = spec.sample_rate as usize * channels;
+    (per_second * RING_SECONDS)
+        .min(RING_MAX_BYTES / std::mem::size_of::<f32>())
+        .max(channels)
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum CaptureError {
@@ -169,11 +204,24 @@ struct Shared {
     rolling: Mutex<audio::RollingBuffer>,
     segmenting: Mutex<Option<Segmenting>>,
     cv: Condvar,
+    /// The consumer parks here between ring loads. The audio callback only ever
+    /// *signals* `data_cv` — it never takes `data_latch`, because a real-time
+    /// thread must not be able to wait on the consumer. The price is that a
+    /// signal landing between the consumer's last empty pop and its park is
+    /// lost, which is exactly what `CONSUMER_IDLE_SLEEP` is still here for: it
+    /// went from being the polling interval to being the safety net.
+    data_latch: Mutex<()>,
+    data_cv: Condvar,
 }
 
 pub(crate) struct CallbackCtx {
     shared: Arc<Shared>,
     prod: HeapProd<f32>,
+    /// Samples pushed since the consumer was last woken, and the threshold that
+    /// wakes it. Both live in the callback's own struct so that deciding to wake
+    /// costs neither an atomic nor a lock.
+    since_wake: usize,
+    wake_threshold: usize,
 }
 
 impl CallbackCtx {
@@ -189,6 +237,15 @@ impl CallbackCtx {
             self.shared
                 .dropped
                 .fetch_add((samples.len() - pushed) as u64, Ordering::Relaxed);
+        }
+        // Waking the consumer the moment a frame's worth is queued is what
+        // replaced the 5 ms poll it used to sit in, and it costs the real-time
+        // thread one uncontended `notify_one` — no allocation, no lock to wait
+        // on, and at most one wake per `WAKE_THRESHOLD_MS` of audio.
+        self.since_wake += pushed;
+        if self.since_wake >= self.wake_threshold {
+            self.since_wake = 0;
+            self.shared.data_cv.notify_one();
         }
     }
 }
@@ -244,8 +301,10 @@ impl AudioCapture {
     ) -> Result<Self, CaptureError> {
         let (source, spec) = Backend::open(kind, device_uid)?;
 
-        let ring = HeapRb::<f32>::new(spec.sample_rate as usize * spec.channels * RING_SECONDS);
+        let ring = HeapRb::<f32>::new(ring_capacity(&spec));
         let (prod, cons) = ring.split();
+        let wake_threshold =
+            (spec.sample_rate as usize * spec.channels.max(1) * WAKE_THRESHOLD_MS / 1000).max(1);
         let shared = Arc::new(Shared {
             recording: AtomicBool::new(false),
             buffering: AtomicBool::new(false),
@@ -260,10 +319,14 @@ impl AudioCapture {
             rolling: Mutex::new(audio::RollingBuffer::new(buffer_secs)),
             segmenting: Mutex::new(None),
             cv: Condvar::new(),
+            data_latch: Mutex::new(()),
+            data_cv: Condvar::new(),
         });
         let ctx = Box::new(CallbackCtx {
             shared: Arc::clone(&shared),
             prod,
+            since_wake: 0,
+            wake_threshold,
         });
 
         {
@@ -303,6 +366,9 @@ impl AudioCapture {
 
     pub fn stop(&mut self) -> Result<Vec<f32>, CaptureError> {
         self.shared.stop_requested.store(true, Ordering::Release);
+        // Without this the consumer would notice the flag only when its wait
+        // times out, adding `CONSUMER_IDLE_SLEEP` to every key release.
+        self.shared.data_cv.notify_all();
         let mut s = self.shared.session.lock_safe();
         loop {
             match &mut *s {
@@ -405,6 +471,7 @@ impl CaptureDevice for AudioCapture {
 fn shutdown_consumer(shared: &Shared) {
     shared.shutdown.store(true, Ordering::Release);
     shared.stop_requested.store(true, Ordering::Release);
+    shared.data_cv.notify_all();
     let _wake = shared.session.lock_safe();
     shared.cv.notify_all();
 }
@@ -428,11 +495,23 @@ struct Scratch {
 impl Scratch {
     fn new() -> Self {
         Self {
-            raw: Vec::with_capacity(RAW_SCRATCH_CAPACITY),
+            raw: Vec::with_capacity(RAW_REMAINDER_CAPACITY),
             mono: Vec::with_capacity(MONO_SCRATCH_CAPACITY),
             read_buf: vec![0f32; READ_BUF_SAMPLES],
         }
     }
+}
+
+/// Parks the consumer until the audio callback signals that the ring has data,
+/// with the old idle sleep kept as the timeout.
+///
+/// The callback never takes `data_latch` — it only signals — so a signal that
+/// lands after the caller's last empty pop but before this park is lost. The
+/// timeout is what bounds that window, and it bounds it at exactly the latency
+/// the unconditional sleep used to cost on every chunk.
+fn wait_for_samples(shared: &Shared) {
+    let latch = shared.data_latch.lock_safe();
+    let (_guard, _timed_out) = shared.data_cv.wait_timeout_safe(latch, CONSUMER_IDLE_SLEEP);
 }
 
 enum ConsumerWork {
@@ -478,20 +557,49 @@ fn consumer_main(shared: &Shared, mut ring: HeapCons<f32>) {
     }
 }
 
-fn drain_ring_chunk(
-    shared: &Shared,
-    ring: &mut HeapCons<f32>,
-    scratch: &mut Scratch,
-) -> usize {
+/// Downmixes one ring load, carrying across the sub-frame remainder a pop can
+/// end on.
+///
+/// Splitting it out of `drain_ring_chunk` is what makes the carry-over testable:
+/// the loads a device hands over are not multiples of the channel count, and the
+/// frame boundaries have to survive the seam exactly as they did when the load
+/// was appended to the remainder and the two were downmixed together.
+fn downmix_load(channels: usize, load: &[f32], raw: &mut Vec<f32>, mono: &mut Vec<f32>) {
+    let channels = channels.max(1);
+    let mut off = 0;
+    if !raw.is_empty() {
+        let take = (channels - raw.len()).min(load.len());
+        raw.extend_from_slice(&load[..take]);
+        off = take;
+        if raw.len() == channels {
+            audio::downmix_into(raw, channels, mono);
+            raw.clear();
+        }
+    }
+    let rest = &load[off..];
+    let whole = rest.len() - rest.len() % channels;
+    audio::downmix_into(&rest[..whole], channels, mono);
+    raw.extend_from_slice(&rest[whole..]);
+}
+
+/// Pops one ring load and leaves the mono samples in `scratch.mono`.
+///
+/// The pop lands in `read_buf` and the downmix reads straight out of it. `raw`
+/// used to receive a copy of every captured sample purely so that a remainder of
+/// fewer than `channels` samples could be carried to the next call — a second
+/// full memcpy of the whole stream. It now holds the remainder and nothing else.
+fn drain_ring_chunk(shared: &Shared, ring: &mut HeapCons<f32>, scratch: &mut Scratch) -> usize {
     let n = ring.pop_slice(&mut scratch.read_buf);
     if n == 0 {
         return 0;
     }
-    scratch.raw.extend_from_slice(&scratch.read_buf[..n]);
-    let whole = scratch.raw.len() - scratch.raw.len() % shared.channels.max(1);
     scratch.mono.clear();
-    audio::downmix_into(&scratch.raw[..whole], shared.channels, &mut scratch.mono);
-    scratch.raw.drain(..whole);
+    downmix_load(
+        shared.channels,
+        &scratch.read_buf[..n],
+        &mut scratch.raw,
+        &mut scratch.mono,
+    );
     n
 }
 
@@ -507,8 +615,7 @@ fn run_ptt_session(
     shared.dropped.store(0, Ordering::Relaxed);
 
     let mut resampler = audio::StreamResampler::new(shared.sample_rate);
-    let mut out: Vec<f32> =
-        Vec::with_capacity(audio::TARGET_SAMPLE_RATE as usize * OUT_PREALLOC_SECONDS);
+    let mut out: Vec<f32> = Vec::with_capacity(out_capacity());
     let mut failure: Option<String> = None;
 
     shared.recording.store(true, Ordering::Release);
@@ -537,7 +644,7 @@ fn run_ptt_session(
         if stopping {
             break;
         }
-        std::thread::sleep(CONSUMER_IDLE_SLEEP);
+        wait_for_samples(shared);
     }
 
     if failure.is_none() {
@@ -593,9 +700,7 @@ fn take_pending_session(shared: &Shared) -> Option<BufferedSession> {
     shared.dropped.store(0, Ordering::Relaxed);
     shared.recording.store(true, Ordering::Release);
     let preroll = shared.rolling.lock_safe().snapshot();
-    let mut out = Vec::with_capacity(
-        preroll.len() + audio::TARGET_SAMPLE_RATE as usize * OUT_PREALLOC_SECONDS,
-    );
+    let mut out = Vec::with_capacity(preroll.len() + out_capacity());
     out.extend_from_slice(&preroll);
     if !preroll.is_empty() {
         if let Some(sink) = sink.as_mut() {
@@ -690,7 +795,7 @@ fn run_buffering(shared: &Shared, ring: &mut HeapCons<f32>, scratch: &mut Scratc
             finish_buffered_session(shared, &mut session, Ok(()));
             continue;
         }
-        std::thread::sleep(CONSUMER_IDLE_SLEEP);
+        wait_for_samples(shared);
     }
 }
 
@@ -781,5 +886,84 @@ impl CaptureDevice for FakeCapture {
 
     fn stop_segmenting(&self) {
         self.0.segmenting.store(false, Ordering::Release);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spec(sample_rate: u32, channels: usize) -> StreamSpec {
+        StreamSpec {
+            sample_rate,
+            channels,
+        }
+    }
+
+    #[test]
+    fn the_ring_holds_a_second_of_an_ordinary_device() {
+        assert_eq!(
+            ring_capacity(&spec(48_000, 2)),
+            48_000 * 2 * RING_SECONDS,
+            "48 kHz stereo fits under the byte cap"
+        );
+    }
+
+    #[test]
+    fn the_ring_is_capped_in_bytes_however_wide_the_device_is() {
+        let surround = ring_capacity(&spec(96_000, 8));
+        assert_eq!(
+            surround * std::mem::size_of::<f32>(),
+            RING_MAX_BYTES,
+            "a 7.1 tap at 96 kHz is capped, not scaled"
+        );
+        assert!(surround < 96_000 * 8 * RING_SECONDS);
+    }
+
+    #[test]
+    fn the_ring_is_never_empty_even_for_a_nonsense_spec() {
+        assert!(ring_capacity(&spec(0, 0)) > 0);
+    }
+
+    #[test]
+    fn the_output_buffer_is_reserved_for_the_whole_recording_ceiling() {
+        let ceiling = crate::state::MAX_RECORDING_SECS as usize * audio::TARGET_SAMPLE_RATE as usize;
+        assert!(out_capacity() >= ceiling);
+    }
+
+    /// Loads arrive from the device in sizes that are not multiples of the
+    /// channel count, and the downmix must not notice the seam.
+    #[test]
+    fn downmix_load_matches_downmixing_the_stream_in_one_piece() {
+        let stream: Vec<f32> = (0..1024).map(|i| (i % 17) as f32 * 0.01).collect();
+        for channels in [0usize, 1, 2, 6, 8] {
+            let effective = channels.max(1);
+            let whole = stream.len() - stream.len() % effective;
+            let mut expected = Vec::new();
+            audio::downmix_into(&stream[..whole], effective, &mut expected);
+
+            for load in [1usize, 3, 7, 64, 333, 4096] {
+                let mut raw = Vec::new();
+                let mut mono = Vec::new();
+                for piece in stream.chunks(load) {
+                    downmix_load(channels, piece, &mut raw, &mut mono);
+                }
+                assert_eq!(mono, expected, "channels={channels} load={load}");
+                assert!(raw.len() < effective, "channels={channels} load={load}");
+            }
+        }
+    }
+
+    #[test]
+    fn downmix_load_carries_a_partial_frame_across_calls() {
+        let mut raw = Vec::new();
+        let mut mono = Vec::new();
+        downmix_load(2, &[1.0, 0.0, 0.5], &mut raw, &mut mono);
+        assert_eq!(mono, vec![0.5], "only the complete frame is emitted");
+        assert_eq!(raw, vec![0.5], "the odd sample waits for its partner");
+
+        downmix_load(2, &[0.5], &mut raw, &mut mono);
+        assert_eq!(mono, vec![0.5, 0.5], "the carried sample completes a frame");
+        assert!(raw.is_empty());
     }
 }

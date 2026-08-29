@@ -1,21 +1,30 @@
 "use client";
 
-import { usePlatform } from "@/hooks/usePlatform";
 import { cn } from "@/lib/cn";
 import { PLATFORM_REQUIREMENTS } from "@/lib/platform";
-import type { ReleaseInfo } from "@/lib/release";
+import { PlatformText } from "./PlatformText";
 
+/**
+ * `version` rather than the whole `ReleaseInfo`: props of a Client Component
+ * are serialised into the inline RSC payload, once per instance, and the
+ * download URLs in `ReleaseInfo` are of no use to a line of text.
+ */
 export function VersionNote({
-  release,
+  version,
   className,
 }: {
-  release: ReleaseInfo | null;
+  version: string | null;
   className?: string;
 }) {
-  const requirements = PLATFORM_REQUIREMENTS[usePlatform()];
   return (
     <span className={cn("text-[12.5px] text-fg-subtle", className)}>
-      {release ? `v${release.version} · ${requirements}` : requirements}
+      <PlatformText
+        render={(platform) =>
+          version === null
+            ? PLATFORM_REQUIREMENTS[platform]
+            : `v${version} · ${PLATFORM_REQUIREMENTS[platform]}`
+        }
+      />
     </span>
   );
 }
