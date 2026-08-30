@@ -1,51 +1,59 @@
 import { act, renderHook } from "@testing-library/react";
-import { emitIpcEvent, resetIpcEventHandlers } from "@/test-utils/fake-ipc-events";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getDict } from "@/i18n";
-import { errorTitle } from "@/i18n/errors";
 import type { AppError } from "@/lib/errors";
-import { dismissAllNotifications, getNotifications } from "@/lib/notifications";
 
+type Handler = (payload: unknown) => void;
+const handlers = new Map<string, Handler>();
 const captureRegionScreenshot = vi.fn<() => Promise<void>>(() => Promise.resolve());
 
-vi.mock("@/ipc/events", async () => await import("@/test-utils/fake-ipc-events"));
+vi.mock("@/ipc/events", () => ({
+  onEvent: (name: string, handler: Handler) => {
+    handlers.set(name, handler);
+    return () => {
+      handlers.delete(name);
+    };
+  },
+}));
 vi.mock("@/ipc/commands", () => ({
   captureRegionScreenshot: () => captureRegionScreenshot(),
 }));
 
 import { useRegionScreenshot } from "./useRegionScreenshot";
 
+function emit(name: string, payload: unknown) {
+  act(() => handlers.get(name)?.(payload));
+}
+
 const PERMISSION_ERROR: AppError = { code: "permission", message: "Нет разрешения" };
 
 afterEach(() => {
-  resetIpcEventHandlers();
-  dismissAllNotifications();
+  handlers.clear();
   vi.clearAllMocks();
 });
 
 describe("useRegionScreenshot", () => {
-  // Событие несёт ССЫЛКУ в хранилище картинок, а не сам снимок: файл уже
-  // записан бэкендом, и хук передаёт дальше id, а не собранный data URL.
-  it("отдаёт в колбэк ссылку из payload события", () => {
+  it("собирает data URL из payload события и отдаёт его в колбэк", () => {
     const onImage = vi.fn();
     renderHook(() => useRegionScreenshot(onImage));
-    emitIpcEvent("screenshot-ready", { id: "00000000000000aa.png", mediaType: "image/png" });
-    expect(onImage).toHaveBeenCalledWith("00000000000000aa.png", "image/png");
+    emit("screenshot-ready", { mediaType: "image/png", dataBase64: "iVBORw0K" });
+    expect(onImage).toHaveBeenCalledWith("data:image/png;base64,iVBORw0K", "image/png");
   });
 
-  // Хук больше не хранит отказ: снимок области — разовое действие, и его
-  // неудача целиком помещается в уведомление.
-  it("ошибка события уходит в уведомление заголовком по коду", () => {
-    renderHook(() => useRegionScreenshot(vi.fn()));
-    emitIpcEvent("screenshot-error", PERMISSION_ERROR);
-    expect(getNotifications()).toHaveLength(1);
-    expect(getNotifications()[0]?.title).toBe(errorTitle("permission", getDict()));
-    expect(getNotifications()[0]?.detail).toBe(PERMISSION_ERROR.message);
-    expect(getNotifications()[0]?.tone).toBe("danger");
-  });
-
-  it("capture дёргает команду", () => {
+  it("ошибка приходит событием и снимается удачным снимком", () => {
     const { result } = renderHook(() => useRegionScreenshot(vi.fn()));
+    emit("screenshot-error", PERMISSION_ERROR);
+    expect(result.current.error).toEqual(PERMISSION_ERROR);
+    emit("screenshot-ready", { mediaType: "image/png", dataBase64: "iVBORw0K" });
+    expect(result.current.error).toBeNull();
+  });
+
+  it("clearError гасит ошибку, capture дёргает команду", () => {
+    const { result } = renderHook(() => useRegionScreenshot(vi.fn()));
+    emit("screenshot-error", PERMISSION_ERROR);
+    act(() => {
+      result.current.clearError();
+    });
+    expect(result.current.error).toBeNull();
     act(() => {
       result.current.capture();
     });

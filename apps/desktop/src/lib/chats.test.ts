@@ -1,18 +1,14 @@
-import { getDict } from "@/i18n";
 import { describe, expect, it } from "vitest";
 import {
-  chatImageIds,
   chatTitle,
   createChat,
   createChatFrom,
   deserializeChats,
-  hydrateChatImages,
   serializeChats,
   type Chat,
-  type StoredChat,
 } from "./chats";
 
-const img = { id: "00000000000000aa.png", media_type: "image/png", data: "AAAA" };
+const img = { media_type: "image/png", data: "AAAA" };
 
 function chatWith(messages: Chat["messages"], extra: Partial<Chat> = {}): Chat {
   return {
@@ -59,7 +55,7 @@ describe("createChatFrom", () => {
       title: "Мой чат",
       titlePinned: true,
       draft: "недописанное",
-      draftAttachments: [{ id: img.id, payload: img, preview: "data:image/png;base64,AAAA" }],
+      draftAttachments: [{ payload: img, preview: "data:image/png;base64,AAAA" }],
       presetId: "golang",
       thinkingEnabled: true,
       model: "claude-opus-4-8",
@@ -99,17 +95,14 @@ describe("chatTitle", () => {
 });
 
 describe("serialize/deserialize", () => {
-  it("пишет ссылку на картинку, а не её байты", () => {
+  it("стрипает картинки из сообщений и черновые вложения", () => {
     const chats = [
       chatWith(
         [
           { role: "user", text: "что тут?", images: [img] },
           { role: "assistant", text: "кот", images: [] },
         ],
-        {
-          draft: "недописанное",
-          draftAttachments: [{ id: img.id, payload: img, preview: "data:..." }],
-        },
+        { draft: "недописанное", draftAttachments: [{ payload: img, preview: "data:..." }] },
       ),
     ];
     const json = serializeChats(chats);
@@ -118,69 +111,10 @@ describe("serialize/deserialize", () => {
       draft: string;
       draftAttachments: unknown[];
     }[];
-    const ref = { id: img.id, media_type: img.media_type };
-    expect(parsed[0]?.messages[0]?.images).toEqual([ref]);
+    expect(parsed[0]?.messages[0]?.images).toEqual([]);
     expect(parsed[0]?.messages[0]?.text).toBe("что тут?");
     expect(parsed[0]?.draft).toBe("недописанное");
-    expect(parsed[0]?.draftAttachments).toEqual([ref]);
-    expect(json).not.toContain(img.data);
-  });
-
-  it("не сохраняет картинку, которую не удалось записать на диск", () => {
-    const chats = [chatWith([{ role: "user", text: "что тут?", images: [{ ...img, id: "" }] }])];
-    const parsed = JSON.parse(serializeChats(chats)) as { messages: { images: unknown[] }[] }[];
-    expect(parsed[0]?.messages[0]?.images).toEqual([]);
-  });
-
-  it("гидратация возвращает байты по ссылке и в сообщение, и в черновик", () => {
-    const chats = [
-      chatWith([{ role: "user", text: "что тут?", images: [img] }], {
-        draftAttachments: [{ id: img.id, payload: img, preview: "data:..." }],
-      }),
-    ];
-    const restored = deserializeChats(serializeChats(chats));
-    expect(restored?.[0]?.messages[0]?.images[0]?.data).toBe("");
-
-    const hydrated = hydrateChatImages(restored ?? [], new Map([[img.id, img.data]]));
-
-    expect(hydrated[0]?.messages[0]?.images).toEqual([img]);
-    expect(hydrated[0]?.draftAttachments[0]?.payload.data).toBe(img.data);
-    expect(hydrated[0]?.draftAttachments[0]?.preview).toBe(
-      `data:${img.media_type};base64,${img.data}`,
-    );
-  });
-
-  it("гидратация кладёт в payload только то, что уезжает в API", () => {
-    const chats = [
-      chatWith([], { draftAttachments: [{ id: img.id, payload: img, preview: "data:..." }] }),
-    ];
-    const restored = deserializeChats(serializeChats(chats)) ?? [];
-
-    const hydrated = hydrateChatImages(restored, new Map([[img.id, img.data]]));
-
-    expect(hydrated[0]?.draftAttachments[0]?.payload).toEqual({
-      media_type: img.media_type,
-      data: img.data,
-    });
-  });
-
-  it("картинка, файл которой пропал, выпадает из сообщения", () => {
-    const chats = [chatWith([{ role: "user", text: "что тут?", images: [img] }])];
-    const restored = deserializeChats(serializeChats(chats)) ?? [];
-
-    const hydrated = hydrateChatImages(restored, new Map());
-
-    expect(hydrated[0]?.messages[0]?.images).toEqual([]);
-    expect(hydrated[0]?.messages[0]?.text).toBe("что тут?");
-  });
-
-  it("chatImageIds собирает ссылки без повторов и без незаписанных", () => {
-    const chats = [
-      chatWith([{ role: "user", text: "раз", images: [img, { ...img, id: "" }] }], {
-        draftAttachments: [{ id: img.id, payload: img, preview: "" }],
-      }),
-    ];
-    expect(chatImageIds(chats)).toEqual([img.id]);
+    expect(parsed[0]?.draftAttachments).toEqual([]);
   });
 
   it("round-trip восстанавливает чаты с пустыми вложениями", () => {
@@ -249,56 +183,5 @@ describe("serialize/deserialize", () => {
     expect(deserializeChats(serializeChats(chats))?.[0]?.context).toBe("вакансия: senior rust");
     const old = deserializeChats('[{"id":"a","title":"Чат 1","messages":[],"draft":""}]');
     expect(old?.[0]?.context).toBe("");
-  });
-});
-
-/**
- * The reader and the model cannot drift any more: the on-disk schema declares
- * exactly the fields `Chat` has, and this assertion is what says so. Thirteen
- * hand-written `typeof` checks used to be the reader, and adding a field to
- * `Chat` broke neither the build nor a test — it simply came back missing after
- * a restart. Modelled on the `SameKeys` assertions in `ipc/contract.test.ts`.
- */
-type SameKeys<A, B> = [keyof A] extends [keyof B]
-  ? [keyof B] extends [keyof A]
-    ? true
-    : never
-  : never;
-
-const schemaCoversEveryChatField: SameKeys<StoredChat, Chat> = true;
-
-describe("схема хранения чата", () => {
-  it("описывает ровно те же поля, что и Chat", () => {
-    expect(schemaCoversEveryChatField).toBe(true);
-    const restored = deserializeChats(serializeChats([createChat(1)]))?.[0];
-    expect(Object.keys(restored ?? {}).sort()).toEqual(Object.keys(createChat(1)).sort());
-  });
-
-  it("чинит поле, а не выбрасывает чат целиком", () => {
-    const restored = deserializeChats(
-      JSON.stringify([
-        {
-          id: "a",
-          title: 5,
-          messages: "не массив",
-          thinkingEnabled: "да",
-          lastInputTokens: -10,
-          libraryDocIds: ["ok", 7],
-        },
-      ]),
-    )?.[0];
-    expect(restored?.id).toBe("a");
-    // The stem is the dictionary's, the number is the position in the file —
-    // a title missing from chats.json must never restore as an empty tab.
-    expect(restored?.title).toBe(`${getDict().common.chat.untitled} 1`);
-    expect(restored?.messages).toEqual([]);
-    expect(restored?.thinkingEnabled).toBe(false);
-    expect(restored?.lastInputTokens).toBe(0);
-    expect(restored?.libraryDocIds).toEqual(["ok"]);
-  });
-
-  it("выдаёт чату без id новый — иначе его нельзя ни выбрать, ни удалить", () => {
-    const restored = deserializeChats('[{"title":"Чат","messages":[]}]')?.[0];
-    expect(restored?.id).not.toBe("");
   });
 });

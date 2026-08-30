@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { QUICK_ACTION_LIMIT } from "@/ipc/types";
+import { QUICK_ACTION_LIMIT } from "@/ipc/bindings";
 import type { QuickAction } from "@/ipc/types";
 import {
   filledQuickActions,

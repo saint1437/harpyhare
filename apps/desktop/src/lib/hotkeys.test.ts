@@ -1,16 +1,7 @@
-import { getDict } from "@/i18n";
 import { describe, expect, it } from "vitest";
-import { HOTKEY_ACTIONS } from "@/ipc/types";
+import { HOTKEY_ACTIONS } from "@/ipc/bindings";
 import type { HotkeyBinding } from "@/ipc/types";
-import {
-  comboTokens,
-  defaultCombo,
-  effectiveCombo,
-  effectiveCombos,
-  formatCombo,
-  hotkeyGroups,
-  withComboHint,
-} from "./hotkeys";
+import { comboTokens, defaultCombo, effectiveCombo, formatCombo, hotkeyGroups } from "./hotkeys";
 import { PLATFORMS } from "./platform";
 
 const NO_BINDINGS: HotkeyBinding[] = [];
@@ -76,12 +67,8 @@ describe("defaultCombo", () => {
   });
 
   it("клавиши без платформенной разницы совпадают", () => {
-    expect(defaultCombo("cancel_recording", "macos")).toBe(
-      defaultCombo("cancel_recording", "windows"),
-    );
-    expect(defaultCombo("teleprompter_pause", "macos")).toBe(
-      defaultCombo("teleprompter_pause", "windows"),
-    );
+    expect(defaultCombo("record", "macos")).toBe(defaultCombo("record", "windows"));
+    expect(defaultCombo("teleprompter", "macos")).toBe(defaultCombo("teleprompter", "windows"));
   });
 
   it("на Windows ни один дефолт не занимает клавишу Win", () => {
@@ -93,7 +80,7 @@ describe("defaultCombo", () => {
 
 describe.each(PLATFORMS)("effectiveCombo (%s)", (platform) => {
   it("без биндинга отдаёт дефолт действия своей платформы", () => {
-    expect(effectiveCombo(NO_BINDINGS, "record", platform)).toBe(defaultCombo("record", platform));
+    expect(effectiveCombo(NO_BINDINGS, "record", platform)).toBe("F9");
     expect(effectiveCombo(NO_BINDINGS, "send", platform)).toBe(defaultCombo("send", platform));
   });
 
@@ -107,10 +94,10 @@ describe.each(PLATFORMS)("effectiveCombo (%s)", (platform) => {
 
 describe("hotkeyGroups на macOS", () => {
   it("собирает подсказки из реестра и текущих биндингов", () => {
-    const combos = hotkeyGroups(NO_BINDINGS, getDict(), "macos")
+    const combos = hotkeyGroups(NO_BINDINGS, "macos")
       .flatMap((g) => g.hints)
       .map((h) => h.combo);
-    expect(combos).toContain("⌘R");
+    expect(combos).toContain("F9");
     expect(combos).toContain("⌘⇧H");
     expect(combos).toContain("⌘ ←→↑↓");
     expect(combos).toContain("⌘⇧ + −");
@@ -120,20 +107,20 @@ describe("hotkeyGroups на macOS", () => {
   });
 
   it("переназначенное действие показывается новым сочетанием", () => {
-    const combos = hotkeyGroups([{ action: "record", combo: "Cmd+Shift+X" }], getDict(), "macos")
+    const combos = hotkeyGroups([{ action: "record", combo: "Cmd+Shift+X" }], "macos")
       .flatMap((g) => g.hints)
       .map((h) => h.combo);
     expect(combos).toContain("⌘⇧X");
-    expect(combos).not.toContain("⌘R");
+    expect(combos).not.toContain("F9");
   });
 });
 
 describe("hotkeyGroups на Windows", () => {
   it("собирает подсказки из реестра и текущих биндингов", () => {
-    const combos = hotkeyGroups(NO_BINDINGS, getDict(), "windows")
+    const combos = hotkeyGroups(NO_BINDINGS, "windows")
       .flatMap((g) => g.hints)
       .map((h) => h.combo);
-    expect(combos).toContain("Ctrl+R");
+    expect(combos).toContain("F9");
     expect(combos).toContain("Ctrl+Shift+H");
     expect(combos).toContain("Ctrl ←→↑↓");
     expect(combos).toContain("Ctrl+Shift + −");
@@ -143,7 +130,7 @@ describe("hotkeyGroups на Windows", () => {
   });
 
   it("mac-глифов в подсказках нет", () => {
-    const combos = hotkeyGroups(NO_BINDINGS, getDict(), "windows")
+    const combos = hotkeyGroups(NO_BINDINGS, "windows")
       .flatMap((g) => g.hints)
       .map((h) => h.combo)
       .join("");
@@ -155,14 +142,14 @@ describe("hotkeyGroups на Windows", () => {
 
 describe.each(PLATFORMS)("hotkeyGroups (%s)", (platform) => {
   it("не назначенное действие в справочник не попадает", () => {
-    const labels = hotkeyGroups([{ action: "teleprompter", combo: "" }], getDict(), platform)
+    const labels = hotkeyGroups([{ action: "teleprompter", combo: "" }], platform)
       .flatMap((g) => g.hints)
       .map((h) => h.label);
     expect(labels).not.toContain("суфлёр");
   });
 
   it("каждая группа названа и непуста, подписи и комбо заполнены", () => {
-    for (const group of hotkeyGroups(NO_BINDINGS, getDict(), platform)) {
+    for (const group of hotkeyGroups(NO_BINDINGS, platform)) {
       expect(group.title).not.toBe("");
       expect(group.hints.length).toBeGreaterThan(0);
       for (const hint of group.hints) {
@@ -227,57 +214,5 @@ describe("comboTokens на Windows", () => {
       { type: "text", text: "Ctrl+" },
       { type: "icon", icon: "enter" },
     ]);
-  });
-});
-
-describe("withComboHint", () => {
-  it("дописывает сочетание в скобках", () => {
-    expect(withComboHint("Дубликат чата", "Cmd+Shift+D", "macos")).toBe("Дубликат чата (⌘⇧D)");
-  });
-
-  // assignHotkey снимает украденное сочетание у прежнего владельца, так что
-  // пустая строка приходит из настоящего сценария, а не из тестовой фикстуры.
-  it("оставляет подпись как есть, когда действие осталось без хоткея", () => {
-    expect(withComboHint("Дубликат чата", "", "macos")).toBe("Дубликат чата");
-  });
-});
-
-describe("effectiveCombos", () => {
-  const platform = "macos" as const;
-
-  it("возвращает дефолт для каждого действия реестра", () => {
-    const combos = effectiveCombos([], platform);
-    for (const action of HOTKEY_ACTIONS) {
-      expect(combos[action.id]).toBe(action.defaultCombo[platform]);
-    }
-  });
-
-  it("совпадает с effectiveCombo на любом наборе привязок", () => {
-    const bindings: HotkeyBinding[] = [
-      { action: "record", combo: "Alt+R" },
-      { action: "toggle_window", combo: "Cmd+Shift+H" },
-    ];
-    const combos = effectiveCombos(bindings, platform);
-    for (const action of HOTKEY_ACTIONS) {
-      expect(combos[action.id]).toBe(effectiveCombo(bindings, action.id, platform));
-    }
-  });
-
-  // Последняя привязка выигрывает — то же правило, что у effectiveCombo,
-  // где раньше это выражалось через reverse().
-  it("берёт последнюю привязку, когда действие связано дважды", () => {
-    const bindings: HotkeyBinding[] = [
-      { action: "record", combo: "Alt+R" },
-      { action: "record", combo: "Alt+T" },
-    ];
-    expect(effectiveCombos(bindings, platform).record).toBe("Alt+T");
-    expect(effectiveCombo(bindings, "record", platform)).toBe("Alt+T");
-  });
-
-  it("не падает на привязке к неизвестному действию", () => {
-    const bindings = [{ action: "no_such_action", combo: "Alt+Z" }] as unknown as HotkeyBinding[];
-    const combos = effectiveCombos(bindings, platform);
-    expect(combos.record).toBe(defaultCombo("record", platform));
-    expect("no_such_action" in combos).toBe(false);
   });
 });

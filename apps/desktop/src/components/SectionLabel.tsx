@@ -5,7 +5,7 @@ export function SectionLabel({ className, ...props }: ComponentProps<"span">) {
   return (
     <span
       className={cn(
-        "text-hint font-semibold tracking-wider text-fg-subtle/80 uppercase",
+        "text-hint font-semibold tracking-wider text-muted-foreground/80 uppercase",
         className,
       )}
       {...props}

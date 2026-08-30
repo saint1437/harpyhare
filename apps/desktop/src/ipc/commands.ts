@@ -2,49 +2,33 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { normalizeAccessCode } from "@/lib/access-code";
 import { type RequestOptions } from "@/lib/chats";
 import { commands } from "./bindings";
-import { type ChatMessageDto, type SecretsStatus, type Settings, type UpdateInfo } from "./types";
+import { type ChatMessageDto, type Settings, type UpdateInfo } from "./types";
 
 const IDEMPOTENCY_STORAGE_PREFIX = "redeem-idem:";
 
 export const {
-  cancelRecording,
   cancelStream,
   captureRegionScreenshot,
-  closeApp,
   copyImageToClipboard,
   getAppVersion,
   getOfficialPresets,
-  getSecretsStatus,
-  setWindowCollapsed,
+  hideMainWindow,
   installUpdate,
   launchMainWindow,
   listAudioOutputDevices,
-  listAudioInputDevices,
-  startAutoMode,
-  stopAutoMode,
-  autoModeActive,
-  takeAutoModeError,
-  takeSettingsRecovery,
-  checkAudioSource,
   listModels,
-  loadChatImages,
   loadChats,
   loadContextLibrary,
   openExternal,
   openPermissionSettings,
   permissionsStatus,
   probeConnectivity,
-  pruneChatImages,
   readContextImportFile,
   readContextPdfBytes,
   requestPermission,
   retryTranscription,
-  saveChatImage,
   saveChats,
   saveContextLibrary,
-  setApiKey,
-  clearApiKey,
-  clearAccessCode,
   setPreviewHtml,
   setPttSuspended,
   setWindowSize,
@@ -94,24 +78,16 @@ async function idempotencyStorageKey(normalizedCode: string): Promise<string> {
   return IDEMPOTENCY_STORAGE_PREFIX + hex.slice(0, 16);
 }
 
-/**
- * Both halves of the answer. The command replies with the fresh
- * {@link SecretsStatus} — the token it just wrote is the only thing a redeem
- * changes — and the caller adopts it directly rather than asking again: a second
- * round trip could fail on its own and leave a paid code looking unredeemed.
- */
-export type RedeemOutcome = { status: SecretsStatus } | { error: string };
-
-export async function redeemAccessCode(code: string): Promise<RedeemOutcome> {
+export async function redeemAccessCode(code: string): Promise<string | null> {
   const normalized = normalizeAccessCode(code);
   const storageKey = await idempotencyStorageKey(normalized);
   const idempotencyKey = localStorage.getItem(storageKey) ?? crypto.randomUUID();
   localStorage.setItem(storageKey, idempotencyKey);
   try {
-    const status = await commands.redeemAccessCode(normalized, idempotencyKey);
+    await commands.redeemAccessCode(normalized, idempotencyKey);
     localStorage.removeItem(storageKey);
-    return { status };
+    return null;
   } catch (e) {
-    return { error: String(e) };
+    return String(e);
   }
 }

@@ -4,11 +4,8 @@ use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
-use crate::sync::MutexExt;
 
-use crate::http::{self, Retryable, RetryPolicy};
-
-pub use crate::http::APP_USER_AGENT;
+pub const APP_USER_AGENT: &str = concat!("AudioSystem/", env!("CARGO_PKG_VERSION"));
 
 const ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com";
 const MESSAGES_PATH: &str = "/v1/messages";
@@ -20,15 +17,7 @@ const API_KEY_HEADER: &str = "x-api-key";
 const VERSION_HEADER: &str = "anthropic-version";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
-/// Set by hand because the bodies go out as pre-serialised bytes rather than
-/// through `RequestBuilder::json`, which is what used to set it.
-const JSON_CONTENT_TYPE: &str = "application/json";
-
 const MAX_TOKENS: u32 = 64000;
-
-/// Whose key was refused. A proper noun: the same in both dictionaries, which is
-/// why it travels as a parameter instead of being baked into two phrases.
-const PROVIDER_NAME: &str = "Anthropic";
 
 const THINKING_ADAPTIVE: &str = "adaptive";
 const THINKING_DISABLED: &str = "disabled";
@@ -43,33 +32,11 @@ const CACHE_TYPE_EPHEMERAL: &str = "ephemeral";
 const HAIKU_PREFIX: &str = "claude-haiku";
 const ALWAYS_THINKING_PREFIXES: [&str; 2] = ["claude-fable", "claude-mythos"];
 
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(60);
+const HTTP2_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(30);
 const WARM_UP_TIMEOUT: Duration = Duration::from_secs(5);
 const LIST_MODELS_TIMEOUT: Duration = Duration::from_secs(15);
-
-/// The proxy worker rejects an oversized body with a bare 413, and the app had
-/// no client-side ceiling at all — only `chat_images::IMAGE_MAX_BYTES` per
-/// attachment, which says nothing about a message carrying several. Refusing
-/// locally costs nothing and says what actually happened.
-///
-/// CROSS-REPO CONSTANT: this is the proxy worker's own body limit
-/// (`itech-relay/src/config.ts`, `LLM_BODY_MAX_BYTES`). Matching it exactly is
-/// the point — the refusal happens before the upload instead of after it. The
-/// two repositories share no code and no CI, so changing one side without the
-/// other silently turns a local error into a wasted upload and a bare 413.
-///
-/// `chat_images::IMAGE_MAX_BYTES` is sized so that one attachment, inflated by
-/// base64, still fits underneath this with room for the history around it.
-pub const MAX_REQUEST_BYTES: usize = 12 * 1024 * 1024;
-
-const ERR_REQUEST_TOO_LARGE: &str =
-    "Запрос слишком большой — удалите часть вложений или сократите контекст";
-
-const BYTES_PER_MB: usize = 1024 * 1024;
-
-/// Attempts and timing for the non-streaming calls. A stream is retried by
-/// `LlmProvider::stream` itself and only before its first delta.
-const REQUEST_RETRY: RetryPolicy =
-    RetryPolicy::new(3, Duration::from_millis(400), Duration::from_secs(8));
 
 const SSE_EVENT_SEPARATOR: &str = "\n\n";
 const SSE_DATA_PREFIX: &str = "data: ";
@@ -81,51 +48,14 @@ const UNKNOWN_API_ERROR: &str = "неизвестная ошибка API";
 pub enum LlmError {
     #[error("Неверный ключ Anthropic — проверь в настройках")]
     BadApiKey,
-    /// The mirror of `SttError::BadAccessCode`. In proxy mode a 401/403 is the
-    /// access code, not an API key — the access-code spec says so in as many
-    /// words — but this side used to answer `Api(...)`, so the same rejection
-    /// reached the UI under two different codes depending on which client hit
-    /// it first, and neither of them was the one the form branches on.
-    #[error("{0}")]
-    BadAccessCode(String),
-    #[error("{1}")]
-    Retryable(u16, String),
+    #[error("Anthropic перегружен, попробуй позже ({0})")]
+    Retryable(u16),
     #[error("Нет соединения — проверь интернет/VPN: {0}")]
     Network(String),
     #[error("Ошибка API: {0}")]
     Api(String),
     #[error("Остановлено")]
     Cancelled,
-    /// The local size refusal, which knows the ceiling it enforced.
-    #[error("{0}")]
-    TooLarge(String, usize),
-    /// The proxy worker named the failure itself. Its code decides everything —
-    /// which phrase the frontend picks and whether a retry is worth it — and
-    /// its Russian sentence is kept only as the log line and the last resort.
-    #[error("{0}")]
-    Relay(RelayErrorText),
-}
-
-/// `thiserror`'s `{0}` needs something that prints; the payload is the parsed
-/// worker error and printing it means printing its message.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RelayErrorText(pub crate::relay_error::RelayError);
-
-impl std::fmt::Display for RelayErrorText {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0.message)
-    }
-}
-
-impl LlmError {
-    /// The wording used when the upstream gave no message of its own.
-    pub fn retryable(status: u16) -> Self {
-        LlmError::Retryable(status, format!("Anthropic перегружен, попробуй позже ({status})"))
-    }
-
-    pub fn relay(error: crate::relay_error::RelayError) -> Self {
-        LlmError::Relay(RelayErrorText(error))
-    }
 }
 
 impl crate::error::CodedError for LlmError {
@@ -133,42 +63,10 @@ impl crate::error::CodedError for LlmError {
         use crate::error::ErrorCode;
         match self {
             LlmError::BadApiKey => ErrorCode::BadApiKey,
-            LlmError::BadAccessCode(_) => ErrorCode::BadAccessCode,
-            LlmError::Retryable(..) => ErrorCode::Retryable,
+            LlmError::Retryable(_) => ErrorCode::Retryable,
             LlmError::Network(_) => ErrorCode::Network,
             LlmError::Api(_) => ErrorCode::Api,
             LlmError::Cancelled => ErrorCode::Cancelled,
-            LlmError::TooLarge(..) => ErrorCode::RequestTooLarge,
-            LlmError::Relay(r) => r.0.code,
-        }
-    }
-
-    fn params(&self) -> crate::error::ErrorParams {
-        use crate::error::{param, params_of};
-        match self {
-            LlmError::Retryable(status, text) => params_of([
-                (param::STATUS, status.to_string()),
-                (param::DETAILS, text.clone()),
-            ]),
-            LlmError::Network(text) | LlmError::Api(text) | LlmError::BadAccessCode(text) => {
-                params_of([(param::DETAILS, text.clone())])
-            }
-            LlmError::TooLarge(_, limit_mb) => {
-                params_of([(param::LIMIT_MB, limit_mb.to_string())])
-            }
-            LlmError::Relay(r) => r.0.params.clone(),
-            LlmError::BadApiKey => params_of([(param::PROVIDER, PROVIDER_NAME.to_string())]),
-            LlmError::Cancelled => crate::error::ErrorParams::new(),
-        }
-    }
-}
-
-impl Retryable for LlmError {
-    fn should_retry(&self) -> bool {
-        match self {
-            LlmError::Retryable(..) | LlmError::Network(_) => true,
-            LlmError::Relay(r) => r.0.should_retry(),
-            _ => false,
         }
     }
 }
@@ -221,7 +119,6 @@ pub struct AnthropicClient {
     base_url: String,
     client: reqwest::Client,
     catalog: ModelCatalog,
-    retry: RetryPolicy,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
@@ -315,81 +212,33 @@ pub fn web_search_value(info: Option<&ModelInfo>, model_id: &str, requested: boo
     Some(tool)
 }
 
-/// The body is read ONCE, before anything branches on the status: the worker's
-/// `code` outranks the status everywhere it is present, and a `Response` can
-/// only be consumed a single time.
+fn build_http_client(read_timeout: Duration) -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent(APP_USER_AGENT)
+        .connect_timeout(CONNECT_TIMEOUT)
+        .read_timeout(read_timeout)
+        .pool_idle_timeout(None)
+        .http2_keep_alive_interval(HTTP2_KEEP_ALIVE_INTERVAL)
+        .http2_keep_alive_while_idle(true)
+        .build()
+        .expect("reqwest client")
+}
+
 async fn require_ok_status(resp: reqwest::Response, proxy: bool) -> Result<reqwest::Response, LlmError> {
-    let status = resp.status().as_u16();
-    if status == 200 {
-        return Ok(resp);
+    match resp.status().as_u16() {
+        200 => Ok(resp),
+        code @ (401 | 403) if proxy => Err(LlmError::Api(api_error_message(resp, code).await)),
+        401 | 403 => Err(LlmError::BadApiKey),
+        code @ (429 | 500..=599) => Err(LlmError::Retryable(code)),
+        code => Err(LlmError::Api(api_error_message(resp, code).await)),
     }
-    let body = resp.text().await.unwrap_or_default();
-    if proxy {
-        if let Some(relay) = crate::relay_error::parse(&body) {
-            return Err(LlmError::relay(relay));
-        }
-    }
-    Err(match status {
-        // No `code` in the body: either a direct Anthropic call or a worker
-        // older than the coded protocol. Both keep the behaviour that was here.
-        401 | 403 if proxy => LlmError::BadAccessCode(api_error_message(&body, status)),
-        401 | 403 => LlmError::BadApiKey,
-        // The worker answers an overload with a sentence of its own, in Russian.
-        // Replacing it with "Anthropic перегружен" threw away the only thing
-        // that told the user which side was unwell.
-        429 | 500..=599 => {
-            let upstream = if proxy { body_error_message(&body) } else { None };
-            upstream.map_or_else(
-                || LlmError::retryable(status),
-                |m| LlmError::Retryable(status, m),
-            )
-        }
-        _ => LlmError::Api(api_error_message(&body, status)),
-    })
-}
-
-fn body_error_message(body: &str) -> Option<String> {
-    serde_json::from_str::<Value>(body)
-        .ok()?
-        .get("error")?
-        .get("message")?
-        .as_str()
-        .map(str::to_string)
-        .filter(|m| !m.trim().is_empty())
-}
-
-/// A cheap upper bound on the serialized body: the base64 image payloads and the
-/// text dominate it by orders of magnitude, and measuring them beats serializing
-/// a 20 MB body twice just to learn it is too big.
-pub fn request_size_bytes(request: &LlmRequest) -> usize {
-    request.system.len()
-        + request
-            .messages
-            .iter()
-            .map(|m| {
-                m.text.len()
-                    + m.images
-                        .iter()
-                        .map(|i| i.data.len() + i.media_type.len())
-                        .sum::<usize>()
-            })
-            .sum::<usize>()
-}
-
-fn require_sendable_size(request: &LlmRequest) -> Result<(), LlmError> {
-    if request_size_bytes(request) > MAX_REQUEST_BYTES {
-        return Err(LlmError::TooLarge(
-            ERR_REQUEST_TOO_LARGE.into(),
-            MAX_REQUEST_BYTES / BYTES_PER_MB,
-        ));
-    }
-    Ok(())
 }
 
 const ERROR_BODY_SNIPPET_CHARS: usize = 120;
 
-fn api_error_message(body: &str, code: u16) -> String {
-    serde_json::from_str::<Value>(body)
+async fn api_error_message(resp: reqwest::Response, code: u16) -> String {
+    let body = resp.text().await.unwrap_or_default();
+    serde_json::from_str::<Value>(&body)
         .ok()
         .and_then(|v| v["error"]["message"].as_str().map(str::to_string))
         .unwrap_or_else(|| {
@@ -418,24 +267,13 @@ async fn pump_sse_stream(
             return Err(LlmError::Network(TRUNCATED_STREAM_ERROR.into()));
         };
         let bytes = chunk.map_err(|e| LlmError::Network(e.to_string()))?;
-        // The former loop `return`ed out of the middle of the event list. A sink
-        // cannot, so the first terminal event is remembered and everything after
-        // it in the same chunk is ignored — which is exactly what the `return`
-        // did, and the parser's own state advances identically either way.
-        let mut finished: Option<Result<(), LlmError>> = None;
-        parser.feed_bytes(&bytes, &mut |out| {
-            if finished.is_some() {
-                return;
-            }
+        for out in parser.feed_bytes(&bytes) {
             match out {
-                SseOut::TextDelta(t) => sink.text_delta(t),
+                SseOut::TextDelta(t) => sink.text_delta(&t),
                 SseOut::InputTokens(n) => sink.input_tokens(n),
-                SseOut::Done => finished = Some(Ok(())),
-                SseOut::ApiError(m) => finished = Some(Err(LlmError::Api(m.to_string()))),
+                SseOut::Done => return Ok(()),
+                SseOut::ApiError(m) => return Err(LlmError::Api(m)),
             }
-        });
-        if let Some(result) = finished {
-            return result;
         }
     }
 }
@@ -445,24 +283,17 @@ impl AnthropicClient {
         Self {
             auth: Auth::ApiKey(api_key),
             base_url: ANTHROPIC_BASE_URL.into(),
-            client: http::shared(),
+            client: build_http_client(DEFAULT_READ_TIMEOUT),
             catalog: ModelCatalog::default(),
-            retry: REQUEST_RETRY,
         }
     }
     pub fn for_proxy(access_token: String, base_url: String) -> Self {
         Self {
             auth: Auth::ProxyBearer(access_token),
             base_url,
-            client: http::shared(),
+            client: build_http_client(DEFAULT_READ_TIMEOUT),
             catalog: ModelCatalog::default(),
-            retry: REQUEST_RETRY,
         }
-    }
-    /// Tests that assert a status mapping do not want three attempts of it.
-    pub fn with_retry(mut self, retry: RetryPolicy) -> Self {
-        self.retry = retry;
-        self
     }
     pub fn with_catalog(mut self, catalog: ModelCatalog) -> Self {
         self.catalog = catalog;
@@ -470,7 +301,8 @@ impl AnthropicClient {
     }
     fn cached_model(&self, model_id: &str) -> Option<ModelInfo> {
         self.catalog
-            .lock_safe()
+            .lock()
+            .unwrap()
             .iter()
             .find(|m| m.id == model_id)
             .cloned()
@@ -495,11 +327,8 @@ impl AnthropicClient {
         self.base_url = url;
         self
     }
-    /// The one caller that needs a different read timeout has to own a client:
-    /// reqwest has no per-request read timeout. Built from the shared factory,
-    /// so the UA, pool and keep-alive settings stay single-sourced.
     pub fn with_read_timeout(mut self, d: Duration) -> Self {
-        self.client = http::build_client(d);
+        self.client = build_http_client(d);
         self
     }
 
@@ -517,7 +346,9 @@ impl AnthropicClient {
             .send()
             .await
             .map_err(|e| LlmError::Network(e.to_string()))?;
-        let resp = require_ok_status(resp, self.is_proxy()).await?;
+        if resp.status().as_u16() != 200 {
+            return Err(LlmError::Api(format!("models HTTP {}", resp.status().as_u16())));
+        }
         let v: Value = resp
             .json()
             .await
@@ -533,12 +364,11 @@ impl AnthropicClient {
             .header(VERSION_HEADER, ANTHROPIC_VERSION)
     }
 
-    async fn post_count_tokens(&self, body: Vec<u8>) -> Result<u32, LlmError> {
+    async fn post_count_tokens(&self, body: Value) -> Result<u32, LlmError> {
         let resp = self
             .authorize(self.client.post(format!("{}{COUNT_TOKENS_PATH}", self.base_url)))
             .header(VERSION_HEADER, ANTHROPIC_VERSION)
-            .header(reqwest::header::CONTENT_TYPE, JSON_CONTENT_TYPE)
-            .body(body)
+            .json(&body)
             .send()
             .await
             .map_err(|e| LlmError::Network(e.to_string()))?;
@@ -550,51 +380,19 @@ impl AnthropicClient {
             .ok_or_else(|| LlmError::Api(UNKNOWN_API_ERROR.into()))
     }
 
-    /// One attempt at the stream, over a body that is ALREADY serialised.
-    ///
-    /// `send` consumes the request, so a retry needs a body of its own each
-    /// time — but cloning a `Vec<u8>` is a memcpy of a buffer we already hold,
-    /// where cloning the `serde_json::Value` deep-copied the whole tree and
-    /// every base64 image in it, and `.json(&body)` then walked that tree a
-    /// second time to serialise it. With a 12 MB ceiling on the request that
-    /// was three multi-megabyte passes for a single send.
     pub async fn stream_message(
         &self,
-        body: Vec<u8>,
+        body: serde_json::Value,
         cancel: CancellationToken,
         sink: &mut dyn LlmStreamSink,
     ) -> Result<(), LlmError> {
-        let send = self
-            .messages_request()
-            .header(reqwest::header::CONTENT_TYPE, JSON_CONTENT_TYPE)
-            .body(body)
-            .send();
+        let send = self.messages_request().json(&body).send();
         let resp = tokio::select! {
             r = send => r.map_err(|e| LlmError::Network(e.to_string()))?,
             _ = cancel.cancelled() => return Err(LlmError::Cancelled),
         };
         let resp = require_ok_status(resp, self.is_proxy()).await?;
         pump_sse_stream(resp, &cancel, sink).await
-    }
-}
-
-/// A retry is only allowed while the user has seen nothing. Once a delta has
-/// been forwarded, a second attempt would start the answer again on top of the
-/// text already on screen — the reader would watch it stutter and the history
-/// would keep both halves.
-struct UntilFirstDelta<'a> {
-    inner: &'a mut dyn LlmStreamSink,
-    produced: bool,
-}
-
-impl LlmStreamSink for UntilFirstDelta<'_> {
-    fn text_delta(&mut self, delta: &str) {
-        self.produced = true;
-        self.inner.text_delta(delta);
-    }
-
-    fn input_tokens(&mut self, total: u32) {
-        self.inner.input_tokens(total);
     }
 }
 
@@ -606,60 +404,33 @@ impl LlmProvider for AnthropicClient {
         cancel: CancellationToken,
         sink: &mut dyn LlmStreamSink,
     ) -> Result<(), LlmError> {
-        require_sendable_size(&request)?;
         let (thinking, web_search) = self.capability_fields(&request);
-        // Serialised once, outside the retry loop: the loop below only ever
-        // needs a fresh copy of the BYTES.
-        let body = encode_body(&build_request_body(
+        let body = build_request_body(
             &request.model,
             &request.system,
             &request.messages,
             thinking,
             web_search,
-        ))?;
-        let mut guarded = UntilFirstDelta {
-            inner: sink,
-            produced: false,
-        };
-        let mut attempt: u32 = 0;
-        loop {
-            let outcome = self
-                .stream_message(body.clone(), cancel.clone(), &mut guarded)
-                .await;
-            let Err(e) = outcome else { return Ok(()) };
-            attempt += 1;
-            if guarded.produced
-                || cancel.is_cancelled()
-                || attempt >= self.retry.attempts
-                || !e.should_retry()
-            {
-                return Err(e);
-            }
-            eprintln!("[llm] попытка {attempt} не удалась ({e}) — повтор");
-            tokio::time::sleep(http::backoff_delay(self.retry, attempt - 1)).await;
-        }
+        );
+        self.stream_message(body, cancel, sink).await
     }
 
     async fn count_tokens(&self, request: LlmRequest) -> Result<u32, LlmError> {
-        require_sendable_size(&request)?;
         let (thinking, web_search) = self.capability_fields(&request);
-        // The same shape as `stream`, and it matters more here: the projection
-        // fires on every change to the history, carrying its whole base64 image
-        // load with it.
-        let body = encode_body(&build_count_tokens_body(
+        let body = build_count_tokens_body(
             &request.model,
             &request.system,
             &request.messages,
             thinking,
             web_search,
-        ))?;
-        http::retry_with_backoff(self.retry, |_| self.post_count_tokens(body.clone())).await
+        );
+        self.post_count_tokens(body).await
     }
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>, LlmError> {
-        let models = http::retry_with_backoff(self.retry, |_| self.fetch_models()).await?;
+        let models = self.fetch_models().await?;
         if !models.is_empty() {
-            *self.catalog.lock_safe() = models.clone();
+            *self.catalog.lock().unwrap() = models.clone();
         }
         Ok(models)
     }
@@ -762,14 +533,6 @@ pub fn build_count_tokens_body(
     body
 }
 
-/// The body reaches the wire as bytes exactly once per request instead of once
-/// per attempt. A `Value` this module built itself cannot fail to serialise; the
-/// error is mapped rather than unwrapped so that a body which one day could
-/// would say so instead of taking the process down.
-fn encode_body(body: &Value) -> Result<Vec<u8>, LlmError> {
-    serde_json::to_vec(body).map_err(|e| LlmError::Api(e.to_string()))
-}
-
 pub fn build_request_body(
     model: &str,
     system: &str,
@@ -793,25 +556,13 @@ pub fn build_request_body(
     body
 }
 
-/// One thing the parser found in the stream.
-///
-/// The text carried here is BORROWED from the event currently being parsed.
-/// A delta's only destination is `push_str` into a buffer the caller owns, and
-/// an owned `String` per delta meant a throwaway allocation for every few
-/// characters of every answer — thousands of them per reply.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum SseOut<'a> {
-    TextDelta(&'a str),
+#[derive(Debug, Clone, PartialEq)]
+pub enum SseOut {
+    TextDelta(String),
     InputTokens(u32),
     Done,
-    ApiError(&'a str),
+    ApiError(String),
 }
-
-/// Where the parser puts what it finds. A callback rather than a returned `Vec`
-/// for the same reason the payloads are borrowed: the caller consumes each event
-/// immediately and keeps nothing, so the vector allocated per network chunk was
-/// pure overhead.
-pub type SseSink<'s> = dyn FnMut(SseOut<'_>) + 's;
 
 #[derive(Default)]
 pub struct SseParser {
@@ -824,77 +575,59 @@ impl SseParser {
         Self::default()
     }
 
-    pub fn feed(&mut self, chunk: &str, out: &mut SseSink<'_>) {
+    pub fn feed(&mut self, chunk: &str) -> Vec<SseOut> {
         self.buf.push_str(chunk);
+        let mut out = Vec::new();
         let mut start = 0;
         while let Some(rel) = self.buf[start..].find(SSE_EVENT_SEPARATOR) {
             let pos = start + rel;
-            Self::parse_block(&self.buf[start..pos], out);
+            if let Some(parsed) = Self::parse_block(&self.buf[start..pos]) {
+                out.push(parsed);
+            }
             start = pos + SSE_EVENT_SEPARATOR.len();
         }
         self.buf.drain(..start);
+        out
     }
 
-    pub fn feed_bytes(&mut self, chunk: &[u8], out: &mut SseSink<'_>) {
-        // The common case by far: nothing was left over from the previous chunk,
-        // so a chunk that is whole UTF-8 can be read in place. Only a chunk that
-        // ends in the middle of a codepoint has to be joined with the next one,
-        // and only that branch allocates — the former unconditional
-        // `chunk.to_vec()` copied every byte of every network chunk, and
-        // `feed`'s `push_str` then copied them again.
-        if self.tail.is_empty() {
-            self.feed_utf8(chunk, out);
-            return;
-        }
-        let mut joined = std::mem::take(&mut self.tail);
-        joined.extend_from_slice(chunk);
-        self.feed_utf8(&joined, out);
-    }
-
-    fn feed_utf8(&mut self, data: &[u8], out: &mut SseSink<'_>) {
-        match std::str::from_utf8(data) {
-            Ok(s) => self.feed(s, out),
+    pub fn feed_bytes(&mut self, chunk: &[u8]) -> Vec<SseOut> {
+        let data = if self.tail.is_empty() {
+            chunk.to_vec()
+        } else {
+            let mut v = std::mem::take(&mut self.tail);
+            v.extend_from_slice(chunk);
+            v
+        };
+        match std::str::from_utf8(&data) {
+            Ok(s) => self.feed(s),
             Err(e) => {
                 let valid = e.valid_up_to();
                 self.tail = data[valid..].to_vec();
-                // `valid_up_to` guarantees this half is valid UTF-8; the fallback
-                // is here so a future change to the slicing degrades to a dropped
-                // chunk instead of killing the stream task.
-                if let Ok(s) = std::str::from_utf8(&data[..valid]) {
-                    self.feed(s, out);
-                }
+                let s = std::str::from_utf8(&data[..valid]).expect("проверено valid_up_to");
+                self.feed(s)
             }
         }
     }
 
-    fn parse_block(block: &str, out: &mut SseSink<'_>) {
-        let Some(data_line) = block.lines().find(|l| l.starts_with(SSE_DATA_PREFIX)) else {
-            return;
-        };
-        let Ok(v) = serde_json::from_str::<Value>(&data_line[SSE_DATA_PREFIX.len()..]) else {
-            return;
-        };
-        let Some(kind) = v["type"].as_str() else { return };
-        match kind {
+    fn parse_block(block: &str) -> Option<SseOut> {
+        let data_line = block.lines().find(|l| l.starts_with(SSE_DATA_PREFIX))?;
+        let v: serde_json::Value = serde_json::from_str(&data_line[SSE_DATA_PREFIX.len()..]).ok()?;
+        match v["type"].as_str()? {
             "content_block_delta" if v["delta"]["type"] == "text_delta" => {
-                if let Some(text) = v["delta"]["text"].as_str() {
-                    out(SseOut::TextDelta(text));
-                }
+                Some(SseOut::TextDelta(v["delta"]["text"].as_str()?.to_string()))
             }
             "message_start" => {
                 let usage = &v["message"]["usage"];
                 let total = usage["input_tokens"].as_u64().unwrap_or(0)
                     + usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
                     + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
-                if total > 0 {
-                    out(SseOut::InputTokens(total as u32));
-                }
+                (total > 0).then_some(SseOut::InputTokens(total as u32))
             }
-            "message_stop" => out(SseOut::Done),
-            "error" => out(SseOut::ApiError(
-                v["error"]["message"].as_str().unwrap_or(UNKNOWN_API_ERROR),
+            "message_stop" => Some(SseOut::Done),
+            "error" => Some(SseOut::ApiError(
+                v["error"]["message"].as_str().unwrap_or(UNKNOWN_API_ERROR).to_string(),
             )),
-            _ => {}
+            _ => None,
         }
     }
 }

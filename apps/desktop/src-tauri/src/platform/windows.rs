@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use tauri::{AppHandle, WebviewWindow};
+use tauri::AppHandle;
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HINSTANCE, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Dwm::{
@@ -18,13 +18,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
     KBDLLHOOKSTRUCT, SW_SHOWNORMAL, WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
 };
 
-use super::{ModifierMask, PlatformBackend, handle_arrow_key_on};
+use super::{handle_arrow_key, ModifierMask};
 use crate::window::main_window;
 
 const KEY_PRESSED_MASK: u16 = 0x8000;
 const SWALLOW_EVENT: LRESULT = LRESULT(1);
-const AUDIO_PRIVACY_PANE_URL: PCWSTR = w!("ms-settings:sound");
-const MICROPHONE_PRIVACY_PANE_URL: PCWSTR = w!("ms-settings:privacy-microphone");
+const AUDIO_PRIVACY_PANE_URL: PCWSTR = w!("ms-settings:privacy-microphone");
 const SCREEN_PRIVACY_PANE_URL: PCWSTR = w!("ms-settings:privacy");
 const SHELL_OPEN_VERB: PCWSTR = w!("open");
 
@@ -87,8 +86,11 @@ fn is_key_down(message: WPARAM) -> bool {
     message.0 as u32 == WM_KEYDOWN || message.0 as u32 == WM_SYSKEYDOWN
 }
 
-fn hud_is_focused(window: &WebviewWindow) -> bool {
-    let Ok(hwnd) = window.hwnd() else {
+fn hud_is_focused(app: &AppHandle) -> bool {
+    let Some(w) = main_window(app) else {
+        return false;
+    };
+    let Ok(hwnd) = w.hwnd() else {
         return false;
     };
     let foreground = unsafe { GetForegroundWindow() };
@@ -100,18 +102,12 @@ unsafe extern "system" fn arrow_keys_hook(code: i32, wparam: WPARAM, lparam: LPA
     if code == HC_ACTION as i32 && is_key_down(wparam) {
         let event = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
         if let (Some((dx, dy)), Some(app)) = (arrow_delta(event.vkCode), HOOK_APP.get()) {
-            // ONE window lookup for the whole press. The focus test and the
-            // move/resize both need the HUD, and this body runs inside a
-            // `WH_KEYBOARD_LL` hook the OS unhooks if it outstays
-            // `LowLevelHooksTimeout`.
-            if let Some(window) = main_window(app) {
-                let focused = hud_is_focused(&window);
-                if cfg!(debug_assertions) && !focused {
-                    eprintln!("[стрелки] окно HUD не активно — событие пропущено дальше");
-                }
-                if focused && handle_arrow_key_on(&window, pressed_modifiers(), dx, dy) {
-                    return SWALLOW_EVENT;
-                }
+            let focused = hud_is_focused(app);
+            if cfg!(debug_assertions) && !focused {
+                eprintln!("[стрелки] окно HUD не активно — событие пропущено дальше");
+            }
+            if focused && handle_arrow_key(app, pressed_modifiers(), dx, dy) {
+                return SWALLOW_EVENT;
             }
         }
     }
@@ -148,10 +144,6 @@ pub fn open_audio_capture_privacy_pane() {
     open_with_shell(AUDIO_PRIVACY_PANE_URL);
 }
 
-pub fn open_microphone_privacy_pane() {
-    open_with_shell(MICROPHONE_PRIVACY_PANE_URL);
-}
-
 pub fn open_screen_capture_privacy_pane() {
     open_with_shell(SCREEN_PRIVACY_PANE_URL);
 }
@@ -167,39 +159,4 @@ pub fn request_screen_capture_access() -> bool {
 pub fn open_url(url: &str) {
     let wide: Vec<u16> = url.encode_utf16().chain(std::iter::once(0)).collect();
     open_with_shell(PCWSTR(wide.as_ptr()));
-}
-
-pub struct Backend;
-
-impl PlatformBackend for Backend {
-    fn disable_cursor_autohide_on_typing() {
-        disable_cursor_autohide_on_typing();
-    }
-    fn merge_titlebar_into_content(app: &AppHandle) {
-        merge_titlebar_into_content(app);
-    }
-    fn clip_native_window_corners(app: &AppHandle) {
-        clip_native_window_corners(app);
-    }
-    fn install_move_keys_monitor(app: AppHandle) {
-        install_move_keys_monitor(app);
-    }
-    fn open_audio_capture_privacy_pane() {
-        open_audio_capture_privacy_pane();
-    }
-    fn open_microphone_privacy_pane() {
-        open_microphone_privacy_pane();
-    }
-    fn open_screen_capture_privacy_pane() {
-        open_screen_capture_privacy_pane();
-    }
-    fn screen_capture_access() -> bool {
-        screen_capture_access()
-    }
-    fn request_screen_capture_access() -> bool {
-        request_screen_capture_access()
-    }
-    fn open_url(url: &str) {
-        open_url(url);
-    }
 }

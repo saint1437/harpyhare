@@ -1,71 +1,12 @@
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
-
-use crate::error::{AppError, CodedError, ErrorCode};
-use crate::sync::MutexExt;
-
-#[cfg(windows)]
-mod windows;
+use std::path::Path;
 
 #[cfg(unix)]
 const OWNER_ONLY_FILE_MODE: u32 = 0o600;
-pub(crate) const TMP_FILE_EXTENSION: &str = "tmp";
+const TMP_FILE_EXTENSION: &str = "tmp";
 
-static TMP_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
-
-/// A settings or secrets file we could not parse is renamed to this suffix plus
-/// a unix timestamp instead of being silently replaced by defaults: the very
-/// next write goes over it, and for `secrets.json` that is a paid access code
-/// gone. Recovery is manual, but the bytes survive.
-const CORRUPT_FILE_SUFFIX: &str = "corrupt";
-
-/// The on-disk schema of `settings.json`. `0` is every file written before the
-/// field existed — the shape the three ad-hoc migrations used to guess at.
-pub const SCHEMA_VERSION_LEGACY: u32 = 0;
-pub const CURRENT_SCHEMA_VERSION: u32 = 2;
-
-const SCHEMA_VERSION_KEY: &str = "schema_version";
-
-#[derive(Debug, thiserror::Error)]
-pub enum SettingsError {
-    #[error("Не удалось записать настройки: {0}")]
-    Write(String),
-    #[error("Файл настроек повреждён: {0}")]
-    Corrupt(String),
-}
-
-impl CodedError for SettingsError {
-    fn code(&self) -> ErrorCode {
-        ErrorCode::Internal
-    }
-}
-
-impl From<SettingsError> for AppError {
-    fn from(e: SettingsError) -> Self {
-        AppError::new(e.code(), e.to_string())
-    }
-}
-
-/// `system` follows the OS; the two explicit values pin it. The former
-/// `gray`/`black` pair were two dark themes 0.05 lightness apart and retired
-/// when the palette gained a real light half — `migrate_legacy_theme` maps them.
-pub const THEME_SYSTEM: &str = "system";
-pub const THEME_LIGHT: &str = "light";
-pub const THEME_DARK: &str = "dark";
-pub const LEGACY_THEME_GRAY: &str = "gray";
-pub const LEGACY_THEME_BLACK: &str = "black";
-
-/// The mirror of the theme, one axis over: `system` follows the OS, the two
-/// explicit values pin it. **Rust never resolves `system`** — that happens on
-/// the frontend, from `navigator.language`, for the same reason the platform
-/// does (`lib/platform.ts`): a value that depended on the machine would make
-/// `bindings.ts` differ between the macOS and Windows build hosts. Rust stores
-/// the choice and validates it, and nothing here reads the resolved locale.
-pub const LANGUAGE_SYSTEM: &str = "system";
-pub const LANGUAGE_RU: &str = "ru";
-pub const LANGUAGE_EN: &str = "en";
+pub const THEME_GRAY: &str = "gray";
+pub const THEME_BLACK: &str = "black";
 
 pub const QUICK_ACTION_LIMIT: usize = 9;
 
@@ -105,9 +46,6 @@ pub struct SettingsLimits {
     pub teleprompter_speed: Bounds<f64>,
     pub teleprompter_font_size: Bounds<f64>,
     pub buffer_seconds: Bounds<u32>,
-    pub auto_silence_ms: Bounds<u32>,
-    pub auto_min_utterance_ms: Bounds<u32>,
-    pub auto_max_utterance_secs: Bounds<u32>,
 }
 
 impl SettingsLimits {
@@ -123,17 +61,13 @@ impl SettingsLimits {
             teleprompter_speed: limits::teleprompter::SPEED,
             teleprompter_font_size: limits::teleprompter::FONT_SIZE,
             buffer_seconds: limits::capture::BUFFER_SECONDS,
-            auto_silence_ms: limits::capture::AUTO_SILENCE_MS,
-            auto_min_utterance_ms: limits::capture::AUTO_MIN_UTTERANCE_MS,
-            auto_max_utterance_secs: limits::capture::AUTO_MAX_UTTERANCE_SECS,
         }
     }
 }
 
 pub mod defaults {
     pub const STT_LANGUAGE: &str = "ru";
-    pub const THEME: &str = super::THEME_SYSTEM;
-    pub const LANGUAGE: &str = super::LANGUAGE_SYSTEM;
+    pub const THEME: &str = super::THEME_GRAY;
 }
 
 pub mod limits {
@@ -143,7 +77,7 @@ pub mod limits {
         use super::Bounds;
         pub const WIDTH: Bounds<f64> = Bounds { default: 960.0, min: 300.0, max: 1600.0 };
         pub const HEIGHT: Bounds<f64> = Bounds { default: 680.0, min: 520.0, max: 1100.0 };
-        pub const OPACITY: Bounds<f64> = Bounds { default: 0.9, min: 0.75, max: 1.0 };
+        pub const OPACITY: Bounds<f64> = Bounds { default: 0.9, min: 0.2, max: 1.0 };
         pub const MOVE_STEP: Bounds<u32> = Bounds { default: 20, min: 1, max: 200 };
         pub const RESIZE_STEP: Bounds<u32> = Bounds { default: 20, min: 1, max: 200 };
     }
@@ -163,9 +97,6 @@ pub mod limits {
     pub mod capture {
         use super::Bounds;
         pub const BUFFER_SECONDS: Bounds<u32> = Bounds { default: 4, min: 4, max: 10 };
-        pub const AUTO_SILENCE_MS: Bounds<u32> = Bounds { default: 700, min: 300, max: 2000 };
-        pub const AUTO_MIN_UTTERANCE_MS: Bounds<u32> = Bounds { default: 400, min: 200, max: 3000 };
-        pub const AUTO_MAX_UTTERANCE_SECS: Bounds<u32> = Bounds { default: 30, min: 5, max: 120 };
     }
 }
 
@@ -206,16 +137,12 @@ fn seeded_quick_actions() -> Vec<QuickAction> {
         .collect()
 }
 
-/// Everything `get_settings` hands to the webview — and therefore **the type
-/// that must never gain a secret again**. The two API keys and the access token
-/// used to live here and travelled to the frontend in plaintext on every call;
-/// they now live in `crate::secrets`, behind `SecretsStatus`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(default)]
 pub struct Settings {
-    /// The on-disk format of this file. Written by `save`, read by `load` to
-    /// pick the migration chain; see `MIGRATIONS`.
-    pub schema_version: u32,
+    pub anthropic_api_key: String,
+    pub groq_api_key: String,
+    pub access_token: String,
     pub prompt_presets: Vec<PromptPreset>,
     pub hotkeys: Vec<crate::hotkeys::HotkeyBinding>,
     pub auto_send: bool,
@@ -237,27 +164,19 @@ pub struct Settings {
     pub resize_step: u32,
     pub capture_device_uid: String,
     pub theme: String,
-    pub language: String,
     pub scroll_step: u32,
     pub buffer_enabled: bool,
     pub buffer_seconds: u32,
-    pub auto_mode_enabled: bool,
-    pub auto_reply_instant: bool,
-    pub auto_mic_device_uid: String,
-    pub auto_silence_ms: u32,
-    pub auto_min_utterance_ms: u32,
-    pub auto_max_utterance_secs: u32,
-    pub mic_permission_requested: bool,
     pub quick_actions: Vec<QuickAction>,
     pub quick_action_attachments: bool,
-    pub onboarding_done: bool,
-    pub copy_results_to_clipboard: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            schema_version: CURRENT_SCHEMA_VERSION,
+            anthropic_api_key: String::new(),
+            groq_api_key: String::new(),
+            access_token: String::new(),
             prompt_presets: Vec::new(),
             hotkeys: Vec::new(),
             auto_send: false,
@@ -279,146 +198,17 @@ impl Default for Settings {
             resize_step: limits::window::RESIZE_STEP.default,
             capture_device_uid: String::new(),
             theme: defaults::THEME.into(),
-            language: defaults::LANGUAGE.into(),
             scroll_step: limits::chat::SCROLL_STEP.default,
             buffer_enabled: true,
             buffer_seconds: limits::capture::BUFFER_SECONDS.default,
-            auto_mode_enabled: false,
-            auto_reply_instant: false,
-            auto_mic_device_uid: String::new(),
-            auto_silence_ms: limits::capture::AUTO_SILENCE_MS.default,
-            auto_min_utterance_ms: limits::capture::AUTO_MIN_UTTERANCE_MS.default,
-            auto_max_utterance_secs: limits::capture::AUTO_MAX_UTTERANCE_SECS.default,
-            mic_permission_requested: false,
             quick_actions: seeded_quick_actions(),
             quick_action_attachments: false,
-            onboarding_done: false,
-            copy_results_to_clipboard: true,
         }
     }
-}
-
-/// One entry per version step: `MIGRATIONS[i]` upgrades a document at version
-/// `i` to version `i + 1`. Adding a format change is adding a function here and
-/// bumping `CURRENT_SCHEMA_VERSION` — nothing may guess the version from the
-/// presence of a field any more.
-type Migration = fn(&mut serde_json::Value);
-
-const MIGRATIONS: &[Migration] = &[migrate_v0_to_v1, migrate_v1_to_v2];
-
-/// v0 is everything written before `schema_version` existed. The three former
-/// ad-hoc migrations (legacy hotkey fields, the retired dark themes, the
-/// onboarding flag) all describe exactly that shape, so they are this one step.
-fn migrate_v0_to_v1(value: &mut serde_json::Value) {
-    crate::hotkeys::migrate_legacy_fields(value);
-    migrate_legacy_theme(value);
-    migrate_onboarding_done(value);
-}
-
-/// The secrets left `Settings` for `secrets.json`. Lifting the values OUT of an
-/// old document is `secrets::load_or_migrate`'s job — it reads the file before
-/// this step ever runs; this step only takes the fields away, so the settings
-/// file stops carrying a second plaintext copy of them from the next write on.
-fn migrate_v1_to_v2(value: &mut serde_json::Value) {
-    let Some(object) = value.as_object_mut() else {
-        return;
-    };
-    for field in crate::secrets::LEGACY_SETTINGS_FIELDS {
-        object.remove(field);
-    }
-}
-
-fn document_version(value: &serde_json::Value) -> u32 {
-    value
-        .get(SCHEMA_VERSION_KEY)
-        .and_then(serde_json::Value::as_u64)
-        .map_or(SCHEMA_VERSION_LEGACY, |v| v as u32)
-}
-
-/// Runs every step from `from_version` up to `CURRENT_SCHEMA_VERSION` and
-/// stamps the result. A file from the FUTURE (a downgrade) is left alone: its
-/// unknown fields are dropped by serde, but nothing pretends to migrate it
-/// backwards.
-pub fn migrate(value: &mut serde_json::Value, from_version: u32) -> u32 {
-    let mut version = from_version;
-    while (version as usize) < MIGRATIONS.len() {
-        MIGRATIONS[version as usize](value);
-        version += 1;
-    }
-    if let Some(object) = value.as_object_mut() {
-        object.insert(SCHEMA_VERSION_KEY.into(), version.max(from_version).into());
-    }
-    version.max(from_version)
-}
-
-/// Both retired values were dark, so an existing install keeps the appearance it
-/// had; only a fresh install gets `system`.
-fn migrate_legacy_theme(value: &mut serde_json::Value) {
-    let Some(theme) = value.get("theme").and_then(serde_json::Value::as_str) else {
-        return;
-    };
-    if theme == LEGACY_THEME_GRAY || theme == LEGACY_THEME_BLACK {
-        value["theme"] = serde_json::Value::String(THEME_DARK.into());
-    }
-}
-
-/// Onboarding exists to obtain API access; anyone who already has it has
-/// effectively completed it and must not be sent back through the flow.
-///
-/// The three field names are spelled out rather than taken from
-/// `secrets::LEGACY_SETTINGS_FIELDS`: this step describes a document shape that
-/// is frozen in the past, and renaming a live constant must not change what a
-/// v0 file means.
-fn migrate_onboarding_done(value: &mut serde_json::Value) {
-    let Some(object) = value.as_object_mut() else {
-        return;
-    };
-    if object.contains_key("onboarding_done") {
-        return;
-    }
-    let configured = ["anthropic_api_key", "groq_api_key", "access_token"].iter().any(|key| {
-        object.get(*key).and_then(serde_json::Value::as_str).is_some_and(|v| !v.is_empty())
-    });
-    object.insert("onboarding_done".into(), serde_json::Value::Bool(configured));
 }
 
 impl Settings {
-    /// Brings every field back inside its bounds. Standalone: with no
-    /// predecessor to compare against, the hotkey map is swept unconditionally.
     pub fn clamp(&mut self) {
-        self.clamp_fields();
-        crate::hotkeys::normalize(&mut self.hotkeys);
-    }
-
-    /// `clamp` for a value edited out of an already-clamped `previous` — the
-    /// shape every write has, since `SettingsService::update` clones what it
-    /// holds, mutates the clone and clamps it back.
-    ///
-    /// `hotkeys::normalize` is the expensive half of clamping: it fills the map
-    /// out to the whole of `HOTKEY_ACTIONS` and compares every pair of them
-    /// (~150), while almost no write touches a hotkey at all — opacity, window
-    /// geometry, a model choice, a preset edit, a permission flag. A map that is
-    /// still byte-for-byte `previous`'s is ALREADY in normal form, because
-    /// `previous` came out of a clamp and `normalize` is idempotent
-    /// (`hotkeys::tests::normalize_is_a_fixed_point_of_itself`), so sweeping it
-    /// again can only reproduce it.
-    ///
-    /// That precondition is the whole of the soundness argument, and it is
-    /// enforced by the only type that calls this: `SettingsService` clamps in
-    /// `new` and clamps on every `update`, so what it hands over as `previous`
-    /// is never a map `normalize` would still change. `clamp` stays
-    /// unconditional for every other caller (`load`, the tests), which have no
-    /// predecessor to prove anything about.
-    fn clamp_after(&mut self, previous: &Settings) {
-        self.clamp_fields();
-        if self.hotkeys != previous.hotkeys {
-            crate::hotkeys::normalize(&mut self.hotkeys);
-        }
-    }
-
-    /// Everything clamping does except the hotkey sweep: per-field bounds that
-    /// depend on nothing but the field they touch.
-    fn clamp_fields(&mut self) {
         self.window_opacity = limits::window::OPACITY.clamp(self.window_opacity);
         self.window_width = limits::window::WIDTH.clamp(self.window_width);
         self.window_height = limits::window::HEIGHT.clamp(self.window_height);
@@ -430,56 +220,46 @@ impl Settings {
         self.teleprompter_font_size =
             limits::teleprompter::FONT_SIZE.clamp(self.teleprompter_font_size);
         self.buffer_seconds = limits::capture::BUFFER_SECONDS.clamp(self.buffer_seconds);
-        self.auto_silence_ms = limits::capture::AUTO_SILENCE_MS.clamp(self.auto_silence_ms);
-        self.auto_min_utterance_ms =
-            limits::capture::AUTO_MIN_UTTERANCE_MS.clamp(self.auto_min_utterance_ms);
-        self.auto_max_utterance_secs =
-            limits::capture::AUTO_MAX_UTTERANCE_SECS.clamp(self.auto_max_utterance_secs);
-        if !matches!(self.theme.as_str(), THEME_SYSTEM | THEME_LIGHT | THEME_DARK) {
+        if self.theme != THEME_GRAY && self.theme != THEME_BLACK {
             self.theme = defaults::THEME.into();
         }
-        if !matches!(
-            self.language.as_str(),
-            LANGUAGE_SYSTEM | LANGUAGE_RU | LANGUAGE_EN
-        ) {
-            self.language = defaults::LANGUAGE.into();
-        }
         self.quick_actions.truncate(QUICK_ACTION_LIMIT);
+        crate::hotkeys::normalize(&mut self.hotkeys);
     }
 
     pub fn load(path: &Path) -> std::io::Result<Self> {
-        Self::load_with_version(path).map(|(settings, _)| settings)
-    }
-
-    /// The same read, plus the version the FILE was at before the migration
-    /// chain ran. `parse` stamps its result with the current version, so this is
-    /// the only place that still knows a document predates a given format step
-    /// — see `LoadedSettings::document_version`.
-    fn load_with_version(path: &Path) -> std::io::Result<(Self, u32)> {
-        let (mut settings, version) = match std::fs::read_to_string(path) {
-            Ok(raw) => Self::parse_with_version(&raw)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                (Settings::default(), CURRENT_SCHEMA_VERSION)
+        let mut settings = match std::fs::read_to_string(path) {
+            Ok(raw) => {
+                let mut value: serde_json::Value = serde_json::from_str(&raw)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+                crate::hotkeys::migrate_legacy_fields(&mut value);
+                serde_json::from_value::<Settings>(value)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?
             }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Settings::default(),
             Err(e) => return Err(e),
         };
         settings.clamp();
-        Ok((settings, version))
+        Ok(settings)
     }
 
-    pub fn parse(raw: &str) -> Result<Self, SettingsError> {
-        Self::parse_with_version(raw).map(|(settings, _)| settings)
-    }
-
-    fn parse_with_version(raw: &str) -> Result<(Self, u32), SettingsError> {
-        let mut value: serde_json::Value =
-            serde_json::from_str(raw).map_err(|e| SettingsError::Corrupt(e.to_string()))?;
-        let from = document_version(&value);
-        migrate(&mut value, from);
-        let settings = serde_json::from_value::<Settings>(value)
-            .map_err(|e| SettingsError::Corrupt(e.to_string()))?;
-        Ok((settings, from))
+    pub fn apply_key_fallback(&mut self, anthropic: Option<String>, groq: Option<String>) {
+        if !self.access_token.is_empty() {
+            return;
+        }
+        fn fill_if_empty(target: &mut String, candidate: Option<String>) {
+            if !target.is_empty() {
+                return;
+            }
+            if let Some(v) = candidate {
+                let v = v.trim();
+                if !v.is_empty() {
+                    *target = v.to_string();
+                }
+            }
+        }
+        fill_if_empty(&mut self.anthropic_api_key, anthropic);
+        fill_if_empty(&mut self.groq_api_key, groq);
     }
 
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
@@ -489,262 +269,28 @@ impl Settings {
     }
 }
 
-/// What the startup read did to a `settings.json` or a `secrets.json` it could
-/// not parse. Carried to the frontend through the `take_settings_recovery`
-/// command — the user paid for the access code that was in there and has to be
-/// told it is gone.
-#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct SettingsRecovery {
-    /// Absolute path of the renamed file, so the message can name it.
-    pub backup_path: String,
-    /// Why the file could not be read.
-    pub reason: String,
-}
-
-fn corrupt_backup_path(path: &Path, unix_secs: u64) -> PathBuf {
-    let mut name = path.file_name().unwrap_or_default().to_os_string();
-    name.push(format!(".{CORRUPT_FILE_SUFFIX}-{unix_secs}"));
-    path.with_file_name(name)
-}
-
-fn unix_now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
-}
-
-/// Everything the startup read of `settings.json` produced.
-///
-/// `document_version` is the version the FILE was at **before** the migration
-/// chain ran, and it is the only surviving evidence of that: `Settings::parse`
-/// stamps the value it returns with the current version, so `schema_version` on
-/// the returned struct always reads "current". `secrets::load_or_migrate` needs
-/// exactly this fact — a document already past the split cannot be hiding a
-/// credential — to skip reading and parsing the same file a second time on
-/// every cold start. A missing or quarantined file reports the current version:
-/// there are no bytes left to migrate anything out of.
-pub struct LoadedSettings {
-    pub settings: Settings,
-    pub recovery: Option<SettingsRecovery>,
-    pub document_version: u32,
-}
-
-/// Three outcomes, not two: no file → defaults; parsed → settings; unreadable →
-/// the bytes are renamed out of the way, the reason is logged AND reported, and
-/// defaults are used. The old `unwrap_or_else(|_| default())` silently made the
-/// third case look like the first, and the first `set_settings` overwrote the
-/// keys and the access token with defaults.
-pub fn load_or_recover(path: &Path) -> LoadedSettings {
-    match Settings::load_with_version(path) {
-        Ok((settings, document_version)) => LoadedSettings {
-            settings,
-            recovery: None,
-            document_version,
-        },
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => LoadedSettings {
-            settings: Settings::default(),
-            recovery: None,
-            document_version: CURRENT_SCHEMA_VERSION,
-        },
-        Err(e) => LoadedSettings {
-            settings: Settings::default(),
-            recovery: Some(quarantine(path, e.to_string())),
-            document_version: CURRENT_SCHEMA_VERSION,
-        },
-    }
-}
-
-/// Moves an unparseable file out of the way and describes the loss. Shared by
-/// `settings.json` and `secrets.json`: both are owner-only files whose next
-/// write would otherwise erase whatever the user still had in them.
-pub(crate) fn quarantine(path: &Path, reason: String) -> SettingsRecovery {
-    let backup = corrupt_backup_path(path, unix_now_secs());
-    let renamed = std::fs::rename(path, &backup);
-    eprintln!(
-        "файл {} не читается ({reason}); сохранён как {} ({:?})",
-        path.display(),
-        backup.display(),
-        renamed.as_ref().err()
-    );
-    SettingsRecovery {
-        backup_path: backup.display().to_string(),
-        reason,
-    }
-}
-
-/// The single mutation point for `Settings`.
-///
-/// Read-modify-write used to live in three places (`set_settings`,
-/// `apply_access_token`, `permissions::mark_requested`), each cloning the value,
-/// releasing the lock, writing to disk and only then storing back. A redeem that
-/// takes up to 45 s alongside the launcher's autosave debounce lost a paid
-/// access token that way, and `audio_permission_requested` symmetrically.
-/// `update` holds the lock across read → mutate → clamp → write → store, so two
-/// concurrent updates of two different fields both survive. The secrets have
-/// since moved to `secrets::SecretsStore`, which is the same construction over
-/// its own file.
-///
-/// **The value behind the lock is an `Arc`, and that is a performance decision
-/// with a shape.** `Settings` is three `Vec`s and a dozen `String`s — the prompt
-/// presets alone can be tens of kilobytes — while the ~25 places that read it
-/// typically want one field. `get` used to deep-copy all of it, and
-/// `update` copied it three more times *inside* the critical section that also
-/// holds the fsync. Handing out an `Arc` makes a read a refcount bump, leaves
-/// exactly one deep copy per write (the one the mutation needs), and changes
-/// nothing about the locking: the swap still happens under the same guard, after
-/// the file is on disk. Readers keep a consistent snapshot because the stored
-/// `Arc` is replaced wholesale, never mutated in place.
-pub struct SettingsService {
-    path: PathBuf,
-    current: Mutex<Arc<Settings>>,
-    /// Set once at startup when `settings.json` could not be parsed and had to
-    /// be renamed aside. Pulled by the launcher through `take_settings_recovery`
-    /// — an event would fire before any window is listening.
-    recovery: Mutex<Option<SettingsRecovery>>,
-}
-
-/// Both halves of an applied update: callers need `old` to decide which side
-/// effects to run and `new` to answer the frontend with the clamped value.
-#[derive(Debug, Clone)]
-pub struct SettingsUpdate {
-    pub old: Arc<Settings>,
-    pub new: Arc<Settings>,
-}
-
-impl SettingsService {
-    /// The value is clamped on the way in, and that is not belt-and-braces:
-    /// `update` skips the hotkey sweep for a write that leaves the map alone
-    /// (`Settings::clamp_after`), which is only sound while everything this
-    /// service holds is already normalized. Startup hands over a clamped value
-    /// or a default, so this costs one sweep at launch and turns a promise the
-    /// caller has to keep into an invariant the service enforces itself.
-    pub fn new(path: PathBuf, mut settings: Settings, recovery: Option<SettingsRecovery>) -> Self {
-        settings.clamp();
-        Self {
-            path,
-            current: Mutex::new(Arc::new(settings)),
-            recovery: Mutex::new(recovery),
-        }
-    }
-
-    /// Takes (and clears) the record of a settings file that could not be read.
-    /// One shot: the launcher raises a notification from it exactly once.
-    pub fn take_recovery(&self) -> Option<SettingsRecovery> {
-        self.recovery.lock_safe().take()
-    }
-
-    pub fn get(&self) -> Arc<Settings> {
-        Arc::clone(&self.current.lock_safe())
-    }
-
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
-    pub fn update<F>(&self, mutate: F) -> Result<SettingsUpdate, SettingsError>
-    where
-        F: FnOnce(&mut Settings),
-    {
-        let mut guard = self.current.lock_safe();
-        let old = Arc::clone(&guard);
-        // The one deep copy a write cannot avoid: the mutation needs a `&mut`,
-        // and the old value has to stay intact for `SettingsUpdate.old`.
-        let mut next = (*old).clone();
-        mutate(&mut next);
-        next.clamp_after(&old);
-        if next == *old {
-            return Ok(SettingsUpdate {
-                new: Arc::clone(&old),
-                old,
-            });
-        }
-        next.save(&self.path)
-            .map_err(|e| SettingsError::Write(e.to_string()))?;
-        let next = Arc::new(next);
-        *guard = Arc::clone(&next);
-        Ok(SettingsUpdate { old, new: next })
-    }
-}
-
-/// Creates a file only this user may read, on both platforms — the two halves
-/// of "owner only" that have nothing in common but the intent.
-///
-/// unix says it at `open` time with a mode. Windows has no modes, so the file
-/// is created first and then given a DACL of its own (`settings/windows.rs`).
-/// **A DACL that could not be applied is logged, not propagated**: the file
-/// already lives in the per-user profile folder, and the same writer serves
-/// settings.json, chats.json and the presets cache — turning "the ACL could not
-/// be tightened" into "nothing can be saved" would trade a privacy improvement
-/// for a broken app on any volume that cannot hold an ACL.
 fn create_owner_only(path: &Path) -> std::io::Result<std::fs::File> {
     let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
+    options.write(true).create(true).truncate(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(OWNER_ONLY_FILE_MODE);
     }
-    let file = options.open(path)?;
-    #[cfg(windows)]
-    if let Err(e) = self::windows::restrict_to_current_user(path) {
-        eprintln!("не удалось ограничить права на {}: {e}", path.display());
-    }
-    Ok(file)
+    options.open(path)
 }
 
 pub(crate) fn write_atomic_owner_only(path: &Path, contents: &str) -> std::io::Result<()> {
-    write_atomic_owner_only_bytes(path, contents.as_bytes())
-}
-
-fn unique_tmp_path(path: &Path) -> PathBuf {
-    let sequence = TMP_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    let mut name = path.file_name().unwrap_or_default().to_os_string();
-    name.push(format!(".{}-{sequence}.{TMP_FILE_EXTENSION}", std::process::id()));
-    path.with_file_name(name)
-}
-
-/// The `sync_all` is not belt-and-braces: `rename` is atomic against a
-/// concurrent reader, but not against power loss. Without an fsync of the
-/// temporary file the directory entry can reach the disk before the bytes do,
-/// and the settings/chats file comes back after a crash as a correctly named
-/// file full of zeroes — which is exactly the "corrupt json" case that used to
-/// wipe the API keys.
-fn write_tmp_file(tmp: &Path, contents: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
-    let mut file = create_owner_only(tmp)?;
-    file.write_all(contents)?;
-    file.sync_all()
-}
-
-fn write_and_rename(path: &Path, contents: &[u8]) -> std::io::Result<()> {
-    let tmp = unique_tmp_path(path);
-    let outcome = write_tmp_file(&tmp, contents).and_then(|()| std::fs::rename(&tmp, path));
-    if outcome.is_err() {
-        let _ = std::fs::remove_file(&tmp);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
     }
-    outcome
-}
-
-/// The data directory is created on demand rather than before every write.
-///
-/// This one writer serves settings.json, secrets.json, chats.json and the
-/// presets cache, and the frontend debounces saves down to one every few hundred
-/// milliseconds — so `create_dir_all` used to run on every keystroke pause, for
-/// a directory that has existed since the first write of the install. It is now
-/// the recovery path for the only failure it ever actually fixed: `create_new`
-/// (or the `rename`) answering `NotFound` because the parent is not there yet.
-pub(crate) fn write_atomic_owner_only_bytes(path: &Path, contents: &[u8]) -> std::io::Result<()> {
-    match write_and_rename(path, contents) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let Some(parent) = path.parent() else {
-                return Err(e);
-            };
-            std::fs::create_dir_all(parent)?;
-            write_and_rename(path, contents)
-        }
-        outcome => outcome,
+    let tmp = path.with_extension(TMP_FILE_EXTENSION);
+    {
+        let mut f = create_owner_only(&tmp)?;
+        f.write_all(contents.as_bytes())?;
     }
+    std::fs::rename(&tmp, path)
 }
 
 #[cfg(test)]

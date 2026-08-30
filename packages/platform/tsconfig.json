@@ -1,9 +1,0 @@
-{
-  "extends": "@harpyhare/tsconfig/base.json",
-  "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2023"],
-    "noEmit": true
-  },
-  "include": ["src"]
-}

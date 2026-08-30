@@ -3,7 +3,7 @@ const HIGH_SURROGATE_MIN = 0xd800;
 const HIGH_SURROGATE_MAX = 0xdbff;
 
 export const REVEAL_MIN_CHARS_PER_SECOND = 100;
-const REVEAL_BACKLOG_FRACTION_PER_SECOND = 10;
+export const REVEAL_BACKLOG_FRACTION_PER_SECOND = 10;
 
 export function advanceReveal(revealed: number, total: number, dtMs: number): number {
   if (revealed >= total) return total;

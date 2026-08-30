@@ -1,26 +1,27 @@
-import { RELEASES_REPO_URL } from "@harpyhare/release-contract/client";
-import type { Platform } from "./platform";
+import { PLATFORMS, type Platform } from "./platform";
 
-/**
- * The half of the release story the browser needs: where the latest release
- * lives and which file to hand this visitor.
- *
- * Everything that has to *recognise* an asset — `pickPlatformAsset` and with it
- * `isPlatformInstallerName`, `assetName`, `installerAssetName` and the
- * `release-assets.json` manifest behind them — moved to `release-server.ts`.
- * Three Client Components import this module, so the naming contract used to be
- * shipped to every visitor although nothing in the browser ever matches a name:
- * the server has already resolved the URLs by the time the page is rendered.
- *
- * Moving it was not enough on its own. `RELEASES_PAGE` is built from the
- * repository slug, and the slug used to come from the package's only entry
- * point — so the client chunk still carried the `platforms` block and three
- * dead `Object.values(...)` statements, because a bundler cannot drop what a
- * live import evaluates. `@harpyhare/release-contract/client` is that entry
- * point's browser-safe half, derived from the same JSON; its header explains
- * the split.
- */
-export const RELEASES_PAGE = `${RELEASES_REPO_URL}/releases/latest`;
+export const RELEASES_REPO = "screenfriskofficial/harpyhare-releases";
+export const LATEST_RELEASE_API = `https://api.github.com/repos/${RELEASES_REPO}/releases/latest`;
+export const RELEASES_PAGE = `https://github.com/${RELEASES_REPO}/releases/latest`;
+
+const PLATFORM_INSTALLER_SUFFIXES: Record<Platform, readonly string[]> = {
+  macos: [".dmg"],
+  windows: ["-setup.exe", ".msi", ".exe"],
+};
+
+const UPDATER_ARTIFACT_SUFFIXES = [".nsis.zip", ".app.tar.gz", ".sig"];
+const UPDATER_MANIFEST_NAME = "latest.json";
+
+export interface GitHubAsset {
+  name: string;
+  browser_download_url: string;
+}
+
+export interface GitHubRelease {
+  tag_name: string;
+  html_url: string;
+  assets: GitHubAsset[];
+}
 
 export type PlatformDownloads = Record<Platform, string>;
 
@@ -29,6 +30,69 @@ export interface ReleaseInfo {
   downloads: PlatformDownloads;
 }
 
+export function stripVersionPrefix(tag: string): string {
+  return tag.replace(/^v/i, "");
+}
+
+function isInstallerAsset(asset: GitHubAsset): boolean {
+  const name = asset.name.toLowerCase();
+  if (name === UPDATER_MANIFEST_NAME) return false;
+  return !UPDATER_ARTIFACT_SUFFIXES.some((suffix) => name.endsWith(suffix));
+}
+
+export function pickPlatformAsset(
+  assets: GitHubAsset[],
+  platform: Platform,
+): GitHubAsset | undefined {
+  const installers = assets.filter(isInstallerAsset);
+  for (const suffix of PLATFORM_INSTALLER_SUFFIXES[platform]) {
+    const match = installers.find((asset) => asset.name.toLowerCase().endsWith(suffix));
+    if (match) return match;
+  }
+  return undefined;
+}
+
+function collectDownloads(assets: GitHubAsset[]): PlatformDownloads {
+  const entries = PLATFORMS.map((platform) => [
+    platform,
+    pickPlatformAsset(assets, platform)?.browser_download_url ?? RELEASES_PAGE,
+  ]);
+  return Object.fromEntries(entries) as PlatformDownloads;
+}
+
+export function toReleaseInfo(release: GitHubRelease): ReleaseInfo {
+  return {
+    version: stripVersionPrefix(release.tag_name),
+    downloads: collectDownloads(release.assets),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isAsset(value: unknown): value is GitHubAsset {
+  return (
+    isRecord(value) &&
+    typeof value["name"] === "string" &&
+    typeof value["browser_download_url"] === "string"
+  );
+}
+
 export function downloadHref(release: ReleaseInfo | null, platform: Platform): string {
   return release?.downloads[platform] ?? RELEASES_PAGE;
+}
+
+export function parseRelease(data: unknown): GitHubRelease | null {
+  if (!isRecord(data)) return null;
+  const tag = data["tag_name"];
+  const htmlUrl = data["html_url"];
+  if (typeof tag !== "string" || typeof htmlUrl !== "string") return null;
+
+  const assets = data["assets"];
+  return {
+    tag_name: tag,
+    html_url: htmlUrl,
+    assets: Array.isArray(assets) ? assets.filter(isAsset) : [],
+  };
 }

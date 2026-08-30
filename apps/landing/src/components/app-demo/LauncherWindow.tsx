@@ -3,29 +3,23 @@ import {
   Library,
   MessageSquareText,
   Play,
-  Rocket,
-  Search,
   ShieldCheck,
   SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import type { LauncherScreenId } from "@/i18n/demo-types";
+import type { LauncherCopy } from "@/i18n/demo-types";
 import { cn } from "@/lib/cn";
+import { ContextsScreen, PresetsScreen } from "./ContentScreens";
 import { useCopy } from "./copy";
-import {
-  ContextsScreen,
-  PermissionsScreen,
-  PresetsScreen,
-  StartScreen,
-  UpdatesScreen,
-} from "./LauncherScreens";
 import { SettingsScreen } from "./SettingsScreen";
-import { AppButton, StateBadge } from "./ui";
-import type { SettingValue } from "./useDemoRun";
+import { PermissionsScreen, UpdatesScreen } from "./SystemScreens";
+import type { AppTheme } from "./types";
+import { AppEqBars, AppPrimaryButton } from "./ui";
 
-const SCREEN_ICONS: Record<LauncherScreenId, LucideIcon> = {
-  start: Rocket,
+type ScreenId = keyof LauncherCopy["screens"];
+
+const SCREEN_ICONS: Record<ScreenId, LucideIcon> = {
   contexts: Library,
   presets: MessageSquareText,
   settings: SlidersHorizontal,
@@ -33,87 +27,56 @@ const SCREEN_ICONS: Record<LauncherScreenId, LucideIcon> = {
   updates: Download,
 };
 
-/**
- * Three groups, and the third is pinned to the bottom with `mt-auto`. The
- * demo used to have two and no `start` screen at all — see `StartScreen`.
- */
-const SCREEN_GROUPS: { id: string; screens: LauncherScreenId[]; bottom?: boolean }[] = [
-  { id: "start", screens: ["start"] },
-  { id: "content", screens: ["contexts", "presets"] },
-  { id: "system", screens: ["settings", "permissions", "updates"], bottom: true },
-];
+const SCREEN_GROUPS: Record<"content" | "system", ScreenId[]> = {
+  content: ["contexts", "presets"],
+  system: ["settings", "permissions", "updates"],
+};
 
-/**
- * The macOS traffic lights. These three hexes are the only raw colours in the
- * demo and they stay raw on purpose: they are the operating system's, not the
- * product's, and putting them in the token layer would claim otherwise.
- */
 const TRAFFIC_LIGHTS = ["bg-[#ff5f57]", "bg-[#febc2e]", "bg-[#28c840]"];
+
+function TitleStrip() {
+  return (
+    <div className="flex h-7 shrink-0 items-center gap-2 px-4">
+      {TRAFFIC_LIGHTS.map((color) => (
+        <span key={color} className={cn("size-3 rounded-full", color)} aria-hidden />
+      ))}
+    </div>
+  );
+}
 
 function LaunchBar({ launching, onLaunch }: { launching: boolean; onLaunch: () => void }) {
   const copy = useCopy().launcher;
   return (
-    <header className="flex h-9 shrink-0 items-center gap-3">
-      <h2 className="shrink-0 font-mono text-app-caption font-semibold tracking-wider text-app-muted uppercase select-none">
-        {copy.wordmark}
+    <header className="flex h-8 shrink-0 items-center gap-2.5">
+      <AppEqBars animated={launching} barClass="bg-app-primary" />
+      <h2 className="font-mono text-app-caption font-semibold tracking-[0.16em] text-app-fg/80 uppercase">
+        harpyhare
       </h2>
-
-      <div className="relative hidden max-w-96 min-w-0 flex-1 sm:block">
-        <Search
-          className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-app-subtle"
-          aria-hidden
-        />
-        <input
-          type="text"
-          placeholder={copy.search.placeholder}
-          aria-label={copy.search.placeholder}
-          className="h-7 w-full min-w-0 rounded-md border border-app-border-strong bg-app-code py-1 pr-2.5 pl-7 text-app-body text-app-fg outline-none placeholder:text-app-subtle focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-app-focus focus-visible:outline-solid"
-        />
-      </div>
-
-      <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1.5">
-        <div className="hidden max-w-80 min-w-0 flex-col items-end md:flex">
-          <span className="inline-flex min-w-0 items-center gap-2 px-2">
-            <StateBadge
-              tone={launching ? "neutral" : "success"}
-              label={launching ? copy.status.launching : copy.status.ready.line}
-            />
-            {!launching && (
-              <span className="truncate text-app-caption text-app-subtle">
-                {copy.status.ready.detail}
-              </span>
-            )}
-          </span>
-        </div>
-        <AppButton size="compact" className="gap-1.5" disabled={launching} onClick={onLaunch}>
-          <Play className="size-3" />
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">
+        <span className="inline-flex min-w-0 items-center gap-2 px-2 text-app-caption text-app-muted">
+          <span className="size-1.5 shrink-0 rounded-full bg-app-primary" aria-hidden />
+          <span className="truncate">{launching ? copy.statusLaunching : copy.statusReady}</span>
+        </span>
+        <AppPrimaryButton onClick={onLaunch} disabled={launching}>
+          <Play />
           {launching ? copy.launching : copy.launch}
-        </AppButton>
+        </AppPrimaryButton>
       </div>
     </header>
   );
 }
 
-function Sidebar({
-  active,
-  onSelect,
-}: {
-  active: LauncherScreenId;
-  onSelect: (id: LauncherScreenId) => void;
-}) {
+function Sidebar({ active, onSelect }: { active: ScreenId; onSelect: (id: ScreenId) => void }) {
   const copy = useCopy().launcher;
   return (
     <div
       role="tablist"
       aria-orientation="vertical"
-      className="app-no-scrollbar flex w-10 shrink-0 flex-col gap-4 overflow-y-auto min-[900px]:w-40"
+      className="app-no-scrollbar flex w-11 shrink-0 flex-col gap-4 overflow-y-auto md:w-52"
     >
-      {SCREEN_GROUPS.map((group) => (
-        <div
-          key={group.id}
-          className={cn("flex flex-col gap-0.5", group.bottom === true && "mt-auto")}
-        >
-          {group.screens.map((id) => {
+      {(["content", "system"] as const).map((group) => (
+        <div key={group} className={cn("flex flex-col gap-0.5", group === "system" && "mt-auto")}>
+          {SCREEN_GROUPS[group].map((id) => {
             const Icon = SCREEN_ICONS[id];
             const isActive = id === active;
             return (
@@ -127,20 +90,14 @@ function Sidebar({
                   onSelect(id);
                 }}
                 className={cn(
-                  "relative flex items-center justify-center gap-2 rounded-md px-0 py-2 text-app-body transition-colors outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-focus focus-visible:outline-solid min-[900px]:justify-start min-[900px]:px-2",
+                  "flex items-center justify-center gap-2.5 rounded-lg px-0 py-2 text-left text-app-body whitespace-nowrap transition-colors md:justify-start md:px-2.5",
                   isActive
                     ? "bg-app-surface-active text-app-fg"
-                    : "text-app-subtle hover:bg-app-card hover:text-app-fg active:bg-app-surface-active",
+                    : "text-app-muted hover:bg-app-surface hover:text-app-fg",
                 )}
               >
-                {isActive && (
-                  <span
-                    className="absolute top-1/2 left-0 h-4 w-0.5 -translate-y-1/2 rounded-full bg-app-primary-mark"
-                    aria-hidden
-                  />
-                )}
-                <Icon className="size-4 shrink-0" aria-hidden />
-                <span className="hidden truncate min-[900px]:inline">{copy.screens[id].label}</span>
+                <Icon className="size-4 shrink-0" />
+                <span className="hidden truncate md:inline">{copy.screens[id].label}</span>
               </button>
             );
           })}
@@ -150,20 +107,13 @@ function Sidebar({
   );
 }
 
-function ScreenShell({ screen, children }: { screen: LauncherScreenId; children: ReactNode }) {
+function ScreenShell({ screen, children }: { screen: ScreenId; children: ReactNode }) {
   const meta = useCopy().launcher.screens[screen];
   return (
-    <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-2.5">
-      <header className="flex min-h-7 items-center gap-2.5">
-        <h3 className="shrink-0 text-app-title font-semibold tracking-tight text-app-fg">
-          {meta.label}
-        </h3>
-        <p
-          title={meta.description}
-          className="hidden min-w-0 flex-1 truncate text-app-caption text-app-subtle sm:block"
-        >
-          {meta.description}
-        </p>
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+      <header className="min-w-0">
+        <h3 className="text-app-title font-medium text-app-fg">{meta.label}</h3>
+        <p className="mt-0.5 text-app-caption text-app-muted">{meta.description}</p>
       </header>
       <div className="app-scroll min-h-0 min-w-0 flex-1 overflow-y-auto pr-1.5">
         <div className="flex flex-col gap-4 pb-1">{children}</div>
@@ -172,39 +122,44 @@ function ScreenShell({ screen, children }: { screen: LauncherScreenId; children:
   );
 }
 
+function ScreenContent({
+  id,
+  theme,
+  onThemeChange,
+}: {
+  id: ScreenId;
+  theme: AppTheme;
+  onThemeChange: (theme: AppTheme) => void;
+}) {
+  if (id === "contexts") return <ContextsScreen />;
+  if (id === "presets") return <PresetsScreen />;
+  if (id === "permissions") return <PermissionsScreen />;
+  if (id === "updates") return <UpdatesScreen />;
+  return <SettingsScreen theme={theme} onThemeChange={onThemeChange} />;
+}
+
 export function LauncherWindow({
   launching,
-  recordCombo,
-  settings,
+  theme,
   onLaunch,
-  onSetting,
+  onThemeChange,
 }: {
   launching: boolean;
-  recordCombo: string;
-  settings: Record<string, SettingValue>;
+  theme: AppTheme;
   onLaunch: () => void;
-  onSetting: (id: string, value: SettingValue) => void;
+  onThemeChange: (theme: AppTheme) => void;
 }) {
-  const [screen, setScreen] = useState<LauncherScreenId>("start");
+  const [screen, setScreen] = useState<ScreenId>("settings");
 
   return (
     <div className="app-launcher flex h-full flex-col bg-app-bg text-app-fg">
-      <div className="flex h-7 shrink-0 items-center gap-2 px-4">
-        {TRAFFIC_LIGHTS.map((colour) => (
-          <span key={colour} className={cn("size-3 rounded-full", colour)} aria-hidden />
-        ))}
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-2.5 px-4 pt-0 pb-4 sm:px-5">
+      <TitleStrip />
+      <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pt-1 pb-4 sm:px-5">
         <LaunchBar launching={launching} onLaunch={onLaunch} />
-        <div className="flex min-h-0 min-w-0 flex-1 gap-3 md:gap-4">
+        <div className="flex min-h-0 min-w-0 flex-1 gap-4 md:gap-6">
           <Sidebar active={screen} onSelect={setScreen} />
           <ScreenShell screen={screen}>
-            {screen === "start" && <StartScreen recordCombo={recordCombo} />}
-            {screen === "contexts" && <ContextsScreen />}
-            {screen === "presets" && <PresetsScreen />}
-            {screen === "settings" && <SettingsScreen settings={settings} onSetting={onSetting} />}
-            {screen === "permissions" && <PermissionsScreen />}
-            {screen === "updates" && <UpdatesScreen />}
+            <ScreenContent id={screen} theme={theme} onThemeChange={onThemeChange} />
           </ScreenShell>
         </div>
       </div>

@@ -1,15 +1,9 @@
-import { format } from "@/i18n/format";
-import type { Dictionary } from "@/i18n/types";
 export type ApiKeyId = "anthropic" | "groq";
 
-/**
- * `name` is a brand and stays out of the dictionary — "Anthropic" is the same
- * word everywhere. What the key is FOR is a sentence, so it lives in
- * `dict.common.apiKeys.purpose`, keyed by the same id.
- */
 export interface ApiKeyInfo {
   id: ApiKeyId;
   name: string;
+  purpose: string;
   consoleUrl: string;
 }
 
@@ -17,11 +11,13 @@ const API_KEYS = [
   {
     id: "anthropic",
     name: "Anthropic",
+    purpose: "ответов Claude",
     consoleUrl: "https://console.anthropic.com/settings/keys",
   },
   {
     id: "groq",
     name: "Groq",
+    purpose: "распознавания речи",
     consoleUrl: "https://console.groq.com/keys",
   },
 ] as const satisfies readonly ApiKeyInfo[];
@@ -32,38 +28,19 @@ export function apiKeyInfo(id: ApiKeyId): ApiKeyInfo {
   return API_KEYS.find((k) => k.id === id) ?? API_KEYS[0];
 }
 
-/**
- * What deciding "which key is missing" needs — a subset of `SecretsStatus`, kept
- * structural so this module stays free of the IPC types.
- *
- * It is a set of FLAGS, not the keys themselves, and that is the whole point of
- * the split: the values never leave Rust, so the launcher, the «Старт» screen
- * and onboarding all reason about presence. Whitespace was trimmed on the Rust
- * side before the flag was raised, so a key of nothing but spaces still counts
- * as missing here.
- */
-export interface ApiKeyPresence {
-  anthropic_key_set: boolean;
-  groq_key_set: boolean;
-  access_code_active: boolean;
+export interface ApiKeySettings {
+  anthropic_api_key: string;
+  groq_api_key: string;
+  access_token: string;
 }
 
-/**
- * An active access code silences BOTH keys — the app's requests go through the
- * proxy and the user's own keys are not used at all.
- */
-export function missingApiKeys(secrets: ApiKeyPresence): ApiKeyInfo[] {
-  if (secrets.access_code_active) return [];
-  return API_KEYS.filter((k) => !secrets[`${k.id}_key_set`]);
+export function missingApiKeys(settings: ApiKeySettings): ApiKeyInfo[] {
+  if (settings.access_token.trim() !== "") return [];
+  return API_KEYS.filter((k) => settings[`${k.id}_api_key`].trim() === "");
 }
 
-/**
- * "Add the Anthropic key" against "Add the Anthropic and Groq keys" — the two
- * forms are separate templates rather than a glued-on plural: the number that
- * decides between them is 1 or 2, and no language declines that the same way.
- */
-export function missingKeysNotice(missing: ApiKeyInfo[], dict: Dictionary): string {
-  const copy = dict.common.apiKeys;
-  const names = missing.map((k) => k.name).join(copy.and);
-  return format(missing.length === 1 ? copy.missingOne : copy.missingMany, { names });
+export function missingKeysNotice(missing: ApiKeyInfo[]): string {
+  const noun = missing.length === 1 ? "ключ" : "ключи";
+  const names = missing.map((k) => k.name).join(" и ");
+  return `Добавьте ${noun} ${names} или введите код доступа`;
 }

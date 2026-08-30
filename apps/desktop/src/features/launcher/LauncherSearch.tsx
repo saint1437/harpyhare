@@ -1,16 +1,16 @@
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { useDict } from "@/hooks/useDict";
-import { format } from "@/i18n";
 import { cn } from "@/lib/utils";
-import { launcherIndex, searchIndex, type SearchHit, type SearchSources } from "./search";
+import { searchLauncher, type SearchHit, type SearchSources } from "./search";
 
 const MAX_RESULTS = 8;
 const FIRST_INDEX = 0;
 const NEXT_STEP = 1;
 const PREVIOUS_STEP = -1;
 
+const PLACEHOLDER = "Поиск по настройкам";
+const EMPTY_NOTE = "Ничего не найдено";
 const LIST_ID = "launcher-search-results";
 
 function optionDomId(hitId: string): string {
@@ -22,18 +22,16 @@ interface LauncherSearchProps {
   onNavigate: (hit: SearchHit) => void;
 }
 
+function overflowNote(shown: number, total: number): string {
+  return `Показаны первые ${String(shown)} из ${String(total)} — уточните запрос`;
+}
+
 export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
-  const dict = useDict();
-  const copy = dict.launcher.search;
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(FIRST_INDEX);
 
-  // The corpus does not depend on the query: screens, tabs, hotkeys, every
-  // settings row, every preset and up to a hundred library materials used to be
-  // rebuilt — and case-folded — on every keystroke.
-  const index = useMemo(() => launcherIndex(sources, dict), [sources, dict]);
-  const hits = useMemo(() => searchIndex(query, index), [query, index]);
+  const hits = useMemo(() => searchLauncher(query, sources), [query, sources]);
   const shown = hits.slice(FIRST_INDEX, MAX_RESULTS);
   const activeIndex = Math.min(active, shown.length - 1);
   const listVisible = open && query.trim() !== "";
@@ -60,13 +58,13 @@ export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
   return (
     <div className="relative min-w-0 flex-1">
       <Search
-        className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-fg-subtle"
+        className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground"
         aria-hidden
       />
       <Input
         value={query}
-        placeholder={copy.placeholder}
-        aria-label={copy.placeholder}
+        placeholder={PLACEHOLDER}
+        aria-label={PLACEHOLDER}
         role="combobox"
         aria-autocomplete="list"
         aria-expanded={listVisible}
@@ -76,7 +74,7 @@ export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
         }
         autoComplete="off"
         spellCheck={false}
-        className="h-7 pl-7 text-body focus-visible:outline-offset-0"
+        className="h-7 pl-7 text-body focus-visible:ring-inset"
         onChange={(e) => {
           setQuery(e.target.value);
           setActive(FIRST_INDEX);
@@ -115,15 +113,15 @@ export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
         <div
           role="listbox"
           id={LIST_ID}
-          aria-label={copy.placeholder}
+          aria-label={PLACEHOLDER}
           data-no-drag
-          className="absolute top-full right-0 left-0 z-20 mt-1.5 max-h-80 animate-in overflow-y-auto rounded-lg border bg-elevated p-1 shadow-pop duration-150 fade-in-0 slide-in-from-top-1 motion-reduce:animate-none"
+          className="absolute top-full right-0 left-0 z-20 mt-1.5 max-h-80 animate-in overflow-y-auto rounded-lg border bg-popover p-1 shadow-pop duration-150 fade-in-0 slide-in-from-top-1 motion-reduce:animate-none"
           onMouseDown={(e) => {
             e.preventDefault();
           }}
         >
           {shown.length === 0 && (
-            <p className="px-2 py-1.5 text-caption text-fg-subtle">{copy.empty}</p>
+            <p className="px-2 py-1.5 text-caption text-muted-foreground">{EMPTY_NOTE}</p>
           )}
           {shown.map((hit, index) => (
             <button
@@ -133,7 +131,7 @@ export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
               role="option"
               aria-selected={index === activeIndex}
               className={cn(
-                "flex w-full items-center gap-3 rounded-sm px-2 py-1 text-left transition-colors outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus focus-visible:outline-solid",
+                "flex w-full items-center gap-3 rounded-sm px-2 py-1 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
                 index === activeIndex
                   ? "bg-surface-active"
                   : "hover:bg-surface active:bg-surface-active",
@@ -145,18 +143,15 @@ export function LauncherSearch({ sources, onNavigate }: LauncherSearchProps) {
                 choose(hit);
               }}
             >
-              <span className="min-w-0 flex-1 truncate text-body text-fg">{hit.title}</span>
-              <span className="max-w-[45%] shrink-0 truncate text-hint text-fg-subtle">
+              <span className="min-w-0 flex-1 truncate text-body text-foreground">{hit.title}</span>
+              <span className="max-w-[45%] shrink-0 truncate text-hint text-muted-foreground">
                 {hit.breadcrumb}
               </span>
             </button>
           ))}
           {hits.length > shown.length && (
-            <p className="mt-1 border-t border-line px-2 py-1.5 text-hint text-fg-subtle">
-              {format(copy.overflow, {
-                shown: String(shown.length),
-                total: String(hits.length),
-              })}
+            <p className="mt-1 border-t border-border px-2 py-1.5 text-hint text-muted-foreground">
+              {overflowNote(shown.length, hits.length)}
             </p>
           )}
         </div>

@@ -1,14 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getDict } from "@/i18n";
-import { errorTitle } from "@/i18n/errors";
-import { dismissAllNotifications, getNotifications } from "@/lib/notifications";
 import { AccessCodeForm } from "./AccessCodeForm";
 
-afterEach(() => {
-  cleanup();
-  dismissAllNotifications();
-});
+afterEach(cleanup);
 
 const PLACEHOLDER = "XXXXX-XXXXX-XXXXX-XXXXX";
 
@@ -37,31 +31,14 @@ describe("AccessCodeForm", () => {
     });
   });
 
-  // Отказ приходит сырым `String(e)` от Tauri и бывает в несколько строк, а
-  // форма стоит в узкой карточке онбординга — поэтому он уходит в уведомление,
-  // а введённый код остаётся в поле для правки.
-  it("отказ уходит в уведомление и сохраняет введённый код", async () => {
+  it("показывает ошибку и сохраняет введённый код", async () => {
     const onRedeem = () => Promise.resolve<string | null>("Код недействителен");
     render(<AccessCodeForm onRedeem={onRedeem} />);
     const input = screen.getByPlaceholderText<HTMLInputElement>(PLACEHOLDER);
     fireEvent.change(input, { target: { value: "wrong-1" } });
     fireEvent.click(screen.getByText("Активировать"));
-    await waitFor(() => {
-      expect(getNotifications()).toHaveLength(1);
-    });
-    expect(getNotifications()[0]?.title).toBe(errorTitle("badAccessCode", getDict()));
-    expect(getNotifications()[0]?.detail).toBe("Код недействителен");
+    await screen.findByText("Код недействителен");
     expect(input.value).toBe("wrong-1");
-  });
-
-  // Раньше успех не показывался никак: поле просто очищалось.
-  it("успех подтверждается уведомлением", async () => {
-    render(<AccessCodeForm onRedeem={() => Promise.resolve(null)} />);
-    fireEvent.change(screen.getByPlaceholderText(PLACEHOLDER), { target: { value: "code-1" } });
-    fireEvent.click(screen.getByText("Активировать"));
-    await waitFor(() => {
-      expect(getNotifications()[0]?.tone).toBe("success");
-    });
   });
 
   it("не запускает повторную активацию, пока первая в процессе", async () => {

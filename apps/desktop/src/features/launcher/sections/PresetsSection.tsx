@@ -1,75 +1,51 @@
 import { Check, Pencil, Plus, Trash2 } from "lucide-react";
-import { memo, useCallback, useState } from "react";
+import { useState } from "react";
 import { IconButton } from "@/components/IconButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { SettingGroup } from "@/features/settings/fields";
-import { useDict } from "@/hooks/useDict";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
-import { format } from "@/i18n";
-import type { Dictionary } from "@/i18n/types";
 import type { PromptPreset } from "@/lib/presets";
+import { SettingGroup } from "../fields";
 
 const PRESET_TEXT_ROWS = 6;
+const UNNAMED_PRESET_LABEL = "Без имени";
 
 export type PresetsUpdate = (presets: PromptPreset[]) => PromptPreset[];
 
-function lengthLabel(text: string, dict: Dictionary): string {
-  const copy = dict.launcher.presets;
-  const trimmed = text.trim();
-  return trimmed === "" ? copy.lengthEmpty : format(copy.length, { count: String(trimmed.length) });
+function lengthLabel(text: string): string {
+  return text.trim() === "" ? "пусто" : `${String(text.trim().length)} симв.`;
 }
 
-/**
- * Editing one preset rewrites the whole array and with it the launcher's draft,
- * so the rows take the shared callbacks and their own index instead of a closure
- * each — otherwise every row re-rendered on every keystroke in the editor.
- */
-const PresetRow = memo(function PresetRow({
+function PresetRow({
   preset,
-  index,
   onEdit,
   onRemove,
 }: {
   preset: PromptPreset;
-  index: number;
-  onEdit: (id: string) => void;
-  onRemove: (index: number) => void;
+  onEdit: () => void;
+  onRemove: () => void;
 }) {
-  const dict = useDict();
-  const copy = dict.launcher.presets;
   return (
     <div className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 transition-colors hover:bg-surface/50">
       <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate text-body">{preset.name.trim() || copy.unnamed}</span>
-        <span className="line-clamp-1 text-caption text-fg-subtle">
-          {lengthLabel(preset.text, dict)}
+        <span className="truncate text-body">{preset.name.trim() || UNNAMED_PRESET_LABEL}</span>
+        <span className="line-clamp-1 text-caption text-muted-foreground">
+          {lengthLabel(preset.text)}
           {preset.text.trim() === "" ? "" : ` · ${preset.text.trim()}`}
         </span>
       </div>
       <div className="pointer-events-none flex shrink-0 items-center gap-1 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
-        <IconButton
-          title={copy.edit}
-          onClick={() => {
-            onEdit(preset.id);
-          }}
-        >
+        <IconButton title="Изменить пресет" onClick={onEdit}>
           <Pencil />
         </IconButton>
-        <IconButton
-          title={copy.remove}
-          className="hover:text-danger"
-          onClick={() => {
-            onRemove(index);
-          }}
-        >
+        <IconButton title="Удалить пресет" className="hover:text-destructive" onClick={onRemove}>
           <Trash2 />
         </IconButton>
       </div>
     </div>
   );
-});
+}
 
 function PresetEditor({
   preset,
@@ -80,15 +56,13 @@ function PresetEditor({
   onChange: (patch: Partial<PromptPreset>) => void;
   onDone: () => void;
 }) {
-  const dict = useDict();
-  const copy = dict.launcher.presets;
   return (
     <div className="flex flex-col gap-2 bg-surface px-3 py-2.5">
       <div className="flex items-center gap-2">
         <Input
           autoFocus
-          aria-label={copy.nameLabel}
-          placeholder={copy.namePlaceholder}
+          aria-label="Имя пресета"
+          placeholder="Имя — его видно в списке под чатом"
           value={preset.name}
           onChange={(e) => {
             onChange({ name: e.target.value });
@@ -96,13 +70,13 @@ function PresetEditor({
         />
         <Button onClick={onDone}>
           <Check />
-          {dict.common.actions.done}
+          Готово
         </Button>
       </div>
       <Textarea
         rows={PRESET_TEXT_ROWS}
-        aria-label={copy.textLabel}
-        placeholder={copy.textPlaceholder}
+        aria-label="Текст пресета"
+        placeholder="Текст, который встанет в начало системного промпта: роль, тон, формат ответа"
         value={preset.text}
         onChange={(e) => {
           onChange({ text: e.target.value });
@@ -120,22 +94,15 @@ export function PresetsSection({
   presets: PromptPreset[];
   onChange: (update: PresetsUpdate) => void;
 }) {
-  const copy = useDict().launcher.presets;
   const official = useOfficialPresets();
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const updateAt = (index: number, patch: Partial<PromptPreset>) => {
     onChange((ps) => ps.map((p, i) => (i === index ? { ...p, ...patch } : p)));
   };
-  const removeAt = useCallback(
-    (index: number) => {
-      onChange((ps) => ps.filter((_, i) => i !== index));
-    },
-    [onChange],
-  );
-  const startEdit = useCallback((id: string) => {
-    setEditingId(id);
-  }, []);
+  const removeAt = (index: number) => {
+    onChange((ps) => ps.filter((_, i) => i !== index));
+  };
   const add = () => {
     const id = crypto.randomUUID();
     onChange((ps) => [...ps, { id, name: "", text: "" }]);
@@ -144,14 +111,20 @@ export function PresetsSection({
 
   return (
     <>
-      <SettingGroup title={copy.ownTitle} description={copy.ownDescription}>
+      <SettingGroup
+        title="Свои пресеты"
+        description="Препромпт подставляется в начало системного промпта чата и выбирается в тулбаре под полем ввода."
+      >
         {presets.length === 0 && (
           <div className="flex flex-col items-start gap-2 px-3 py-4">
-            <span className="text-body">{copy.emptyTitle}</span>
-            <span className="max-w-prose text-caption text-fg-subtle">{copy.emptyHint}</span>
+            <span className="text-body">Пока ни одного пресета</span>
+            <span className="max-w-prose text-caption text-muted-foreground">
+              Пресет — заготовка роли: «отвечай кратко и по делу», «ты интервьюер по Go», «переводи
+              ответ на английский». В чате его можно переключить в любой момент.
+            </span>
             <Button size="sm" onClick={add}>
               <Plus />
-              {copy.create}
+              Создать пресет
             </Button>
           </div>
         )}
@@ -171,9 +144,12 @@ export function PresetsSection({
             <PresetRow
               key={preset.id}
               preset={preset}
-              index={index}
-              onEdit={startEdit}
-              onRemove={removeAt}
+              onEdit={() => {
+                setEditingId(preset.id);
+              }}
+              onRemove={() => {
+                removeAt(index);
+              }}
             />
           ),
         )}
@@ -181,17 +157,20 @@ export function PresetsSection({
           <div className="px-3 py-2">
             <Button variant="ghost" size="sm" onClick={add}>
               <Plus />
-              {copy.add}
+              Добавить пресет
             </Button>
           </div>
         )}
       </SettingGroup>
 
-      <SettingGroup title={copy.builtInTitle} description={copy.builtInDescription}>
+      <SettingGroup
+        title="Встроенные"
+        description="Приходят вместе с приложением и обновляются сами — их видно в том же списке в чате."
+      >
         {official.map((preset) => (
           <div key={preset.id} className="flex min-w-0 flex-col gap-0.5 px-3 py-2">
             <span className="truncate text-body">{preset.name}</span>
-            <span className="line-clamp-1 text-caption text-fg-subtle">{preset.text}</span>
+            <span className="line-clamp-1 text-caption text-muted-foreground">{preset.text}</span>
           </div>
         ))}
       </SettingGroup>

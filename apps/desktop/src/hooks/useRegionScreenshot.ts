@@ -1,38 +1,42 @@
-import { useCallback, useEffect } from "react";
-import { useLatestRef } from "@/hooks/useLatestRef";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { captureRegionScreenshot } from "@/ipc/commands";
 import { onEvent } from "@/ipc/events";
-import { notifyAppError } from "@/lib/notifications";
+import type { AppError } from "@/lib/errors";
 
 export interface RegionScreenshotApi {
+  error: AppError | null;
+  clearError: () => void;
   capture: () => void;
 }
 
-/**
- * `screenshot-ready` hands over a REFERENCE into the chat-image store, not the
- * picture: the backend has already written the shot, and the composer resolves
- * the id through `load_chat_images` like it does for any image restored from
- * disk. The hook used to glue a data URL out of the event's base64, which was
- * the first of the copies that path made of a multi-megabyte buffer.
- */
 export function useRegionScreenshot(
-  onImage: (id: string, mediaType: string) => void,
+  onImage: (dataUrl: string, mediaType: string) => void,
 ): RegionScreenshotApi {
-  const onImageRef = useLatestRef(onImage);
+  const [error, setError] = useState<AppError | null>(null);
+
+  const onImageRef = useRef(onImage);
+  useEffect(() => {
+    onImageRef.current = onImage;
+  }, [onImage]);
 
   useEffect(
     () =>
       onEvent("screenshot-ready", (p) => {
-        onImageRef.current(p.id, p.mediaType);
+        setError(null);
+        onImageRef.current(`data:${p.mediaType};base64,${p.dataBase64}`, p.mediaType);
       }),
-    [onImageRef],
+    [],
   );
 
-  useEffect(() => onEvent("screenshot-error", notifyAppError), []);
+  useEffect(() => onEvent("screenshot-error", setError), []);
+
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
 
   const capture = useCallback(() => {
     void captureRegionScreenshot();
   }, []);
 
-  return { capture };
+  return { error, clearError, capture };
 }

@@ -1,6 +1,4 @@
-import { useCallback, useMemo } from "react";
-import { usePersistedStore } from "@/hooks/usePersistedStore";
-import { getDict } from "@/i18n";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { loadContextLibrary, saveContextLibrary } from "@/ipc/commands";
 import {
   addDoc,
@@ -16,7 +14,8 @@ import {
   type ContextDoc,
   type ContextLibrary,
 } from "@/lib/context-library";
-import { notifyError } from "@/lib/notifications";
+
+const SAVE_DEBOUNCE_MS = 500;
 
 export interface ContextLibraryApi {
   library: ContextLibrary;
@@ -30,88 +29,56 @@ export interface ContextLibraryApi {
 }
 
 export function useContextLibrary(): ContextLibraryApi {
-  const { value: library, setValue: setLibrary } = usePersistedStore<ContextLibrary>({
-    initial: EMPTY_LIBRARY,
-    load: loadContextLibrary,
-    save: saveContextLibrary,
-    restore: (json) => deserializeLibrary(json) ?? EMPTY_LIBRARY,
-    serialize: serializeLibrary,
-    onLoadError: (message) => {
-      notifyError(getDict().common.storage.libraryLoadFailed, message);
-    },
-    onSaveError: (message) => {
-      notifyError(getDict().common.storage.librarySaveFailed, message);
-    },
-  });
+  const [library, setLibrary] = useState<ContextLibrary>(EMPTY_LIBRARY);
+  const loaded = useRef(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const addFolderCb = useCallback(
-    (name: string) => {
+  useEffect(() => {
+    let live = true;
+    void loadContextLibrary().then((json) => {
+      if (!live) return;
+      const initial = deserializeLibrary(json);
+      if (initial) setLibrary(initial);
+      loaded.current = true;
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!loaded.current) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      void saveContextLibrary(serializeLibrary(library));
+    }, SAVE_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(saveTimer.current);
+    };
+  }, [library]);
+
+  return {
+    library,
+    addFolder: useCallback((name) => {
       setLibrary((lib) => addFolder(lib, name));
-    },
-    [setLibrary],
-  );
-  const renameFolderCb = useCallback(
-    (id: string, name: string) => {
+    }, []),
+    renameFolder: useCallback((id, name) => {
       setLibrary((lib) => renameFolder(lib, id, name));
-    },
-    [setLibrary],
-  );
-  const removeFolderCb = useCallback(
-    (id: string) => {
+    }, []),
+    removeFolder: useCallback((id) => {
       setLibrary((lib) => removeFolder(lib, id));
-    },
-    [setLibrary],
-  );
-  const addDocCb = useCallback(
-    (doc: { name: string; text: string; folderId: string }) => {
+    }, []),
+    addDoc: useCallback((doc) => {
       setLibrary((lib) => addDoc(lib, doc));
-    },
-    [setLibrary],
-  );
-  const updateDocCb = useCallback(
-    (id: string, patch: Partial<Pick<ContextDoc, "name" | "text">>) => {
+    }, []),
+    updateDoc: useCallback((id, patch) => {
       setLibrary((lib) => updateDoc(lib, id, patch));
-    },
-    [setLibrary],
-  );
-  const removeDocCb = useCallback(
-    (id: string) => {
+    }, []),
+    removeDoc: useCallback((id) => {
       setLibrary((lib) => removeDoc(lib, id));
-    },
-    [setLibrary],
-  );
-  const moveDocCb = useCallback(
-    (id: string, folderId: string) => {
+    }, []),
+    moveDoc: useCallback((id, folderId) => {
       setLibrary((lib) => moveDoc(lib, id, folderId));
-    },
-    [setLibrary],
-  );
-
-  // The object itself has to be stable, not only the callbacks in it: it is a
-  // dependency of `ContextLibraryPanel`'s native-drop effect, so a new identity
-  // on every `LauncherApp` render (a permission poll tick, a window focus, an
-  // update-progress event) tore down `onDragDropEvent` and re-registered it
-  // through an async IPC round trip — including once per file MID-DROP.
-  return useMemo(
-    () => ({
-      library,
-      addFolder: addFolderCb,
-      renameFolder: renameFolderCb,
-      removeFolder: removeFolderCb,
-      addDoc: addDocCb,
-      updateDoc: updateDocCb,
-      removeDoc: removeDocCb,
-      moveDoc: moveDocCb,
-    }),
-    [
-      library,
-      addFolderCb,
-      renameFolderCb,
-      removeFolderCb,
-      addDocCb,
-      updateDocCb,
-      removeDocCb,
-      moveDocCb,
-    ],
-  );
+    }, []),
+  };
 }

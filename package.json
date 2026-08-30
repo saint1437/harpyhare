@@ -4,12 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "apps/*"
   ],
-  "engines": {
-    "node": ">=22"
-  },
   "scripts": {
     "build": "nx run-many -t build",
     "lint": "nx run-many -t lint",
@@ -22,7 +18,6 @@
     "prepare": "husky"
   },
   "devDependencies": {
-    "@harpyhare/prettier-config": "*",
     "@vercel/blob": "^2.6.1",
     "husky": "^9.1.7",
     "knip": "^6.25.0",

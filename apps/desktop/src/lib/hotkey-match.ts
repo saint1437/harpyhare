@@ -6,7 +6,11 @@ export interface PreparedCombo {
   key: string | null;
 }
 
-export interface KeyboardComboEvent extends ModifierState {
+export interface KeyboardComboEvent {
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
   code: string;
 }
 

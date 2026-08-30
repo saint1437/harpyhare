@@ -1,5 +1,5 @@
 import type { Dictionary } from "@/i18n/types";
-import { AppDemoSection } from "./app-demo/AppDemoSection";
+import { AppDemo } from "./app-demo/AppDemo";
 
 const RADIATE_MASK = "radial-gradient(115% 95% at 0% 45%, #000 18%, transparent 72%)";
 
@@ -11,11 +11,6 @@ export function WindowSection({ dict }: { dict: Dictionary }) {
         src="/linocut/sound-waves.svg"
         alt=""
         aria-hidden
-        /* Below the fold, and 93 KB of it. React emits a `<link rel="preload"
-           as="image">` for every server-rendered `<img>`, so eagerly this plate
-           raced the hero image and the fonts; React skips the preload for a
-           lazily loaded one. */
-        loading="lazy"
         /* the arcs converge into a solid mass at the plate's right edge, so the
            motif is faded out from its sparse left side instead of being cropped */
         style={{ maskImage: RADIATE_MASK, WebkitMaskImage: RADIATE_MASK }}
@@ -28,11 +23,7 @@ export function WindowSection({ dict }: { dict: Dictionary }) {
         </h2>
         <p className="mt-5 max-w-xl text-[15px] leading-relaxed text-fg-muted">{copy.sub}</p>
 
-        {/* `dict.app` and not `dict`: props of a Client Component are serialised
-            into the inline RSC payload, so passing the whole dictionary put the
-            page's every string into the HTML for the sake of the one branch the
-            demo reads. */}
-        <AppDemoSection copy={dict.app} />
+        <AppDemo dict={dict} />
 
         <div className="mt-7 grid gap-3.5 sm:grid-cols-3">
           {copy.cards.map(({ title, text }) => (

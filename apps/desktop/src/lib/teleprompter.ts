@@ -1,5 +1,3 @@
-import { clamp } from "./clamp";
-
 export const TELEPROMPTER_SPEED_MIN = 10;
 export const TELEPROMPTER_SPEED_MAX = 150;
 export const TELEPROMPTER_SPEED_STEP = 5;
@@ -8,6 +6,10 @@ export const TELEPROMPTER_FONT_MAX = 48;
 export const TELEPROMPTER_FONT_STEP = 2;
 
 const MILLIS_PER_SECOND = 1000;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
 export function clampSpeed(value: number): number {
   return clamp(value, TELEPROMPTER_SPEED_MIN, TELEPROMPTER_SPEED_MAX);

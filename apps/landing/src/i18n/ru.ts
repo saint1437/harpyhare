@@ -55,7 +55,7 @@ export const ru: Dictionary = {
   app: demoRu,
   how: {
     title: "Три шага до ответа",
-    hint: "hold ⌘R",
+    hint: "hold F9",
     steps: [
       {
         number: "01",
@@ -175,17 +175,5 @@ export const ru: Dictionary = {
   footer: {
     github: "GitHub",
     localeSwitch: "In English",
-  },
-
-  notFound: {
-    title: "Страница потерялась",
-    text: "Такой страницы здесь нет. Приложение и свежие сборки — на главной.",
-    home: "На главную",
-  },
-
-  error: {
-    title: "Что-то сломалось",
-    text: "Страница не отрисовалась. Попробуйте ещё раз — обычно этого хватает.",
-    retry: "Попробовать снова",
   },
 };

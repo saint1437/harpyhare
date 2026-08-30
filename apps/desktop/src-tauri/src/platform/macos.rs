@@ -1,7 +1,7 @@
 use objc2_app_kit::NSEventModifierFlags;
 use tauri::AppHandle;
 
-use super::{ModifierMask, PlatformBackend, WINDOW_CORNER_RADIUS_LOGICAL_PX, handle_arrow_key};
+use super::{handle_arrow_key, ModifierMask, WINDOW_CORNER_RADIUS_LOGICAL_PX};
 use crate::window::{launcher_window, main_window};
 
 const KEY_CODE_ARROW_LEFT: u16 = 123;
@@ -14,8 +14,6 @@ const AUDIO_CAPTURE_PRIVACY_PANE_URL: &str =
     "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture";
 const SCREEN_CAPTURE_PRIVACY_PANE_URL: &str =
     "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
-const MICROPHONE_PRIVACY_PANE_URL: &str =
-    "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
 
 pub fn disable_cursor_autohide_on_typing() {
     unsafe extern "C-unwind" fn keep_cursor_visible() {}
@@ -130,10 +128,6 @@ pub fn open_audio_capture_privacy_pane() {
     open_with_shell(AUDIO_CAPTURE_PRIVACY_PANE_URL);
 }
 
-pub fn open_microphone_privacy_pane() {
-    open_with_shell(MICROPHONE_PRIVACY_PANE_URL);
-}
-
 pub fn open_screen_capture_privacy_pane() {
     open_with_shell(SCREEN_CAPTURE_PRIVACY_PANE_URL);
 }
@@ -154,39 +148,4 @@ pub fn request_screen_capture_access() -> bool {
 
 pub fn open_url(url: &str) {
     open_with_shell(url);
-}
-
-pub struct Backend;
-
-impl PlatformBackend for Backend {
-    fn disable_cursor_autohide_on_typing() {
-        disable_cursor_autohide_on_typing();
-    }
-    fn merge_titlebar_into_content(app: &AppHandle) {
-        merge_titlebar_into_content(app);
-    }
-    fn clip_native_window_corners(app: &AppHandle) {
-        clip_native_window_corners(app);
-    }
-    fn install_move_keys_monitor(app: AppHandle) {
-        install_move_keys_monitor(app);
-    }
-    fn open_audio_capture_privacy_pane() {
-        open_audio_capture_privacy_pane();
-    }
-    fn open_microphone_privacy_pane() {
-        open_microphone_privacy_pane();
-    }
-    fn open_screen_capture_privacy_pane() {
-        open_screen_capture_privacy_pane();
-    }
-    fn screen_capture_access() -> bool {
-        screen_capture_access()
-    }
-    fn request_screen_capture_access() -> bool {
-        request_screen_capture_access()
-    }
-    fn open_url(url: &str) {
-        open_url(url);
-    }
 }

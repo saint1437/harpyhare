@@ -11,10 +11,8 @@ export function IconButton({ title, className, ...props }: IconButtonProps) {
       variant="ghost"
       size="icon-compact"
       title={title}
-      // Defaulted, not forced: the spread below lets a caller override it where
-      // the visible tooltip and the announced name must differ.
-      aria-label={title}
-      className={cn("rounded-md text-fg-subtle hover:text-fg", className)}
+      aria-label={props["aria-label"] ?? title}
+      className={cn("rounded-md text-muted-foreground hover:text-foreground", className)}
       {...props}
     />
   );

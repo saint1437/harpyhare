@@ -1,319 +1,107 @@
 # harpyhare — landing
 
-The marketing single-page site for the harpyhare app. **Next.js 16 (App Router) + React 19 +
-Tailwind v4**, two language versions, no backend of its own.
+Маркетинговый сайт-одностраничник для приложения harpyhare. **Next.js 16 (App Router) + React 19 +
+Tailwind v4**, две языковые версии, без собственного бэкенда.
 
-## Development
+## Разработка
 
 ```bash
-# from the monorepo root
-npx nx dev landing        # dev server (http://localhost:3000)
-npx nx build landing      # production build → apps/landing/.next
-npx nx test landing       # unit tests for the pure logic
+# из корня монорепо
+npx nx dev landing        # dev-сервер (http://localhost:3000)
+npx nx build landing      # прод-сборка → apps/landing/.next
+npx nx test landing       # юнит-тесты чистой логики
 
-# or from this folder
+# либо из этой папки
 cd apps/landing && npm run dev
-npm run start             # production server on top of the built .next
+npm run start             # прод-сервер поверх собранного .next
 ```
 
-## Routes and locales
+## Маршруты и локали
 
-| URL   | Locale  | File                       |
+| URL   | Локаль  | Файл                       |
 | ----- | ------- | -------------------------- |
-| `/`   | Russian | `src/app/(ru)/page.tsx`    |
+| `/`   | русский | `src/app/(ru)/page.tsx`    |
 | `/en` | English | `src/app/(en)/en/page.tsx` |
 
-Both route groups are **independent root layouts** (`app/(ru)/layout.tsx` and
-`app/(en)/layout.tsx`), because their `<html lang>` differs and Next allows multiple root layouts
-only through route groups. The shared `<html>/<body>` shell with the skip link lives in
-`components/RootHtml.tsx` so the groups cannot drift apart.
+Обе группы маршрутов — **самостоятельные root-лейауты** (`app/(ru)/layout.tsx` и
+`app/(en)/layout.tsx`), потому что `<html lang>` у них разный, а Next разрешает несколько корневых
+лейаутов только через route groups. Общий каркас `<html>/<body>` со skip-ссылкой живёт в
+`components/RootHtml.tsx`, чтобы группы не расходились.
 
-The page copy lives in `src/i18n/{ru,en}.ts`, and the dictionary's shape is described by the
-`Dictionary` type (`src/i18n/types.ts`): add a key and both locales must fill it in, otherwise
-`tsc` fails. The section components contain no strings at all — everything arrives through the
-`dict` prop.
+Тексты страницы — в `src/i18n/{ru,en}.ts`, форма словаря описана типом `Dictionary`
+(`src/i18n/types.ts`): добавил ключ — обе локали обязаны его заполнить, иначе `tsc` падает.
+Компоненты секций строк не содержат вовсе, всё приходит пропом `dict`.
 
-The copy for the **app mockup** is a separate branch of the same dictionary:
-`src/i18n/demo-{ru,en}.ts` typed as `DemoCopy` (`src/i18n/demo-types.ts`), including the chat
-contents, the spoken questions and the recorded answers. It reaches the mockup through context
-rather than props (`components/app-demo/copy.tsx`, `useCopy()`): threading the copy through eight
-levels of markup costs more than one provider at the root of the demo. The exception is
-`useDemoRun(copy)`: the hook is called inside `AppDemo` itself, i.e. outside the provider, so it
-takes the copy as an argument.
+Тексты **макета приложения** — отдельная ветка того же словаря: `src/i18n/demo-{ru,en}.ts` по типу
+`DemoCopy` (`src/i18n/demo-types.ts`), включая содержимое чатов, голосовые вопросы и записанные
+ответы. Внутрь макета они попадают не пропами, а контекстом (`components/app-demo/copy.tsx`,
+`useCopy()`): протаскивать копирайт через восемь уровней вёрстки дороже, чем один провайдер на
+корне демо. Исключение — `useDemoRun(copy)`: хук вызывается в самом `AppDemo`, то есть снаружи
+провайдера, поэтому копию получает аргументом.
 
-The mockup is fully translated, but **the English page carries a disclosure underneath it**
-(`copy.disclosure`): the app itself still ships with a Russian interface, and the visitor must not
-be led to believe otherwise. Once the app is localised, remove the disclosure.
+Макет переведён целиком, но **на английской странице под ним стоит оговорка**
+(`copy.disclosure`): само приложение пока поставляется с русским интерфейсом, и посетитель не
+должен считать иначе. Появится локализация в приложении — оговорку убрать.
 
-## How the version is pulled in
+## Как подтягивается версия
 
-The latest release of `screenfriskofficial/harpyhare-releases` is fetched **on the server at build
-time and again every 30 minutes** (`fetch` with `next: { revalidate }` in
-`src/lib/release-server.ts`; the page's `revalidate` is a literal right next to it — Next requires a
-statically analysable value). That is why the version number and the direct installer links sit
-right in the HTML: search engines see them, and the button never flashes a loading state.
+Последний релиз `screenfriskofficial/harpyhare-releases` берётся **на сервере при сборке и раз в 30
+минут заново** (`fetch` c `next: { revalidate }` в `src/lib/release-server.ts`; `revalidate`
+страницы задан литералом рядом — Next требует статически анализируемое значение). Поэтому номер
+версии и прямые ссылки на установщики лежат прямо в HTML: их видит поисковик, и кнопка не мигает
+состоянием загрузки.
 
-- `src/lib/platform.ts` — platforms, labels, requirements and the pure `detectPlatform`. Covered by tests.
-- `src/lib/release.ts` — the browser's half: `downloadHref` and `RELEASES_PAGE`, nothing that has
-  to recognise an asset name. It reads the repository slug from
-  `@harpyhare/release-contract/client`, the package's browser-safe entry point, and not from its
-  main one: three Client Components import this module, and the main entry would ship them the
-  whole naming scheme (`darwin-aarch64`, `windows-x86_64`, `.app.tar.gz`, the suffix fields) plus
-  three `Object.values(...)` results nothing in a browser reads. Covered by tests.
-- `src/lib/release-server.ts` — the fetch itself and everything that matches an asset name
-  (`pickPlatformAsset` through `isPlatformInstallerName` from `@harpyhare/release-contract`, which
-  derives the suffixes from the same manifest the release script builds them with). On any error it
-  returns `null` and the buttons lead to the releases page.
-- `src/hooks/usePlatform.ts` — the only place that reads `navigator`. Server rendering always
-  returns macOS; on the client the button order is adjusted to the visitor's OS. That is why
-  `DownloadChoice`/`DownloadButton`/`VersionNote`/`PlatformRequirements` are client components while
-  the sections around them are server ones.
+- `src/lib/platform.ts` — платформы, подписи, требования и чистая `detectPlatform`. Покрыт тестами.
+- `src/lib/release.ts` — разбор ответа API, выбор установщика (`pickPlatformAsset`: macOS — `.dmg`,
+  Windows — `-setup.exe`, затем `.msi`, затем `.exe`; ассеты апдейтера отсеиваются). Покрыт тестами.
+- `src/lib/release-server.ts` — сам фетч; при любой ошибке возвращает `null`, и кнопки ведут на
+  страницу релизов.
+- `src/hooks/usePlatform.ts` — единственное место, где читается `navigator`. Серверный рендер всегда
+  отдаёт macOS, на клиенте порядок кнопок правится под ОС посетителя; поэтому
+  `DownloadChoice`/`DownloadButton`/`VersionNote`/`PlatformRequirements` — клиентские, а секции
+  вокруг них серверные.
 
-**A new app release shows up on the site by itself** — no redeploy is needed, within 30 minutes at most.
+**Новый релиз приложения появляется на сайте сам** — редеплой не нужен, максимум через 30 минут.
 
 ## SEO
 
-Everything served to search engines is assembled from the dictionary — no tag is duplicated by hand:
+Всё, что отдаётся поисковику, собирается из словаря — руками теги не дублируются:
 
 - `src/lib/metadata.ts` — `title`/`description`/`keywords`, canonical, `hreflang` (`ru`, `en`,
-  `x-default`), Open Graph and the Twitter card, robot directives. Absolute URLs are built from
+  `x-default`), Open Graph и Twitter-карточка, директивы для роботов. Абсолютные URL строит
   `metadataBase` + `src/lib/site.ts`.
-- `src/lib/structured-data.ts` — JSON-LD as a single `@graph`: `Organization`, `WebSite`, `WebPage`,
-  `SoftwareApplication` (version and download link from the live release, `offers` = 0) and
-  `FAQPage`. The FAQ markup must match the visible text of the `components/Faq.tsx` section — both
-  sides read `dict.faq.items`, so a mismatch is impossible by design.
-- `src/app/sitemap.ts`, `src/app/robots.ts`, `src/app/manifest.ts` — generated by Next, with one
-  domain shared by all of them (`SITE_URL`).
-- `public/og.jpg` and `public/og-en.jpg` (1200×630) — the social images; **raster, not SVG**:
-  Twitter and Facebook do not render SVG previews. The paths are declared once, in
-  `src/lib/site.ts` (`OG_IMAGE_PATH`), and both the meta tags and the JSON-LD read them from
-  there.
-- The three decorative linocut sprites live in `public/linocut/` and are served with an
-  immutable `Cache-Control` set in `next.config.ts`.
+- `src/lib/structured-data.ts` — JSON-LD одним `@graph`: `Organization`, `WebSite`, `WebPage`,
+  `SoftwareApplication` (версия и ссылка на скачивание — из живого релиза, `offers` = 0) и
+  `FAQPage`. Разметка FAQ обязана совпадать с видимым текстом секции `components/Faq.tsx` — обе
+  стороны берут `dict.faq.items`, так что расхождение невозможно by design.
+- `src/app/sitemap.ts`, `src/app/robots.ts`, `src/app/manifest.ts` — генерируются Next, домен один
+  на всех (`SITE_URL`).
+- `public/og.png` и `public/og-en.png` (1200×630) — картинки для соцсетей; **PNG, а не SVG**:
+  Twitter и Facebook SVG-превью не рендерят.
+- Декоративные спрайты зайца и кустов помечены `loading="lazy"`: React 19 иначе выписывает им
+  `<link rel="preload">` в `<head>`, и десяток картинок конкурирует с LCP-текстом.
 
-The domain is the `SITE_URL` constant in `src/lib/site.ts`. **Moving to another domain is a
-one-line change** — everything else (canonical, OG, sitemap, robots, JSON-LD) is derived from it.
+Домен — константа `SITE_URL` в `src/lib/site.ts`. **Переезд на другой домен — правка одной строки**,
+всё остальное (canonical, OG, sitemap, robots, JSON-LD) выводится из неё.
 
-## Deployment (Vercel)
+## Деплой (Vercel)
 
-The root `vercel.json`: `framework: nextjs`, `buildCommand: npx nx build landing`,
-`outputDirectory: apps/landing/.next`. The project's Root Directory in Vercel is the repository root
-(`./`). A push to `main` triggers an automatic deploy. If Vercel fails to pick up the nested
-`.next`, the alternative is to set Root Directory to `apps/landing` and drop
-`buildCommand`/`outputDirectory` from `vercel.json` (Vercel installs the dependencies from the root
-anyway — it understands npm workspaces).
+Корневой `vercel.json`: `framework: nextjs`, `buildCommand: npx nx build landing`,
+`outputDirectory: apps/landing/.next`. Root Directory проекта в Vercel — корень репозитория (`./`).
+Пуш в `main` → автодеплой. Если Vercel не подхватит вложенный `.next`, альтернатива — выставить Root
+Directory `apps/landing` и убрать `buildCommand`/`outputDirectory` из `vercel.json` (зависимости
+Vercel всё равно ставит из корня, воркспейсы npm он понимает).
 
-Optionally, to skip rebuilds when the landing page is untouched: Settings → Git → Ignored Build Step
-→ `npx nx-ignore landing`.
+Опционально не пересобирать, когда лендинг не затронут: Settings → Git → Ignored Build Step →
+`npx nx-ignore landing`.
 
-## Palette
+## Палитра
 
-The site is a **poster**: an oxblood ground, cream ink, a near-black (`--ink`) for the hard
-offset shadows and the full-bleed blocks. There is no light theme and no theme toggle. The
-earlier night scene — the moon with its beam, the star fields, the day/night scroll shift — was
-removed with the redesign; nothing of it is left in the source.
-
-The tokens live in `src/app/globals.css`, in two layers that must not be folded together:
-
-- `:root` holds the page's own values (`--bg`, `--bg-lift`, `--bg-deep`, `--ink`, `--fg*`,
-  `--surface`, `--border*`, `--primary`, the two `--shadow-hard*`), and `@theme inline` re-exports
-  them to Tailwind as `--color-*`. This layer is written by hand and belongs to the page.
-- The `--app-*` group is the **desktop app's palette**, replicated inside the interactive demo.
-  It is **generated**, not written: `scripts/sync-app-tokens.mjs` reads `@harpyhare/tokens` — the
-  same stylesheet the app itself imports — and rewrites three marked regions of `globals.css` (the
-  values in `:root`, the `.app-launcher` / `[data-app-theme]` overrides, and the `--color-app-*`
-  and `--text-app-*` entries of `@theme inline`). Do not edit inside the markers; change the
-  package and re-run the script.
-
-```bash
-node scripts/sync-app-tokens.mjs           # regenerate
-node scripts/sync-app-tokens.mjs --check   # fail if stale — runs first in `npm test`
-```
-
-The page still decides two things for itself. `.app-launcher` mirrors the app's own
-`body.launcher` seam (the launcher window sits a step deeper than the HUD).
-`[data-app-theme="black"]` is a **landing-only** depth the app has no equivalent of — the visitor's
-toggle under the mockup — and it is derived by dropping 0.06 of OKLCH lightness off the surface
-steps and nothing else, so hue, chroma, text and marks stay the app's.
-
-Alongside the colours, `@theme inline` declares the two families (`--font-sans` Golos Text,
-`--font-display` Unbounded, both loaded through `next/font/google` in `lib/fonts-cyrillic.ts` and
-`lib/fonts-latin.ts` — see "Fonts, per locale" below).
-The shadows and the outlined display type are **plain classes**, not theme tokens:
-`.shadow-poster`, `.shadow-poster-lg` and `.text-stroke` in `globals.css`. `.text-stroke` paints
-the text transparent and relies on `-webkit-text-stroke`, with an `@supports` fallback that
-repaints it solid — without it a headline would simply be blank in a browser that lacks the
-property.
-
-### Fonts, per locale
-
-Each locale's layout imports one font module and one only: `lib/fonts-cyrillic.ts` for `/`
-(`subsets: ["cyrillic", "latin"]`) and `lib/fonts-latin.ts` for `/en` (`["latin"]`). The split has
-to be at module level — the preload set is collected from the `next/font` calls in a route's module
-graph, so one module choosing between two declarations at render time still preloads all four
-files.
-
-**The split alone does not reach the HTML under Turbopack, so the links are emitted by hand.**
-`next build --webpack` writes a per-route `next-font-manifest.json`; `next build` (Turbopack, the
-default and what ships) writes the project-wide union of every declaration under every route key,
-and `/`, `/en` and `_not-found` all listed the same four files. So every declaration passes
-`preload: false` — which suppresses the automatic links while still self-hosting the font and
-writing the `@font-face` rules — and `components/RootHtml.tsx` calls `preload()` over the module's
-own `FONT_PRELOADS`. Measured on the built HTML: `/` keeps its four (142,464 B, Russian is its
-language) and `/en` drops to two (88,976 B), **53,488 B of top-priority font bytes off the critical
-path**.
-
-`FONT_PRELOADS` is generated, because a preload must name the very file the `@font-face` rule
-names and those names are content-hashed — a stale one is a 404 at the highest priority *and* an
-unpreloaded font, which is worse than no preload. `scripts/sync-font-preloads.mjs` reads the URLs
-back out of the built CSS:
-
-```bash
-node scripts/sync-font-preloads.mjs           # regenerate, after a build
-node scripts/sync-font-preloads.mjs --check    # fail if stale — in `npm test`, and after `next build`
-```
-
-`--check` has two layers. Without a build it still holds the source to its part of the bargain
-(every declaration really passes `preload: false`, every declared subset is one the script can
-locate, no `.p.` name — the copy `next/font` emits for a subset it preloads itself — and the Latin
-list is a subset of the Cyrillic one). With a build it compares every URL against the CSS. The
-landing's `build` script runs it straight after `next build`, so a font that moved fails the build
-instead of shipping a dead link.
-
-`app/not-found.tsx` preloads nothing on purpose: Next renders it into the not-found boundary of
-every route, so anything it preloads is preloaded on `/en` too.
-
-### What the demo used to look like, and what changed
-
-The replica was hand-typed and had drifted from the app it illustrates. Adopting the package
-repainted it; this is the whole visible list, because a marketing page changing colour is a
-product change and not a refactor:
-
-| what | before | after |
-| --- | --- | --- |
-| window ground, card, surfaces | neutral-blue hue 285, `oklch(1 0 0 / n%)` alpha tints | the app's warm hue 40, opaque lightness steps |
-| ground / card lightness | `0.28` / `0.32` | `0.235` / `0.285` — a touch darker |
-| muted text | `oklch(0.72 0.006 285)` | `oklch(0.79 0.008 40)` — lighter, more readable |
-| accent | `oklch(0.45 0.16 18)` | `oklch(0.55 0.16 20)` — a lighter oxblood |
-| danger | `oklch(0.55 0.2 18)` | `oklch(0.72 0.175 30)`, and it now carries **dark** type |
-| **"recording"** | red `oklch(0.62 0.2 18)` | **cyan** `oklch(0.775 0.11 200)` |
-| hairline | white at 12% | opaque `oklch(0.315 0.006 40)` (about the same lightness) |
-| dots, caret, equaliser bars, toggle, selection ring | `--app-primary` at 1.56–2.48:1 | `--app-primary-mark`, ≥3:1 |
-| body / title type | 12.5px / 15px | 13px / 16px |
-| `black` theme | its own hand-typed ladder | the same palette, 0.06 lightness deeper |
-
-The "recording" change is the one with meaning behind it: in the app, cyan means "audio is being
-captured right now" and red means "something is wrong", and the page had been advertising the
-former in the colour of the latter.
-
-### The second pass: eleven colours the replica did not have
-
-Adopting the package fixed the colours the demo was already painting. It did not add the ones it
-was not: the demo could only say "fine" and "broken", had no third text weight, no focus ring, and
-no dim half of the capture cyan — so "the buffer is holding audio" and "audio is being sent" were
-the same colour, which is the one distinction the product is about.
-
-| new token | from the app's | what it paints |
-| --- | --- | --- |
-| `--app-recording-dim` | `--listening-dim` | the "standing by" bars and the orb's ring |
-| `--app-subtle-fg` | `--fg-subtle` | captions and hints, which used to borrow `--app-muted-fg` |
-| `--app-border-strong` | `--line-strong` | an `outline` button's border, the slider track, the idle orb |
-| `--app-primary-hover` | `--accent-hover` | the accent's hover step — the demo lightened where the app darkens |
-| `--app-success`, `--app-warning` | `--success`, `--warning` | `StateBadge`, which is colour + glyph + word |
-| `--app-focus` | `--focus` | the focus **outline** — the demo had no focus-visible styling at all |
-| `--app-overlay`, `--app-scrim`, `--app-on-scrim` | same | the teleprompter's ground and the remove-X disc |
-| `--text-app-display` | `--hud-text-display` | 22px, the largest thing in the window |
-
-`scripts/check-contrast.mjs` now holds the replica to the **desktop's own pairs**, pair for pair:
-three text weights plus the two state colours that carry words at 4.5:1, and every small mark —
-ring, bars, glyphs, focus outline, `outline` border — at 3:1. 585 checks across five scopes.
-
-## What the demo actually is
-
-`src/components/app-demo/` is a working mock of the product, not a picture of it. Every string in
-it is a literal the app also shows (`apps/desktop/src/i18n/**` is the source; `demo-ru.ts` and
-`demo-en.ts` are transcriptions), and every state the window can be IN is reachable.
-
-**The window sits on a desktop.** The frame is `.app-desktop`; the window is an element inside it,
-translucent (`.app-hud-shell`, at the opacity the settings slider controls) and rounded. It used to
-fill the frame edge to edge, which quietly cost the page the two claims the surrounding section
-spends its words on — that the HUD floats and that you can see through it.
-
-**The collapsed mode is an orb, not a hidden window.** `⌘⇧H` shrinks the window to 80px holding a
-56px ball with seven states: capture **breathes**, work **spins**, an unread answer is a mark, and
-everything else is still. The demo used to draw a scrim over the frame captioned "window hidden" —
-a behaviour the product deliberately does not have, because a hidden window cannot answer the one
-question you have while it is gone: *can it still hear me?*
-
-**The keys work.** Live only while focus is inside the frame — a page cannot register OS-global
-shortcuts and should not pretend to — but inside that scope the combos are the app's,
-`preventDefault` included: `⌘R` holds to record, `⌘⇧H` collapses, `⌘⏎` sends, `⌘1…9` fire quick
-actions, `⌘⇧L` toggles auto listening, `⌘⇧T` opens the teleprompter, `Esc` cancels the recording
-first and the answer second. While collapsed, the keys that act on a chat you cannot see are dead,
-exactly as they are in the app.
-
-**One stream per chat, not one per window.** Switching tabs does not stop what the chat you left
-is generating. That is what makes a tab's busy dot mean anything, and it is the only way an answer
-can land somewhere you are not looking — which is the whole reason the orb has an `answer` state.
-
-Two states have no in-app trigger, because in the app they are things that happen *to* you: losing
-the network and an error from a provider. Those get a chip **below** the frame, kept visibly
-outside it so the window never grows an affordance the product lacks.
-
-**`npm test` runs four checks before vitest** — three over the palette, one over the fonts.
-`scripts/sync-font-preloads.mjs --check` is the fourth and is described under "Fonts, per locale".
-`scripts/sync-app-tokens.mjs --check`:
-the generated replica still matches the package. `scripts/check-tokens.mjs`: every colour utility
-in `src/` resolves to a token declared in `globals.css` — a class naming a token that does not
-exist is an error nowhere, Tailwind generates nothing, the element renders unstyled, and neither
-`tsc` nor eslint nor `next build` says a word. `scripts/check-contrast.mjs`: every text token
-clears WCAG AA 4.5:1 on every ground it is painted on, every mark clears 3:1, and every token sits
-inside the sRGB gamut — across the page and the four scopes of the embedded demo, with alpha
-composited over the ground the way a browser paints it.
-
-The last two are **configuration, not code**: the mechanic lives in `@harpyhare/checks` and the
-desktop app runs the same one over the same palette, in its own six scopes. What is in these files
-is which stylesheet, which scopes and which pairs — and the header of `check-contrast.mjs` argues
-the pairs it leaves out, including the ones that used to be excuses.
-
-## Class merging
-
-`src/lib/cn.ts` is `tailwind-merge` (extended with the `text-app-*` sizes, which tailwind-merge
-would otherwise file under text-colour and drop). It used to be `filter().join()`, which is not
-a merge: `cn("p-2", "p-4")` emitted both and the winner was decided by the order inside the
-generated stylesheet. Every component here layers a `className` override on top of a base
-recipe, so that difference was load-bearing — `<AppIconButton className="rounded-md" />` sits on
-a base `rounded-full` and used to lose. `src/lib/cn.test.ts` pins the semantics.
-
-## Error and empty states
-
-- `src/app/not-found.tsx` — the 404. Because both root layouts sit inside route groups, an
-  unmatched URL matches neither and this file gets **no layout at all**: it renders `<html>` and
-  `<body>` itself through `RootHtml` and imports `globals.css` on its own. It is served in the
-  default locale and marked `noindex`.
-- `src/app/(ru)/error.tsx` and `src/app/(en)/error.tsx` — the per-locale error boundaries. An
-  error boundary in the App Router **must be a Client Component**, so both are one-line wrappers
-  around `components/ErrorScreen.tsx`, which carries the `"use client"` directive.
-- Both sit on the shared `components/MessageScreen.tsx`.
-
-## Tests
-
-`npx nx test landing` — the replica sync check, the token check, the contrast check, then vitest (jsdom):
-
-- `lib/platform.ts`, `lib/release.ts` — the pure parsing and platform picking.
-- `lib/cn.ts` — the merge semantics described above.
-- `lib/metadata.ts`, `lib/structured-data.ts` — the whole SEO surface, as explicit assertions on
-  the invariants (canonical, hreflang including `x-default`, the OG/Twitter image, the JSON-LD
-  graph) plus full snapshots. Nothing here fails loudly when it breaks: a lost canonical shows
-  up weeks later as a traffic dip, and the snapshot is the alarm.
-- `app/routes.test.ts` — `sitemap.ts`, `robots.ts`, `manifest.ts`, all three checked against the
-  single `SITE_URL`.
-- `lib/format.ts` — `{name}` substitution, the app's own helper. A hole with no value is removed
-  along with any punctuation left dangling in front of it, which is what lets a template read as a
-  finished sentence when the provider gave no details.
-- `components/app-demo/useDemoRun.ts` — the demo's state machine, the most involved piece of logic
-  on the site: the recording → transcribing → streaming run and its 300ms discard, cancellation,
-  per-chat streams running in parallel, the tab limit, per-chat drafts, the six listening states
-  and the seven orb states, the collapse round-trip with its two auto-expand paths, notification
-  collapsing and expiry, auto listening, and the timer cleanup on unmount. It runs on fake timers
-  with a cut-down copy fixture.
+Сайт **только тёмный**, фон — чистый чёрный; светлой темы нет и переключателя тем нет. Прежняя
+схема со сменой дня и ночи по скроллу (переменные `--day`/`--night`, солнце, облака) удалена
+целиком: остались луна с лучом (угол луча по-прежнему ведёт скролл, `components/Moon.tsx`) и
+звёздные поля `StarField` в каждой секции — их координаты лежат в `src/lib/stars.ts`
+фиксированными списками, а не генерируются случайно, иначе серверная и клиентская разметка
+разъедутся. Фирменный красный (oxblood) сохранён. Токены — в `src/app/globals.css`
+(`@theme inline`); отдельная группа `--app-*` — палитра макета приложения, она на шаг светлее фона
+страницы, чтобы окно читалось на чёрном.

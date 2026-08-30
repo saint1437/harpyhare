@@ -1,20 +1,14 @@
 use super::*;
 
-fn downmixed(interleaved: &[f32], channels: usize) -> Vec<f32> {
-    let mut out = Vec::new();
-    downmix_into(interleaved, channels, &mut out);
-    out
-}
-
 #[test]
 fn downmix_averages_channels() {
     let stereo = vec![1.0f32, 0.0, 0.5, 0.5];
-    assert_eq!(downmixed(&stereo, 2), vec![0.5, 0.5]);
+    assert_eq!(downmix_to_mono(&stereo, 2), vec![0.5, 0.5]);
 }
 
 #[test]
 fn downmix_mono_passthrough() {
-    assert_eq!(downmixed(&[0.3, -0.3], 1), vec![0.3, -0.3]);
+    assert_eq!(downmix_to_mono(&[0.3, -0.3], 1), vec![0.3, -0.3]);
 }
 
 #[test]
@@ -197,156 +191,4 @@ fn rolling_buffer_clear_empties() {
     rb.push_chunk(&[1.0, 2.0]);
     rb.clear();
     assert!(rb.snapshot().is_empty());
-}
-
-fn test_bounds() -> SegmenterBounds {
-    SegmenterBounds { silence_ms: 300, min_utterance_ms: 200, max_utterance_secs: 2 }
-}
-
-fn voiced(ms: usize) -> Vec<f32> {
-    (0..samples_for_ms(ms))
-        .map(|i| (2.0 * std::f32::consts::PI * 220.0 * i as f32 / TARGET_SAMPLE_RATE as f32).sin() * 0.4)
-        .collect()
-}
-
-fn quiet(ms: usize) -> Vec<f32> {
-    vec![0.0f32; samples_for_ms(ms)]
-}
-
-#[test]
-fn segmenter_emits_nothing_while_speech_continues() {
-    let mut seg = SpeechSegmenter::new(test_bounds());
-    assert!(seg.push(&voiced(500)).is_empty());
-    assert!(seg.push(&quiet(100)).is_empty());
-}
-
-#[test]
-fn segmenter_finalizes_after_trailing_silence() {
-    let mut seg = SpeechSegmenter::new(test_bounds());
-    assert!(seg.push(&voiced(500)).is_empty());
-    let ready = seg.push(&quiet(400));
-    assert_eq!(ready.len(), 1);
-    let segment = &ready[0];
-    assert!(segment.len() >= samples_for_ms(500), "len={}", segment.len());
-    assert!(segment.len() < samples_for_ms(500 + 400), "trailing silence must be trimmed");
-}
-
-#[test]
-fn segmenter_drops_utterance_shorter_than_minimum() {
-    let mut seg = SpeechSegmenter::new(test_bounds());
-    assert!(seg.push(&voiced(50)).is_empty());
-    assert!(seg.push(&quiet(400)).is_empty());
-}
-
-#[test]
-fn segmenter_ignores_pure_silence() {
-    let mut seg = SpeechSegmenter::new(test_bounds());
-    assert!(seg.push(&quiet(5000)).is_empty());
-    assert!(seg.flush().is_none());
-}
-
-#[test]
-fn segmenter_keeps_lead_in_before_speech_onset() {
-    let mut seg = SpeechSegmenter::new(test_bounds());
-    seg.push(&quiet(1000));
-    assert!(seg.push(&voiced(400)).is_empty());
-    let ready = seg.push(&quiet(400));
-    assert_eq!(ready.len(), 1);
-    assert!(ready[0].len() > samples_for_ms(400), "lead-in must be prepended");
-}
-
-#[test]
-fn segmenter_cuts_monologue_at_max_duration_and_keeps_listening() {
-    let mut seg = SpeechSegmenter::new(test_bounds());
-    let ready = seg.push(&voiced(2500));
-    assert_eq!(ready.len(), 1);
-    assert!(ready[0].len() >= samples_for_secs(2));
-    let tail = seg.push(&quiet(400));
-    assert_eq!(tail.len(), 1, "speech after the cut still finalizes");
-}
-
-#[test]
-fn segmenter_splits_two_utterances_separated_by_a_pause() {
-    let mut seg = SpeechSegmenter::new(test_bounds());
-    let mut all = Vec::new();
-    all.extend(seg.push(&voiced(400)));
-    all.extend(seg.push(&quiet(400)));
-    all.extend(seg.push(&voiced(400)));
-    all.extend(seg.push(&quiet(400)));
-    assert_eq!(all.len(), 2);
-}
-
-#[test]
-fn segmenter_handles_chunks_smaller_than_a_frame() {
-    let mut seg = SpeechSegmenter::new(test_bounds());
-    let speech = voiced(400);
-    for piece in speech.chunks(37) {
-        assert!(seg.push(piece).is_empty());
-    }
-    let silence = quiet(400);
-    let mut ready = Vec::new();
-    for piece in silence.chunks(37) {
-        ready.extend(seg.push(piece));
-    }
-    assert_eq!(ready.len(), 1);
-}
-
-#[test]
-fn segmenter_flush_returns_speech_in_flight() {
-    let mut seg = SpeechSegmenter::new(test_bounds());
-    seg.push(&voiced(400));
-    let flushed = seg.flush().expect("speech in flight");
-    assert!(flushed.len() >= samples_for_ms(400));
-    assert!(seg.flush().is_none(), "flush must not repeat the same speech");
-}
-
-#[test]
-fn f32_to_i16le_into_appends_and_matches_the_allocating_form() {
-    let head = vec![0xAAu8, 0xBB];
-    let samples = vec![0.0f32, 0.5, -0.5, 1.0, -1.0];
-
-    let mut out = head.clone();
-    f32_to_i16le_into(&samples, &mut out);
-    f32_to_i16le_into(&samples, &mut out);
-
-    assert_eq!(&out[..head.len()], &head[..], "приписывает, а не затирает");
-    let body = f32_to_i16le_bytes(&samples);
-    assert_eq!(&out[head.len()..], [body.clone(), body].concat());
-    assert_eq!(i16le_len(samples.len()), samples.len() * 2);
-}
-
-/// The segmenter runs 100 frames a second per source with the `segmenting`
-/// mutex held, so neither cutting a frame nor finishing an utterance may
-/// allocate: the frame buffer is traded with a spare and the utterance is
-/// drained rather than taken.
-#[test]
-fn segmenter_keeps_its_buffers_across_utterances() {
-    let mut seg = SpeechSegmenter::new(test_bounds());
-    assert!(seg.pending.capacity() >= seg.frame);
-    assert!(seg.spare.capacity() >= seg.frame);
-    let utterance_capacity = seg.utterance.capacity();
-    assert!(utterance_capacity > 0, "буфер реплики выделен заранее");
-
-    seg.push(&voiced(400));
-    let ready = seg.push(&quiet(400));
-    assert_eq!(ready.len(), 1);
-
-    assert!(seg.pending.capacity() >= seg.frame, "кадровый буфер уцелел");
-    assert!(seg.spare.capacity() >= seg.frame, "запасной кадр уцелел");
-    assert!(seg.utterance.is_empty());
-    assert_eq!(
-        seg.utterance.capacity(),
-        utterance_capacity,
-        "буфер реплики переиспользуется, а не отдаётся наружу"
-    );
-}
-
-/// Same for the max-duration cut, which takes the other exit out of the buffer.
-#[test]
-fn segmenter_keeps_its_buffer_across_a_max_duration_cut() {
-    let mut seg = SpeechSegmenter::new(test_bounds());
-    let utterance_capacity = seg.utterance.capacity();
-    let ready = seg.push(&voiced(2500));
-    assert_eq!(ready.len(), 1);
-    assert_eq!(seg.utterance.capacity(), utterance_capacity);
 }

@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { probeConnectivity } from "@/ipc/commands";
-import { onEvent } from "@/ipc/events";
-import { isNetworkError } from "@/lib/errors";
 
 const PROBE_INTERVAL_MS = 4000;
 
 export interface Connectivity {
   offline: boolean;
+  reportNetworkError: () => void;
 }
 
 export function useConnectivity(): Connectivity {
@@ -21,23 +20,8 @@ export function useConnectivity(): Connectivity {
     }
   }, []);
 
-  /**
-   * «Нет соединения» от бэкенда — такой же признак обрыва, как событие `offline`
-   * браузера, и надёжнее его: WKWebView считает себя онлайн и при мёртвом VPN.
-   * Раньше это правило жило в `App`, который сверял СВОДНУЮ ошибку HUD с кодом
-   * `network`; со сводной ошибкой ушло и оно, а место ему всё равно здесь.
-   */
-  useEffect(() => {
-    const offStt = onEvent("stt-error", (err) => {
-      if (isNetworkError(err)) setOffline(true);
-    });
-    const offLlm = onEvent("llm-error", (err) => {
-      if (isNetworkError(err)) setOffline(true);
-    });
-    return () => {
-      offStt();
-      offLlm();
-    };
+  const reportNetworkError = useCallback(() => {
+    setOffline(true);
   }, []);
 
   useEffect(() => {
@@ -62,5 +46,5 @@ export function useConnectivity(): Connectivity {
     };
   }, [offline, check]);
 
-  return { offline };
+  return { offline, reportNetworkError };
 }

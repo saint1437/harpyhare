@@ -55,7 +55,7 @@ export const en: Dictionary = {
   app: demoEn,
   how: {
     title: "Three steps to an answer",
-    hint: "hold ⌘R",
+    hint: "hold F9",
     steps: [
       {
         number: "01",
@@ -174,17 +174,5 @@ export const en: Dictionary = {
   footer: {
     github: "GitHub",
     localeSwitch: "По-русски",
-  },
-
-  notFound: {
-    title: "This page went missing",
-    text: "There is no such page here. The app and the latest builds are on the home page.",
-    home: "Back to the home page",
-  },
-
-  error: {
-    title: "Something broke",
-    text: "The page failed to render. Try again — that usually settles it.",
-    retry: "Try again",
   },
 };

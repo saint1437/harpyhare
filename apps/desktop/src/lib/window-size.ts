@@ -1,17 +1,19 @@
-import { clamp } from "./clamp";
-
 export const WINDOW_WIDTH_MIN_PX = 300;
 export const WINDOW_WIDTH_MAX_PX = 1600;
 export const WINDOW_HEIGHT_MIN_PX = 520;
 export const WINDOW_HEIGHT_MAX_PX = 1100;
 
-const NATIVE_SIZE_EPSILON_PX = 1.5;
+export const NATIVE_SIZE_EPSILON_PX = 1.5;
 
 export type WindowDimension = "width" | "height";
 
 export interface WindowSize {
   width: number;
   height: number;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 export function clampWindowSize(size: WindowSize): WindowSize {

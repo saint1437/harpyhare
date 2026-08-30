@@ -1,10 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 pub const ACTION_RECORD: &str = "record";
-pub const ACTION_AUTO_MODE: &str = "auto_mode";
 pub const ACTION_CANCEL_RECORDING: &str = "cancel_recording";
 pub const ACTION_SEND: &str = "send";
-pub const ACTION_AUTO_ANSWER: &str = "auto_answer";
 pub const ACTION_SCREENSHOT: &str = "screenshot";
 pub const ACTION_QUICK_ACTION: &str = "quick_action";
 pub const ACTION_FOCUS_PROMPT: &str = "focus_prompt";
@@ -17,15 +15,6 @@ pub const ACTION_DUPLICATE_CHAT: &str = "duplicate_chat";
 pub const ACTION_TELEPROMPTER: &str = "teleprompter";
 pub const ACTION_TELEPROMPTER_CLOSE: &str = "teleprompter_close";
 pub const ACTION_TELEPROMPTER_PAUSE: &str = "teleprompter_pause";
-
-/// The five headings the reference groups actions under. Keys, not text: the
-/// frontend looks each one up in `src/i18n`, so `bindings.ts` stays free of any
-/// user-facing phrase — see the `HotkeyAction` comment.
-pub const GROUP_RECORDING: &str = "recording";
-pub const GROUP_SENDING: &str = "sending";
-pub const GROUP_WINDOW: &str = "window";
-pub const GROUP_CHAT: &str = "chat";
-pub const GROUP_TELEPROMPTER: &str = "teleprompter";
 
 macro_rules! cmd_token {
     () => {
@@ -79,8 +68,6 @@ impl PlatformCombo {
         Self { macos: combo, windows: combo }
     }
 
-    /// The pair travels to the frontend whole (see the identical-`bindings.ts`
-    /// invariant); only Rust ever asks for "the current one".
     pub fn current(&self) -> &'static str {
         #[cfg(target_os = "macos")]
         {
@@ -90,15 +77,6 @@ impl PlatformCombo {
         {
             self.windows
         }
-        // Without this the body is two `#[cfg]` blocks and nothing else, so on a
-        // third OS the function returns `()` where `&'static str` is declared —
-        // a type error pointing at the wrong thing. The shape of the constant
-        // itself is contract and must not gain a third field.
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        compile_error!(
-            "PlatformCombo::current: неизвестная ОС — добавьте поле в PlatformCombo \
-             и обновите контракт на фронте (SameShape<Record<Platform, string>, …>)"
-        );
     }
 }
 
@@ -119,11 +97,6 @@ impl PlatformModifierCombos {
         {
             self.windows
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        compile_error!(
-            "PlatformModifierCombos::current: неизвестная ОС — добавьте поле в \
-             PlatformModifierCombos и обновите MODIFIER_COMBOS на фронте"
-        );
     }
 }
 
@@ -169,28 +142,13 @@ pub enum HotkeyScope {
     Teleprompter,
 }
 
-/// One keyboard command, described without a word of prose.
-///
-/// `label`/`group`/`hint` used to be Russian sentences here, and they travelled
-/// into `bindings.ts` verbatim — which made the generated contract a translation
-/// unit and put the interface's language in Rust. They are keys now: the
-/// frontend resolves `label_key`/`hint_key` in `dict.hotkeys.actions` and
-/// `group_key` in `dict.hotkeys.groups`, and an untranslated action fails
-/// `tsc` rather than showing up blank.
-///
-/// `label_key` and `hint_key` both hold the action's own id, and the redundancy
-/// with `id` is deliberate: `id` is identity (what a `HotkeyBinding` names, what
-/// `effective` looks up), while the key fields are the contract that says these
-/// two texts live in the dictionary. Nothing is copied — they are the same
-/// `ACTION_*` constant — and the frontend never has to assume that "the
-/// dictionary happens to be keyed by id".
 #[derive(Debug, Clone, Copy, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct HotkeyAction {
     pub id: &'static str,
-    pub group_key: &'static str,
-    pub label_key: &'static str,
-    pub hint_key: &'static str,
+    pub group: &'static str,
+    pub label: &'static str,
+    pub hint: &'static str,
     pub kind: HotkeyKind,
     pub scope: HotkeyScope,
     pub default_combo: PlatformCombo,
@@ -199,153 +157,135 @@ pub struct HotkeyAction {
 pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
     HotkeyAction {
         id: ACTION_RECORD,
-        group_key: GROUP_RECORDING,
-        label_key: ACTION_RECORD,
-        hint_key: ACTION_RECORD,
+        group: "Запись",
+        label: "Записать системный звук",
+        hint: "Удерживайте, пока говорит собеседник.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
-        default_combo: primary_combo!("R"),
-    },
-    HotkeyAction {
-        id: ACTION_AUTO_MODE,
-        group_key: GROUP_RECORDING,
-        label_key: ACTION_AUTO_MODE,
-        hint_key: ACTION_AUTO_MODE,
-        kind: HotkeyKind::Combo,
-        scope: HotkeyScope::Global,
-        default_combo: primary_combo!(shift_token!(), "L"),
+        default_combo: PlatformCombo::shared("F9"),
     },
     HotkeyAction {
         id: ACTION_CANCEL_RECORDING,
-        group_key: GROUP_RECORDING,
-        label_key: ACTION_CANCEL_RECORDING,
-        hint_key: ACTION_CANCEL_RECORDING,
+        group: "Запись",
+        label: "Отменить запись",
+        hint: "Слушается только пока идёт запись.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Recording,
         default_combo: PlatformCombo::shared("Escape"),
     },
     HotkeyAction {
         id: ACTION_SEND,
-        group_key: GROUP_SENDING,
-        label_key: ACTION_SEND,
-        hint_key: ACTION_SEND,
+        group: "Отправка",
+        label: "Отправить",
+        hint: "Работает из любого места окна, не только из поля ввода.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Hud,
         default_combo: primary_combo!("Enter"),
     },
     HotkeyAction {
-        id: ACTION_AUTO_ANSWER,
-        group_key: GROUP_SENDING,
-        label_key: ACTION_AUTO_ANSWER,
-        hint_key: ACTION_AUTO_ANSWER,
-        kind: HotkeyKind::Combo,
-        scope: HotkeyScope::Global,
-        default_combo: primary_combo!(shift_token!(), "Enter"),
-    },
-    HotkeyAction {
         id: ACTION_SCREENSHOT,
-        group_key: GROUP_SENDING,
-        label_key: ACTION_SCREENSHOT,
-        hint_key: ACTION_SCREENSHOT,
+        group: "Отправка",
+        label: "Снимок области экрана",
+        hint: "Выделенная область уходит вложением в чат.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
-        default_combo: primary_combo!(shift_token!(), "A"),
+        default_combo: primary_combo!(shift_token!(), "S"),
     },
     HotkeyAction {
         id: ACTION_QUICK_ACTION,
-        group_key: GROUP_SENDING,
-        label_key: ACTION_QUICK_ACTION,
-        hint_key: ACTION_QUICK_ACTION,
+        group: "Отправка",
+        label: "Быстрое действие",
+        hint: "Модификатор с цифрой: 1…9 по порядку кнопок.",
         kind: HotkeyKind::ModifierDigits,
         scope: HotkeyScope::Hud,
         default_combo: primary_combo!(),
     },
     HotkeyAction {
         id: ACTION_FOCUS_PROMPT,
-        group_key: GROUP_SENDING,
-        label_key: ACTION_FOCUS_PROMPT,
-        hint_key: ACTION_FOCUS_PROMPT,
+        group: "Отправка",
+        label: "Сфокусировать поле ввода",
+        hint: "Поднимает окно и ставит каретку в конец текста.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
         default_combo: primary_combo!(shift_token!(), "D"),
     },
     HotkeyAction {
         id: ACTION_TOGGLE_WINDOW,
-        group_key: GROUP_WINDOW,
-        label_key: ACTION_TOGGLE_WINDOW,
-        hint_key: ACTION_TOGGLE_WINDOW,
+        group: "Окно",
+        label: "Скрыть или показать",
+        hint: "Работает, даже когда окно спрятано.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
         default_combo: primary_combo!(shift_token!(), "H"),
     },
     HotkeyAction {
         id: ACTION_MOVE_WINDOW,
-        group_key: GROUP_WINDOW,
-        label_key: ACTION_MOVE_WINDOW,
-        hint_key: ACTION_MOVE_WINDOW,
+        group: "Окно",
+        label: "Передвинуть",
+        hint: "Модификатор со стрелками.",
         kind: HotkeyKind::ModifierArrows,
         scope: HotkeyScope::Hud,
         default_combo: primary_combo!(),
     },
     HotkeyAction {
         id: ACTION_RESIZE_WINDOW,
-        group_key: GROUP_WINDOW,
-        label_key: ACTION_RESIZE_WINDOW,
-        hint_key: ACTION_RESIZE_WINDOW,
+        group: "Окно",
+        label: "Изменить размер",
+        hint: "Модификатор со стрелками.",
         kind: HotkeyKind::ModifierArrows,
         scope: HotkeyScope::Hud,
         default_combo: primary_combo!(shift_token!()),
     },
     HotkeyAction {
         id: ACTION_OPACITY,
-        group_key: GROUP_WINDOW,
-        label_key: ACTION_OPACITY,
-        hint_key: ACTION_OPACITY,
+        group: "Окно",
+        label: "Прозрачность",
+        hint: "Модификатор с плюсом и минусом.",
         kind: HotkeyKind::ModifierPlusMinus,
         scope: HotkeyScope::Hud,
         default_combo: primary_combo!(shift_token!()),
     },
     HotkeyAction {
         id: ACTION_SCROLL_CHAT,
-        group_key: GROUP_CHAT,
-        label_key: ACTION_SCROLL_CHAT,
-        hint_key: ACTION_SCROLL_CHAT,
+        group: "Чат",
+        label: "Скролл переписки",
+        hint: "Модификатор со стрелками вверх и вниз.",
         kind: HotkeyKind::ModifierArrows,
         scope: HotkeyScope::Hud,
         default_combo: PlatformCombo::shared(MODIFIER_ALT),
     },
     HotkeyAction {
         id: ACTION_DUPLICATE_CHAT,
-        group_key: GROUP_CHAT,
-        label_key: ACTION_DUPLICATE_CHAT,
-        hint_key: ACTION_DUPLICATE_CHAT,
+        group: "Чат",
+        label: "Дубликат чата",
+        hint: "Новый чат с параметрами текущего, без сообщений.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Hud,
         default_combo: primary_combo!(shift_token!(), "N"),
     },
     HotkeyAction {
         id: ACTION_TELEPROMPTER,
-        group_key: GROUP_CHAT,
-        label_key: ACTION_TELEPROMPTER,
-        hint_key: ACTION_TELEPROMPTER,
+        group: "Чат",
+        label: "Суфлёр",
+        hint: "Крупный текст ответа поверх экрана.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
-        default_combo: primary_combo!(shift_token!(), "T"),
+        default_combo: PlatformCombo::shared("F10"),
     },
     HotkeyAction {
         id: ACTION_TELEPROMPTER_CLOSE,
-        group_key: GROUP_TELEPROMPTER,
-        label_key: ACTION_TELEPROMPTER_CLOSE,
-        hint_key: ACTION_TELEPROMPTER_CLOSE,
+        group: "Суфлёр",
+        label: "Закрыть суфлёр",
+        hint: "Слушается только пока суфлёр открыт.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Teleprompter,
         default_combo: PlatformCombo::shared("Escape"),
     },
     HotkeyAction {
         id: ACTION_TELEPROMPTER_PAUSE,
-        group_key: GROUP_TELEPROMPTER,
-        label_key: ACTION_TELEPROMPTER_PAUSE,
-        hint_key: ACTION_TELEPROMPTER_PAUSE,
+        group: "Суфлёр",
+        label: "Пауза суфлёра",
+        hint: "Останавливает автопрокрутку.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Teleprompter,
         default_combo: PlatformCombo::shared("Space"),
@@ -405,6 +345,14 @@ fn canonical_key(token: &str) -> String {
     upper
 }
 
+fn keys_equal(a: &Option<String>, b: &Option<String>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => canonical_key(a) == canonical_key(b),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
 fn is_arrow(key: &str) -> bool {
     ARROW_KEYS.iter().any(|k| k.eq_ignore_ascii_case(key))
 }
@@ -427,68 +375,42 @@ fn scopes_coexist(a: HotkeyScope, b: HotkeyScope) -> bool {
     )
 }
 
-/// One combo, taken apart exactly once.
-///
-/// `normalize` compares every action against every other one — around 150 pairs
-/// — and the comparison used to `split_combo` both sides on every pass, which
-/// meant ~300 vectors and about a thousand short strings per settings save,
-/// inside the mutex that also holds the fsync. The parts a comparison can ask
-/// for are all decided here instead, so the pairwise loop allocates nothing.
-///
-/// `key` is stored already canonicalised (`KeyA` → `A`), because equality
-/// between two `Combo` bindings is defined on the canonical form.
-struct ComboParts {
-    /// An empty combo is "unbound" and can never collide with anything.
-    blank: bool,
-    modifiers: Vec<String>,
-    key: Option<String>,
-    arrow: bool,
-    plus_minus: bool,
-    digit: bool,
-}
-
-impl ComboParts {
-    fn new(combo: &str) -> Self {
-        let blank = combo.trim().is_empty();
-        let (modifiers, key) = split_combo(combo);
-        Self {
-            blank,
-            arrow: key.as_deref().is_some_and(is_arrow),
-            plus_minus: key.as_deref().is_some_and(is_plus_minus),
-            digit: key.as_deref().is_some_and(is_digit),
-            key: key.map(|k| canonical_key(&k)),
-            modifiers,
-        }
-    }
-}
-
-fn key_spaces_overlap(a: &HotkeyAction, pa: &ComboParts, b: &HotkeyAction, pb: &ComboParts) -> bool {
-    if pa.blank || pb.blank {
+fn key_spaces_overlap(a: &HotkeyAction, combo_a: &str, b: &HotkeyAction, combo_b: &str) -> bool {
+    if combo_a.trim().is_empty() || combo_b.trim().is_empty() {
         return false;
     }
-    let same_modifiers = pa.modifiers == pb.modifiers;
+    let (mods_a, key_a) = split_combo(combo_a);
+    let (mods_b, key_b) = split_combo(combo_b);
     match (a.kind, b.kind) {
-        (HotkeyKind::Combo, HotkeyKind::Combo) => same_modifiers && pa.key == pb.key,
+        (HotkeyKind::Combo, HotkeyKind::Combo) => mods_a == mods_b && keys_equal(&key_a, &key_b),
         (HotkeyKind::ModifierArrows, HotkeyKind::ModifierArrows)
         | (HotkeyKind::ModifierPlusMinus, HotkeyKind::ModifierPlusMinus)
-        | (HotkeyKind::ModifierDigits, HotkeyKind::ModifierDigits) => same_modifiers,
+        | (HotkeyKind::ModifierDigits, HotkeyKind::ModifierDigits) => mods_a == mods_b,
         (HotkeyKind::ModifierArrows, HotkeyKind::ModifierPlusMinus)
         | (HotkeyKind::ModifierPlusMinus, HotkeyKind::ModifierArrows)
         | (HotkeyKind::ModifierArrows, HotkeyKind::ModifierDigits)
         | (HotkeyKind::ModifierDigits, HotkeyKind::ModifierArrows)
         | (HotkeyKind::ModifierPlusMinus, HotkeyKind::ModifierDigits)
         | (HotkeyKind::ModifierDigits, HotkeyKind::ModifierPlusMinus) => false,
-        (HotkeyKind::Combo, HotkeyKind::ModifierArrows) => same_modifiers && pa.arrow,
-        (HotkeyKind::ModifierArrows, HotkeyKind::Combo) => same_modifiers && pb.arrow,
-        (HotkeyKind::Combo, HotkeyKind::ModifierPlusMinus) => same_modifiers && pa.plus_minus,
-        (HotkeyKind::ModifierPlusMinus, HotkeyKind::Combo) => same_modifiers && pb.plus_minus,
-        (HotkeyKind::Combo, HotkeyKind::ModifierDigits) => same_modifiers && pa.digit,
-        (HotkeyKind::ModifierDigits, HotkeyKind::Combo) => same_modifiers && pb.digit,
+        (HotkeyKind::Combo, HotkeyKind::ModifierArrows) => {
+            mods_a == mods_b && key_a.as_deref().is_some_and(is_arrow)
+        }
+        (HotkeyKind::ModifierArrows, HotkeyKind::Combo) => {
+            mods_a == mods_b && key_b.as_deref().is_some_and(is_arrow)
+        }
+        (HotkeyKind::Combo, HotkeyKind::ModifierPlusMinus) => {
+            mods_a == mods_b && key_a.as_deref().is_some_and(is_plus_minus)
+        }
+        (HotkeyKind::ModifierPlusMinus, HotkeyKind::Combo) => {
+            mods_a == mods_b && key_b.as_deref().is_some_and(is_plus_minus)
+        }
+        (HotkeyKind::Combo, HotkeyKind::ModifierDigits) => {
+            mods_a == mods_b && key_a.as_deref().is_some_and(is_digit)
+        }
+        (HotkeyKind::ModifierDigits, HotkeyKind::Combo) => {
+            mods_a == mods_b && key_b.as_deref().is_some_and(is_digit)
+        }
     }
-}
-
-fn actions_collide(a: &HotkeyAction, pa: &ComboParts, b: &HotkeyAction, pb: &ComboParts) -> bool {
-    a.id != b.id && scopes_coexist(a.scope, b.scope) && key_spaces_overlap(a, pa, b, pb)
 }
 
 pub fn conflict(a_id: &str, combo_a: &str, b_id: &str, combo_b: &str) -> bool {
@@ -498,46 +420,30 @@ pub fn conflict(a_id: &str, combo_a: &str, b_id: &str, combo_b: &str) -> bool {
     let (Some(a), Some(b)) = (action(a_id), action(b_id)) else {
         return false;
     };
-    actions_collide(a, &ComboParts::new(combo_a), b, &ComboParts::new(combo_b))
-}
-
-/// A combo that lost a conflict is cleared, and a cleared combo collides with
-/// nothing — so the entry stays in `accepted` (later actions still have to see
-/// that this one is settled) with parts that can never match.
-fn unbound_parts() -> ComboParts {
-    ComboParts::new("")
+    scopes_coexist(a.scope, b.scope) && key_spaces_overlap(a, combo_a, b, combo_b)
 }
 
 pub fn normalize(bindings: &mut Vec<HotkeyBinding>) {
-    // The action is carried as a `&'static` reference rather than looked up by
-    // id inside the comparison: `conflict` used to run two linear scans of
-    // `HOTKEY_ACTIONS` for every one of the ~150 pairs.
-    let mut claimed: Vec<(&'static HotkeyAction, String)> = Vec::new();
+    let mut claimed: Vec<(&'static str, String)> = Vec::new();
     for binding in bindings.iter().rev() {
         let Some(action) = action(&binding.action) else { continue };
-        if claimed.iter().any(|(kept, _)| kept.id == action.id) {
+        if claimed.iter().any(|(id, _)| *id == action.id) {
             continue;
         }
-        claimed.push((action, binding.combo.trim().to_string()));
+        claimed.push((action.id, binding.combo.trim().to_string()));
     }
     for action in HOTKEY_ACTIONS {
-        if !claimed.iter().any(|(kept, _)| kept.id == action.id) {
-            claimed.push((action, action.default_combo.current().to_string()));
+        if !claimed.iter().any(|(id, _)| *id == action.id) {
+            claimed.push((action.id, action.default_combo.current().to_string()));
         }
     }
 
-    let mut accepted: Vec<(&'static HotkeyAction, String, ComboParts)> =
-        Vec::with_capacity(claimed.len());
-    for (action, combo) in claimed {
-        let parts = ComboParts::new(&combo);
+    let mut accepted: Vec<(&'static str, String)> = Vec::new();
+    for (id, combo) in claimed {
         let taken = accepted
             .iter()
-            .any(|(kept, _, kept_parts)| actions_collide(action, &parts, kept, kept_parts));
-        if taken {
-            accepted.push((action, String::new(), unbound_parts()));
-        } else {
-            accepted.push((action, combo, parts));
-        }
+            .any(|(kept_id, kept_combo)| conflict(id, &combo, kept_id, kept_combo));
+        accepted.push((id, if taken { String::new() } else { combo }));
     }
 
     *bindings = HOTKEY_ACTIONS
@@ -545,8 +451,8 @@ pub fn normalize(bindings: &mut Vec<HotkeyBinding>) {
         .filter_map(|action| {
             let combo = accepted
                 .iter()
-                .find(|(kept, _, _)| kept.id == action.id)
-                .map(|(_, combo, _)| combo.clone())
+                .find(|(id, _)| *id == action.id)
+                .map(|(_, combo)| combo.clone())
                 .unwrap_or_else(|| action.default_combo.current().to_string());
             (combo != action.default_combo.current())
                 .then(|| HotkeyBinding { action: action.id.to_string(), combo })

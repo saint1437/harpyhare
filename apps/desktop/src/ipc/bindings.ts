@@ -13,95 +13,22 @@ export const commands = {
 	saveChats: (json: string) => __TAURI_INVOKE<null>("save_chats", { json }),
 	loadContextLibrary: () => __TAURI_INVOKE<string>("load_context_library"),
 	saveContextLibrary: (json: string) => __TAURI_INVOKE<null>("save_context_library", { json }),
-	saveChatImage: (mediaType: string, dataBase64: string) => __TAURI_INVOKE<string>("save_chat_image", { mediaType, dataBase64 }),
-	loadChatImages: (ids: string[]) => __TAURI_INVOKE<StoredImage[]>("load_chat_images", { ids }),
-	pruneChatImages: (keep: string[]) => __TAURI_INVOKE<void>("prune_chat_images", { keep }),
 	readContextImportFile: (path: string) => __TAURI_INVOKE<string>("read_context_import_file", { path }),
 	readContextPdfBytes: (dataBase64: string) => __TAURI_INVOKE<string>("read_context_pdf_bytes", { dataBase64 }),
 	retryTranscription: () => __TAURI_INVOKE<void>("retry_transcription"),
-	/**
-	 *  Тот же путь, что и у глобального хоткея, но вызываемый из окна: глобальная
-	 *  регистрация может не встать, а отменять запись всё равно нужно.
-	 */
-	cancelRecording: () => __TAURI_INVOKE<void>("cancel_recording"),
-	startAutoMode: () => __TAURI_INVOKE<null>("start_auto_mode"),
-	stopAutoMode: () => __TAURI_INVOKE<void>("stop_auto_mode"),
-	autoModeActive: () => __TAURI_INVOKE<boolean>("auto_mode_active"),
-	/**
-	 *  Takes (and clears) a start error that happened before the webview
-	 *  subscribed: `swap_to_main_window` starts the mode before the HUD manages to
-	 *  mount, and the `auto-mode-error` event in that window goes nowhere.
-	 */
-	takeAutoModeError: () => __TAURI_INVOKE<{
-	code: ErrorCode,
-	message: string,
-	params?: { [key in string]: string },
-} | null>("take_auto_mode_error"),
-	listAudioInputDevices: () => __TAURI_INVOKE<AudioDeviceInfo[]>("list_audio_input_devices"),
-	checkAudioSource: (source: AudioSource) => __TAURI_INVOKE<AudioCheck>("check_audio_source", { source }),
-	listAudioOutputDevices: () => __TAURI_INVOKE<AudioDeviceInfo[]>("list_audio_output_devices"),
+	listAudioOutputDevices: () => __TAURI_INVOKE<OutputDeviceInfo[]>("list_audio_output_devices"),
 	getSettings: () => __TAURI_INVOKE<Settings>("get_settings"),
 	setSettings: (newSettings: Settings) => __TAURI_INVOKE<Settings>("set_settings", { newSettings }),
-	/**
-	 *  What the frontend is allowed to know about the API keys and the access token:
-	 *  three booleans and a masked tail. The values themselves never leave Rust.
-	 */
-	getSecretsStatus: () => __TAURI_INVOKE<SecretsStatus>("get_secrets_status"),
-	/**
-	 *  «Замена, не редактирование»: an empty value leaves the stored key alone.
-	 *  The field on screen starts blank on every visit, so a form that treated its
-	 *  own emptiness as an erase would wipe a working key whenever the user opened
-	 *  the settings for something else — which is exactly what `set_settings` did
-	 *  while the keys were ordinary fields of `Settings`.
-	 */
-	setApiKey: (kind: ApiKeyKind, value: string) => __TAURI_INVOKE<SecretsStatus>("set_api_key", { kind, value }),
-	clearApiKey: (kind: ApiKeyKind) => __TAURI_INVOKE<SecretsStatus>("clear_api_key", { kind }),
-	/**
-	 *  «Отвязать»: the token is dropped and both clients fall back to the user's own
-	 *  keys. There is no `set_access_token` counterpart — a token is only ever
-	 *  issued by the proxy, through `redeem_access_code`.
-	 */
-	clearAccessCode: () => __TAURI_INVOKE<SecretsStatus>("clear_access_code"),
 	getOfficialPresets: () => __TAURI_INVOKE<PromptPreset[]>("get_official_presets"),
 	setPttSuspended: (suspended: boolean) => __TAURI_INVOKE<void>("set_ptt_suspended", { suspended }),
-	redeemAccessCode: (code: string, idempotencyKey: string) => __TAURI_INVOKE<SecretsStatus>("redeem_access_code", { code, idempotencyKey }),
-	/**
-	 *  Takes (and clears) the record of a `settings.json` that could not be read at
-	 *  startup. A command rather than an event for the same reason as
-	 *  `take_auto_mode_error`: this happens before any window exists to listen.
-	 */
-	takeSettingsRecovery: () => __TAURI_INVOKE<{
-	/**  Absolute path of the renamed file, so the message can name it. */
-	backupPath: string,
-	/**  Why the file could not be read. */
-	reason: string,
-} | null>("take_settings_recovery"),
+	redeemAccessCode: (code: string, idempotencyKey: string) => __TAURI_INVOKE<null>("redeem_access_code", { code, idempotencyKey }),
 	setWindowSize: (width: number | null, height: number | null) => __TAURI_INVOKE<void>("set_window_size", { width, height }),
 	closeApp: () => __TAURI_INVOKE<void>("close_app"),
-	setWindowCollapsed: (collapsed: boolean, focus: boolean) => __TAURI_INVOKE<void>("set_window_collapsed", { collapsed, focus }),
+	hideMainWindow: () => __TAURI_INVOKE<void>("hide_main_window"),
 	launchMainWindow: () => __TAURI_INVOKE<null>("launch_main_window"),
 	stopMainWindow: () => __TAURI_INVOKE<null>("stop_main_window"),
 	captureRegionScreenshot: () => __TAURI_INVOKE<void>("capture_region_screenshot"),
-	/**
-	 *  A read of the cache. It never opens a device on the command's own thread —
-	 *  that was the bug — but it is not allowed to answer `unknown` where a real
-	 *  answer exists either: the launcher calls this ONCE on mount and then only on
-	 *  window focus, so a cache that is still cold has to be filled before the
-	 *  answer goes back, or the readiness gate stays shut on a machine that has the
-	 *  permission.
-	 * 
-	 *  So: the first call after start awaits one probe in `spawn_blocking`; every
-	 *  call after that returns instantly and refreshes in the background. Awaiting
-	 *  an async command does not occupy a command thread, which is the whole point.
-	 */
 	permissionsStatus: () => __TAURI_INVOKE<PermissionsStatus>("permissions_status"),
-	/**
-	 *  The explicit, awaited version of the same probe: the caller gets the answer
-	 *  for one permission rather than whatever the cache happened to hold. Runs in
-	 *  `spawn_blocking` — opening a capture device takes hundreds of milliseconds
-	 *  and up to five seconds on Windows.
-	 */
-	probePermission: (kind: PermissionKind) => __TAURI_INVOKE<PermissionState>("probe_permission", { kind }),
 	requestPermission: (kind: PermissionKind) => __TAURI_INVOKE<PermissionState>("request_permission", { kind }),
 	openPermissionSettings: (kind: PermissionKind) => __TAURI_INVOKE<void>("open_permission_settings", { kind }),
 	copyImageToClipboard: (dataBase64: string) => __TAURI_INVOKE<null>("copy_image_to_clipboard", { dataBase64 }),
@@ -110,76 +37,27 @@ export const commands = {
 	checkForUpdate: () => __TAURI_INVOKE<{
 	version: string,
 	notes: string,
+	date: string | null,
 } | null>("check_for_update"),
 	installUpdate: () => __TAURI_INVOKE<null>("install_update"),
 	getAppVersion: () => __TAURI_INVOKE<string>("get_app_version"),
 };
 
 /* Constants */
-export const HOTKEY_ACTIONS = [{"defaultCombo":{"macos":"Cmd+R","windows":"Ctrl+R"},"groupKey":"recording","hintKey":"record","id":"record","kind":"combo","labelKey":"record","scope":"global"},{"defaultCombo":{"macos":"Cmd+Shift+L","windows":"Ctrl+Shift+L"},"groupKey":"recording","hintKey":"auto_mode","id":"auto_mode","kind":"combo","labelKey":"auto_mode","scope":"global"},{"defaultCombo":{"macos":"Escape","windows":"Escape"},"groupKey":"recording","hintKey":"cancel_recording","id":"cancel_recording","kind":"combo","labelKey":"cancel_recording","scope":"recording"},{"defaultCombo":{"macos":"Cmd+Enter","windows":"Ctrl+Enter"},"groupKey":"sending","hintKey":"send","id":"send","kind":"combo","labelKey":"send","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+Enter","windows":"Ctrl+Shift+Enter"},"groupKey":"sending","hintKey":"auto_answer","id":"auto_answer","kind":"combo","labelKey":"auto_answer","scope":"global"},{"defaultCombo":{"macos":"Cmd+Shift+A","windows":"Ctrl+Shift+A"},"groupKey":"sending","hintKey":"screenshot","id":"screenshot","kind":"combo","labelKey":"screenshot","scope":"global"},{"defaultCombo":{"macos":"Cmd","windows":"Ctrl"},"groupKey":"sending","hintKey":"quick_action","id":"quick_action","kind":"modifier_digits","labelKey":"quick_action","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+D","windows":"Ctrl+Shift+D"},"groupKey":"sending","hintKey":"focus_prompt","id":"focus_prompt","kind":"combo","labelKey":"focus_prompt","scope":"global"},{"defaultCombo":{"macos":"Cmd+Shift+H","windows":"Ctrl+Shift+H"},"groupKey":"window","hintKey":"toggle_window","id":"toggle_window","kind":"combo","labelKey":"toggle_window","scope":"global"},{"defaultCombo":{"macos":"Cmd","windows":"Ctrl"},"groupKey":"window","hintKey":"move_window","id":"move_window","kind":"modifier_arrows","labelKey":"move_window","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift","windows":"Ctrl+Shift"},"groupKey":"window","hintKey":"resize_window","id":"resize_window","kind":"modifier_arrows","labelKey":"resize_window","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift","windows":"Ctrl+Shift"},"groupKey":"window","hintKey":"opacity","id":"opacity","kind":"modifier_plus_minus","labelKey":"opacity","scope":"hud"},{"defaultCombo":{"macos":"Alt","windows":"Alt"},"groupKey":"chat","hintKey":"scroll_chat","id":"scroll_chat","kind":"modifier_arrows","labelKey":"scroll_chat","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+N","windows":"Ctrl+Shift+N"},"groupKey":"chat","hintKey":"duplicate_chat","id":"duplicate_chat","kind":"combo","labelKey":"duplicate_chat","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+T","windows":"Ctrl+Shift+T"},"groupKey":"chat","hintKey":"teleprompter","id":"teleprompter","kind":"combo","labelKey":"teleprompter","scope":"global"},{"defaultCombo":{"macos":"Escape","windows":"Escape"},"groupKey":"teleprompter","hintKey":"teleprompter_close","id":"teleprompter_close","kind":"combo","labelKey":"teleprompter_close","scope":"teleprompter"},{"defaultCombo":{"macos":"Space","windows":"Space"},"groupKey":"teleprompter","hintKey":"teleprompter_pause","id":"teleprompter_pause","kind":"combo","labelKey":"teleprompter_pause","scope":"teleprompter"}] as const;
+export const HOTKEY_ACTIONS = [{"defaultCombo":{"macos":"F9","windows":"F9"},"group":"Запись","hint":"Удерживайте, пока говорит собеседник.","id":"record","kind":"combo","label":"Записать системный звук","scope":"global"},{"defaultCombo":{"macos":"Escape","windows":"Escape"},"group":"Запись","hint":"Слушается только пока идёт запись.","id":"cancel_recording","kind":"combo","label":"Отменить запись","scope":"recording"},{"defaultCombo":{"macos":"Cmd+Enter","windows":"Ctrl+Enter"},"group":"Отправка","hint":"Работает из любого места окна, не только из поля ввода.","id":"send","kind":"combo","label":"Отправить","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+S","windows":"Ctrl+Shift+S"},"group":"Отправка","hint":"Выделенная область уходит вложением в чат.","id":"screenshot","kind":"combo","label":"Снимок области экрана","scope":"global"},{"defaultCombo":{"macos":"Cmd","windows":"Ctrl"},"group":"Отправка","hint":"Модификатор с цифрой: 1…9 по порядку кнопок.","id":"quick_action","kind":"modifier_digits","label":"Быстрое действие","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+D","windows":"Ctrl+Shift+D"},"group":"Отправка","hint":"Поднимает окно и ставит каретку в конец текста.","id":"focus_prompt","kind":"combo","label":"Сфокусировать поле ввода","scope":"global"},{"defaultCombo":{"macos":"Cmd+Shift+H","windows":"Ctrl+Shift+H"},"group":"Окно","hint":"Работает, даже когда окно спрятано.","id":"toggle_window","kind":"combo","label":"Скрыть или показать","scope":"global"},{"defaultCombo":{"macos":"Cmd","windows":"Ctrl"},"group":"Окно","hint":"Модификатор со стрелками.","id":"move_window","kind":"modifier_arrows","label":"Передвинуть","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift","windows":"Ctrl+Shift"},"group":"Окно","hint":"Модификатор со стрелками.","id":"resize_window","kind":"modifier_arrows","label":"Изменить размер","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift","windows":"Ctrl+Shift"},"group":"Окно","hint":"Модификатор с плюсом и минусом.","id":"opacity","kind":"modifier_plus_minus","label":"Прозрачность","scope":"hud"},{"defaultCombo":{"macos":"Alt","windows":"Alt"},"group":"Чат","hint":"Модификатор со стрелками вверх и вниз.","id":"scroll_chat","kind":"modifier_arrows","label":"Скролл переписки","scope":"hud"},{"defaultCombo":{"macos":"Cmd+Shift+N","windows":"Ctrl+Shift+N"},"group":"Чат","hint":"Новый чат с параметрами текущего, без сообщений.","id":"duplicate_chat","kind":"combo","label":"Дубликат чата","scope":"hud"},{"defaultCombo":{"macos":"F10","windows":"F10"},"group":"Чат","hint":"Крупный текст ответа поверх экрана.","id":"teleprompter","kind":"combo","label":"Суфлёр","scope":"global"},{"defaultCombo":{"macos":"Escape","windows":"Escape"},"group":"Суфлёр","hint":"Слушается только пока суфлёр открыт.","id":"teleprompter_close","kind":"combo","label":"Закрыть суфлёр","scope":"teleprompter"},{"defaultCombo":{"macos":"Space","windows":"Space"},"group":"Суфлёр","hint":"Останавливает автопрокрутку.","id":"teleprompter_pause","kind":"combo","label":"Пауза суфлёра","scope":"teleprompter"}] as const;
 
 export const MODIFIER_COMBOS = {"macos":["Cmd","Ctrl","Alt","Cmd+Shift","Ctrl+Shift","Alt+Shift"],"windows":["Ctrl","Alt","Ctrl+Shift","Alt+Shift"]} as const;
 
 export const QUICK_ACTION_LIMIT = 9 as const;
 
-export const SECRETS_STATUS_DEFAULTS = {"access_code_active":false,"anthropic_key_hint":"","anthropic_key_set":false,"groq_key_hint":"","groq_key_set":false} as const;
+export const SETTINGS_DEFAULTS = {"access_token":"","anthropic_api_key":"","audio_permission_requested":false,"auto_preview_html":true,"auto_send":false,"buffer_enabled":true,"buffer_seconds":4,"capture_device_uid":"","chat_font_size":13.5,"groq_api_key":"","hotkeys":[],"move_step":20,"prompt_presets":[],"quick_action_attachments":false,"quick_actions":[{"id":"detail","prompt":"Расскажи более подробно.","title":"Подробнее"},{"id":"brief","prompt":"Ответь короче, только суть.","title":"Короче"},{"id":"code","prompt":"Покажи пример кода.","title":"Пример кода"}],"resize_step":20,"screen_permission_requested":false,"screen_share_visible":false,"scroll_step":120,"skipped_version":"","stt_language":"ru","stt_translate":false,"teleprompter_font_size":28.0,"teleprompter_resume":true,"teleprompter_speed":40.0,"theme":"gray","window_height":680.0,"window_opacity":0.9,"window_width":960.0} as const;
 
-export const SETTINGS_DEFAULTS = {"audio_permission_requested":false,"auto_max_utterance_secs":30,"auto_mic_device_uid":"","auto_min_utterance_ms":400,"auto_mode_enabled":false,"auto_preview_html":true,"auto_reply_instant":false,"auto_send":false,"auto_silence_ms":700,"buffer_enabled":true,"buffer_seconds":4,"capture_device_uid":"","chat_font_size":13.5,"copy_results_to_clipboard":true,"hotkeys":[],"language":"system","mic_permission_requested":false,"move_step":20,"onboarding_done":false,"prompt_presets":[],"quick_action_attachments":false,"quick_actions":[{"id":"detail","prompt":"Расскажи более подробно.","title":"Подробнее"},{"id":"brief","prompt":"Ответь короче, только суть.","title":"Короче"},{"id":"code","prompt":"Покажи пример кода.","title":"Пример кода"}],"resize_step":20,"schema_version":2,"screen_permission_requested":false,"screen_share_visible":false,"scroll_step":120,"skipped_version":"","stt_language":"ru","stt_translate":false,"teleprompter_font_size":28.0,"teleprompter_resume":true,"teleprompter_speed":40.0,"theme":"system","window_height":680.0,"window_opacity":0.9,"window_width":960.0} as const;
-
-export const SETTINGS_LIMITS = {"autoMaxUtteranceSecs":{"default":30,"max":120,"min":5},"autoMinUtteranceMs":{"default":400,"max":3000,"min":200},"autoSilenceMs":{"default":700,"max":2000,"min":300},"bufferSeconds":{"default":4,"max":10,"min":4},"chatFontSize":{"default":13.5,"max":20.0,"min":10.0},"moveStep":{"default":20,"max":200,"min":1},"resizeStep":{"default":20,"max":200,"min":1},"scrollStep":{"default":120,"max":1000,"min":10},"teleprompterFontSize":{"default":28.0,"max":48.0,"min":20.0},"teleprompterSpeed":{"default":40.0,"max":150.0,"min":10.0},"windowHeight":{"default":680.0,"max":1100.0,"min":520.0},"windowOpacity":{"default":0.9,"max":1.0,"min":0.75},"windowWidth":{"default":960.0,"max":1600.0,"min":300.0}} as const;
+export const SETTINGS_LIMITS = {"bufferSeconds":{"default":4,"max":10,"min":4},"chatFontSize":{"default":13.5,"max":20.0,"min":10.0},"moveStep":{"default":20,"max":200,"min":1},"resizeStep":{"default":20,"max":200,"min":1},"scrollStep":{"default":120,"max":1000,"min":10},"teleprompterFontSize":{"default":28.0,"max":48.0,"min":20.0},"teleprompterSpeed":{"default":40.0,"max":150.0,"min":10.0},"windowHeight":{"default":680.0,"max":1100.0,"min":520.0},"windowOpacity":{"default":0.9,"max":1.0,"min":0.2},"windowWidth":{"default":960.0,"max":1600.0,"min":300.0}} as const;
 
 /* Types */
-/**
- *  Which of the two user-supplied keys a write is about. The access token is
- *  deliberately NOT a variant: it is issued by the proxy through
- *  `redeem_access_code` and can only be cleared, never typed.
- */
-export type ApiKeyKind = "anthropic" | "groq";
-
-/**
- *  One failure on its way to the user.
- * 
- *  `code` + `params` are what the frontend renders from. `message` stays, and
- *  stays Russian: it is what `Display` prints into the logs, and it is the
- *  fallback the frontend shows when it meets a `code` it does not know — the
- *  same compatibility rule the worker keeps for the builds already in users'
- *  hands.
- */
 export type AppError = {
 	code: ErrorCode,
 	message: string,
-	params?: { [key in string]: string },
-};
-
-/**
- *  Разрешение «выдано» и звук «слышно» — разные вопросы, и второй до сих пор
- *  никто не задавал: проверка отвечает именно на него, а `text` показывает, что
- *  распознавание тоже дошло до Groq и вернулось.
- */
-export type AudioCheck = {
-	heard: boolean,
-	text: string,
-};
-
-export type AudioDeviceInfo = {
-	uid: string,
-	name: string,
-};
-
-export type AudioLevel = {
-	level: number | null,
-};
-
-export type AudioSource = "system" | "microphone";
-
-export type AutoModeChanged = {
-	active: boolean,
-};
-
-export type AutoTurnPayload = {
-	speaker: Speaker,
-	text: string,
-	seq: number,
 };
 
 export type ChatMessage = {
@@ -188,66 +66,13 @@ export type ChatMessage = {
 	images?: ImageAttachment[],
 };
 
-export type CollapsedChanged = {
-	collapsed: boolean,
-};
+export type ErrorCode = "network" | "badApiKey" | "badAccessCode" | "retryable" | "api" | "cancelled" | "permission" | "silence" | "internal";
 
-/**
- *  What went wrong, as a stable machine identifier.
- * 
- *  The frontend owns every phrase the user reads; this enum is the only thing
- *  that decides WHICH phrase, so a variant must never be renamed or reused for
- *  a different event — exactly the discipline the proxy worker follows for its
- *  own codes (`itech-relay/README.md`, «Коды ошибок»).
- * 
- *  The first nine are the app's own vocabulary. The eight after them exist
- *  because the worker distinguishes cases the app used to flatten into `api`
- *  and then explain in a Russian sentence — which is precisely what a second
- *  language cannot carry.
- */
-export type ErrorCode = "network" | "badApiKey" | "badAccessCode" | "retryable" | "api" | "cancelled" | "permission" | "silence" | "internal" | 
-/**  The request body is over the proxy's ceiling. `limitMb`. */
-"requestTooLarge" | 
-/**  The audio upload is over the proxy's ceiling. `limitMb`. */
-"audioTooLong" | 
-/**  The chosen model is outside the access code's allowlist. `model`. */
-"modelNotAllowed" | 
-/**  The access code's daily budget is spent; it comes back at UTC midnight. */
-"dailyLimitExceeded" | 
-/**  Redeem attempts are rate limited. `retryAfterSeconds`. */
-"tooManyAttempts" | 
-/**
- *  The service owner's problem, not the user's: the proxy's own upstream
- *  key was refused or its balance ran out. Retrying changes nothing.
- */
-"serviceUnavailable" | 
-/**  The upstream could not be reached at all (DNS, TLS, an empty 200). */
-"providerUnreachable" | 
-/**  The conversation no longer fits the model's context window. */
-"contextTooLong";
-
-/**
- *  One keyboard command, described without a word of prose.
- * 
- *  `label`/`group`/`hint` used to be Russian sentences here, and they travelled
- *  into `bindings.ts` verbatim — which made the generated contract a translation
- *  unit and put the interface's language in Rust. They are keys now: the
- *  frontend resolves `label_key`/`hint_key` in `dict.hotkeys.actions` and
- *  `group_key` in `dict.hotkeys.groups`, and an untranslated action fails
- *  `tsc` rather than showing up blank.
- * 
- *  `label_key` and `hint_key` both hold the action's own id, and the redundancy
- *  with `id` is deliberate: `id` is identity (what a `HotkeyBinding` names, what
- *  `effective` looks up), while the key fields are the contract that says these
- *  two texts live in the dictionary. Nothing is copied — they are the same
- *  `ACTION_*` constant — and the frontend never has to assume that "the
- *  dictionary happens to be keyed by id".
- */
 export type HotkeyAction = {
 	id: string,
-	groupKey: string,
-	labelKey: string,
-	hintKey: string,
+	group: string,
+	label: string,
+	hint: string,
 	kind: HotkeyKind,
 	scope: HotkeyScope,
 	defaultCombo: PlatformCombo,
@@ -280,13 +105,6 @@ export type LlmErrorEvent = {
 	chatId: string,
 	code: ErrorCode,
 	message: string,
-	/**
-	 *  The machine values the frontend's template needs. Listed explicitly like
-	 *  the two fields above rather than `serde(flatten)`ed — specta will not
-	 *  export a flattened type — and `default` so the frontend's optional
-	 *  `AppError.params` and this event stay the same shape.
-	 */
-	params?: { [key in string]: string },
 };
 
 export type LlmUsage = {
@@ -303,14 +121,18 @@ export type ModelInfo = {
 	maxInputTokens: number,
 };
 
-export type PermissionKind = "audio" | "screen" | "microphone";
+export type OutputDeviceInfo = {
+	uid: string,
+	name: string,
+};
+
+export type PermissionKind = "audio" | "screen";
 
 export type PermissionState = "unknown" | "granted" | "denied";
 
 export type PermissionsStatus = {
 	audio: PermissionState,
 	screen: PermissionState,
-	microphone: PermissionState,
 };
 
 export type PlatformCombo = {
@@ -344,46 +166,15 @@ export type ResizeKeyPayload = {
 	dir: number,
 };
 
-/**
- *  A REFERENCE into the chat-image store, not the picture.
- * 
- *  The shot is already on disk by the time this goes out (`screenshot::deliver`),
- *  so what crosses the boundary is an id the frontend resolves through
- *  `load_chat_images` — the very path a chat restored from disk takes. The
- *  payload used to carry the whole PNG as base64, which the frontend decoded,
- *  re-encoded and shipped straight back to `save_chat_image` for this same
- *  store to write.
- */
 export type ScreenshotReady = {
-	id: string,
 	mediaType: string,
+	dataBase64: string,
 };
 
-/**
- *  Everything about the secrets the frontend is allowed to know: whether each
- *  one is there, and enough of a tail to tell two keys apart.
- */
-export type SecretsStatus = {
-	anthropic_key_set: boolean,
-	groq_key_set: boolean,
-	access_code_active: boolean,
-	/**  `sk-…9f2a`, or `""` when no key is stored. */
-	anthropic_key_hint: string,
-	groq_key_hint: string,
-};
-
-/**
- *  Everything `get_settings` hands to the webview — and therefore **the type
- *  that must never gain a secret again**. The two API keys and the access token
- *  used to live here and travelled to the frontend in plaintext on every call;
- *  they now live in `crate::secrets`, behind `SecretsStatus`.
- */
 export type Settings = {
-	/**
-	 *  The on-disk format of this file. Written by `save`, read by `load` to
-	 *  pick the migration chain; see `MIGRATIONS`.
-	 */
-	schema_version?: number,
+	anthropic_api_key?: string,
+	groq_api_key?: string,
+	access_token?: string,
 	prompt_presets?: PromptPreset[],
 	hotkeys?: HotkeyBinding[],
 	auto_send?: boolean,
@@ -405,41 +196,11 @@ export type Settings = {
 	resize_step?: number,
 	capture_device_uid?: string,
 	theme?: string,
-	language?: string,
 	scroll_step?: number,
 	buffer_enabled?: boolean,
 	buffer_seconds?: number,
-	auto_mode_enabled?: boolean,
-	auto_reply_instant?: boolean,
-	auto_mic_device_uid?: string,
-	auto_silence_ms?: number,
-	auto_min_utterance_ms?: number,
-	auto_max_utterance_secs?: number,
-	mic_permission_requested?: boolean,
 	quick_actions?: QuickAction[],
 	quick_action_attachments?: boolean,
-	onboarding_done?: boolean,
-	copy_results_to_clipboard?: boolean,
-};
-
-/**
- *  What the startup read did to a `settings.json` or a `secrets.json` it could
- *  not parse. Carried to the frontend through the `take_settings_recovery`
- *  command — the user paid for the access code that was in there and has to be
- *  told it is gone.
- */
-export type SettingsRecovery = {
-	/**  Absolute path of the renamed file, so the message can name it. */
-	backupPath: string,
-	/**  Why the file could not be read. */
-	reason: string,
-};
-
-export type Speaker = "interviewer" | "user";
-
-export type StoredImage = {
-	id: string,
-	dataBase64: string,
 };
 
 export type UpdateDone = {
@@ -449,6 +210,7 @@ export type UpdateDone = {
 export type UpdateInfo = {
 	version: string,
 	notes: string,
+	date: string | null,
 };
 
 export type UpdateProgress = {

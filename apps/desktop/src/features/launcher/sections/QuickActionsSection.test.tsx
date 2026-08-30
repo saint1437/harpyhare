@@ -1,14 +1,9 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SetSetting } from "@/features/settings/contract";
-import { getDict } from "@/i18n";
-import { DEFAULT_SETTINGS, QUICK_ACTION_LIMIT } from "@/ipc/types";
-import type { QuickAction, Settings } from "@/ipc/types";
+import { QUICK_ACTION_LIMIT } from "@/ipc/bindings";
+import { DEFAULT_SETTINGS, type QuickAction, type Settings } from "@/ipc/types";
+import type { SetSetting } from "../contract";
 import { QuickActionsSection } from "./QuickActionsSection";
-
-function copy() {
-  return getDict().launcher.quickActions;
-}
 
 const EMPTY_ACTION: QuickAction = { id: "empty", title: "", prompt: "" };
 
@@ -33,7 +28,7 @@ function renderSection(quickActions: QuickAction[], overrides: Partial<Settings>
 }
 
 function addButton(): HTMLButtonElement {
-  const button = screen.getByText(getDict().common.actions.add).closest("button");
+  const button = screen.getByText("Добавить").closest("button");
   if (!button) throw new Error("кнопка добавления не найдена");
   return button;
 }
@@ -62,7 +57,7 @@ describe("QuickActionsSection", () => {
 
   it("удаление убирает свою строку", () => {
     const set = renderSection(list(2));
-    const remove = screen.getAllByTitle(copy().remove);
+    const remove = screen.getAllByTitle("Удалить быстрое действие");
     const second = remove[1];
     if (!second) throw new Error("нет кнопки удаления у второй строки");
     fireEvent.click(second);
@@ -71,7 +66,7 @@ describe("QuickActionsSection", () => {
 
   it("правка названия уходит через set", () => {
     const set = renderSection(list(1));
-    const [title] = screen.getAllByLabelText(copy().titleLabel);
+    const [title] = screen.getAllByLabelText("Название");
     if (!title) throw new Error("нет поля названия");
     fireEvent.change(title, { target: { value: "Перевести" } });
     expect(set).toHaveBeenCalledWith("quick_actions", [{ ...filled(1), title: "Перевести" }]);
@@ -79,7 +74,7 @@ describe("QuickActionsSection", () => {
 
   it("правка промпта уходит через set", () => {
     const set = renderSection(list(1));
-    const [prompt] = screen.getAllByLabelText(copy().promptLabel);
+    const [prompt] = screen.getAllByLabelText("Промпт");
     if (!prompt) throw new Error("нет поля промпта");
     fireEvent.change(prompt, { target: { value: "Переведи на английский" } });
     expect(set).toHaveBeenCalledWith("quick_actions", [
@@ -89,9 +84,7 @@ describe("QuickActionsSection", () => {
 
   it("тумблер вложений переключается", () => {
     const set = renderSection(list(1), { quick_action_attachments: false });
-    fireEvent.click(
-      screen.getByLabelText(getDict().settings.entries.quick_action_attachments.label),
-    );
+    fireEvent.click(screen.getByLabelText("Прикреплять вложения"));
     expect(set).toHaveBeenCalledWith("quick_action_attachments", true);
   });
 

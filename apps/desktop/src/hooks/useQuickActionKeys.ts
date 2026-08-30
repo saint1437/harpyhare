@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { useDocumentKeydown } from "@/hooks/useDocumentKeydown";
+import { useEffect } from "react";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import { matchesModifier, parseModifier } from "@/lib/hotkey-modifier";
 import { quickActionDigit } from "@/lib/quick-actions";
 
@@ -17,15 +17,23 @@ export function useQuickActionKeys(
   count: number,
   onRun: (index: number) => void,
 ): void {
-  const expected = useMemo(() => parseModifier(combo), [combo]);
+  const onRunRef = useLatestRef(onRun);
 
-  useDocumentKeydown((e) => {
-    if (e.repeat) return;
-    if (!e.code.startsWith(DIGIT_CODE_PREFIX)) return;
-    if (!matchesModifier(e, expected)) return;
-    const index = indexForDigit(e.code.slice(DIGIT_CODE_PREFIX.length), count);
-    if (index === null) return;
-    e.preventDefault();
-    onRun(index);
-  }, combo.trim() !== "");
+  useEffect(() => {
+    if (combo.trim() === "") return;
+    const expected = parseModifier(combo);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      if (!e.code.startsWith(DIGIT_CODE_PREFIX)) return;
+      if (!matchesModifier(e, expected)) return;
+      const index = indexForDigit(e.code.slice(DIGIT_CODE_PREFIX.length), count);
+      if (index === null) return;
+      e.preventDefault();
+      onRunRef.current(index);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [combo, count, onRunRef]);
 }

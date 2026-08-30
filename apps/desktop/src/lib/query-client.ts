@@ -22,22 +22,6 @@ export const queryKeys = {
   models: ["models"] as const,
   officialPresets: ["official-presets"] as const,
   audioDevices: ["audio-devices"] as const,
-  audioInputDevices: ["audio-input-devices"] as const,
-  // `systemDigest`, never the prompt itself: react-query hashes the whole key
-  // with JSON.stringify on every render, and the system prompt carries the
-  // context library. See lib/digest.ts.
-  countTokens: (
-    model: string,
-    options: RequestOptions,
-    systemDigest: string,
-    messagesKey: string,
-  ) =>
-    [
-      "count-tokens",
-      model,
-      options.thinking,
-      options.webSearch,
-      systemDigest,
-      messagesKey,
-    ] as const,
+  countTokens: (model: string, options: RequestOptions, system: string, messagesKey: string) =>
+    ["count-tokens", model, options.thinking, options.webSearch, system, messagesKey] as const,
 };

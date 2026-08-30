@@ -1,4 +1,4 @@
-import { HOTKEY_ACTIONS } from "@/ipc/types";
+import { HOTKEY_ACTIONS } from "@/ipc/bindings";
 import type { HotkeyBinding } from "@/ipc/types";
 import {
   canonicalKey,

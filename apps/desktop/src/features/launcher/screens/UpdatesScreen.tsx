@@ -1,24 +1,17 @@
-import { lazy, Suspense } from "react";
-import { NotificationCard } from "@/components/NotificationCard";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
-import { SettingBlock, SettingGroup, SettingRow } from "@/features/settings/fields";
-import { useDict } from "@/hooks/useDict";
 import type { UpdaterApi } from "@/hooks/useUpdater";
-import { format } from "@/i18n";
-import type { Dictionary } from "@/i18n/types";
 import type { UpdateProgress } from "@/ipc/types";
 import { BRAND_NAME } from "@/lib/brand";
+import { SettingBlock, SettingGroup, SettingRow } from "../fields";
 import { ScreenShell } from "../ScreenShell";
 
-const ReleaseNotes = lazy(() => import("@/components/ReleaseNotes"));
-
-// Отказ проверки живёт в уведомлении, а не в подписи строки: сюда приходил
-// сырой `String(e)` от плагина обновлений, и подпись под кнопкой его не держала.
-export type CheckState = "idle" | "checking" | "latest";
+export type CheckState = "idle" | "checking" | "latest" | { failure: string };
 
 const MIB = 1024 * 1024;
 const PERCENT_MAX = 100;
-const MIB_FRACTION_DIGITS = 1;
+const REMARK_PLUGINS = [remarkGfm];
 
 function downloadPercent(progress: UpdateProgress | null): number | null {
   if (progress && progress.total !== null && progress.total > 0) {
@@ -28,25 +21,23 @@ function downloadPercent(progress: UpdateProgress | null): number | null {
 }
 
 function formatMib(bytes: number): string {
-  return (bytes / MIB).toFixed(MIB_FRACTION_DIGITS);
+  return (bytes / MIB).toFixed(1);
 }
 
-function progressCaption(updater: UpdaterApi, percent: number | null, dict: Dictionary): string {
-  const copy = dict.launcher.updates;
-  if (updater.status === "restarting") return copy.restarting;
-  if (percent !== null) return format(copy.downloadPercent, { percent: String(percent) });
-  return format(copy.downloadSize, { size: formatMib(updater.progress?.downloaded ?? 0) });
+function progressCaption(updater: UpdaterApi, percent: number | null): string {
+  if (updater.status === "restarting") return "Установлено. Перезапуск…";
+  if (percent !== null) return `Загрузка ${String(percent)}%`;
+  return `Загрузка ${formatMib(updater.progress?.downloaded ?? 0)} МиБ`;
 }
 
-function checkCaption(state: CheckState, dict: Dictionary): string {
-  const copy = dict.launcher.updates;
-  if (state === "checking") return copy.checking;
-  if (state === "latest") return copy.upToDate;
-  return copy.autoCheckNote;
+function checkCaption(state: CheckState): string {
+  if (state === "checking") return "Проверяю…";
+  if (state === "latest") return "Установлена последняя версия";
+  if (typeof state === "object") return `Не удалось проверить обновления: ${state.failure}`;
+  return "Проверка идёт автоматически при запуске и раз в шесть часов.";
 }
 
 function DownloadProgress({ updater }: { updater: UpdaterApi }) {
-  const dict = useDict();
   const percent = downloadPercent(updater.progress);
   return (
     <div className="grid gap-1.5">
@@ -54,14 +45,14 @@ function DownloadProgress({ updater }: { updater: UpdaterApi }) {
         <div
           className={
             percent === null
-              ? "h-full w-full animate-pulse rounded-full bg-accent/60"
-              : "h-full rounded-full bg-accent transition-[width]"
+              ? "h-full w-full animate-pulse rounded-full bg-primary/60"
+              : "h-full rounded-full bg-primary transition-[width]"
           }
           style={percent === null ? undefined : { width: `${String(percent)}%` }}
         />
       </div>
-      <span className="font-mono text-caption text-fg-subtle tabular-nums">
-        {progressCaption(updater, percent, dict)}
+      <span className="font-mono text-caption text-muted-foreground tabular-nums">
+        {progressCaption(updater, percent)}
       </span>
     </div>
   );
@@ -76,65 +67,56 @@ export function UpdatesScreen({
   checkState: CheckState;
   onCheck: () => void;
 }) {
-  const dict = useDict();
-  const copy = dict.launcher.updates;
   const busy = updater.status === "downloading" || updater.status === "restarting";
   const available = updater.info !== null && !busy;
 
   return (
     <ScreenShell screen="updates">
-      <SettingGroup
-        title={copy.versionTitle}
-        description={format(copy.versionDescription, { brand: BRAND_NAME })}
-      >
+      <SettingGroup title="Версия" description={`Установленная сборка ${BRAND_NAME}.`}>
         <SettingRow
           label={`${BRAND_NAME} ${updater.currentVersion}`}
-          hint={checkCaption(checkState, dict)}
+          hint={checkCaption(checkState)}
         >
           <Button variant="ghost" size="sm" disabled={checkState === "checking"} onClick={onCheck}>
-            {copy.check}
+            Проверить
           </Button>
         </SettingRow>
       </SettingGroup>
 
       {updater.info !== null && (
         <SettingGroup
-          title={format(copy.availableTitle, { version: updater.info.version })}
-          description={copy.availableDescription}
+          title={`Доступна версия ${updater.info.version}`}
+          description="Приложение скачает её, проверит подпись и перезапустится."
         >
           {updater.info.notes !== "" && (
-            <SettingBlock label={copy.notesLabel}>
-              <div className="prose-answer max-h-56 overflow-y-auto rounded-lg bg-surface px-3 py-2 text-body leading-relaxed text-fg-subtle ring-1 ring-inset ring-line">
-                <Suspense fallback={null}>
-                  <ReleaseNotes notes={updater.info.notes} />
-                </Suspense>
+            <SettingBlock label="Что нового">
+              <div className="prose-answer max-h-56 overflow-y-auto rounded-lg bg-surface px-3 py-2 text-body leading-relaxed text-muted-foreground ring-1 ring-border ring-inset">
+                <Markdown remarkPlugins={REMARK_PLUGINS}>{updater.info.notes}</Markdown>
               </div>
             </SettingBlock>
           )}
 
           {busy && (
-            <SettingBlock label={copy.installLabel}>
+            <SettingBlock label="Установка">
               <DownloadProgress updater={updater} />
             </SettingBlock>
           )}
 
-          {/* Единственная ошибка, которая НЕ уезжает в стопку уведомлений:
-              «Повторить» стоит здесь же, и уносить причину от кнопки означало бы
-              оставить кнопку без объяснения. Карточка та же самая, поэтому
-              многоэкранный текст точно так же сворачивается и копируется. */}
           {updater.status === "error" && updater.error !== null && (
-            <div className="px-3 py-2.5">
-              <NotificationCard tone="danger" title={copy.failedTitle} detail={updater.error} />
-            </div>
+            <SettingBlock label="Ошибка установки">
+              <span className="text-body whitespace-pre-wrap text-destructive">
+                {updater.error}
+              </span>
+            </SettingBlock>
           )}
 
           {available && (
             <div className="flex items-center justify-end gap-2 px-3 py-2">
               <Button variant="ghost" size="sm" onClick={updater.dismiss}>
-                {copy.later}
+                Позже
               </Button>
               <Button size="sm" onClick={updater.install}>
-                {updater.status === "error" ? dict.common.actions.retry : copy.install}
+                {updater.status === "error" ? "Повторить" : "Обновить и перезапустить"}
               </Button>
             </div>
           )}

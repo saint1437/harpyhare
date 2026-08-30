@@ -1,54 +1,41 @@
-import {
-  ArrowUp,
-  Crop,
-  Eraser,
-  NotebookText,
-  RotateCcw,
-  SlidersHorizontal,
-  Square,
-  X,
-} from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { ArrowUp, Crop, Eraser, NotebookText, SlidersHorizontal, Square } from "lucide-react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { useCopy } from "./copy";
-import { AppButton, AppIconButton, AppSelect, AppSwitch, Kbd } from "./ui";
-import type { SettingValue } from "./useDemoRun";
+import { AppIconButton, CycleSelect } from "./ui";
 
-/** `PROMPT_MAX_HEIGHT_PX` in `apps/desktop/src/features/hud/Composer.tsx`. */
 const PROMPT_MAX_HEIGHT_PX = 160;
+
+const MODELS = ["Haiku 4.5", "Sonnet 5", "Opus 5"];
 
 function ParamRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex min-h-7 items-center gap-2">
-      <span className="w-20 shrink-0 text-app-caption text-app-subtle">{label}</span>
-      <div className="flex min-w-0 flex-1 items-center justify-end">{children}</div>
+    <div className="flex items-center gap-2">
+      <span className="w-[76px] shrink-0 text-app-caption text-app-fg">{label}</span>
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
 }
 
-function RequestParams({
-  presets,
-  settings,
-  onSetting,
-}: {
-  presets: string[];
-  settings: Record<string, SettingValue>;
-  onSetting: (id: string, value: SettingValue) => void;
-}) {
+function RequestParams() {
   const copy = useCopy().hud.composer;
+  const toggles = [copy.toggles.off, copy.toggles.on];
   const [open, setOpen] = useState(false);
-  const model = typeof settings["model"] === "string" ? settings["model"] : (copy.models[0] ?? "");
-  const preset = typeof settings["preset"] === "string" ? settings["preset"] : copy.noPreset;
+  const [model, setModel] = useState<string>(MODELS[0] ?? "");
+  const [thinking, setThinking] = useState<string>(copy.toggles.off);
+  const [webSearch, setWebSearch] = useState<string>(copy.toggles.off);
+  const [preset, setPreset] = useState<string>(copy.presets[1] ?? "");
 
   return (
     <div className="relative">
       <AppIconButton
         title={copy.requestParams}
+        aria-label={copy.requestParams}
         aria-expanded={open}
-        className={cn(open && "bg-app-card text-app-fg")}
         onClick={() => {
           setOpen((value) => !value);
         }}
+        className={cn("rounded-md", open && "bg-app-surface text-app-fg")}
       >
         <SlidersHorizontal />
       </AppIconButton>
@@ -57,49 +44,43 @@ function RequestParams({
           <button
             type="button"
             aria-label={copy.closeRequestParams}
-            className="fixed inset-0 z-10"
+            className="fixed inset-0 z-10 cursor-default"
             onClick={() => {
               setOpen(false);
             }}
           />
-          <div className="absolute bottom-full left-0 z-20 mb-1.5 w-64 rounded-lg border border-app-border bg-app-surface p-3 shadow-xl">
+          <div className="absolute bottom-full left-0 z-20 mb-1.5 w-60 rounded-lg border border-app-border bg-app-card p-3 shadow-xl">
             <div className="flex flex-col gap-1.5">
-              <ParamRow label={copy.params.model}>
-                <AppSelect
+              <ParamRow label={copy.model}>
+                <CycleSelect
                   value={model}
-                  options={copy.models}
-                  ariaLabel={copy.params.model}
-                  onChange={(value) => {
-                    onSetting("model", value);
-                  }}
+                  options={MODELS}
+                  ariaLabel={copy.model}
+                  onChange={setModel}
                 />
               </ParamRow>
-              <ParamRow label={copy.params.preset}>
-                <AppSelect
+              <ParamRow label={copy.thinking}>
+                <CycleSelect
+                  value={thinking}
+                  options={toggles}
+                  ariaLabel={copy.thinking}
+                  onChange={setThinking}
+                />
+              </ParamRow>
+              <ParamRow label={copy.webSearch}>
+                <CycleSelect
+                  value={webSearch}
+                  options={toggles}
+                  ariaLabel={copy.webSearch}
+                  onChange={setWebSearch}
+                />
+              </ParamRow>
+              <ParamRow label={copy.preset}>
+                <CycleSelect
                   value={preset}
-                  options={[copy.noPreset, ...presets]}
-                  ariaLabel={copy.params.preset}
-                  onChange={(value) => {
-                    onSetting("preset", value);
-                  }}
-                />
-              </ParamRow>
-              <ParamRow label={copy.params.thinking}>
-                <AppSwitch
-                  checked={settings["thinking"] === true}
-                  ariaLabel={copy.params.thinking}
-                  onChange={(value) => {
-                    onSetting("thinking", value);
-                  }}
-                />
-              </ParamRow>
-              <ParamRow label={copy.params.webSearch}>
-                <AppSwitch
-                  checked={settings["web_search"] === true}
-                  ariaLabel={copy.params.webSearch}
-                  onChange={(value) => {
-                    onSetting("web_search", value);
-                  }}
+                  options={copy.presets}
+                  ariaLabel={copy.preset}
+                  onChange={setPreset}
                 />
               </ParamRow>
             </div>
@@ -110,201 +91,126 @@ function RequestParams({
   );
 }
 
+function PromptTextarea({
+  value,
+  onChange,
+  onSend,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onSend: () => void;
+}) {
+  const copy = useCopy();
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    element.style.height = "0px";
+    element.style.height = `${Math.min(element.scrollHeight, PROMPT_MAX_HEIGHT_PX)}px`;
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      value={value}
+      spellCheck={false}
+      placeholder={copy.hud.composer.placeholder}
+      onChange={(e) => {
+        onChange(e.target.value);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+          e.preventDefault();
+          onSend();
+        }
+      }}
+      className="app-scroll block max-h-40 min-h-9 w-full resize-none bg-transparent px-3 py-2 text-app-body text-app-fg outline-none placeholder:text-app-muted"
+    />
+  );
+}
+
 export function HudComposer({
   draft,
-  attachments,
   streaming,
-  showRetry,
-  quickActions,
-  quickActionCombo,
-  presets,
-  settings,
-  focusToken,
   onDraftChange,
   onSend,
   onStop,
   onClearHistory,
-  onScreenshot,
-  onRemoveAttachment,
-  onQuickAction,
-  onRetry,
-  onSetting,
 }: {
   draft: string;
-  attachments: number;
   streaming: boolean;
-  showRetry: boolean;
-  quickActions: { id: string; title: string; prompt: string }[];
-  quickActionCombo: string;
-  presets: string[];
-  settings: Record<string, SettingValue>;
-  /** Bumped by the focus-prompt hotkey; puts the caret at the end of the text. */
-  focusToken: number;
-  onDraftChange: (text: string) => void;
+  onDraftChange: (value: string) => void;
   onSend: () => void;
   onStop: () => void;
   onClearHistory: () => void;
-  onScreenshot: () => void;
-  onRemoveAttachment: () => void;
-  onQuickAction: (prompt: string) => void;
-  onRetry: () => void;
-  onSetting: (id: string, value: SettingValue) => void;
 }) {
-  const dict = useCopy();
-  const copy = dict.hud.composer;
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [contextOpen, setContextOpen] = useState(false);
-
-  useLayoutEffect(() => {
-    const el = textareaRef.current;
-    if (el === null) return;
-    el.style.height = "0px";
-    el.style.height = `${String(Math.min(el.scrollHeight, PROMPT_MAX_HEIGHT_PX))}px`;
-  }, [draft]);
-
-  useEffect(() => {
-    if (focusToken === 0) return;
-    const el = textareaRef.current;
-    if (el === null) return;
-    el.focus();
-    el.setSelectionRange(el.value.length, el.value.length);
-  }, [focusToken]);
+  const copy = useCopy().hud.composer;
+  const [hasContext, setHasContext] = useState(true);
 
   return (
     <section>
-      {quickActions.length > 0 && (
-        <div
-          role="group"
-          aria-label={copy.quickActionsLabel}
-          className="app-no-scrollbar mb-1.5 flex min-w-0 items-center gap-1 overflow-x-auto"
-        >
-          {quickActions.map((action, index) => (
-            <AppButton
-              key={action.id}
-              variant="ghost"
-              size="compact"
-              disabled={streaming}
-              className="bg-app-card text-app-fg/85 ring-1 ring-app-border ring-inset hover:bg-app-surface-active active:bg-app-card"
-              onMouseDown={(event) => {
-                // Never steal focus from the prompt: the app does the same, so a
-                // quick action can be pressed mid-sentence.
-                event.preventDefault();
-              }}
-              onClick={() => {
-                onQuickAction(action.prompt);
-              }}
-            >
-              {action.title}
-              <span className="font-mono text-app-hint text-app-subtle/80 tabular-nums">
-                {quickActionCombo}
-                {index + 1}
-              </span>
-            </AppButton>
-          ))}
-        </div>
-      )}
-
-      <div className="rounded-xl bg-app-card/70 shadow-lg ring-1 ring-app-border transition-[box-shadow] ring-inset focus-within:ring-app-focus">
-        <textarea
-          ref={textareaRef}
-          value={draft}
-          rows={1}
-          placeholder={copy.placeholder}
-          onChange={(event) => {
-            onDraftChange(event.target.value);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-              event.preventDefault();
-              if (!streaming) onSend();
-            }
-          }}
-          className="max-h-40 min-h-9 w-full resize-none overflow-y-auto border-0 bg-transparent px-2.5 py-1.5 text-app-body text-app-fg placeholder:text-app-subtle focus-visible:outline-none"
-        />
-
-        {attachments > 0 && (
-          <div className="flex flex-wrap gap-1.5 px-2.5 pb-2">
-            {Array.from({ length: attachments }, (_, index) => (
-              <span
-                key={index}
-                className="group relative grid size-12 place-items-center overflow-hidden rounded-md bg-app-code text-app-subtle ring-1 ring-app-border ring-inset"
-                aria-label={copy.attachmentAlt}
-              >
-                <Crop className="size-4" aria-hidden />
-                <button
-                  type="button"
-                  title={copy.removeAttachment}
-                  aria-label={copy.removeAttachment}
-                  onClick={onRemoveAttachment}
-                  className="absolute top-1 right-1 grid size-4.5 place-items-center rounded-full bg-app-scrim text-app-on-scrim opacity-0 outline-none group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-focus focus-visible:outline-solid"
-                >
-                  <X className="size-3" aria-hidden />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-
+      <div className="rounded-xl bg-app-card/60 ring-1 ring-app-border transition-[box-shadow] ring-inset focus-within:ring-app-primary/50">
+        <PromptTextarea value={draft} onChange={onDraftChange} onSend={onSend} />
         <div className="flex items-center gap-1 px-1.5 pb-1.5">
-          <AppIconButton title={copy.clearHistory} disabled={streaming} onClick={onClearHistory}>
+          <AppIconButton
+            title={copy.clearHistory}
+            aria-label={copy.clearHistory}
+            className="rounded-md"
+            disabled={streaming}
+            onClick={onClearHistory}
+          >
             <Eraser />
           </AppIconButton>
           <AppIconButton
-            title={copy.context}
-            className="relative"
+            title={copy.chatContext}
+            aria-label={copy.chatContext}
+            className="relative rounded-md"
             onClick={() => {
-              setContextOpen((value) => !value);
+              setHasContext((value) => !value);
             }}
           >
             <NotebookText />
-            {contextOpen && (
+            {hasContext && (
               <span
-                className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-app-primary-mark"
+                className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-app-primary"
                 aria-hidden
               />
             )}
           </AppIconButton>
-          <AppIconButton title={copy.captureRegion} onClick={onScreenshot}>
+          <AppIconButton
+            title={copy.screenshot}
+            aria-label={copy.screenshot}
+            className="rounded-md"
+          >
             <Crop />
           </AppIconButton>
-          <RequestParams presets={presets} settings={settings} onSetting={onSetting} />
-
-          <span className="min-w-0 flex-1" />
-
-          {showRetry && (
-            <AppIconButton title={copy.retryTranscription} onClick={onRetry}>
-              <RotateCcw />
-            </AppIconButton>
-          )}
+          <RequestParams />
+          <div className="flex-1" />
           {streaming ? (
-            <AppButton
-              variant="destructive"
-              size="icon-compact"
+            <button
+              type="button"
               title={copy.stopAnswer}
               aria-label={copy.stopAnswer}
               onClick={onStop}
+              className="grid size-7 shrink-0 place-items-center rounded-md bg-app-destructive text-app-primary-fg transition-colors hover:bg-app-destructive/90"
             >
               <Square className="size-3.5 fill-current" />
-            </AppButton>
+            </button>
           ) : (
-            <AppButton
-              size="icon-compact"
-              title={copy.sendTitle}
+            <button
+              type="button"
+              title={copy.send}
               aria-label={copy.send}
               onClick={onSend}
+              className="grid size-7 shrink-0 place-items-center rounded-md bg-app-primary text-app-primary-fg transition-colors hover:bg-app-primary/90"
             >
-              <ArrowUp />
-            </AppButton>
+              <ArrowUp className="size-4" />
+            </button>
           )}
         </div>
       </div>
-
-      {contextOpen && (
-        <p className="mt-1.5 flex items-center gap-2 rounded-md bg-app-card px-2.5 py-1.5 text-app-caption text-app-subtle ring-1 ring-app-border ring-inset">
-          <Kbd>{copy.context}</Kbd>
-          {dict.launcher.screens.contexts.description}
-        </p>
-      )}
     </section>
   );
 }

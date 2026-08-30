@@ -7,61 +7,19 @@ on:
   pull_request:
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 jobs:
   frontend:
     name: фронтенд и линтеры
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write # gitleaks комментирует находки прямо в PR
     steps:
       - uses: actions/checkout@v5
-        with:
-          # И `nx affected`, и gitleaks смотрят в историю: поверхностный клон им не годится.
-          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
-          node-version-file: .nvmrc
+          node-version: 22
           cache: npm
-      # Кэш Nx восстанавливается везде, но пишется только с main и с тегов — тот же
-      # компромисс, что у Swatinem/rust-cache ниже: иначе PR-ы вытесняют друг друга
-      # из общего лимита репозитория, и попадания становятся случайными.
-      - uses: actions/cache/restore@v4
-        id: nx-cache
-        with:
-          path: .nx/cache
-          key: nx-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            nx-${{ runner.os }}-
       - run: npm ci
-      - uses: nrwl/nx-set-shas@v5
-        if: github.event_name == 'pull_request'
-      # На PR гоняем только затронутое, на main, тегах и ручном запуске — всё целиком.
-      # `build` здесь обязателен: он ловит границы RSC у Next и ошибки `tsc -b`,
-      # которых не видит ни typecheck, ни lint.
-      - name: Проверки затронутых проектов
-        if: github.event_name == 'pull_request'
-        run: npx nx affected -t typecheck lint test build
-      - name: Проверки всех проектов
-        if: github.event_name != 'pull_request'
-        run: npx nx run-many -t typecheck lint test build
-      - name: Мёртвый код и зависимости
-        run: npx knip
-      # В рабочей копии рядом лежат .env с ключом и .admin-token: они в .gitignore,
-      # но от будущего коммита это не защищает — gitleaks смотрит на то, что реально
-      # попало в историю. Лицензия нужна только организациям, репозиторий личный.
-      - name: Секреты в коммитах
-        uses: gitleaks/gitleaks-action@v3
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/cache/save@v4
-        if: always() && github.event_name == 'push' && steps.nx-cache.outputs.cache-hit != 'true'
-        with:
-          path: .nx/cache
-          key: nx-${{ runner.os }}-${{ github.sha }}
+      - run: npx nx run-many -t typecheck lint test
+      - run: npx knip
 
   macos:
     name: тесты Rust и контракт
@@ -71,25 +29,8 @@ jobs:
         working-directory: apps/desktop
     steps:
       - uses: actions/checkout@v5
-      # dtolnay/rust-toolchain сам rust-toolchain.toml не читает, поэтому канал
-      # вынимаем руками: появится файл — CI подхватит его без правок, не появится —
-      # останется stable.
-      - name: Канал Rust
-        id: rust
-        working-directory: .
-        shell: bash
-        run: |
-          channel=""
-          for f in rust-toolchain.toml apps/desktop/src-tauri/rust-toolchain.toml; do
-            if [ -f "$f" ]; then
-              channel=$(sed -n 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$f" | head -n1)
-              [ -n "$channel" ] && break
-            fi
-          done
-          echo "toolchain=${channel:-stable}" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ steps.rust.outputs.toolchain }}
           components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
@@ -127,24 +68,10 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version-file: .nvmrc
+          node-version: 22
           cache: npm
-      - name: Канал Rust
-        id: rust
-        working-directory: .
-        shell: bash
-        run: |
-          channel=""
-          for f in rust-toolchain.toml apps/desktop/src-tauri/rust-toolchain.toml; do
-            if [ -f "$f" ]; then
-              channel=$(sed -n 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$f" | head -n1)
-              [ -n "$channel" ] && break
-            fi
-          done
-          echo "toolchain=${channel:-stable}" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ steps.rust.outputs.toolchain }}
           components: clippy
       - uses: Swatinem/rust-cache@v2
         with:

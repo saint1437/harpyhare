@@ -1,5 +1,4 @@
 import { useEffect, useMemo } from "react";
-import { useDocumentKeydown } from "@/hooks/useDocumentKeydown";
 import { onEvent } from "@/ipc/events";
 import type { HotkeyBinding } from "@/ipc/types";
 import { matchesPrepared, prepareCombo } from "@/lib/hotkey-match";
@@ -7,6 +6,7 @@ import { matchesModifier, parseModifier } from "@/lib/hotkey-modifier";
 import { effectiveCombo } from "@/lib/hotkeys";
 import { type WindowDimension } from "@/lib/window-size";
 
+const KEYDOWN_EVENT = "keydown";
 const OPACITY_UP_CODE = "Equal";
 const OPACITY_DOWN_CODE = "Minus";
 
@@ -44,16 +44,22 @@ export function useWindowControls(
   );
   const preparedSend = useMemo(() => prepareCombo(sendCombo), [sendCombo]);
 
-  useDocumentKeydown((e) => {
-    const opacityDir = opacityStepFromEvent(e, opacityState);
-    if (opacityDir !== null) {
-      e.preventDefault();
-      onOpacityStep(opacityDir);
-      return;
-    }
-    if (matchesPrepared(e, preparedSend)) {
-      e.preventDefault();
-      onSend();
-    }
-  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const opacityDir = opacityStepFromEvent(e, opacityState);
+      if (opacityDir !== null) {
+        e.preventDefault();
+        onOpacityStep(opacityDir);
+        return;
+      }
+      if (matchesPrepared(e, preparedSend)) {
+        e.preventDefault();
+        onSend();
+      }
+    };
+    document.addEventListener(KEYDOWN_EVENT, onKey);
+    return () => {
+      document.removeEventListener(KEYDOWN_EVENT, onKey);
+    };
+  }, [onSend, onOpacityStep, opacityState, preparedSend]);
 }

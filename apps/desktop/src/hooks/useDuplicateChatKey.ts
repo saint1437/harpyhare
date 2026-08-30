@@ -1,6 +1,7 @@
-import { useMemo } from "react";
-import { useDocumentKeydown } from "@/hooks/useDocumentKeydown";
+import { useEffect, useMemo } from "react";
 import { matchesPrepared, prepareCombo } from "@/lib/hotkey-match";
+
+const KEYDOWN_EVENT = "keydown";
 
 export function useDuplicateChatKey(
   combo: string,
@@ -9,10 +10,17 @@ export function useDuplicateChatKey(
 ): void {
   const prepared = useMemo(() => prepareCombo(combo), [combo]);
 
-  useDocumentKeydown((e) => {
-    if (e.repeat) return;
-    if (!matchesPrepared(e, prepared)) return;
-    e.preventDefault();
-    onDuplicate();
-  }, enabled);
+  useEffect(() => {
+    if (!enabled) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      if (!matchesPrepared(e, prepared)) return;
+      e.preventDefault();
+      onDuplicate();
+    };
+    document.addEventListener(KEYDOWN_EVENT, onKey);
+    return () => {
+      document.removeEventListener(KEYDOWN_EVENT, onKey);
+    };
+  }, [enabled, prepared, onDuplicate]);
 }

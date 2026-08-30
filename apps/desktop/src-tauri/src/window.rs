@@ -1,12 +1,10 @@
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager, WebviewWindow};
 
 use crate::app_state::{current_settings, App};
-use crate::error::{internal, AppError};
-use crate::window_service::{CollapseLayout, Monitor, WindowFrame, WindowSurface};
-use crate::window_tween;
-use crate::{events, hotkey, hotkeys, platform, settings};
+use crate::{events, hotkey, hotkeys, platform, settings, window_geom};
 
 pub const MAIN_WINDOW_LABEL: &str = "main";
 pub const LAUNCHER_WINDOW_LABEL: &str = "launcher";
@@ -18,13 +16,9 @@ const LAUNCHER_WINDOW_HEIGHT_LOGICAL_PX: f64 = 720.0;
 const LAUNCHER_WINDOW_MIN_WIDTH_LOGICAL_PX: f64 = 520.0;
 const LAUNCHER_WINDOW_MIN_HEIGHT_LOGICAL_PX: f64 = 480.0;
 
-const SCREEN_CAPTURE_HIDE_SETTLE: Duration = Duration::from_millis(120);
-
-/// Окно клубка. Больше самого кружка: круг рисуется в CSS с прозрачным полем,
-/// поэтому нативное скругление углов (22px на macOS, системное на Windows)
-/// до него не дотягивается и трогать его не нужно. Поле нужно ещё и тени
-/// кружка — ей есть куда лечь, не упираясь в край окна.
-const COLLAPSED_SIZE_LOGICAL_PX: f64 = 80.0;
+const RESIZE_TWEEN_STEPS: u32 = 14;
+const RESIZE_TWEEN_FRAME_INTERVAL: Duration = Duration::from_millis(13);
+const RESIZE_EPSILON_LOGICAL_PX: f64 = 1.0;
 
 pub fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(MAIN_WINDOW_LABEL)
@@ -48,7 +42,7 @@ pub fn apply_content_protection_all(app: &AppHandle, settings: &settings::Settin
     }
 }
 
-pub fn create_launcher_window(app: &AppHandle, settings: &settings::Settings) -> Result<(), AppError> {
+pub fn create_launcher_window(app: &AppHandle, settings: &settings::Settings) -> Result<(), String> {
     if launcher_window(app).is_some() {
         return Ok(());
     }
@@ -68,18 +62,15 @@ pub fn create_launcher_window(app: &AppHandle, settings: &settings::Settings) ->
     )
     .resizable(true)
     .center()
-    .shadow(false)
-    // No .theme(): on macOS tao turns that into an app-wide `[NSApp setAppearance:]`
-    // that is never reset, so both `Window::theme()` and the webview's
-    // `prefers-color-scheme` would report a value the user never chose.
+    .theme(Some(tauri::Theme::Dark))
     .content_protected(!settings.screen_share_visible)
     .build()
-    .map_err(|e| internal(e.to_string()))?;
+    .map_err(|e| e.to_string())?;
     platform::merge_titlebar_into_content(app);
     Ok(())
 }
 
-fn create_main_window(app: &AppHandle, settings: &settings::Settings) -> Result<(), AppError> {
+fn create_main_window(app: &AppHandle, settings: &settings::Settings) -> Result<(), String> {
     if main_window(app).is_some() {
         return Ok(());
     }
@@ -96,16 +87,12 @@ fn create_main_window(app: &AppHandle, settings: &settings::Settings) -> Result<
     )
     .transparent(true)
     .decorations(false)
-    // Нативная тень рисуется по границам ОКНА, а не по тому, что внутри. В
-    // прозрачном безрамочном окне это тёмный прямоугольный ореол вокруг
-    // содержимого; глубину даёт CSS, где она следует настоящей форме.
-    .shadow(false)
     .always_on_top(true)
     .visible_on_all_workspaces(true)
     .content_protected(!settings.screen_share_visible)
     .center()
     .build()
-    .map_err(|e| internal(e.to_string()))?;
+    .map_err(|e| e.to_string())?;
     platform::clip_native_window_corners(app);
     Ok(())
 }
@@ -114,19 +101,14 @@ type GlobalRegistrar = fn(&AppHandle, &str) -> Result<(), String>;
 type GlobalUnregistrar = fn(&AppHandle, &str);
 
 const GLOBAL_HOTKEYS: &[(&str, GlobalRegistrar, GlobalUnregistrar)] = &[
-    (hotkeys::ACTION_RECORD, hotkey::register_ptt, hotkey::unregister_hotkey),
-    (hotkeys::ACTION_TOGGLE_WINDOW, hotkey::register_toggle, hotkey::unregister_hotkey),
-    (hotkeys::ACTION_TELEPROMPTER, hotkey::register_teleprompter, hotkey::unregister_hotkey),
-    (hotkeys::ACTION_AUTO_MODE, hotkey::register_auto_mode, hotkey::unregister_hotkey),
-    (hotkeys::ACTION_AUTO_ANSWER, hotkey::register_auto_answer, hotkey::unregister_hotkey),
-    (hotkeys::ACTION_SCREENSHOT, hotkey::register_screenshot, hotkey::unregister_hotkey),
-    (hotkeys::ACTION_FOCUS_PROMPT, hotkey::register_focus_prompt, hotkey::unregister_hotkey),
+    (hotkeys::ACTION_RECORD, hotkey::register_ptt, hotkey::unregister_ptt),
+    (hotkeys::ACTION_TOGGLE_WINDOW, hotkey::register_toggle, hotkey::unregister_toggle),
+    (hotkeys::ACTION_TELEPROMPTER, hotkey::register_teleprompter, hotkey::unregister_teleprompter),
+    (hotkeys::ACTION_SCREENSHOT, hotkey::register_screenshot, hotkey::unregister_screenshot),
+    (hotkeys::ACTION_FOCUS_PROMPT, hotkey::register_focus_prompt, hotkey::unregister_focus_prompt),
 ];
 
 pub fn register_main_window_hotkeys(app: &AppHandle, s: &settings::Settings) {
-    // PTT is about to be registered, so whatever the prompt's focus left behind
-    // must not claim it is suspended — see `preferences::PTT_SUSPENDED`.
-    crate::preferences::clear_ptt_suspension();
     for (action, register, _) in GLOBAL_HOTKEYS {
         let combo = hotkeys::effective(&s.hotkeys, action);
         if combo.is_empty() {
@@ -145,7 +127,7 @@ pub fn unregister_main_window_hotkeys_for(app: &AppHandle, s: &settings::Setting
             unregister(app, &combo);
         }
     }
-    hotkey::unregister_hotkey(app, &hotkeys::effective(&s.hotkeys, hotkeys::ACTION_CANCEL_RECORDING));
+    hotkey::unregister_cancel(app, &hotkeys::effective(&s.hotkeys, hotkeys::ACTION_CANCEL_RECORDING));
 }
 
 pub fn show_and_focus_prompt(app: &AppHandle) {
@@ -156,120 +138,34 @@ pub fn show_and_focus_prompt(app: &AppHandle) {
     }
 }
 
-fn hide_main(app: &AppHandle) -> Result<(), AppError> {
-    if let Some(w) = main_window(app) {
-        let _ = w.hide();
-    }
-    Ok(())
-}
-
-/// Хоткей больше не прячет окно, а сворачивает его в клубок: спрятанное окно
-/// не отвечало на вопрос «меня сейчас слышно?», а именно в этом сценарии —
-/// когда сфокусировано чужое приложение — push-to-talk и задуман работать.
 pub fn on_toggle_visibility(app: &AppHandle) {
-    let collapsed = app.state::<App>().window.is_collapsed();
-    set_collapsed(app, !collapsed, true);
-}
-
-/// The real window behind `WindowSurface`. `resize_to` goes through
-/// `set_window_size` rather than `set_size` on purpose: the tween, the epsilon
-/// and the monitor anchoring all live there.
-struct TauriWindowSurface {
-    app: AppHandle,
-    window: WebviewWindow,
-}
-
-impl WindowSurface for TauriWindowSurface {
-    fn set_min_size(&self, width: f64, height: f64) {
-        let _ = self
-            .window
-            .set_min_size(Some(tauri::LogicalSize::new(width, height)));
-    }
-
-    fn resize_to(&self, width: f64, height: f64) {
-        set_window_size(self.app.clone(), width, height);
-    }
-
-    fn show_and_focus(&self, focus: bool) {
-        let _ = self.window.show();
-        if focus {
-            let _ = self.window.set_focus();
+    if let Some(w) = main_window(app) {
+        if w.is_visible().unwrap_or(true) {
+            let _ = w.hide();
+        } else {
+            show_and_focus_prompt(app);
         }
     }
-
-    fn restore_min_size_after_tween(&self, width: f64, height: f64, generation: u64) {
-        window_tween::restore_min_size_after_tween(
-            self.app.clone(),
-            self.window.clone(),
-            width,
-            height,
-            generation,
-        );
-    }
-}
-
-fn collapse_layout(settings: &settings::Settings) -> CollapseLayout {
-    CollapseLayout {
-        orb: COLLAPSED_SIZE_LOGICAL_PX,
-        expanded_width: settings.window_width,
-        expanded_height: settings.window_height,
-        min_width: settings::limits::window::WIDTH.min,
-        min_height: settings::limits::window::HEIGHT.min,
-    }
-}
-
-pub fn set_collapsed(app: &AppHandle, collapsed: bool, focus: bool) {
-    let Some(window) = main_window(app) else {
-        return;
-    };
-    let layout = collapse_layout(&current_settings(app));
-    let surface = TauriWindowSurface {
-        app: app.clone(),
-        window,
-    };
-    app.state::<App>()
-        .window
-        .set_collapsed(app, &surface, collapsed, focus, layout);
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn set_window_collapsed(app: AppHandle, collapsed: bool, focus: bool) {
-    set_collapsed(&app, collapsed, focus);
-}
-
-pub async fn hide_for_screen_capture(app: &AppHandle) -> bool {
-    let Some(w) = main_window(app) else {
-        return false;
-    };
-    if !w.is_visible().unwrap_or(false) {
-        return false;
-    }
-    if on_main_thread(app, hide_main).await.is_err() {
-        return false;
-    }
-    tokio::time::sleep(SCREEN_CAPTURE_HIDE_SETTLE).await;
-    true
 }
 
 pub fn on_toggle_teleprompter(app: &AppHandle) {
     events::toggle_teleprompter(app);
 }
 
-async fn on_main_thread<F>(app: &AppHandle, work: F) -> Result<(), AppError>
+async fn on_main_thread<F>(app: &AppHandle, work: F) -> Result<(), String>
 where
-    F: FnOnce(&AppHandle) -> Result<(), AppError> + Send + 'static,
+    F: FnOnce(&AppHandle) -> Result<(), String> + Send + 'static,
 {
     let (done, wait) = tokio::sync::oneshot::channel();
     let handle = app.clone();
     app.run_on_main_thread(move || {
         let _ = done.send(work(&handle));
     })
-    .map_err(|e| internal(e.to_string()))?;
-    wait.await.map_err(|e| internal(e.to_string()))?
+    .map_err(|e| e.to_string())?;
+    wait.await.map_err(|e| e.to_string())?
 }
 
-fn swap_to_main_window(app: &AppHandle) -> Result<(), AppError> {
+fn swap_to_main_window(app: &AppHandle) -> Result<(), String> {
     let settings = current_settings(app);
     create_main_window(app, &settings)?;
     register_main_window_hotkeys(app, &settings);
@@ -277,27 +173,13 @@ fn swap_to_main_window(app: &AppHandle) -> Result<(), AppError> {
         let _ = w.destroy();
     }
     let capture_app = app.clone();
-    let start_auto = settings.auto_mode_enabled;
     tauri::async_runtime::spawn_blocking(move || {
         crate::recording::ensure_capture(&capture_app);
-        if start_auto {
-            if let Err(e) = crate::auto::start(&capture_app) {
-                // A fast failure lands before the webview subscribes to
-                // auto-mode-error — the HUD pulls the record via a command on
-                // mount.
-                crate::auto::record_start_error(&capture_app, &e);
-                events::auto_mode_error(&capture_app, e);
-            }
-        }
     });
     Ok(())
 }
 
-fn swap_to_launcher_window(app: &AppHandle) -> Result<(), AppError> {
-    // Off the main thread: stop() waits for auto mode's transition lock, and a
-    // slow mic open (up to 5 s on Windows) may be running under it.
-    let stop_app = app.clone();
-    tauri::async_runtime::spawn_blocking(move || crate::auto::stop(&stop_app));
+fn swap_to_launcher_window(app: &AppHandle) -> Result<(), String> {
     let settings = current_settings(app);
     unregister_main_window_hotkeys_for(app, &settings);
     create_launcher_window(app, &settings)?;
@@ -309,13 +191,13 @@ fn swap_to_launcher_window(app: &AppHandle) -> Result<(), AppError> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn launch_main_window(app: AppHandle) -> Result<(), AppError> {
+pub async fn launch_main_window(app: AppHandle) -> Result<(), String> {
     on_main_thread(&app, swap_to_main_window).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn stop_main_window(app: AppHandle) -> Result<(), AppError> {
+pub async fn stop_main_window(app: AppHandle) -> Result<(), String> {
     on_main_thread(&app, swap_to_launcher_window).await
 }
 
@@ -327,40 +209,124 @@ pub fn close_app(app: AppHandle) {
 
 #[tauri::command]
 #[specta::specta]
+pub fn hide_main_window(app: AppHandle) {
+    if let Some(w) = main_window(&app) {
+        let _ = w.hide();
+    }
+}
+
+struct ResizeTween {
+    from_width: f64,
+    to_width: f64,
+    from_height: f64,
+    to_height: f64,
+    from_x: i32,
+    to_x: i32,
+    y: i32,
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn set_window_size(app: AppHandle, width: f64, height: f64) {
     let Some(w) = main_window(&app) else {
         return;
     };
-    let planned = app
-        .state::<App>()
-        .window
-        .plan_resize(current_frame(&w, width, height), width, height, monitor_of(&w));
-    let Some((tween, generation)) = planned else {
-        return;
-    };
-    window_tween::start_resize(app.clone(), w, tween, generation);
-}
-
-/// The fallbacks are the requested size on purpose: a window that cannot report
-/// its own frame must not animate from zero.
-fn current_frame(w: &WebviewWindow, width: f64, height: f64) -> WindowFrame {
     let scale = w.scale_factor().unwrap_or(1.0);
-    let size = w.inner_size().ok();
-    let position = w.outer_position().unwrap_or(tauri::PhysicalPosition::new(0, 0));
-    WindowFrame {
-        width: size.map(|s| s.width as f64 / scale).unwrap_or(width),
-        height: size.map(|s| s.height as f64 / scale).unwrap_or(height),
-        x: position.x,
-        y: position.y,
-        scale,
+    let from_width = w.inner_size().map(|s| s.width as f64 / scale).unwrap_or(width);
+    let from_height = w.inner_size().map(|s| s.height as f64 / scale).unwrap_or(height);
+    let from_pos = w.outer_position().unwrap_or(tauri::PhysicalPosition::new(0, 0));
+
+    if (from_width - width).abs() < RESIZE_EPSILON_LOGICAL_PX
+        && (from_height - height).abs() < RESIZE_EPSILON_LOGICAL_PX
+    {
+        return;
     }
+
+    let my_gen = app.state::<App>().resize_gen.fetch_add(1, Ordering::SeqCst) + 1;
+    let tween = ResizeTween {
+        from_width,
+        to_width: width,
+        from_height,
+        to_height: height,
+        from_x: from_pos.x,
+        to_x: anchored_target_x(&w, from_pos.x, width, scale),
+        y: from_pos.y,
+    };
+    std::thread::spawn(move || run_resize_tween(app, w, tween, my_gen));
 }
 
-fn monitor_of(w: &WebviewWindow) -> Option<Monitor> {
-    w.current_monitor().ok().flatten().map(|m| Monitor {
-        x: m.position().x,
-        width: m.size().width,
-    })
+fn anchored_target_x(w: &WebviewWindow, from_x: i32, width: f64, scale: f64) -> i32 {
+    let target_phys_w = (width * scale).round() as u32;
+    let (mon_x, mon_w) = w
+        .current_monitor()
+        .ok()
+        .flatten()
+        .map(|m| (m.position().x, m.size().width))
+        .unwrap_or((from_x, target_phys_w));
+    window_geom::clamp_window_x(from_x, target_phys_w, mon_x, mon_w)
+}
+
+fn ease_out_cubic(t: f64) -> f64 {
+    1.0 - (1.0 - t).powi(3)
+}
+
+fn frame_still_ours(w: &WebviewWindow, width: f64, height: f64) -> bool {
+    let scale = w.scale_factor().unwrap_or(1.0);
+    let Ok(size) = w.inner_size() else {
+        return true;
+    };
+    (f64::from(size.width) / scale - width).abs() < RESIZE_EPSILON_LOGICAL_PX
+        && (f64::from(size.height) / scale - height).abs() < RESIZE_EPSILON_LOGICAL_PX
+}
+
+fn tween_superseded(
+    app: &AppHandle,
+    w: &WebviewWindow,
+    my_gen: u64,
+    applied: Option<(f64, f64)>,
+) -> bool {
+    if app.state::<App>().resize_gen.load(Ordering::SeqCst) != my_gen {
+        return true;
+    }
+    applied.is_some_and(|(width, height)| !frame_still_ours(w, width, height))
+}
+
+fn run_resize_tween(app: AppHandle, w: WebviewWindow, tween: ResizeTween, my_gen: u64) {
+    let mut applied: Option<(f64, f64)> = None;
+    for i in 1..=RESIZE_TWEEN_STEPS {
+        if tween_superseded(&app, &w, my_gen, applied) {
+            return;
+        }
+        let eased = ease_out_cubic(f64::from(i) / f64::from(RESIZE_TWEEN_STEPS));
+        let cur_w = tween.from_width + (tween.to_width - tween.from_width) * eased;
+        let cur_h = tween.from_height + (tween.to_height - tween.from_height) * eased;
+        let cur_x =
+            (f64::from(tween.from_x) + f64::from(tween.to_x - tween.from_x) * eased).round() as i32;
+        apply_window_frame(&app, &w, cur_x, tween.y, cur_w, cur_h);
+        applied = Some((cur_w, cur_h));
+        std::thread::sleep(RESIZE_TWEEN_FRAME_INTERVAL);
+    }
+    if tween_superseded(&app, &w, my_gen, applied) {
+        return;
+    }
+    apply_window_frame(
+        &app,
+        &w,
+        tween.to_x,
+        tween.y,
+        tween.to_width,
+        tween.to_height,
+    );
+}
+
+fn apply_window_frame(app: &AppHandle, w: &WebviewWindow, x: i32, y: i32, width: f64, height: f64) {
+    let win = w.clone();
+    let _ = app.run_on_main_thread(move || {
+        if win.outer_position().is_ok_and(|p| p.x != x || p.y != y) {
+            let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+        }
+        let _ = win.set_size(tauri::LogicalSize::new(width, height));
+    });
 }
 
 #[cfg(test)]

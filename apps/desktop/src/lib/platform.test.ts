@@ -1,28 +1,34 @@
-import { detectPlatform, PLATFORM_MIN_VERSIONS, PLATFORMS } from "@harpyhare/platform";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { PLATFORM } from "./platform";
+import { detectPlatform, PLATFORM, PLATFORMS } from "./platform";
 
-// detectPlatform itself is tested in @harpyhare/platform, where it now lives.
+const WEBVIEW2_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0";
+const WKWEBVIEW_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
+
+describe("detectPlatform", () => {
+  it("WebView2 опознаётся как Windows", () => {
+    expect(detectPlatform(WEBVIEW2_USER_AGENT)).toBe("windows");
+  });
+
+  it("WKWebView опознаётся как macOS", () => {
+    expect(detectPlatform(WKWEBVIEW_USER_AGENT)).toBe("macos");
+  });
+
+  it("незнакомый агент считается macOS", () => {
+    expect(detectPlatform("")).toBe("macos");
+    expect(detectPlatform("Mozilla/5.0 (X11; Linux x86_64)")).toBe("macos");
+  });
+
+  it("регистр агента не важен", () => {
+    expect(detectPlatform(WEBVIEW2_USER_AGENT.toLowerCase())).toBe("windows");
+    expect(detectPlatform(WEBVIEW2_USER_AGENT.toUpperCase())).toBe("windows");
+  });
+});
+
 describe("PLATFORM", () => {
   it("вычислен из агента окружения и входит в список платформ", () => {
     expect(PLATFORMS).toContain(PLATFORM);
     expect(PLATFORM).toBe(detectPlatform(navigator.userAgent));
-  });
-});
-
-// The README states the supported OS versions in prose — the third copy of the
-// same fact. Nothing but this test connects it to the shared constant.
-describe("README", () => {
-  it("names the same minimum OS versions as @harpyhare/platform", () => {
-    const readme = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), "../../README.md"),
-      "utf8",
-    );
-    for (const platform of PLATFORMS) {
-      expect(readme).toContain(PLATFORM_MIN_VERSIONS[platform]);
-    }
   });
 });

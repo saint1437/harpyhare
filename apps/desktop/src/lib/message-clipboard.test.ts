@@ -7,7 +7,7 @@ import {
   messageCopyText,
 } from "./message-clipboard";
 
-const PNG = { id: "00000000000000aa.png", media_type: "image/png", data: "iVBORw0K" };
+const PNG = { media_type: "image/png", data: "iVBORw0K" };
 
 function message(text: string, images: ChatMessage["images"] = []): ChatMessage {
   return { role: "user", text, images };

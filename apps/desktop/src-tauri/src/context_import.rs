@@ -2,7 +2,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 
-pub(crate) const MEGABYTE: u64 = 1_048_576;
+const MEGABYTE: u64 = 1_048_576;
 pub const TEXT_MAX_BYTES: u64 = MEGABYTE;
 pub const PDF_MAX_BYTES: u64 = 20 * MEGABYTE;
 
@@ -30,41 +30,12 @@ fn classify(path: &Path) -> Option<ImportKind> {
     }
 }
 
-pub(crate) fn too_large_message(max_bytes: u64) -> String {
-    format!("Файл больше {} МБ", max_bytes / MEGABYTE)
+pub fn is_supported_extension(path: &Path) -> bool {
+    classify(path).is_some()
 }
 
-/// The module's own Russian sentences, turned back into a code and a subject at
-/// the command boundary.
-///
-/// It compares against ITS OWN constants — the same module declares both sides,
-/// so this is not "parsing prose", it is the inverse of the four `Err(...)`
-/// above. Threading a typed error through `read_import_file` would have been
-/// the tidier shape, but it also runs through `chat_images::save`, whose errors
-/// are deliberately swallowed on the frontend; that refactor is a separate one.
-pub fn to_app_error(message: String) -> crate::error::AppError {
-    use crate::error::{param, params_of, subject, AppError, ErrorCode};
-    let subject = match message.as_str() {
-        ERR_UNSUPPORTED_EXTENSION => subject::IMPORT_UNSUPPORTED,
-        ERR_PDF_NO_TEXT => subject::IMPORT_PDF_NO_TEXT,
-        ERR_PDF_PARSE => subject::IMPORT_PDF_PARSE,
-        _ => {
-            for max in [TEXT_MAX_BYTES, PDF_MAX_BYTES, crate::chat_images::IMAGE_MAX_BYTES] {
-                if message == too_large_message(max) {
-                    return AppError::with_params(
-                        ErrorCode::Internal,
-                        message,
-                        params_of([
-                            (param::SUBJECT, subject::IMPORT_TOO_LARGE.to_string()),
-                            (param::LIMIT_MB, (max / MEGABYTE).to_string()),
-                        ]),
-                    );
-                }
-            }
-            return crate::error::internal(message);
-        }
-    };
-    AppError::with_subject(ErrorCode::Internal, message, subject)
+fn too_large_message(max_bytes: u64) -> String {
+    format!("Файл больше {} МБ", max_bytes / MEGABYTE)
 }
 
 pub fn read_import_file(path: &Path) -> Result<String, String> {
@@ -115,34 +86,13 @@ fn finalize_extracted(raw: &str) -> Result<String, String> {
     Ok(text)
 }
 
-/// One pass over the extracted text instead of four copies of it.
-///
-/// The former shape was `raw.replace('\r', "").replace('\u{c}', "\n")` — two
-/// full copies of a document that can be a twenty-megabyte PDF — followed by a
-/// line loop and a third copy in `out.trim().to_string()`. The three rewrites
-/// are folded into the loop itself: the splitter treats a form feed as a line
-/// break, `\r` is dropped while the line is being appended, and the leading and
-/// trailing blank lines are trimmed off `out` in place at the end.
-///
-/// The semantics are unchanged and are worth spelling out, because the ordering
-/// is what makes them subtle: `\r` is removed WHEREVER it appears, not only at
-/// a line end (that is what `replace` did); a line is "blank" when nothing of it
-/// survives trimming; and leading whitespace on a surviving line is kept.
 fn normalize_extracted_text(raw: &str) -> String {
-    let mut out = String::with_capacity(raw.len());
+    let unified = raw.replace('\r', "").replace('\u{c}', "\n");
+    let mut out = String::with_capacity(unified.len());
     let mut blank_run = 0usize;
-    for line in raw.split(['\n', '\u{c}']) {
-        let line_start = out.len();
-        // The scan for `\r` only costs anything on the lines that carry one.
-        match line.find('\r') {
-            None => out.push_str(line),
-            Some(_) => out.extend(line.chars().filter(|&c| c != '\r')),
-        }
-        // `trim_end` applied in place: a line that was nothing but whitespace
-        // collapses back to `line_start`, which IS the blankness test.
-        let kept = line_start + out[line_start..].trim_end().len();
-        out.truncate(kept);
-        if out.len() == line_start {
+    for line in unified.split('\n') {
+        let trimmed = line.trim_end();
+        if trimmed.trim().is_empty() {
             blank_run += 1;
             if blank_run == 1 {
                 out.push('\n');
@@ -150,13 +100,10 @@ fn normalize_extracted_text(raw: &str) -> String {
             continue;
         }
         blank_run = 0;
+        out.push_str(trimmed);
         out.push('\n');
     }
-    let end = out.trim_end().len();
-    out.truncate(end);
-    let start = out.len() - out.trim_start().len();
-    out.drain(..start);
-    out
+    out.trim().to_string()
 }
 
 #[cfg(test)]

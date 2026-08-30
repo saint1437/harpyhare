@@ -1,7 +1,6 @@
 use tauri::{AppHandle, Manager};
 
 use crate::app_state::App;
-use crate::error::AppError;
 use crate::{platform, update};
 
 #[tauri::command]
@@ -13,18 +12,18 @@ pub fn open_external(url: String) {
 #[tauri::command]
 #[specta::specta]
 pub fn set_preview_html(app: AppHandle, html: String) {
-    app.state::<App>().window.set_preview_html(html);
+    *app.state::<App>().preview_html.lock().unwrap() = html;
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn check_for_update(app: AppHandle) -> Result<Option<update::UpdateInfo>, AppError> {
+pub async fn check_for_update(app: AppHandle) -> Result<Option<update::UpdateInfo>, String> {
     update::check(&app).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn install_update(app: AppHandle) -> Result<(), AppError> {
+pub async fn install_update(app: AppHandle) -> Result<(), String> {
     update::install(app).await
 }
 

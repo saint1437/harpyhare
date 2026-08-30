@@ -11,7 +11,6 @@ import {
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -31,30 +30,29 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { ContextLibraryApi } from "@/hooks/useContextLibrary";
-import { useDict } from "@/hooks/useDict";
-import { format, getDict } from "@/i18n";
-import type { Dictionary } from "@/i18n/types";
 import { readContextImportFile, readContextPdfBytes } from "@/ipc/commands";
 import { onFileDrop } from "@/ipc/events";
 import { arrayBufferToBase64 } from "@/lib/base64";
 import {
   docNameFromFileName,
+  docsInFolder,
   isPdfFileName,
+  rootDocs,
   type ContextDoc,
-  docLimitNotice,
-  libraryIsFull,
 } from "@/lib/context-library";
-import { notifyError } from "@/lib/notifications";
-import { PLATFORM } from "@/lib/platform";
-import { cn, SURFACE_CARD_CLASS } from "@/lib/utils";
+import { PLATFORM, type Platform } from "@/lib/platform";
+import { cn } from "@/lib/utils";
 
 const ROOT_FOLDER_ID = "";
 const ROOT_SELECT_VALUE = "root";
 const DROP_FOLDER_ATTR = "data-drop-folder";
 const IMPORT_ACCEPT = ".md,.markdown,.txt,.pdf";
 const THOUSAND = 1000;
-const THOUSANDS_FRACTION_DIGITS = 1;
-const NO_DOCS: ContextDoc[] = [];
+
+const FILE_MANAGER_LABEL: Record<Platform, string> = {
+  macos: "Finder",
+  windows: "проводника",
+};
 
 interface DocDraft {
   id: string | null;
@@ -63,13 +61,10 @@ interface DocDraft {
   folderId: string;
 }
 
-function formatChars(count: number, dict: Dictionary): string {
-  const copy = dict.launcher.contexts;
-  if (count < THOUSAND) return format(copy.chars, { count: String(count) });
-  const thousands = (count / THOUSAND).toLocaleString(dict.locale, {
-    maximumFractionDigits: THOUSANDS_FRACTION_DIGITS,
-  });
-  return format(copy.charsThousands, { count: thousands });
+function formatChars(count: number): string {
+  if (count < THOUSAND) return `${String(count)} симв.`;
+  const thousands = (count / THOUSAND).toLocaleString("ru-RU", { maximumFractionDigits: 1 });
+  return `${thousands} тыс. симв.`;
 }
 
 function dropTargetAt(x: number, y: number): string | null {
@@ -78,14 +73,10 @@ function dropTargetAt(x: number, y: number): string | null {
   return host ? (host.getAttribute(DROP_FOLDER_ATTR) ?? ROOT_FOLDER_ID) : null;
 }
 
-/**
- * `addDoc` alone, never the whole api: the api carries `library`, so every doc
- * added re-registered `onDragDropEvent` through an async IPC round trip — and
- * during a multi-file drop that killed the listener handling that very drop.
- */
 function useNativeFileDrop(
-  addDoc: ContextLibraryApi["addDoc"],
+  api: ContextLibraryApi,
   setDropTarget: (t: string | null) => void,
+  setImportError: (e: string | null) => void,
 ): void {
   useEffect(
     () =>
@@ -101,26 +92,25 @@ function useNativeFileDrop(
         const target = dropTargetAt(event.x, event.y);
         setDropTarget(null);
         if (target === null) return;
+        setImportError(null);
         for (const path of event.paths) {
           void readContextImportFile(path)
             .then((text) => {
-              addDoc({ name: docNameFromFileName(path), text, folderId: target });
+              api.addDoc({ name: docNameFromFileName(path), text, folderId: target });
             })
             .catch((e: unknown) => {
-              notifyImportFailure(docNameFromFileName(path), e);
+              setImportError(String(e));
             });
         }
       }),
-    [addDoc, setDropTarget],
+    [api, setDropTarget, setImportError],
   );
 }
 
 const DOC_DRAG_THRESHOLD_PX = 5;
 
-const NO_FRAME = 0;
-
 function useDocDrag(
-  moveDoc: ContextLibraryApi["moveDoc"],
+  api: ContextLibraryApi,
   setDropTarget: (t: string | null) => void,
 ): { dragDocId: string | null; startDrag: (docId: string, x: number, y: number) => void } {
   const [dragDocId, setDragDocId] = useState<string | null>(null);
@@ -128,18 +118,6 @@ function useDocDrag(
   const startDrag = useCallback(
     (docId: string, startX: number, startY: number) => {
       let active = false;
-      // `dropTargetAt` is `elementFromPoint` + `closest`, i.e. a forced style and
-      // layout flush, and mousemove fires far more often than the screen is
-      // painted — so the hit test is coalesced to one per frame. The pointer is
-      // only ever over one folder per frame anyway.
-      let frame = NO_FRAME;
-      let last: { x: number; y: number } | null = null;
-      const hitTest = () => {
-        frame = NO_FRAME;
-        if (last === null) return;
-        setDropTarget(dropTargetAt(last.x, last.y));
-        last = null;
-      };
       const onMove = (e: MouseEvent) => {
         if (!active && Math.hypot(e.clientX - startX, e.clientY - startY) < DOC_DRAG_THRESHOLD_PX)
           return;
@@ -147,18 +125,14 @@ function useDocDrag(
           active = true;
           setDragDocId(docId);
         }
-        last = { x: e.clientX, y: e.clientY };
-        if (frame === NO_FRAME) frame = requestAnimationFrame(hitTest);
+        setDropTarget(dropTargetAt(e.clientX, e.clientY));
       };
       const onUp = (e: MouseEvent) => {
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
-        if (frame !== NO_FRAME) cancelAnimationFrame(frame);
-        frame = NO_FRAME;
-        last = null;
         if (active) {
           const target = dropTargetAt(e.clientX, e.clientY);
-          if (target !== null) moveDoc(docId, target);
+          if (target !== null) api.moveDoc(docId, target);
         }
         setDragDocId(null);
         setDropTarget(null);
@@ -166,18 +140,14 @@ function useDocDrag(
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     },
-    [moveDoc, setDropTarget],
+    [api, setDropTarget],
   );
 
   return { dragDocId, startDrag };
 }
 
-// Импорт валится по-разному и многословно: PDF на 20 МБ, битый PDF из
-// `catch_unwind`, файл, который не прочитать. Имя файла — в заголовок, весь
-// текст отказа — в тело уведомления.
-function notifyImportFailure(name: string, e: unknown): void {
-  const title = format(getDict().launcher.contexts.importFailedTitle, { name });
-  notifyError(title, e instanceof Error ? e.message : String(e));
+function importErrorText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 async function extractPickedFile(file: File): Promise<string> {
@@ -185,24 +155,21 @@ async function extractPickedFile(file: File): Promise<string> {
   return readContextPdfBytes(arrayBufferToBase64(await file.arrayBuffer()));
 }
 
-// In parallel, like the OS-drop path above: ten picked PDFs used to be ten
-// sequential `read_context_pdf_bytes` round trips. The per-file catch already
-// isolates a failure, so one bad file still costs only itself.
 async function importPickedFiles(
   api: ContextLibraryApi,
   files: FileList,
   folderId: string,
+  setImportError: (e: string | null) => void,
 ): Promise<void> {
-  await Promise.all(
-    Array.from(files).map(async (file) => {
-      try {
-        const text = await extractPickedFile(file);
-        api.addDoc({ name: docNameFromFileName(file.name), text, folderId });
-      } catch (e: unknown) {
-        notifyImportFailure(docNameFromFileName(file.name), e);
-      }
-    }),
-  );
+  setImportError(null);
+  for (const file of Array.from(files)) {
+    try {
+      const text = await extractPickedFile(file);
+      api.addDoc({ name: docNameFromFileName(file.name), text, folderId });
+    } catch (e: unknown) {
+      setImportError(importErrorText(e));
+    }
+  }
 }
 
 function RowIconBadge({ children }: { children: ReactNode }) {
@@ -219,17 +186,19 @@ function RowActions({
   editTitle,
   removeTitle,
 }: {
-  onEdit: () => void;
+  onEdit?: () => void;
   onRemove: () => void;
-  editTitle: string;
+  editTitle?: string;
   removeTitle: string;
 }) {
   return (
     <div className="pointer-events-none flex shrink-0 items-center gap-1 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
-      <IconButton title={editTitle} className="size-6" onClick={onEdit}>
-        <Pencil className="size-3.5" />
-      </IconButton>
-      <IconButton title={removeTitle} className="size-6 hover:text-danger" onClick={onRemove}>
+      {onEdit && (
+        <IconButton title={editTitle ?? ""} className="size-6" onClick={onEdit}>
+          <Pencil className="size-3.5" />
+        </IconButton>
+      )}
+      <IconButton title={removeTitle} className="size-6 hover:text-destructive" onClick={onRemove}>
         <Trash2 className="size-3.5" />
       </IconButton>
     </div>
@@ -249,8 +218,6 @@ function DocRow({
   onEdit: () => void;
   onRemove: () => void;
 }) {
-  const dict = useDict();
-  const copy = dict.launcher.contexts;
   const onMouseDown = (e: ReactMouseEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     if (e.target instanceof Element && e.target.closest("button")) return;
@@ -260,25 +227,25 @@ function DocRow({
   return (
     <div
       onMouseDown={onMouseDown}
-      title={copy.dragDocTitle}
+      title="Перетащи, чтобы переложить в папку"
       className={cn(
         "group flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-surface active:bg-surface-active",
         dragging && "opacity-40",
       )}
     >
-      <GripVertical className="size-3.5 shrink-0 text-fg-subtle/35 transition-colors group-hover:text-fg-subtle" />
+      <GripVertical className="size-3.5 shrink-0 text-muted-foreground/35 transition-colors group-hover:text-muted-foreground" />
       <RowIconBadge>
-        <FileText className="size-3.5 text-fg-subtle" />
+        <FileText className="size-3.5 text-muted-foreground" />
       </RowIconBadge>
       <span className="min-w-0 flex-1 truncate text-body">{doc.name}</span>
-      <span className="shrink-0 text-hint text-fg-subtle">
-        {formatChars(doc.text.length, dict)}
+      <span className="shrink-0 text-hint text-muted-foreground">
+        {formatChars(doc.text.length)}
       </span>
       <RowActions
         onEdit={onEdit}
-        editTitle={copy.editDoc}
+        editTitle="Редактировать"
         onRemove={onRemove}
-        removeTitle={copy.removeDoc}
+        removeTitle="Удалить материал"
       />
     </div>
   );
@@ -295,13 +262,12 @@ function FolderHeader({
   onRename: (name: string) => void;
   onRemove: () => void;
 }) {
-  const copy = useDict().launcher.contexts;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   return (
     <div className="group flex items-center gap-2 px-1.5 py-1">
       <RowIconBadge>
-        <Folder className="size-3.5 text-fg-subtle" />
+        <Folder className="size-3.5 text-muted-foreground" />
       </RowIconBadge>
       {editing ? (
         <Input
@@ -326,7 +292,7 @@ function FolderHeader({
       ) : (
         <>
           <span className="min-w-0 truncate text-body font-medium">{name}</span>
-          <span className="shrink-0 rounded-full bg-surface px-1.5 py-px text-hint text-fg-subtle">
+          <span className="shrink-0 rounded-full bg-surface px-1.5 py-px text-hint text-muted-foreground">
             {docCount}
           </span>
           <span className="flex-1" />
@@ -338,58 +304,51 @@ function FolderHeader({
             setDraft(name);
             setEditing(true);
           }}
-          editTitle={copy.renameFolder}
+          editTitle="Переименовать папку"
           onRemove={onRemove}
-          removeTitle={copy.removeFolder}
+          removeTitle="Удалить папку (материалы переедут в корень)"
         />
       )}
     </div>
   );
 }
 
-/**
- * The draft lives here, not in the panel: `text` runs to DOC_TEXT_LIMIT_CHARS,
- * and while it sat one level up every keystroke re-rendered the list beside the
- * editor — the root docs, every folder block and up to a hundred rows. Only the
- * finished value leaves, on Save.
- */
 function DocEditor({
-  initial,
+  draft,
   folders,
+  onChange,
   onSave,
   onCancel,
 }: {
-  initial: DocDraft;
+  draft: DocDraft;
   folders: { id: string; name: string }[];
-  onSave: (draft: DocDraft) => void;
+  onChange: (d: DocDraft) => void;
+  onSave: () => void;
   onCancel: () => void;
 }) {
-  const dict = useDict();
-  const copy = dict.launcher.contexts;
-  const [draft, setDraft] = useState(initial);
   return (
-    <div className={cn("flex flex-col gap-2 p-3", SURFACE_CARD_CLASS)}>
-      <SectionLabel>{draft.id === null ? copy.editorNewTitle : copy.editorTitle}</SectionLabel>
+    <div className="flex flex-col gap-2 rounded-lg bg-card p-3 shadow-raise ring-1 ring-border ring-inset">
+      <SectionLabel>{draft.id === null ? "Новый материал" : "Материал"}</SectionLabel>
       <div className="flex gap-2">
         <Input
           autoFocus
-          placeholder={copy.docNamePlaceholder}
+          placeholder="Название материала"
           value={draft.name}
           onChange={(e) => {
-            setDraft({ ...draft, name: e.target.value });
+            onChange({ ...draft, name: e.target.value });
           }}
         />
         <Select
           value={draft.folderId === ROOT_FOLDER_ID ? ROOT_SELECT_VALUE : draft.folderId}
           onValueChange={(v) => {
-            setDraft({ ...draft, folderId: v === ROOT_SELECT_VALUE ? ROOT_FOLDER_ID : v });
+            onChange({ ...draft, folderId: v === ROOT_SELECT_VALUE ? ROOT_FOLDER_ID : v });
           }}
         >
           <SelectTrigger className="w-[160px] shrink-0">
             <SelectValue />
           </SelectTrigger>
           <SelectContent position="popper">
-            <SelectItem value={ROOT_SELECT_VALUE}>{copy.noFolder}</SelectItem>
+            <SelectItem value={ROOT_SELECT_VALUE}>Без папки</SelectItem>
             {folders.map((f) => (
               <SelectItem key={f.id} value={f.id}>
                 {f.name}
@@ -400,26 +359,21 @@ function DocEditor({
       </div>
       <Textarea
         rows={8}
-        placeholder={copy.docTextPlaceholder}
+        placeholder="Текст материала (markdown или обычный текст)"
         value={draft.text}
         onChange={(e) => {
-          setDraft({ ...draft, text: e.target.value });
+          onChange({ ...draft, text: e.target.value });
         }}
         className="max-h-56 overflow-y-auto"
       />
       <div className="flex items-center justify-between">
-        <span className="text-hint text-fg-subtle">{formatChars(draft.text.length, dict)}</span>
+        <span className="text-hint text-muted-foreground">{formatChars(draft.text.length)}</span>
         <div className="flex gap-2">
           <Button variant="ghost" size="sm" onClick={onCancel}>
-            {dict.common.actions.cancel}
+            Отмена
           </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              onSave(draft);
-            }}
-          >
-            {dict.common.actions.save}
+          <Button size="sm" onClick={onSave}>
+            Сохранить
           </Button>
         </div>
       </div>
@@ -428,148 +382,101 @@ function DocEditor({
 }
 
 function EmptyDropZone({ onPick }: { onPick: () => void }) {
-  const copy = useDict().launcher.contexts;
   return (
     <button
       type="button"
       onClick={onPick}
       {...{ [DROP_FOLDER_ATTR]: ROOT_FOLDER_ID }}
-      className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-7 text-center transition-colors outline-none hover:border-fg/30 hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus focus-visible:outline-solid"
+      className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-7 text-center transition-colors outline-none hover:border-foreground/30 hover:bg-surface focus-visible:ring-2 focus-visible:ring-ring/60"
     >
-      <span className="grid size-9 place-items-center rounded-lg bg-surface ring-1 ring-inset ring-line">
-        <Upload className="size-4 text-fg-subtle" />
+      <span className="grid size-9 place-items-center rounded-lg bg-surface ring-1 ring-border ring-inset">
+        <Upload className="size-4 text-muted-foreground" />
       </span>
-      <span className="text-body text-fg">
-        {format(copy.dropZone, { fileManager: copy.fileManager[PLATFORM] })}
+      <span className="text-body text-foreground">
+        Перетащи .md, .txt или .pdf из {FILE_MANAGER_LABEL[PLATFORM]} — или нажми, чтобы выбрать
+        файлы
       </span>
-      <span className="text-caption text-fg-subtle">{copy.dropZoneHint}</span>
+      <span className="text-caption text-muted-foreground">
+        Материалы можно добавлять и текстом — кнопка «Материал»
+      </span>
     </button>
   );
 }
 
-function librarySummary(docCount: number, folderCount: number, dict: Dictionary): string {
-  const copy = dict.launcher.contexts;
-  if (docCount === 0 && folderCount === 0) return copy.empty;
-  const docs = String(docCount);
-  return folderCount > 0
-    ? format(copy.summaryDocsAndFolders, { docs, folders: String(folderCount) })
-    : format(copy.summaryDocs, { docs });
+function librarySummary(docCount: number, folderCount: number): string {
+  if (docCount === 0 && folderCount === 0) return "Библиотека пуста";
+  const docs = `матер.: ${String(docCount)}`;
+  return folderCount > 0 ? `${docs} · папок: ${String(folderCount)}` : docs;
 }
 
 export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
-  const dict = useDict();
-  const copy = dict.launcher.contexts;
   const { library } = api;
-  // The seed the editor opens with, and its identity — reopening on another doc
-  // while the editor is up has to remount it, which is what the key is for.
-  const [editing, setEditing] = useState<{ key: number; seed: DocDraft } | null>(null);
+  const [docDraft, setDocDraft] = useState<DocDraft | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const editorKey = useRef(0);
 
-  useNativeFileDrop(api.addDoc, setDropTarget);
-  const { dragDocId, startDrag } = useDocDrag(api.moveDoc, setDropTarget);
+  useNativeFileDrop(api, setDropTarget, setImportError);
+  const { dragDocId, startDrag } = useDocDrag(api, setDropTarget);
 
-  const openEditor = (seed: DocDraft) => {
-    editorKey.current += 1;
-    setEditing({ key: editorKey.current, seed });
-  };
-
-  const closeEditor = () => {
-    setEditing(null);
-  };
-
-  const saveDoc = (draft: DocDraft) => {
-    if (draft.id === null) {
-      api.addDoc({ name: draft.name, text: draft.text, folderId: draft.folderId });
+  const saveDocDraft = () => {
+    if (!docDraft) return;
+    if (docDraft.id === null) {
+      api.addDoc({ name: docDraft.name, text: docDraft.text, folderId: docDraft.folderId });
     } else {
-      api.updateDoc(draft.id, { name: draft.name, text: draft.text });
-      api.moveDoc(draft.id, draft.folderId);
+      api.updateDoc(docDraft.id, { name: docDraft.name, text: docDraft.text });
+      api.moveDoc(docDraft.id, docDraft.folderId);
     }
-    setEditing(null);
+    setDocDraft(null);
   };
 
   const onPickFiles = (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files && files.length > 0) void importPickedFiles(api, files, ROOT_FOLDER_ID);
+    if (files && files.length > 0)
+      void importPickedFiles(api, files, ROOT_FOLDER_ID, setImportError);
     e.target.value = "";
   };
 
-  const docRow = (doc: ContextDoc) => (
-    <DocRow
-      key={doc.id}
-      doc={doc}
-      dragging={dragDocId === doc.id}
-      onDragStart={(x, y) => {
-        startDrag(doc.id, x, y);
-      }}
-      onEdit={() => {
-        openEditor({ id: doc.id, name: doc.name, text: doc.text, folderId: doc.folderId });
-      }}
-      onRemove={() => {
-        api.removeDoc(doc.id);
-      }}
-    />
-  );
-
   const empty = library.docs.length === 0 && library.folders.length === 0;
-  const full = libraryIsFull(library);
-  // One pass over the documents instead of one pass PER FOLDER: the blocks used
-  // to cost O(folders × docs) on every render of the panel.
-  const docsByFolder = useMemo(() => {
-    const grouped = new Map<string, ContextDoc[]>();
-    for (const doc of library.docs) {
-      const bucket = grouped.get(doc.folderId);
-      if (bucket === undefined) grouped.set(doc.folderId, [doc]);
-      else bucket.push(doc);
-    }
-    return grouped;
-  }, [library.docs]);
-  const roots = docsByFolder.get(ROOT_FOLDER_ID) ?? NO_DOCS;
+  const roots = rootDocs(library);
   const folderBlocks = library.folders.map((f) => ({
     folder: f,
-    docs: docsByFolder.get(f.id) ?? NO_DOCS,
+    docs: docsInFolder(library, f.id),
   }));
 
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-caption text-fg-subtle">
-          {full
-            ? docLimitNotice(dict)
-            : librarySummary(library.docs.length, library.folders.length, dict)}
+        <span className="text-caption text-muted-foreground">
+          {librarySummary(library.docs.length, library.folders.length)}
         </span>
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="compact"
-            disabled={full}
             onClick={() => {
-              openEditor({ id: null, name: "", text: "", folderId: ROOT_FOLDER_ID });
+              setDocDraft({ id: null, name: "", text: "", folderId: ROOT_FOLDER_ID });
             }}
           >
-            <Plus /> {copy.addDoc}
+            <Plus /> Материал
           </Button>
           <Button
             variant="ghost"
             size="compact"
             onClick={() => {
-              api.addFolder(
-                format(copy.newFolderName, { number: String(library.folders.length + 1) }),
-              );
+              api.addFolder(`Папка ${String(library.folders.length + 1)}`);
             }}
           >
-            <FolderPlus /> {copy.addFolder}
+            <FolderPlus /> Папка
           </Button>
           <Button
             variant="ghost"
             size="compact"
-            disabled={full}
             onClick={() => {
               fileInputRef.current?.click();
             }}
           >
-            <Upload /> {copy.import}
+            <Upload /> Импорт
           </Button>
         </div>
         <input
@@ -582,17 +489,21 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
         />
       </div>
 
-      {editing && (
+      {importError !== null && <p className="text-caption text-destructive">{importError}</p>}
+
+      {docDraft && (
         <DocEditor
-          key={editing.key}
-          initial={editing.seed}
+          draft={docDraft}
           folders={library.folders}
-          onSave={saveDoc}
-          onCancel={closeEditor}
+          onChange={setDocDraft}
+          onSave={saveDocDraft}
+          onCancel={() => {
+            setDocDraft(null);
+          }}
         />
       )}
 
-      {empty && !editing ? (
+      {empty && !docDraft ? (
         <EmptyDropZone
           onPick={() => {
             fileInputRef.current?.click();
@@ -604,16 +515,38 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
             {...{ [DROP_FOLDER_ATTR]: ROOT_FOLDER_ID }}
             className={cn(
               "flex flex-col gap-0.5 rounded-lg p-1 transition-colors",
-              dropTarget === ROOT_FOLDER_ID && "bg-accent/10 ring-1 ring-accent/40",
+              dropTarget === ROOT_FOLDER_ID && "bg-primary/5 ring-1 ring-primary/40",
             )}
           >
             {library.folders.length > 0 && (
-              <SectionLabel className="px-1.5 pt-0.5 pb-1">{copy.noFolder}</SectionLabel>
+              <SectionLabel className="px-1.5 pt-0.5 pb-1">Без папки</SectionLabel>
             )}
             {roots.length === 0 && (
-              <p className="px-1.5 pb-1 text-caption text-fg-subtle">{copy.dropRootHint}</p>
+              <p className="px-1.5 pb-1 text-caption text-muted-foreground">
+                Перетащи файлы сюда, чтобы добавить без папки
+              </p>
             )}
-            {roots.map(docRow)}
+            {roots.map((doc) => (
+              <DocRow
+                key={doc.id}
+                doc={doc}
+                dragging={dragDocId === doc.id}
+                onDragStart={(x, y) => {
+                  startDrag(doc.id, x, y);
+                }}
+                onEdit={() => {
+                  setDocDraft({
+                    id: doc.id,
+                    name: doc.name,
+                    text: doc.text,
+                    folderId: doc.folderId,
+                  });
+                }}
+                onRemove={() => {
+                  api.removeDoc(doc.id);
+                }}
+              />
+            ))}
           </div>
 
           {folderBlocks.map(({ folder, docs }) => (
@@ -621,9 +554,8 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
               key={folder.id}
               {...{ [DROP_FOLDER_ATTR]: folder.id }}
               className={cn(
-                "flex flex-col gap-0.5 p-1.5 transition-colors",
-                SURFACE_CARD_CLASS,
-                dropTarget === folder.id && "bg-accent/10 ring-accent/40",
+                "flex flex-col gap-0.5 rounded-lg bg-card p-1.5 shadow-raise ring-1 ring-border transition-colors ring-inset",
+                dropTarget === folder.id && "bg-primary/5 ring-primary/40",
               )}
             >
               <FolderHeader
@@ -638,9 +570,31 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
               />
               <div className="ml-4 flex flex-col gap-0.5 border-l pl-2">
                 {docs.length === 0 && (
-                  <p className="px-1.5 py-1 text-caption text-fg-subtle">{copy.dropFolderHint}</p>
+                  <p className="px-1.5 py-1 text-caption text-muted-foreground">
+                    Пусто — перетащи файлы сюда
+                  </p>
                 )}
-                {docs.map(docRow)}
+                {docs.map((doc) => (
+                  <DocRow
+                    key={doc.id}
+                    doc={doc}
+                    dragging={dragDocId === doc.id}
+                    onDragStart={(x, y) => {
+                      startDrag(doc.id, x, y);
+                    }}
+                    onEdit={() => {
+                      setDocDraft({
+                        id: doc.id,
+                        name: doc.name,
+                        text: doc.text,
+                        folderId: doc.folderId,
+                      });
+                    }}
+                    onRemove={() => {
+                      api.removeDoc(doc.id);
+                    }}
+                  />
+                ))}
               </div>
             </div>
           ))}
