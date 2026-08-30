@@ -22,7 +22,7 @@ export interface StatusBarProps {
   contextUsage: ContextUsage | null;
   update: { version: string; busy: boolean; onOpen: () => void } | null;
   onStop: () => void;
-  onHide: () => void;
+  onCollapse: () => void;
 }
 
 const CONTEXT_USAGE_WARN_PERCENT = 80;
@@ -66,7 +66,7 @@ export function StatusBar({
   contextUsage,
   update,
   onStop,
-  onHide,
+  onCollapse,
 }: StatusBarProps) {
   const showError = error !== null && state === "idle";
   const onDragMouseDown = useWindowDrag();
@@ -74,9 +74,9 @@ export function StatusBar({
   return (
     <header className="flex min-h-7 items-center gap-2" onMouseDown={onDragMouseDown}>
       <IconButton
-        title={`Скрыть окно — вернуть: ${formatCombo(toggleHotkey)}`}
-        aria-label="Скрыть окно"
-        onClick={onHide}
+        title={`Свернуть в мини-режим — вернуть: ${formatCombo(toggleHotkey)}`}
+        aria-label="Свернуть в мини-режим"
+        onClick={onCollapse}
       >
         <Minus />
       </IconButton>

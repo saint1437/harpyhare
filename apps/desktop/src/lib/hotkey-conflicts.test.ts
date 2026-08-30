@@ -39,6 +39,12 @@ describe("hotkeysConflict — зеркало правил из Rust", () => {
     expect(hotkeysConflict("cancel_recording", "Escape", "toggle_window", "Escape")).toBe(true);
   });
 
+  it("отмена ответа делит Esc с записью и суфлёром, но не с постоянными областями", () => {
+    expect(hotkeysConflict("cancel_stream", "Escape", "cancel_recording", "Escape")).toBe(false);
+    expect(hotkeysConflict("cancel_stream", "Escape", "teleprompter_close", "Escape")).toBe(false);
+    expect(hotkeysConflict("cancel_stream", "Escape", "toggle_window", "Escape")).toBe(true);
+  });
+
   it("пустое сочетание значит «не назначено» и ни с чем не спорит", () => {
     expect(hotkeysConflict("record", "", "send", "")).toBe(false);
     expect(hotkeysConflict("record", "", "send", "Cmd+Enter")).toBe(false);
@@ -47,15 +53,15 @@ describe("hotkeysConflict — зеркало правил из Rust", () => {
 
 describe("assignHotkey", () => {
   it("совпадающее с дефолтом не хранится в биндингах", () => {
-    const { bindings } = assignHotkey(NO_BINDINGS, "record", "F9");
+    const { bindings } = assignHotkey(NO_BINDINGS, "record", "Cmd+R");
     expect(bindings).toEqual([]);
-    expect(effectiveCombo(bindings, "record")).toBe("F9");
+    expect(effectiveCombo(bindings, "record")).toBe("Cmd+R");
   });
 
   it("отбирает сочетание у прежнего владельца и называет его", () => {
-    const { bindings, stolenFrom } = assignHotkey(NO_BINDINGS, "send", "F10");
+    const { bindings, stolenFrom } = assignHotkey(NO_BINDINGS, "send", "Cmd+T");
     expect(stolenFrom).toEqual(["teleprompter"]);
-    expect(effectiveCombo(bindings, "send")).toBe("F10");
+    expect(effectiveCombo(bindings, "send")).toBe("Cmd+T");
     expect(effectiveCombo(bindings, "teleprompter")).toBe("");
   });
 
@@ -86,15 +92,15 @@ describe("resetHotkey", () => {
     const changed = assignHotkey(NO_BINDINGS, "record", "Cmd+Shift+J").bindings;
     const { bindings } = resetHotkey(changed, "record");
     expect(bindings).toEqual([]);
-    expect(effectiveCombo(bindings, "record")).toBe("F9");
+    expect(effectiveCombo(bindings, "record")).toBe("Cmd+R");
   });
 
   it("возврат дефолта отбирает его у того, кто успел занять", () => {
-    const stolen = assignHotkey(NO_BINDINGS, "send", "F9").bindings;
+    const stolen = assignHotkey(NO_BINDINGS, "send", "Cmd+R").bindings;
     expect(effectiveCombo(stolen, "record")).toBe("");
     const { bindings, stolenFrom } = resetHotkey(stolen, "record");
     expect(stolenFrom).toEqual(["send"]);
-    expect(effectiveCombo(bindings, "record")).toBe("F9");
+    expect(effectiveCombo(bindings, "record")).toBe("Cmd+R");
     expect(effectiveCombo(bindings, "send")).toBe("");
   });
 });

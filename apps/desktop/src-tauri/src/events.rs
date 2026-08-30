@@ -13,6 +13,7 @@ const EVENT_LLM_DONE: &str = "llm-done";
 const EVENT_LLM_ERROR: &str = "llm-error";
 const EVENT_LLM_USAGE: &str = "llm-usage";
 const EVENT_TOGGLE_TELEPROMPTER: &str = "toggle-teleprompter";
+const EVENT_TOGGLE_MINI: &str = "toggle-mini";
 const EVENT_RESIZE_KEY: &str = "resize-key";
 const EVENT_UPDATE_AVAILABLE: &str = "update-available";
 const EVENT_UPDATE_PROGRESS: &str = "update-progress";
@@ -142,6 +143,10 @@ pub fn screenshot_error(app: &AppHandle, error: AppError) {
 
 pub fn toggle_teleprompter(app: &AppHandle) {
     let _ = app.emit(EVENT_TOGGLE_TELEPROMPTER, ());
+}
+
+pub fn toggle_mini(app: &AppHandle) {
+    let _ = app.emit(EVENT_TOGGLE_MINI, ());
 }
 
 pub fn focus_prompt(app: &AppHandle) {

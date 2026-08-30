@@ -1,4 +1,4 @@
-import { Check, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, Copy, CopyPlus, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { IconButton } from "@/components/IconButton";
 import { Button } from "@/components/ui/button";
@@ -6,10 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
 import type { PromptPreset } from "@/lib/presets";
+import { cn } from "@/lib/utils";
 import { SettingGroup } from "../fields";
 
 const PRESET_TEXT_ROWS = 6;
 const UNNAMED_PRESET_LABEL = "Без имени";
+const PRESET_COPY_SUFFIX = " (копия)";
+const REVEAL_ON_HOVER_CLASS =
+  "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100";
 
 export type PresetsUpdate = (presets: PromptPreset[]) => PromptPreset[];
 
@@ -35,7 +39,7 @@ function PresetRow({
           {preset.text.trim() === "" ? "" : ` · ${preset.text.trim()}`}
         </span>
       </div>
-      <div className="pointer-events-none flex shrink-0 items-center gap-1 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
+      <div className={cn("flex shrink-0 items-center gap-1", REVEAL_ON_HOVER_CLASS)}>
         <IconButton title="Изменить пресет" onClick={onEdit}>
           <Pencil />
         </IconButton>
@@ -43,6 +47,55 @@ function PresetRow({
           <Trash2 />
         </IconButton>
       </div>
+    </div>
+  );
+}
+
+function OfficialPresetRow({
+  preset,
+  expanded,
+  onToggle,
+  onCopyToOwn,
+}: {
+  preset: PromptPreset;
+  expanded: boolean;
+  onToggle: () => void;
+  onCopyToOwn: () => void;
+}) {
+  return (
+    <div className="group flex flex-col gap-1.5 px-3 py-2 transition-colors hover:bg-surface/50">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+        <button
+          type="button"
+          aria-expanded={expanded}
+          title={expanded ? "Свернуть текст" : "Показать полный текст"}
+          onClick={onToggle}
+          className="flex min-w-0 flex-col gap-0.5 text-left"
+        >
+          <span className="truncate text-body">{preset.name}</span>
+          {!expanded && (
+            <span className="line-clamp-1 text-caption text-muted-foreground">{preset.text}</span>
+          )}
+        </button>
+        <div className={cn("flex shrink-0 items-center gap-1", !expanded && REVEAL_ON_HOVER_CLASS)}>
+          <IconButton
+            title="Копировать текст"
+            onClick={() => {
+              void navigator.clipboard.writeText(preset.text);
+            }}
+          >
+            <Copy />
+          </IconButton>
+          <IconButton title="Скопировать в свои" onClick={onCopyToOwn}>
+            <CopyPlus />
+          </IconButton>
+        </div>
+      </div>
+      {expanded && (
+        <div className="max-h-64 overflow-y-auto text-caption whitespace-pre-wrap text-muted-foreground">
+          {preset.text}
+        </div>
+      )}
     </div>
   );
 }
@@ -96,6 +149,7 @@ export function PresetsSection({
 }) {
   const official = useOfficialPresets();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [expandedOfficialId, setExpandedOfficialId] = useState<string | null>(null);
 
   const updateAt = (index: number, patch: Partial<PromptPreset>) => {
     onChange((ps) => ps.map((p, i) => (i === index ? { ...p, ...patch } : p)));
@@ -106,6 +160,14 @@ export function PresetsSection({
   const add = () => {
     const id = crypto.randomUUID();
     onChange((ps) => [...ps, { id, name: "", text: "" }]);
+    setEditingId(id);
+  };
+  const copyToOwn = (preset: PromptPreset) => {
+    const id = crypto.randomUUID();
+    onChange((ps) => [
+      ...ps,
+      { id, name: `${preset.name}${PRESET_COPY_SUFFIX}`, text: preset.text },
+    ]);
     setEditingId(id);
   };
 
@@ -165,13 +227,20 @@ export function PresetsSection({
 
       <SettingGroup
         title="Встроенные"
-        description="Приходят вместе с приложением и обновляются сами — их видно в том же списке в чате."
+        description="Приходят вместе с приложением и обновляются сами — их видно в том же списке в чате. Изменить встроенный нельзя: скопируйте его в свои пресеты и правьте копию."
       >
         {official.map((preset) => (
-          <div key={preset.id} className="flex min-w-0 flex-col gap-0.5 px-3 py-2">
-            <span className="truncate text-body">{preset.name}</span>
-            <span className="line-clamp-1 text-caption text-muted-foreground">{preset.text}</span>
-          </div>
+          <OfficialPresetRow
+            key={preset.id}
+            preset={preset}
+            expanded={expandedOfficialId === preset.id}
+            onToggle={() => {
+              setExpandedOfficialId((current) => (current === preset.id ? null : preset.id));
+            }}
+            onCopyToOwn={() => {
+              copyToOwn(preset);
+            }}
+          />
         ))}
       </SettingGroup>
     </>

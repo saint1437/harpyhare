@@ -33,10 +33,14 @@ function fallsIntoFamily(combo: string, family: HotkeyAction["kind"]): boolean {
   return false;
 }
 
+const TRANSIENT_SCOPES: readonly HotkeyAction["scope"][] = [
+  "recording",
+  "teleprompter",
+  "streaming",
+];
+
 function scopesCoexist(a: HotkeyAction["scope"], b: HotkeyAction["scope"]): boolean {
-  const transientPair =
-    (a === "recording" && b === "teleprompter") || (a === "teleprompter" && b === "recording");
-  return !transientPair;
+  return !(TRANSIENT_SCOPES.includes(a) && TRANSIENT_SCOPES.includes(b) && a !== b);
 }
 
 function keySpacesOverlap(

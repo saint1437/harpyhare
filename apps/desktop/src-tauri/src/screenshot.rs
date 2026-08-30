@@ -45,18 +45,25 @@ pub fn on_capture_region(app: &AppHandle) {
         return;
     }
     let app = app.clone();
-    let _ = app.clone().run_on_main_thread(move || match backend::capture_region() {
-        Ok(Some(png)) => deliver(&app, png),
-        Ok(None) => {}
-        Err(message) => {
-            eprintln!("{LOG_TAG} {message}");
-            events::screenshot_error(
-                &app,
-                AppError {
-                    code: ErrorCode::Internal,
-                    message,
-                },
-            );
+    let _ = app.clone().run_on_main_thread(move || {
+        let hid_main_window = window::hide_main_window_for_capture(&app);
+        let outcome = backend::capture_region();
+        if hid_main_window && !matches!(outcome, Ok(Some(_))) {
+            window::show_and_focus_prompt(&app);
+        }
+        match outcome {
+            Ok(Some(png)) => deliver(&app, png),
+            Ok(None) => {}
+            Err(message) => {
+                eprintln!("{LOG_TAG} {message}");
+                events::screenshot_error(
+                    &app,
+                    AppError {
+                        code: ErrorCode::Internal,
+                        message,
+                    },
+                );
+            }
         }
     });
 }

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 pub const ACTION_RECORD: &str = "record";
 pub const ACTION_CANCEL_RECORDING: &str = "cancel_recording";
 pub const ACTION_SEND: &str = "send";
+pub const ACTION_CANCEL_STREAM: &str = "cancel_stream";
 pub const ACTION_SCREENSHOT: &str = "screenshot";
 pub const ACTION_QUICK_ACTION: &str = "quick_action";
 pub const ACTION_FOCUS_PROMPT: &str = "focus_prompt";
@@ -140,6 +141,7 @@ pub enum HotkeyScope {
     Recording,
     Hud,
     Teleprompter,
+    Streaming,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, specta::Type)]
@@ -162,7 +164,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Удерживайте, пока говорит собеседник.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
-        default_combo: PlatformCombo::shared("F9"),
+        default_combo: primary_combo!("R"),
     },
     HotkeyAction {
         id: ACTION_CANCEL_RECORDING,
@@ -181,6 +183,15 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Hud,
         default_combo: primary_combo!("Enter"),
+    },
+    HotkeyAction {
+        id: ACTION_CANCEL_STREAM,
+        group: "Отправка",
+        label: "Остановить ответ",
+        hint: "Слушается, только пока пишется ответ.",
+        kind: HotkeyKind::Combo,
+        scope: HotkeyScope::Streaming,
+        default_combo: PlatformCombo::shared("Escape"),
     },
     HotkeyAction {
         id: ACTION_SCREENSHOT,
@@ -212,8 +223,8 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
     HotkeyAction {
         id: ACTION_TOGGLE_WINDOW,
         group: "Окно",
-        label: "Скрыть или показать",
-        hint: "Работает, даже когда окно спрятано.",
+        label: "Свернуть или развернуть",
+        hint: "Сжимает окно в компактный статус и обратно, работает из любого приложения.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
         default_combo: primary_combo!(shift_token!(), "H"),
@@ -222,18 +233,18 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         id: ACTION_MOVE_WINDOW,
         group: "Окно",
         label: "Передвинуть",
-        hint: "Модификатор со стрелками.",
+        hint: "Модификатор со стрелками, работает из любого приложения.",
         kind: HotkeyKind::ModifierArrows,
-        scope: HotkeyScope::Hud,
+        scope: HotkeyScope::Global,
         default_combo: primary_combo!(),
     },
     HotkeyAction {
         id: ACTION_RESIZE_WINDOW,
         group: "Окно",
         label: "Изменить размер",
-        hint: "Модификатор со стрелками.",
+        hint: "Модификатор со стрелками, работает из любого приложения.",
         kind: HotkeyKind::ModifierArrows,
-        scope: HotkeyScope::Hud,
+        scope: HotkeyScope::Global,
         default_combo: primary_combo!(shift_token!()),
     },
     HotkeyAction {
@@ -270,7 +281,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Крупный текст ответа поверх экрана.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
-        default_combo: PlatformCombo::shared("F10"),
+        default_combo: primary_combo!("T"),
     },
     HotkeyAction {
         id: ACTION_TELEPROMPTER_CLOSE,
@@ -367,12 +378,15 @@ fn is_digit(key: &str) -> bool {
         .is_ok_and(|digit| (FIRST_DIGIT_KEY..=crate::settings::QUICK_ACTION_LIMIT).contains(&digit))
 }
 
-fn scopes_coexist(a: HotkeyScope, b: HotkeyScope) -> bool {
-    !matches!(
-        (a, b),
-        (HotkeyScope::Recording, HotkeyScope::Teleprompter)
-            | (HotkeyScope::Teleprompter, HotkeyScope::Recording)
+fn transient_scope(scope: HotkeyScope) -> bool {
+    matches!(
+        scope,
+        HotkeyScope::Recording | HotkeyScope::Teleprompter | HotkeyScope::Streaming
     )
+}
+
+fn scopes_coexist(a: HotkeyScope, b: HotkeyScope) -> bool {
+    !(transient_scope(a) && transient_scope(b) && a != b)
 }
 
 fn key_spaces_overlap(a: &HotkeyAction, combo_a: &str, b: &HotkeyAction, combo_b: &str) -> bool {

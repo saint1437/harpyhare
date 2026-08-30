@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { SectionLabel } from "@/components/SectionLabel";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -109,6 +109,111 @@ export function SettingSwitch({
   return <Switch checked={checked} aria-label={ariaLabel} onCheckedChange={onCheckedChange} />;
 }
 
+const READOUT_DISPLAY_PRECISION = 3;
+
+function stepDecimals(step: number): number {
+  const text = String(step);
+  const dot = text.indexOf(".");
+  return dot === -1 ? 0 : text.length - dot - 1;
+}
+
+function roundToStepPrecision(value: number, step: number): number {
+  return Number(value.toFixed(stepDecimals(step)));
+}
+
+function clampToRange(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function readoutDisplayText(value: number, displayScale: number): string {
+  return String(Number((value * displayScale).toFixed(READOUT_DISPLAY_PRECISION)));
+}
+
+function parseTypedNumber(text: string): number | null {
+  const normalized = text.trim().replace(",", ".");
+  if (normalized === "") return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function SliderReadout({
+  value,
+  min,
+  max,
+  step,
+  displayScale,
+  ariaLabel,
+  readout,
+  disabled,
+  onCommit,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  displayScale: number;
+  ariaLabel: string;
+  readout: string;
+  disabled?: boolean;
+  onCommit: (value: number) => void;
+}) {
+  const [text, setText] = useState<string | null>(null);
+  const cancelledRef = useRef(false);
+  const focusField = useCallback((field: HTMLInputElement | null) => {
+    field?.focus();
+    field?.select();
+  }, []);
+
+  if (text === null) {
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        title="Ввести число с клавиатуры"
+        aria-label={`${ariaLabel}: ввести число с клавиатуры`}
+        className={cn(
+          "w-12 shrink-0 text-right font-mono text-caption text-muted-foreground tabular-nums",
+          disabled ? "opacity-50" : "hover:text-foreground",
+        )}
+        onClick={() => {
+          setText(readoutDisplayText(value, displayScale));
+        }}
+      >
+        {readout}
+      </button>
+    );
+  }
+
+  return (
+    <input
+      ref={focusField}
+      value={text}
+      inputMode="decimal"
+      aria-label={ariaLabel}
+      className="w-12 shrink-0 rounded-sm text-right font-mono text-caption text-foreground tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      onChange={(e) => {
+        setText(e.currentTarget.value);
+      }}
+      onBlur={() => {
+        const cancelled = cancelledRef.current;
+        cancelledRef.current = false;
+        const typed = text;
+        setText(null);
+        if (cancelled) return;
+        const parsed = parseTypedNumber(typed);
+        if (parsed === null) return;
+        onCommit(clampToRange(roundToStepPrecision(parsed / displayScale, step), min, max));
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === "Escape") {
+          cancelledRef.current = e.key === "Escape";
+          e.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
 export function SettingSlider({
   value,
   min,
@@ -117,6 +222,7 @@ export function SettingSlider({
   ariaLabel,
   readout,
   disabled,
+  displayScale = 1,
   onChange,
 }: {
   value: number;
@@ -126,6 +232,7 @@ export function SettingSlider({
   ariaLabel: string;
   readout: string;
   disabled?: boolean;
+  displayScale?: number;
   onChange: (value: number) => void;
 }) {
   return (
@@ -143,14 +250,17 @@ export function SettingSlider({
           onChange(next);
         }}
       />
-      <span
-        className={cn(
-          "w-12 shrink-0 text-right font-mono text-caption text-muted-foreground tabular-nums",
-          disabled && "opacity-50",
-        )}
-      >
-        {readout}
-      </span>
+      <SliderReadout
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        displayScale={displayScale}
+        ariaLabel={ariaLabel}
+        readout={readout}
+        disabled={disabled}
+        onCommit={onChange}
+      />
     </div>
   );
 }

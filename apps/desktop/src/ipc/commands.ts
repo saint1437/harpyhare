@@ -9,10 +9,11 @@ const IDEMPOTENCY_STORAGE_PREFIX = "redeem-idem:";
 export const {
   cancelStream,
   captureRegionScreenshot,
+  collapseMainWindow,
   copyImageToClipboard,
+  expandMainWindow,
   getAppVersion,
   getOfficialPresets,
-  hideMainWindow,
   installUpdate,
   launchMainWindow,
   listAudioOutputDevices,

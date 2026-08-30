@@ -91,6 +91,7 @@ export interface EventMap {
   "update-progress": UpdateProgress;
   "update-done": { version: string };
   "toggle-teleprompter": null;
+  "toggle-mini": null;
   "resize-key": { dim: "width" | "height"; dir: 1 | -1 };
   "official-presets-updated": PromptPreset[];
   "screenshot-ready": { mediaType: string; dataBase64: string };

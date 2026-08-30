@@ -48,6 +48,7 @@ export function AppearanceSection({ draft, set }: SectionProps) {
           min={SETTINGS_LIMITS.windowOpacity.min}
           max={SETTINGS_LIMITS.windowOpacity.max}
           step={WINDOW_OPACITY_STEP}
+          displayScale={PERCENT_SCALE}
           readout={formatPercent(draft.window_opacity)}
           onChange={(v) => {
             set("window_opacity", v);

@@ -3,11 +3,7 @@ import { matchesPrepared, prepareCombo } from "@/lib/hotkey-match";
 
 const KEYDOWN_EVENT = "keydown";
 
-export function useDuplicateChatKey(
-  combo: string,
-  enabled: boolean,
-  onDuplicate: () => void,
-): void {
+export function useComboKey(combo: string, enabled: boolean, onTrigger: () => void): void {
   const prepared = useMemo(() => prepareCombo(combo), [combo]);
 
   useEffect(() => {
@@ -16,11 +12,11 @@ export function useDuplicateChatKey(
       if (e.repeat) return;
       if (!matchesPrepared(e, prepared)) return;
       e.preventDefault();
-      onDuplicate();
+      onTrigger();
     };
     document.addEventListener(KEYDOWN_EVENT, onKey);
     return () => {
       document.removeEventListener(KEYDOWN_EVENT, onKey);
     };
-  }, [enabled, prepared, onDuplicate]);
+  }, [enabled, prepared, onTrigger]);
 }

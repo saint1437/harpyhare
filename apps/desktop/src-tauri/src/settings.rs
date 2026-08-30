@@ -96,7 +96,7 @@ pub mod limits {
 
     pub mod capture {
         use super::Bounds;
-        pub const BUFFER_SECONDS: Bounds<u32> = Bounds { default: 4, min: 4, max: 10 };
+        pub const BUFFER_SECONDS: Bounds<u32> = Bounds { default: 4, min: 1, max: 10 };
     }
 }
 

@@ -20,6 +20,11 @@ const RESIZE_TWEEN_STEPS: u32 = 14;
 const RESIZE_TWEEN_FRAME_INTERVAL: Duration = Duration::from_millis(13);
 const RESIZE_EPSILON_LOGICAL_PX: f64 = 1.0;
 
+const MINI_WINDOW_WIDTH_LOGICAL_PX: f64 = 168.0;
+const MINI_WINDOW_HEIGHT_LOGICAL_PX: f64 = 48.0;
+const MINI_MIN_SIZE_RESTORE_DELAY: Duration =
+    RESIZE_TWEEN_FRAME_INTERVAL.saturating_mul(RESIZE_TWEEN_STEPS * 2);
+
 pub fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(MAIN_WINDOW_LABEL)
 }
@@ -93,6 +98,7 @@ fn create_main_window(app: &AppHandle, settings: &settings::Settings) -> Result<
     .center()
     .build()
     .map_err(|e| e.to_string())?;
+    app.state::<App>().window_mini.store(false, Ordering::SeqCst);
     platform::clip_native_window_corners(app);
     Ok(())
 }
@@ -106,6 +112,8 @@ const GLOBAL_HOTKEYS: &[(&str, GlobalRegistrar, GlobalUnregistrar)] = &[
     (hotkeys::ACTION_TELEPROMPTER, hotkey::register_teleprompter, hotkey::unregister_teleprompter),
     (hotkeys::ACTION_SCREENSHOT, hotkey::register_screenshot, hotkey::unregister_screenshot),
     (hotkeys::ACTION_FOCUS_PROMPT, hotkey::register_focus_prompt, hotkey::unregister_focus_prompt),
+    (hotkeys::ACTION_MOVE_WINDOW, hotkey::register_arrow_family, hotkey::unregister_arrow_family),
+    (hotkeys::ACTION_RESIZE_WINDOW, hotkey::register_arrow_family, hotkey::unregister_arrow_family),
 ];
 
 pub fn register_main_window_hotkeys(app: &AppHandle, s: &settings::Settings) {
@@ -130,6 +138,25 @@ pub fn unregister_main_window_hotkeys_for(app: &AppHandle, s: &settings::Setting
     hotkey::unregister_cancel(app, &hotkeys::effective(&s.hotkeys, hotkeys::ACTION_CANCEL_RECORDING));
 }
 
+pub fn focus_main_window_if_unfocused(app: &AppHandle) {
+    if let Some(w) = main_window(app) {
+        if !w.is_focused().unwrap_or(false) {
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+    }
+}
+
+pub fn hide_main_window_for_capture(app: &AppHandle) -> bool {
+    match main_window(app) {
+        Some(w) if w.is_visible().unwrap_or(false) => {
+            let _ = w.hide();
+            true
+        }
+        _ => false,
+    }
+}
+
 pub fn show_and_focus_prompt(app: &AppHandle) {
     if let Some(w) = main_window(app) {
         let _ = w.show();
@@ -138,13 +165,12 @@ pub fn show_and_focus_prompt(app: &AppHandle) {
     }
 }
 
-pub fn on_toggle_visibility(app: &AppHandle) {
+pub fn on_toggle_mini(app: &AppHandle) {
     if let Some(w) = main_window(app) {
-        if w.is_visible().unwrap_or(true) {
-            let _ = w.hide();
-        } else {
-            show_and_focus_prompt(app);
+        if !w.is_visible().unwrap_or(true) {
+            let _ = w.show();
         }
+        events::toggle_mini(app);
     }
 }
 
@@ -209,10 +235,42 @@ pub fn close_app(app: AppHandle) {
 
 #[tauri::command]
 #[specta::specta]
-pub fn hide_main_window(app: AppHandle) {
-    if let Some(w) = main_window(&app) {
-        let _ = w.hide();
-    }
+pub fn collapse_main_window(app: AppHandle) {
+    let Some(w) = main_window(&app) else {
+        return;
+    };
+    app.state::<App>().window_mini.store(true, Ordering::SeqCst);
+    let _ = w.set_min_size(Some(tauri::LogicalSize::new(
+        MINI_WINDOW_WIDTH_LOGICAL_PX,
+        MINI_WINDOW_HEIGHT_LOGICAL_PX,
+    )));
+    let _ = w.set_resizable(false);
+    set_window_size(app, MINI_WINDOW_WIDTH_LOGICAL_PX, MINI_WINDOW_HEIGHT_LOGICAL_PX);
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn expand_main_window(app: AppHandle, width: f64, height: f64) {
+    let Some(w) = main_window(&app) else {
+        return;
+    };
+    app.state::<App>().window_mini.store(false, Ordering::SeqCst);
+    let _ = w.set_resizable(true);
+    let _ = w.show();
+    let _ = w.set_focus();
+    set_window_size(app.clone(), width, height);
+    std::thread::spawn(move || {
+        std::thread::sleep(MINI_MIN_SIZE_RESTORE_DELAY);
+        if app.state::<App>().window_mini.load(Ordering::SeqCst) {
+            return;
+        }
+        if let Some(w) = main_window(&app) {
+            let _ = w.set_min_size(Some(tauri::LogicalSize::new(
+                settings::limits::window::WIDTH.min,
+                settings::limits::window::HEIGHT.min,
+            )));
+        }
+    });
 }
 
 struct ResizeTween {

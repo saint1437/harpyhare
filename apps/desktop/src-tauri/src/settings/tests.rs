@@ -67,9 +67,9 @@ fn load_missing_buffer_fields_default() {
 
 #[test]
 fn clamp_limits_buffer_seconds() {
-    let mut s = Settings { buffer_seconds: 1, ..Default::default() };
+    let mut s = Settings { buffer_seconds: 0, ..Default::default() };
     s.clamp();
-    assert_eq!(s.buffer_seconds, 4);
+    assert_eq!(s.buffer_seconds, 1);
     s.buffer_seconds = 120;
     s.clamp();
     assert_eq!(s.buffer_seconds, 10);

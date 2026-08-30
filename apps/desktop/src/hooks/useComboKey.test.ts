@@ -2,7 +2,7 @@ import { cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultCombo } from "@/lib/hotkeys";
 import { PLATFORMS, type Platform } from "@/lib/platform";
-import { useDuplicateChatKey } from "./useDuplicateChatKey";
+import { useComboKey } from "./useComboKey";
 
 const KEYDOWN = "keydown";
 const DUPLICATE_CHAT = "duplicate_chat";
@@ -20,11 +20,11 @@ function keydown(init: KeyboardEventInit): KeyboardEvent {
 }
 
 function renderKey(combo: string, enabled = true) {
-  const onDuplicate = vi.fn();
+  const onTrigger = vi.fn();
   renderHook(() => {
-    useDuplicateChatKey(combo, enabled, onDuplicate);
+    useComboKey(combo, enabled, onTrigger);
   });
-  return onDuplicate;
+  return onTrigger;
 }
 
 afterEach(() => {
@@ -32,28 +32,28 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe.each(PLATFORMS)("useDuplicateChatKey (%s)", (platform) => {
+describe.each(PLATFORMS)("useComboKey (%s)", (platform) => {
   const combo = defaultCombo(DUPLICATE_CHAT, platform);
   const modifier = PRIMARY_SHIFT_MODIFIER[platform];
 
   it("дефолтное сочетание дублирует и гасит событие", () => {
-    const onDuplicate = renderKey(combo);
+    const onTrigger = renderKey(combo);
     const event = keydown({ ...modifier, code: "KeyN" });
-    expect(onDuplicate).toHaveBeenCalledTimes(1);
+    expect(onTrigger).toHaveBeenCalledTimes(1);
     expect(event.defaultPrevented).toBe(true);
   });
 
   it("автоповтор удержанной клавиши второй раз не срабатывает", () => {
-    const onDuplicate = renderKey(combo);
+    const onTrigger = renderKey(combo);
     keydown({ ...modifier, code: "KeyN" });
     keydown({ ...modifier, code: "KeyN", repeat: true });
-    expect(onDuplicate).toHaveBeenCalledTimes(1);
+    expect(onTrigger).toHaveBeenCalledTimes(1);
   });
 
   it("без модификаторов и под оверлеем молчит", () => {
-    const onDuplicate = renderKey(combo);
+    const onTrigger = renderKey(combo);
     keydown({ code: "KeyN" });
-    expect(onDuplicate).not.toHaveBeenCalled();
+    expect(onTrigger).not.toHaveBeenCalled();
 
     const gated = renderKey(combo, false);
     keydown({ ...modifier, code: "KeyN" });
@@ -61,9 +61,9 @@ describe.each(PLATFORMS)("useDuplicateChatKey (%s)", (platform) => {
   });
 
   it("пустое сочетание не срабатывает никогда", () => {
-    const onDuplicate = renderKey(NO_COMBO);
+    const onTrigger = renderKey(NO_COMBO);
     keydown({ ...modifier, code: "KeyN" });
     keydown({ code: "KeyN" });
-    expect(onDuplicate).not.toHaveBeenCalled();
+    expect(onTrigger).not.toHaveBeenCalled();
   });
 });

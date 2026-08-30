@@ -15,6 +15,7 @@ import { Composer } from "@/components/Composer";
 import { ConnectivityOverlay } from "@/components/ConnectivityOverlay";
 import { HotkeysPopover } from "@/components/HotkeysPopover";
 import { IconButton } from "@/components/IconButton";
+import { MiniHud } from "@/components/MiniHud";
 import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
 import { ScreenShareIndicator } from "@/components/ScreenShareIndicator";
 import { StatusBar, type ContextUsage, type StatusBarProps } from "@/components/StatusBar";
@@ -22,9 +23,9 @@ import { Teleprompter } from "@/components/Teleprompter";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
+import { useComboKey } from "@/hooks/useComboKey";
 import { useConnectivity } from "@/hooks/useConnectivity";
 import { useContextLibrary } from "@/hooks/useContextLibrary";
-import { useDuplicateChatKey } from "@/hooks/useDuplicateChatKey";
 import { useLatestRef } from "@/hooks/useLatestRef";
 import { useModels } from "@/hooks/useModels";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
@@ -38,8 +39,9 @@ import { useTranscription } from "@/hooks/useTranscription";
 import { useUpdater, type UpdaterApi } from "@/hooks/useUpdater";
 import { useWindowControls } from "@/hooks/useWindowControls";
 import {
-  hideMainWindow,
+  collapseMainWindow,
   countChatTokens,
+  expandMainWindow,
   retryTranscription,
   setWindowSize,
   startWindowDrag,
@@ -215,28 +217,44 @@ function useWindowFrameSync(
   windowWidth: number,
   windowHeight: number,
   previewOpen: boolean,
+  miniMode: boolean,
   ready: boolean,
   nativeSizeRef: RefObject<LogicalWindowSize>,
   guardUntilRef: RefObject<number>,
 ): void {
+  const wasMiniRef = useRef(false);
   useEffect(() => {
     if (!ready) return;
+    if (miniMode) {
+      wasMiniRef.current = true;
+      guardUntilRef.current = Date.now() + PROGRAMMATIC_RESIZE_GUARD_MS;
+      void collapseMainWindow();
+      return;
+    }
     const extra = previewOpen ? PREVIEW_EXTRA_WIDTH_PX : 0;
     const target = { width: windowWidth + extra, height: windowHeight };
+    if (wasMiniRef.current) {
+      wasMiniRef.current = false;
+      guardUntilRef.current = Date.now() + PROGRAMMATIC_RESIZE_GUARD_MS;
+      void expandMainWindow(target.width, target.height);
+      return;
+    }
     if (windowSizesEqual(target, nativeSizeEcho(nativeSizeRef.current, extra))) return;
     guardUntilRef.current = Date.now() + PROGRAMMATIC_RESIZE_GUARD_MS;
     void setWindowSize(target.width, target.height);
-  }, [windowWidth, windowHeight, previewOpen, ready, nativeSizeRef, guardUntilRef]);
+  }, [windowWidth, windowHeight, previewOpen, miniMode, ready, nativeSizeRef, guardUntilRef]);
 }
 
 function useNativeResizeSync(
   previewOpen: boolean,
+  miniMode: boolean,
   ready: boolean,
   nativeSizeRef: RefObject<LogicalWindowSize>,
   guardUntilRef: RefObject<number>,
   applyNativeWindowSize: (width: number, height: number) => void,
 ): void {
   const previewOpenRef = useLatestRef(previewOpen);
+  const miniModeRef = useLatestRef(miniMode);
   const readyRef = useLatestRef(ready);
   const applyRef = useLatestRef(applyNativeWindowSize);
   useEffect(() => {
@@ -244,10 +262,12 @@ function useNativeResizeSync(
     const stop = onWindowResized((size) => {
       nativeSizeRef.current = size;
       if (!readyRef.current) return;
+      if (miniModeRef.current) return;
       if (Date.now() < guardUntilRef.current) return;
       if (pending !== 0) return;
       pending = requestAnimationFrame(() => {
         pending = 0;
+        if (miniModeRef.current) return;
         const latest = nativeSizeRef.current;
         const base = latest.width - (previewOpenRef.current ? PREVIEW_EXTRA_WIDTH_PX : 0);
         applyRef.current(base, latest.height);
@@ -257,7 +277,7 @@ function useNativeResizeSync(
       stop();
       cancelAnimationFrame(pending);
     };
-  }, [nativeSizeRef, guardUntilRef, previewOpenRef, readyRef, applyRef]);
+  }, [nativeSizeRef, guardUntilRef, previewOpenRef, miniModeRef, readyRef, applyRef]);
 }
 
 const TOKEN_COUNT_PLACEHOLDER_MESSAGE: ChatMessageDto = { role: "user", text: ".", images: [] };
@@ -369,6 +389,7 @@ interface AppHeaderProps {
   onCopy: () => void;
   onOpenTeleprompter: () => void;
   onStop: () => void;
+  onCollapse: () => void;
   onOpenUpdate: () => void;
 }
 
@@ -387,6 +408,7 @@ function AppHeader({
   onCopy,
   onOpenTeleprompter,
   onStop,
+  onCollapse,
   onOpenUpdate,
 }: AppHeaderProps) {
   return (
@@ -397,7 +419,7 @@ function AppHeader({
       contextUsage={contextUsage}
       update={updateBadge(updater, onOpenUpdate)}
       onStop={onStop}
-      onHide={() => void hideMainWindow()}
+      onCollapse={onCollapse}
       tabs={
         <ChatTabs
           chats={chats.chats}
@@ -515,6 +537,9 @@ export default function App() {
 
   const [updateOpen, setUpdateOpen] = useState(false);
   const [teleprompterOpen, setTeleprompterOpen] = useState(false);
+  const [miniMode, setMiniMode] = useState(false);
+  const [unreadAnswer, setUnreadAnswer] = useState(false);
+  const miniModeRef = useLatestRef(miniMode);
   const teleprompterResumeRef = useRef({ text: "", offset: 0 });
 
   const { sttError, showRetry, setSttError, clearError, clearFeedback, retry } =
@@ -526,12 +551,14 @@ export default function App() {
     settings.window_width,
     settings.window_height,
     previewOpen,
+    miniMode,
     !settingsLoading,
     nativeSizeRef,
     resizeGuardUntilRef,
   );
   useNativeResizeSync(
     previewOpen,
+    miniMode,
     !settingsLoading,
     nativeSizeRef,
     resizeGuardUntilRef,
@@ -554,6 +581,7 @@ export default function App() {
 
   const onScreenshotImage = useCallback(
     (dataUrl: string, mediaType: string) => {
+      setMiniMode(false);
       void chatsRef.current.addDraftImage(chatsRef.current.activeId, dataUrl, mediaType);
     },
     [chatsRef],
@@ -569,12 +597,13 @@ export default function App() {
     (chatId: string, text: string) => {
       if (text === "") return;
       chatsRef.current.appendAssistantMessage(chatId, text);
+      if (miniModeRef.current) setUnreadAnswer(true);
       if (!settingsRef.current.auto_preview_html) return;
       if (chatId !== chatsRef.current.activeId) return;
       const block = lastHtmlBlock(text);
       if (block !== undefined) openPreview(block);
     },
-    [chatsRef, settingsRef, openPreview],
+    [chatsRef, settingsRef, miniModeRef, openPreview],
   );
 
   const stream = useClaudeStream(onAssistantDone);
@@ -591,6 +620,7 @@ export default function App() {
   useTranscription(
     useCallback(
       (incoming: string) => {
+        setMiniMode(false);
         const chat = chatsRef.current.active;
         const merged = appendTranscript(chat.draft, incoming);
         chatsRef.current.patchChat(chat.id, { draft: merged });
@@ -604,16 +634,25 @@ export default function App() {
   useWindowControls(settings.hotkeys, doSend, bumpOpacity, bumpWindowSize);
   usePttSuspend(effectiveCombo(settings.hotkeys, "record"));
   const connectivity = useConnectivity();
-  const promptCoveredByOverlay = teleprompterOpen || connectivity.offline;
-  const promptRef = usePromptFocus(promptCoveredByOverlay);
+  const promptUnavailable = teleprompterOpen || connectivity.offline || miniMode;
+  const promptRef = usePromptFocus(promptUnavailable);
 
   const duplicateActiveChat = useCallback(() => {
     chatsRef.current.duplicateChat(chatsRef.current.activeId);
   }, [chatsRef]);
-  useDuplicateChatKey(
+  useComboKey(
     effectiveCombo(settings.hotkeys, "duplicate_chat"),
-    !promptCoveredByOverlay,
+    !promptUnavailable,
     duplicateActiveChat,
+  );
+
+  const stopActiveStream = useCallback(() => {
+    streamRef.current.stop(chatsRef.current.activeId);
+  }, [streamRef, chatsRef]);
+  useComboKey(
+    effectiveCombo(settings.hotkeys, "cancel_stream"),
+    !!stream.streaming[chats.activeId] && !teleprompterOpen,
+    stopActiveStream,
   );
 
   const quickActions = useMemo(
@@ -630,21 +669,34 @@ export default function App() {
   );
   const runQuickActionAt = useCallback(
     (index: number) => {
-      if (promptCoveredByOverlay) return;
+      if (promptUnavailable) return;
       const action = quickActions[index];
       if (action) runQuickAction(action);
     },
-    [promptCoveredByOverlay, quickActions, runQuickAction],
+    [promptUnavailable, quickActions, runQuickAction],
   );
   useQuickActionKeys(quickActionCombo, quickActions.length, runQuickActionAt);
 
   useEffect(
     () =>
       onEvent("toggle-teleprompter", () => {
+        if (miniModeRef.current) return;
         setTeleprompterOpen((open) => !open);
+      }),
+    [miniModeRef],
+  );
+
+  useEffect(
+    () =>
+      onEvent("toggle-mini", () => {
+        setMiniMode((mini) => !mini);
       }),
     [],
   );
+
+  useEffect(() => {
+    if (!miniMode) setUnreadAnswer(false);
+  }, [miniMode]);
 
   useEffect(
     () =>
@@ -723,6 +775,21 @@ export default function App() {
     if (event.button === 0 && event.target === event.currentTarget) void startWindowDrag();
   }, []);
 
+  if (miniMode) {
+    return (
+      <MiniHud
+        state={state}
+        streaming={Object.values(stream.streaming).some(Boolean)}
+        hasError={error !== null}
+        unreadAnswer={unreadAnswer}
+        expandCombo={effectiveCombo(settings.hotkeys, "toggle_window")}
+        onExpand={() => {
+          setMiniMode(false);
+        }}
+      />
+    );
+  }
+
   return (
     <div
       className="app-shell relative flex h-screen overflow-hidden rounded-[var(--window-radius)]"
@@ -749,6 +816,9 @@ export default function App() {
             setTeleprompterOpen(true);
           }}
           onStop={() => void stopMainWindow()}
+          onCollapse={() => {
+            setMiniMode(true);
+          }}
           onOpenUpdate={() => {
             setUpdateOpen(true);
           }}
