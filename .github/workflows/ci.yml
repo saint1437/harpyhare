@@ -11,8 +11,14 @@ jobs:
   frontend:
     name: фронтенд и линтеры
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # gitleaks комментирует находки прямо в PR
     steps:
       - uses: actions/checkout@v5
+        with:
+          # gitleaks сканирует историю целиком: поверхностный клон ему не годится.
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -20,6 +26,13 @@ jobs:
       - run: npm ci
       - run: npx nx run-many -t typecheck lint test
       - run: npx knip
+      # Рядом с рабочей копией лежат .env с ключами: они в .gitignore, но от будущего
+      # коммита это не защищает — gitleaks смотрит на то, что реально попало в историю.
+      # Лицензия нужна только организациям, репозиторий личный.
+      - name: Секреты в коммитах
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   macos:
     name: тесты Rust и контракт
