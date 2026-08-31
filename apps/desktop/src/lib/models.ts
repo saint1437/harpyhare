@@ -39,34 +39,65 @@ export const FALLBACK_MODELS: ModelInfo[] = [
 ];
 
 const CURATED_FAMILIES = ["opus", "sonnet", "haiku"];
+const THINKING_SUFFIX = "-thinking";
+const DATE_PART = /^\d{8}$/;
+
+function familyVersion(id: string, family: string): [number, number] {
+  const base = id.replace(new RegExp(`${THINKING_SUFFIX}$`), "");
+  const marker = `-${family}-`;
+  const start = base.indexOf(marker);
+  if (start < 0) return [0, 0];
+  const parts = base
+    .slice(start + marker.length)
+    .split("-")
+    .filter((part) => !DATE_PART.test(part))
+    .map((part) => Number.parseInt(part, 10))
+    .filter(Number.isFinite);
+  return [parts[0] ?? 0, parts[1] ?? 0];
+}
+
+function compareFamilyModels(a: ModelInfo, b: ModelInfo, family: string): number {
+  const av = familyVersion(a.id, family);
+  const bv = familyVersion(b.id, family);
+  if (av[0] !== bv[0]) return bv[0] - av[0];
+  if (av[1] !== bv[1]) return bv[1] - av[1];
+  if (a.adaptive !== b.adaptive) return a.adaptive ? -1 : 1;
+  return a.id.length - b.id.length;
+}
 
 export function curatedModels(models: ModelInfo[]): ModelInfo[] {
+  const baseModels = models.filter((m) => !m.id.endsWith(THINKING_SUFFIX));
   const picked = CURATED_FAMILIES.flatMap((family) => {
-    const newest = models.find((m) => m.id.includes(family));
-    return newest === undefined ? [] : [newest];
+    const candidates = baseModels
+      .filter((m) => m.id.includes(`-${family}-`))
+      .sort((a, b) => compareFamilyModels(a, b, family));
+    return candidates.length === 0 ? [] : [candidates[0]];
   });
-  return picked.length > 0 ? picked : models;
+  return picked.length > 0 ? picked : baseModels;
 }
 
 const BRAND_PREFIX = /^Claude\s+/i;
 const MODEL_ID_PREFIX = /^claude-/;
-const MODEL_ID_VERSION_SUFFIX = /-(\d)-(\d)$/;
-const VERSION_LABEL = " $1.$2";
 
 function capitalizeFirst(s: string): string {
   return s.replace(/^./, (c) => c.toUpperCase());
 }
 
 function labelFromModelId(id: string): string {
-  return capitalizeFirst(
-    id.replace(MODEL_ID_PREFIX, "").replace(MODEL_ID_VERSION_SUFFIX, VERSION_LABEL),
-  );
+  const base = id.replace(THINKING_SUFFIX, "").replace(MODEL_ID_PREFIX, "");
+  const [family = base, ...rest] = base.split("-");
+  const version = rest.filter((part) => /^\d+$/.test(part) && !DATE_PART.test(part)).slice(0, 2);
+  return version.length > 0
+    ? `${capitalizeFirst(family)} ${version.join(".")}`
+    : capitalizeFirst(family);
 }
 
 export function modelLabel(m: Pick<ModelInfo, "id" | "displayName">): string {
-  const short = m.displayName.replace(BRAND_PREFIX, "").trim();
-  if (short !== "") return short;
-  return labelFromModelId(m.id);
+  const display = m.displayName.trim();
+  if (display === "" || display === m.id || MODEL_ID_PREFIX.test(display)) {
+    return labelFromModelId(m.id);
+  }
+  return display.replace(BRAND_PREFIX, "").trim();
 }
 
 function unlistedModel(id: string): ModelInfo {
