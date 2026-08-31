@@ -63,7 +63,7 @@ export function HotkeysPopover({ hotkeys, triggerClass }: HotkeysPopoverProps) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <IconButton title="Горячие клавиши" className={triggerClass}>
+        <IconButton title="" aria-label="Горячие клавиши" className={triggerClass}>
           <Keyboard />
         </IconButton>
       </PopoverTrigger>
