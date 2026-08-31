@@ -1,3 +1,5 @@
+use futures_util::StreamExt;
+use reqwest::header::{ACCEPT, CONTENT_TYPE};
 use serde_json::{json, Value};
 use std::error::Error;
 use std::sync::{Arc, Mutex};
@@ -15,10 +17,119 @@ const COUNT_TOKENS_PATH: &str = "/v1/messages/count_tokens";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 const MAX_TOKENS: u32 = 32768;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-const READ_TIMEOUT: Duration = Duration::from_secs(90);
+const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+const HTTP2_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(30);
 const SHORT_TIMEOUT: Duration = Duration::from_secs(15);
 const ERROR_BODY_CHARS: usize = 500;
 const THINKING_SUFFIX: &str = "-thinking";
+const EVENT_STREAM_MIME: &str = "text/event-stream";
+const TRUNCATED_STREAM_ERROR: &str = "Xclis оборвал поток до завершения ответа";
+
+#[derive(Debug, PartialEq)]
+enum StreamEvent {
+    Text(String),
+    InputTokens(u32),
+    Done,
+    ApiError(String),
+}
+
+#[derive(Default)]
+struct OpenAiSseParser {
+    buffer: Vec<u8>,
+}
+
+impl OpenAiSseParser {
+    fn feed(&mut self, bytes: &[u8]) -> Vec<StreamEvent> {
+        self.buffer.extend_from_slice(bytes);
+        let mut out = Vec::new();
+        while let Some((end, separator_len)) = find_sse_separator(&self.buffer) {
+            let event = self.buffer[..end].to_vec();
+            self.buffer.drain(..end + separator_len);
+            out.extend(parse_sse_event(&event));
+        }
+        out
+    }
+}
+
+fn find_sse_separator(bytes: &[u8]) -> Option<(usize, usize)> {
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b'\n' && bytes[i + 1] == b'\n' {
+            return Some((i, 2));
+        }
+        if i + 3 < bytes.len()
+            && bytes[i] == b'\r'
+            && bytes[i + 1] == b'\n'
+            && bytes[i + 2] == b'\r'
+            && bytes[i + 3] == b'\n'
+        {
+            return Some((i, 4));
+        }
+        i += 1;
+    }
+    None
+}
+
+fn parse_sse_event(bytes: &[u8]) -> Vec<StreamEvent> {
+    let text = String::from_utf8_lossy(bytes);
+    let data = text
+        .lines()
+        .filter_map(|line| line.trim_end_matches('\r').strip_prefix("data:"))
+        .map(str::trim_start)
+        .collect::<Vec<_>>()
+        .join("\n");
+    if data.is_empty() {
+        return Vec::new();
+    }
+    if data.trim() == "[DONE]" {
+        return vec![StreamEvent::Done];
+    }
+
+    let value: Value = match serde_json::from_str(&data) {
+        Ok(value) => value,
+        Err(error) => {
+            return vec![StreamEvent::ApiError(format!(
+                "Xclis вернул некорректный SSE JSON: {error}; {}",
+                data.chars().take(ERROR_BODY_CHARS).collect::<String>()
+            ))]
+        }
+    };
+
+    if let Some(message) = value["error"]["message"].as_str() {
+        return vec![StreamEvent::ApiError(format!("Xclis: {message}"))];
+    }
+
+    let mut out = Vec::new();
+    let input_tokens = value["usage"]["prompt_tokens"]
+        .as_u64()
+        .or_else(|| value["usage"]["input_tokens"].as_u64())
+        .unwrap_or(0) as u32;
+    if input_tokens > 0 {
+        out.push(StreamEvent::InputTokens(input_tokens));
+    }
+
+    let choice = &value["choices"][0];
+    let content = &choice["delta"]["content"];
+    if let Some(text) = content.as_str() {
+        if !text.is_empty() {
+            out.push(StreamEvent::Text(text.to_string()));
+        }
+    } else if let Some(items) = content.as_array() {
+        let text = items
+            .iter()
+            .filter_map(|item| item["text"].as_str().or_else(|| item["content"].as_str()))
+            .collect::<Vec<_>>()
+            .join("");
+        if !text.is_empty() {
+            out.push(StreamEvent::Text(text));
+        }
+    }
+
+    if choice["finish_reason"].is_string() {
+        out.push(StreamEvent::Done);
+    }
+    out
+}
 
 #[derive(Clone)]
 pub struct XclisClient {
@@ -33,8 +144,10 @@ impl XclisClient {
         let client = reqwest::Client::builder()
             .user_agent(APP_USER_AGENT)
             .connect_timeout(CONNECT_TIMEOUT)
-            .read_timeout(READ_TIMEOUT)
+            .read_timeout(STREAM_IDLE_TIMEOUT)
             .pool_idle_timeout(None)
+            .http2_keep_alive_interval(HTTP2_KEEP_ALIVE_INTERVAL)
+            .http2_keep_alive_while_idle(true)
             .no_proxy()
             .build()
             .expect("Xclis reqwest client");
@@ -116,7 +229,7 @@ impl XclisClient {
             "model": self.selected_model(&request.model, request.options.thinking),
             "messages": Self::chat_messages(request),
             "max_tokens": MAX_TOKENS,
-            "stream": false
+            "stream": true
         }))
     }
 
@@ -220,11 +333,7 @@ impl XclisClient {
         if let Some(items) = content.as_array() {
             let text = items
                 .iter()
-                .filter_map(|item| {
-                    item["text"]
-                        .as_str()
-                        .or_else(|| item["content"].as_str())
-                })
+                .filter_map(|item| item["text"].as_str().or_else(|| item["content"].as_str()))
                 .collect::<Vec<_>>()
                 .join("");
             if !text.trim().is_empty() {
@@ -236,6 +345,63 @@ impl XclisClient {
             .unwrap_or_default()
             .trim()
             .to_string()
+    }
+
+    fn response_is_sse(resp: &reqwest::Response) -> bool {
+        resp.headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.to_ascii_lowercase().contains(EVENT_STREAM_MIME))
+    }
+
+    async fn consume_json_response(
+        resp: reqwest::Response,
+        sink: &mut dyn LlmStreamSink,
+    ) -> Result<(), LlmError> {
+        let value: Value = resp.json().await.map_err(Self::network_error)?;
+        let input_tokens = value["usage"]["prompt_tokens"]
+            .as_u64()
+            .or_else(|| value["usage"]["input_tokens"].as_u64())
+            .unwrap_or(0) as u32;
+        if input_tokens > 0 {
+            sink.input_tokens(input_tokens);
+        }
+        let text = Self::completion_text(&value);
+        if text.is_empty() {
+            return Err(LlmError::Api(format!(
+                "Xclis вернул 200, но без choices[0].message.content: {}",
+                value.to_string().chars().take(ERROR_BODY_CHARS).collect::<String>()
+            )));
+        }
+        sink.text_delta(&text);
+        Ok(())
+    }
+
+    async fn consume_sse_response(
+        resp: reqwest::Response,
+        cancel: &CancellationToken,
+        sink: &mut dyn LlmStreamSink,
+    ) -> Result<(), LlmError> {
+        let mut parser = OpenAiSseParser::default();
+        let mut stream = resp.bytes_stream();
+        loop {
+            let chunk = tokio::select! {
+                chunk = stream.next() => chunk,
+                _ = cancel.cancelled() => return Err(LlmError::Cancelled),
+            };
+            let Some(chunk) = chunk else {
+                return Err(LlmError::Network(TRUNCATED_STREAM_ERROR.into()));
+            };
+            let bytes = chunk.map_err(Self::network_error)?;
+            for event in parser.feed(&bytes) {
+                match event {
+                    StreamEvent::Text(text) => sink.text_delta(&text),
+                    StreamEvent::InputTokens(tokens) => sink.input_tokens(tokens),
+                    StreamEvent::Done => return Ok(()),
+                    StreamEvent::ApiError(message) => return Err(LlmError::Api(message)),
+                }
+            }
+        }
     }
 
     fn model_version_key(id: &str) -> Vec<u32> {
@@ -258,7 +424,9 @@ impl XclisClient {
                 if id.ends_with(THINKING_SUFFIX) {
                     return None;
                 }
-                let adaptive = all_ids.iter().any(|candidate| candidate == &format!("{id}{THINKING_SUFFIX}"));
+                let adaptive = all_ids
+                    .iter()
+                    .any(|candidate| candidate == &format!("{id}{THINKING_SUFFIX}"));
                 Some(ModelInfo {
                     id: id.to_string(),
                     display_name: v["display_name"].as_str().unwrap_or(id).to_string(),
@@ -287,6 +455,7 @@ impl LlmProvider for XclisClient {
             .client
             .post(format!("{}{}", self.base_url, CHAT_COMPLETIONS_PATH))
             .bearer_auth(&self.api_key)
+            .header(ACCEPT, EVENT_STREAM_MIME)
             .json(&body)
             .send();
         let resp = tokio::select! {
@@ -294,20 +463,11 @@ impl LlmProvider for XclisClient {
             _ = cancel.cancelled() => return Err(LlmError::Cancelled),
         };
         let resp = Self::checked_response(resp).await?;
-        let value: Value = resp.json().await.map_err(Self::network_error)?;
-        let input_tokens = value["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32;
-        if input_tokens > 0 {
-            sink.input_tokens(input_tokens);
+        if Self::response_is_sse(&resp) {
+            Self::consume_sse_response(resp, &cancel, sink).await
+        } else {
+            Self::consume_json_response(resp, sink).await
         }
-        let text = Self::completion_text(&value);
-        if text.is_empty() {
-            return Err(LlmError::Api(format!(
-                "Xclis вернул 200, но без choices[0].message.content: {}",
-                value.to_string().chars().take(ERROR_BODY_CHARS).collect::<String>()
-            )));
-        }
-        sink.text_delta(&text);
-        Ok(())
     }
 
     async fn count_tokens(&self, request: LlmRequest) -> Result<u32, LlmError> {
@@ -368,5 +528,47 @@ impl LlmProvider for XclisClient {
             .timeout(SHORT_TIMEOUT)
             .send()
             .await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sse_parser_handles_utf8_split_between_network_chunks() {
+        let event = "data: {\"choices\":[{\"delta\":{\"content\":\"Привет\"},\"finish_reason\":null}]}\n\n";
+        let start = event.find("Привет").unwrap();
+        let split = start + 1;
+        let mut parser = OpenAiSseParser::default();
+        assert!(parser.feed(&event.as_bytes()[..split]).is_empty());
+        assert_eq!(
+            parser.feed(&event.as_bytes()[split..]),
+            vec![StreamEvent::Text("Привет".into())]
+        );
+    }
+
+    #[test]
+    fn sse_parser_handles_usage_crlf_and_done() {
+        let mut parser = OpenAiSseParser::default();
+        let events = parser.feed(
+            b"data: {\"choices\":[{\"delta\":{},\"finish_reason\":null}],\"usage\":{\"prompt_tokens\":42}}\r\n\r\ndata: [DONE]\r\n\r\n",
+        );
+        assert_eq!(
+            events,
+            vec![StreamEvent::InputTokens(42), StreamEvent::Done]
+        );
+    }
+
+    #[test]
+    fn sse_parser_finishes_on_finish_reason_without_done_marker() {
+        let mut parser = OpenAiSseParser::default();
+        let events = parser.feed(
+            b"data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n",
+        );
+        assert_eq!(
+            events,
+            vec![StreamEvent::Text("ok".into()), StreamEvent::Done]
+        );
     }
 }
