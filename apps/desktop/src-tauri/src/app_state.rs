@@ -93,15 +93,26 @@ pub fn build_capture(settings: &settings::Settings) -> Option<capture::SystemAud
 }
 
 pub fn build_stt_client(s: &settings::Settings) -> Arc<dyn stt::SttEngine> {
-    let base = if s.access_token.is_empty() {
-        stt::GroqStt::new(s.groq_api_key.clone())
-    } else {
-        stt::GroqStt::new(s.access_token.clone())
-            .with_base_url(access::proxy_base_url())
-            .with_proxy(true)
-    };
+    if !s.access_token.is_empty() {
+        return Arc::new(
+            stt::GroqStt::new(s.access_token.clone())
+                .with_base_url(access::proxy_base_url())
+                .with_proxy(true)
+                .with_language(s.stt_language.clone())
+                .with_translate(s.stt_translate),
+        );
+    }
+
+    if s.stt_provider == settings::STT_PROVIDER_DEEPGRAM {
+        return Arc::new(
+            stt::DeepgramStt::new(s.deepgram_api_key.clone())
+                .with_language(s.stt_language.clone()),
+        );
+    }
+
     Arc::new(
-        base.with_language(s.stt_language.clone())
+        stt::GroqStt::new(s.groq_api_key.clone())
+            .with_language(s.stt_language.clone())
             .with_translate(s.stt_translate),
     )
 }
@@ -112,7 +123,7 @@ pub fn build_llm_client(
 ) -> Arc<dyn llm::LlmProvider> {
     let client = if !s.access_token.is_empty() {
         llm::AnthropicClient::for_proxy(s.access_token.clone(), access::proxy_base_url())
-    } else if !s.xclis_api_key.trim().is_empty() {
+    } else if s.llm_provider == settings::LLM_PROVIDER_XCLIS {
         llm::AnthropicClient::new(s.xclis_api_key.clone()).with_base_url(XCLIS_BASE_URL.to_string())
     } else {
         llm::AnthropicClient::new(s.anthropic_api_key.clone())
