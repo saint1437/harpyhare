@@ -12,6 +12,7 @@ use crate::{access, capture, llm, settings, state, stt};
 const SETTINGS_FILE_NAME: &str = "settings.json";
 const CHATS_FILE_NAME: &str = "chats.json";
 const CONTEXT_LIBRARY_FILE_NAME: &str = "context-library.json";
+const XCLIS_BASE_URL: &str = "https://jp.xclis.ai";
 
 pub struct App {
     pub settings: Mutex<settings::Settings>,
@@ -111,6 +112,7 @@ pub fn build_llm_client(
 ) -> Arc<dyn llm::LlmProvider> {
     let client = if s.access_token.is_empty() {
         llm::AnthropicClient::new(s.anthropic_api_key.clone())
+            .with_base_url(XCLIS_BASE_URL.to_string())
     } else {
         llm::AnthropicClient::for_proxy(s.access_token.clone(), access::proxy_base_url())
     };
