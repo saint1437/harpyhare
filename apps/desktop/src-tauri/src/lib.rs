@@ -27,6 +27,7 @@ pub mod system;
 pub mod update;
 pub mod window;
 pub mod window_geom;
+pub mod xclis;
 
 use std::sync::{Arc, Mutex};
 
