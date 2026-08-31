@@ -244,7 +244,7 @@ impl SttEngine for GroqStt {
     }
 }
 
-const DEEPGRAM_BASE_URL: &str = "https://api.deepgram.com";
+const DEEPGRAM_BASE_URL: &str = "https://api.eu.deepgram.com";
 const DEEPGRAM_LISTEN_ENDPOINT: &str = "/v1/listen";
 const DEEPGRAM_PROJECTS_ENDPOINT: &str = "/v1/projects";
 const DEEPGRAM_MODEL: &str = "nova-3";
