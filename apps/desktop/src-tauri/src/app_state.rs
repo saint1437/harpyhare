@@ -104,10 +104,20 @@ pub fn build_stt_client(s: &settings::Settings) -> Arc<dyn stt::SttEngine> {
     }
 
     if s.stt_provider == settings::STT_PROVIDER_DEEPGRAM {
-        return Arc::new(
-            stt::DeepgramStt::new(s.deepgram_api_key.clone())
-                .with_language(s.stt_language.clone()),
-        );
+        #[cfg(target_os = "windows")]
+        {
+            return Arc::new(
+                crate::deepgram_curl::DeepgramCurlStt::new(s.deepgram_api_key.clone())
+                    .with_language(s.stt_language.clone()),
+            );
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            return Arc::new(
+                stt::DeepgramStt::new(s.deepgram_api_key.clone())
+                    .with_language(s.stt_language.clone()),
+            );
+        }
     }
 
     Arc::new(
