@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Copy, ScrollText } from "lucide-react";
+import { Copy, Cpu, ScrollText } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -16,6 +16,7 @@ import { ConnectivityOverlay } from "@/components/ConnectivityOverlay";
 import { HotkeysPopover } from "@/components/HotkeysPopover";
 import { IconButton } from "@/components/IconButton";
 import { MiniHud } from "@/components/MiniHud";
+import { ModelCommandMenu } from "@/components/ModelCommandMenu";
 import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
 import { ScreenShareIndicator } from "@/components/ScreenShareIndicator";
 import { StatusBar, type ContextUsage, type StatusBarProps } from "@/components/StatusBar";
@@ -386,6 +387,7 @@ interface AppHeaderProps {
   contextUsage: ContextUsage | null;
   screenShareVisible: boolean;
   onToggleScreenShare: () => void;
+  onOpenModelMenu: () => void;
   onCopy: () => void;
   onOpenTeleprompter: () => void;
   onStop: () => void;
@@ -405,6 +407,7 @@ function AppHeader({
   contextUsage,
   screenShareVisible,
   onToggleScreenShare,
+  onOpenModelMenu,
   onCopy,
   onOpenTeleprompter,
   onStop,
@@ -440,6 +443,9 @@ function AppHeader({
       actions={
         <>
           <ScreenShareIndicator visible={screenShareVisible} onToggle={onToggleScreenShare} />
+          <IconButton title="Модели" onClick={onOpenModelMenu}>
+            <Cpu />
+          </IconButton>
           {canTeleprompt && (
             <IconButton title="Суфлёр" onClick={onOpenTeleprompter}>
               <ScrollText />
@@ -536,6 +542,7 @@ export default function App() {
   const updater = useUpdater();
 
   const [updateOpen, setUpdateOpen] = useState(false);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [teleprompterOpen, setTeleprompterOpen] = useState(false);
   const [miniMode, setMiniMode] = useState(false);
   const [unreadAnswer, setUnreadAnswer] = useState(false);
@@ -645,6 +652,11 @@ export default function App() {
     !promptUnavailable,
     duplicateActiveChat,
   );
+
+  const openModelMenu = useCallback(() => {
+    setModelMenuOpen(true);
+  }, []);
+  useComboKey(effectiveCombo(settings.hotkeys, "model_menu"), !promptUnavailable, openModelMenu);
 
   const stopActiveStream = useCallback(() => {
     streamRef.current.stop(chatsRef.current.activeId);
@@ -764,6 +776,10 @@ export default function App() {
     });
   };
 
+  const switchSttProvider = (provider: string) => {
+    saveSettingsReportingError({ ...settingsRef.current, stt_provider: provider });
+  };
+
   const skipUpdate = () => {
     const skipped = updater.info?.version ?? "";
     setUpdateOpen(false);
@@ -809,6 +825,9 @@ export default function App() {
           contextUsage={contextUsage}
           screenShareVisible={settings.screen_share_visible}
           onToggleScreenShare={toggleScreenShareVisible}
+          onOpenModelMenu={() => {
+            setModelMenuOpen(true);
+          }}
           onCopy={() => {
             copyLastAssistantMessage(active.messages);
           }}
@@ -861,6 +880,18 @@ export default function App() {
       </div>
 
       {previewOpen && <PreviewPanel html={previewHtml} onClose={closePreview} />}
+
+      <ModelCommandMenu
+        open={modelMenuOpen}
+        onOpenChange={setModelMenuOpen}
+        sttProvider={settings.stt_provider}
+        onSwitchSttProvider={switchSttProvider}
+        models={models}
+        activeModelId={active.model}
+        onSelectModel={(id) => {
+          chats.patchChat(chats.activeId, { model: id });
+        }}
+      />
 
       {teleprompterOpen && (
         <Teleprompter

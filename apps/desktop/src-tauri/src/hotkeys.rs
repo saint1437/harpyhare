@@ -13,6 +13,7 @@ pub const ACTION_RESIZE_WINDOW: &str = "resize_window";
 pub const ACTION_OPACITY: &str = "opacity";
 pub const ACTION_SCROLL_CHAT: &str = "scroll_chat";
 pub const ACTION_DUPLICATE_CHAT: &str = "duplicate_chat";
+pub const ACTION_MODEL_MENU: &str = "model_menu";
 pub const ACTION_TELEPROMPTER: &str = "teleprompter";
 pub const ACTION_TELEPROMPTER_CLOSE: &str = "teleprompter_close";
 pub const ACTION_TELEPROMPTER_PAUSE: &str = "teleprompter_pause";
@@ -273,6 +274,15 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Hud,
         default_combo: primary_combo!(shift_token!(), "N"),
+    },
+    HotkeyAction {
+        id: ACTION_MODEL_MENU,
+        group: "Чат",
+        label: "Меню моделей",
+        hint: "Выбор голосовой модели и модели ответа.",
+        kind: HotkeyKind::Combo,
+        scope: HotkeyScope::Hud,
+        default_combo: primary_combo!("X"),
     },
     HotkeyAction {
         id: ACTION_TELEPROMPTER,
