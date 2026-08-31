@@ -109,6 +109,7 @@ export function SttSection({ draft, set }: SectionProps) {
         <SettingSwitch
           ariaLabel="Перевод на английский"
           checked={draft.stt_translate}
+          disabled={deepgram}
           onCheckedChange={(v) => {
             set("stt_translate", v);
           }}
