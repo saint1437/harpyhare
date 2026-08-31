@@ -67,7 +67,12 @@ export function HotkeysPopover({ hotkeys, triggerClass }: HotkeysPopoverProps) {
           <Keyboard />
         </IconButton>
       </PopoverTrigger>
-      <PopoverContent side="bottom" align="end" className="max-h-[70vh] w-80 overflow-y-auto p-3">
+      <PopoverContent
+        side="left"
+        align="start"
+        collisionPadding={8}
+        className="max-h-(--radix-popover-content-available-height) w-80 overflow-y-auto p-3"
+      >
         <div className="grid grid-cols-[max-content_1fr] items-center gap-x-2.5 gap-y-1">
           {groups.map((group, index) => (
             <Fragment key={group.title}>
