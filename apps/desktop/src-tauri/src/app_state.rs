@@ -110,11 +110,12 @@ pub fn build_llm_client(
     s: &settings::Settings,
     catalog: llm::ModelCatalog,
 ) -> Arc<dyn llm::LlmProvider> {
-    let client = if s.access_token.is_empty() {
-        llm::AnthropicClient::new(s.anthropic_api_key.clone())
-            .with_base_url(XCLIS_BASE_URL.to_string())
-    } else {
+    let client = if !s.access_token.is_empty() {
         llm::AnthropicClient::for_proxy(s.access_token.clone(), access::proxy_base_url())
+    } else if !s.xclis_api_key.trim().is_empty() {
+        llm::AnthropicClient::new(s.xclis_api_key.clone()).with_base_url(XCLIS_BASE_URL.to_string())
+    } else {
+        llm::AnthropicClient::new(s.anthropic_api_key.clone())
     };
     Arc::new(client.with_catalog(catalog))
 }
