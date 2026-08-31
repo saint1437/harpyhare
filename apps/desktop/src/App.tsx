@@ -138,14 +138,17 @@ function updateBadge(updater: UpdaterApi, onOpen: () => void): DockUpdate | null
 }
 
 const DOCK_COLLAPSE_BELOW_PX = 460;
-const DOCK_EXPAND_ABOVE_PX = 470;
+const DOCK_HYSTERESIS_PX = 10;
+const DOCK_EXTRA_PER_TAB_PX = 30;
 
-function useDockVertical(windowWidth: number): boolean {
-  const [vertical, setVertical] = useState(windowWidth < DOCK_COLLAPSE_BELOW_PX);
+function useDockVertical(windowWidth: number, chatCount: number): boolean {
+  const collapseBelow = DOCK_COLLAPSE_BELOW_PX + Math.max(0, chatCount - 1) * DOCK_EXTRA_PER_TAB_PX;
+  const expandAbove = collapseBelow + DOCK_HYSTERESIS_PX;
+  const [vertical, setVertical] = useState(windowWidth < collapseBelow);
   useEffect(() => {
-    if (windowWidth < DOCK_COLLAPSE_BELOW_PX) setVertical(true);
-    else if (windowWidth >= DOCK_EXPAND_ABOVE_PX) setVertical(false);
-  }, [windowWidth]);
+    if (windowWidth < collapseBelow) setVertical(true);
+    else if (windowWidth >= expandAbove) setVertical(false);
+  }, [windowWidth, collapseBelow, expandAbove]);
   return vertical;
 }
 const SCREEN_SHARE_VISIBLE_LABEL = "Видно при демонстрации экрана — нажмите, чтобы скрыть";
@@ -589,7 +592,7 @@ export default function App() {
   const chats = useChats();
   const models = useModels();
   const updater = useUpdater();
-  const dockVertical = useDockVertical(settings.window_width);
+  const dockVertical = useDockVertical(settings.window_width, chats.chats.length);
 
   const [updateOpen, setUpdateOpen] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
