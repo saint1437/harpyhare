@@ -1,6 +1,7 @@
 use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -50,7 +51,7 @@ pub enum LlmError {
     BadApiKey,
     #[error("Anthropic перегружен, попробуй позже ({0})")]
     Retryable(u16),
-    #[error("Нет соединения — проверь интернет/VPN: {0}")]
+    #[error("Сетевая ошибка: {0}")]
     Network(String),
     #[error("Ошибка API: {0}")]
     Api(String),
@@ -212,7 +213,7 @@ pub fn web_search_value(info: Option<&ModelInfo>, model_id: &str, requested: boo
     Some(tool)
 }
 
-fn build_http_client(read_timeout: Duration) -> reqwest::Client {
+fn http_client_builder(read_timeout: Duration) -> reqwest::ClientBuilder {
     reqwest::Client::builder()
         .user_agent(APP_USER_AGENT)
         .connect_timeout(CONNECT_TIMEOUT)
@@ -220,8 +221,44 @@ fn build_http_client(read_timeout: Duration) -> reqwest::Client {
         .pool_idle_timeout(None)
         .http2_keep_alive_interval(HTTP2_KEEP_ALIVE_INTERVAL)
         .http2_keep_alive_while_idle(true)
+}
+
+fn build_http_client(read_timeout: Duration) -> reqwest::Client {
+    http_client_builder(read_timeout)
         .build()
         .expect("reqwest client")
+}
+
+fn build_direct_http_client(read_timeout: Duration) -> reqwest::Client {
+    http_client_builder(read_timeout)
+        .no_proxy()
+        .build()
+        .expect("reqwest direct client")
+}
+
+fn network_error(err: reqwest::Error) -> LlmError {
+    let kind = if err.is_timeout() {
+        "таймаут"
+    } else if err.is_connect() {
+        "ошибка подключения"
+    } else if err.is_request() {
+        "ошибка запроса"
+    } else if err.is_body() {
+        "ошибка чтения ответа"
+    } else {
+        "ошибка транспорта"
+    };
+
+    let mut details = vec![err.to_string()];
+    let mut source = err.source();
+    while let Some(cause) = source {
+        let text = cause.to_string();
+        if !text.trim().is_empty() && !details.iter().any(|item| item == &text) {
+            details.push(text);
+        }
+        source = cause.source();
+    }
+    LlmError::Network(format!("{kind}: {}", details.join(": ")))
 }
 
 async fn require_ok_status(resp: reqwest::Response, proxy: bool) -> Result<reqwest::Response, LlmError> {
@@ -267,7 +304,7 @@ async fn pump_sse_stream(
         let Some(chunk) = chunk else {
             return Err(LlmError::Network(TRUNCATED_STREAM_ERROR.into()));
         };
-        let bytes = chunk.map_err(|e| LlmError::Network(e.to_string()))?;
+        let bytes = chunk.map_err(network_error)?;
         for out in parser.feed_bytes(&bytes) {
             match out {
                 SseOut::TextDelta(t) => sink.text_delta(&t),
@@ -326,10 +363,17 @@ impl AnthropicClient {
     }
     pub fn with_base_url(mut self, url: String) -> Self {
         self.base_url = url;
+        // Custom Anthropic-compatible endpoints should be reached directly. reqwest enables
+        // system/environment proxies by default, which can leave a dead VPN/proxy in the path.
+        self.client = build_direct_http_client(DEFAULT_READ_TIMEOUT);
         self
     }
     pub fn with_read_timeout(mut self, d: Duration) -> Self {
-        self.client = build_http_client(d);
+        self.client = if self.base_url == ANTHROPIC_BASE_URL {
+            build_http_client(d)
+        } else {
+            build_direct_http_client(d)
+        };
         self
     }
 
@@ -346,7 +390,7 @@ impl AnthropicClient {
             .authorize(req)
             .send()
             .await
-            .map_err(|e| LlmError::Network(e.to_string()))?;
+            .map_err(network_error)?;
         if resp.status().as_u16() != 200 {
             let code = resp.status().as_u16();
             return Err(LlmError::Api(format!(
@@ -354,10 +398,7 @@ impl AnthropicClient {
                 api_error_message(resp, code).await
             )));
         }
-        let v: Value = resp
-            .json()
-            .await
-            .map_err(|e| LlmError::Network(e.to_string()))?;
+        let v: Value = resp.json().await.map_err(network_error)?;
         Ok(v["data"]
             .as_array()
             .map(|arr| arr.iter().filter_map(model_info_from_json).collect())
@@ -376,9 +417,9 @@ impl AnthropicClient {
             .json(&body)
             .send()
             .await
-            .map_err(|e| LlmError::Network(e.to_string()))?;
+            .map_err(network_error)?;
         let resp = require_ok_status(resp, self.is_proxy()).await?;
-        let v: Value = resp.json().await.map_err(|e| LlmError::Network(e.to_string()))?;
+        let v: Value = resp.json().await.map_err(network_error)?;
         v["input_tokens"]
             .as_u64()
             .map(|n| n as u32)
@@ -393,7 +434,7 @@ impl AnthropicClient {
     ) -> Result<(), LlmError> {
         let send = self.messages_request().json(&body).send();
         let resp = tokio::select! {
-            r = send => r.map_err(|e| LlmError::Network(e.to_string()))?,
+            r = send => r.map_err(network_error)?,
             _ = cancel.cancelled() => return Err(LlmError::Cancelled),
         };
         let resp = require_ok_status(resp, self.is_proxy()).await?;
