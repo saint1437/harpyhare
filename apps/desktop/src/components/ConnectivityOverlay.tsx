@@ -1,7 +1,7 @@
 import { LoaderCircle } from "lucide-react";
 
 const TITLE = "Ожидается подключение к интернету";
-const HINT = "Приложению нужен интернет. Проверь сеть или VPN — экран пропадёт автоматически.";
+const HINT = "Приложению нужен интернет. Проверь сетевое подключение — экран пропадёт автоматически.";
 
 export function ConnectivityOverlay() {
   return (
