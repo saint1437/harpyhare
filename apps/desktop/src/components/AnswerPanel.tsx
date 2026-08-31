@@ -58,7 +58,8 @@ const AUTODETECT_LANGUAGE_SUBSET = [
   "go",
   "java",
 ];
-const ASSISTANT_PROSE_CLASS = "prose-answer text-chat leading-relaxed text-foreground/90";
+const ASSISTANT_PROSE_CLASS =
+  "prose-answer min-w-0 break-words text-chat leading-relaxed text-foreground/90";
 
 const FLOATING_CHIP_CLASS = "border bg-popover/95 shadow-pop backdrop-blur-sm";
 const MESSAGE_IMAGE_ALT = "Картинка в сообщении";
@@ -433,7 +434,7 @@ export function AnswerPanel({
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          className="flex min-h-0 w-full flex-col gap-2.5 overflow-y-auto pr-1.5"
+          className="flex min-h-0 w-full flex-col gap-2.5 overflow-y-auto pr-4"
         >
           {empty ? (
             <EmptyState />
