@@ -12,6 +12,7 @@ type ApiKeysSectionProps = SectionProps & {
 
 const KEY_FIELDS: { id: ApiKeyId; placeholder: string }[] = [
   { id: "anthropic", placeholder: "sk-ant-…" },
+  { id: "xclis", placeholder: "sk-…" },
   { id: "groq", placeholder: "gsk_…" },
 ];
 
@@ -40,7 +41,7 @@ export function ApiKeysSection({ draft, set, onRedeem }: ApiKeysSectionProps) {
   return (
     <SettingGroup
       title="Доступ к API"
-      description="Нужен код доступа либо пара своих ключей API — иначе запускать нечего."
+      description="Для Claude нужен ключ Anthropic или Xclis. Для распознавания речи — Groq."
     >
       <SettingBlock label="Код доступа" hint="Быстрый путь: заводить ключи не нужно.">
         <AccessCodeForm onRedeem={onRedeem} />
