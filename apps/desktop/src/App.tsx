@@ -59,24 +59,22 @@ import type {
 } from "@/ipc/types";
 import { chatRequestOptions, type Chat, type ChatMessage } from "@/lib/chats";
 import { appendTranscript } from "@/lib/composer";
-import { libraryContextBlocks, type ContextLibrary } from "@/lib/context-library";
+import type { ContextLibrary } from "@/lib/context-library";
 import { internalError, isNetworkError, isRetryable, type AppError } from "@/lib/errors";
 import { effectiveCombo } from "@/lib/hotkeys";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
 import { imagePngBase64, messageCopyImage, messageCopyText } from "@/lib/message-clipboard";
 import type { ModelInfo } from "@/lib/models";
-import { mergePresets, presetText, type PromptPreset } from "@/lib/presets";
+import { mergePresets, type PromptPreset } from "@/lib/presets";
 import { queryKeys } from "@/lib/query-client";
 import { filledQuickActions } from "@/lib/quick-actions";
+import { buildChatSystemPrompt } from "@/lib/system-prompt";
 import { toReadingText } from "@/lib/teleprompter";
 import { nativeSizeEcho, windowSizesEqual } from "@/lib/window-size";
 
 const SHELL_COLUMN_GAP_PX = 10;
 const SHELL_PADDING_PX = 12;
 const PREVIEW_EXTRA_WIDTH_PX = PREVIEW_PANEL_WIDTH_PX + SHELL_COLUMN_GAP_PX;
-
-const USER_CONTEXT_SYSTEM_HEADER = "Контекст от пользователя (справочные материалы):\n";
-const SYSTEM_BLOCKS_SEPARATOR = "\n\n";
 
 const settingsSaveErrorText = (err: string) => `Ошибка сохранения настроек: ${err}`;
 const COPY_IMAGE_ERROR_TEXT = "Не удалось скопировать картинку в буфер обмена";
@@ -96,15 +94,18 @@ function draftImages(chat: Chat): ImagePayload[] {
   return chat.draftAttachments.map((a) => a.payload);
 }
 
-function chatSystemPrompt(presets: PromptPreset[], chat: Chat, library: ContextLibrary): string {
-  const context = chat.context.trim();
-  return [
-    presetText(presets, chat.presetId),
-    ...libraryContextBlocks(library, chat.libraryDocIds),
-    context === "" ? "" : `${USER_CONTEXT_SYSTEM_HEADER}${context}`,
-  ]
-    .filter((s) => s !== "")
-    .join(SYSTEM_BLOCKS_SEPARATOR);
+function systemPromptForChat(
+  presets: PromptPreset[],
+  chat: Chat,
+  library: ContextLibrary,
+): string {
+  return buildChatSystemPrompt(
+    presets,
+    chat.presetId,
+    library,
+    chat.libraryDocIds,
+    chat.context,
+  );
 }
 
 function lastHtmlBlock(markdown: string): string | undefined {
@@ -317,7 +318,7 @@ function useSendPipeline(
 ): SendPipeline {
   const streamChat = useCallback(
     (chat: Chat, history: ChatMessageDto[]) => {
-      const system = chatSystemPrompt(presetsRef.current, chat, libraryRef.current);
+      const system = systemPromptForChat(presetsRef.current, chat, libraryRef.current);
       void streamRef.current.send(chat.id, history, system, chat.model, chatRequestOptions(chat));
     },
     [streamRef, presetsRef, libraryRef],
@@ -532,7 +533,7 @@ export default function App() {
   } = useSettings();
   const state = useRecorder();
   const chats = useChats();
-  const models = useModels();
+  const models = useModels(settings.llm_provider);
   const updater = useUpdater();
 
   const [updateOpen, setUpdateOpen] = useState(false);
@@ -564,7 +565,6 @@ export default function App() {
     resizeGuardUntilRef,
     applyNativeWindowSize,
   );
-  const chatColumnWidth = settings.window_width - SHELL_PADDING_PX * 2;
 
   const officialPresets = useOfficialPresets();
   const presets = useMemo(
@@ -723,7 +723,7 @@ export default function App() {
   const canTeleprompt = hasAssistantReply || (partial !== null && partial !== "");
   const activeModelMaxInput = models.find((m) => m.id === active.model)?.maxInputTokens ?? 0;
   const activeSystem = useMemo(
-    () => chatSystemPrompt(presets, active, contextLibrary.library),
+    () => systemPromptForChat(presets, active, contextLibrary.library),
     [presets, active, contextLibrary.library],
   );
   const projectedTokens = useProjectedContextTokens(active, activeSystem, activeStreaming);
@@ -796,7 +796,7 @@ export default function App() {
       style={{ gap: SHELL_COLUMN_GAP_PX, padding: SHELL_PADDING_PX }}
       onMouseDown={onShellDragStart}
     >
-      <div className="flex shrink-0 flex-col gap-2.5" style={{ width: chatColumnWidth }}>
+      <div className="flex min-w-0 flex-1 flex-col gap-2.5">
         <AppHeader
           state={state}
           error={error}
