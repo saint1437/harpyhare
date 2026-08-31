@@ -7,8 +7,6 @@ pub mod chat;
 pub mod chats;
 pub mod clipboard;
 pub mod context_import;
-#[cfg(target_os = "windows")]
-pub mod deepgram_curl;
 pub mod error;
 pub mod events;
 pub mod hotkey;
@@ -41,7 +39,6 @@ const PREVIEW_URI_SCHEME: &str = "preview";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let _ = rustls::crypto::ring::default_provider().install_default();
     let specta_builder = bindings::builder();
     tauri::Builder::default()
         .device_event_filter(tauri::DeviceEventFilter::Always)
