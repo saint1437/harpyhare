@@ -229,26 +229,27 @@ async fn require_ok_status(resp: reqwest::Response, proxy: bool) -> Result<reqwe
         200 => Ok(resp),
         code @ (401 | 403) if proxy => Err(LlmError::Api(api_error_message(resp, code).await)),
         401 | 403 => Err(LlmError::BadApiKey),
-        code @ (429 | 500..=599) => Err(LlmError::Retryable(code)),
+        code @ (429 | 500..=599) => Err(LlmError::Api(api_error_message(resp, code).await)),
         code => Err(LlmError::Api(api_error_message(resp, code).await)),
     }
 }
 
-const ERROR_BODY_SNIPPET_CHARS: usize = 120;
+const ERROR_BODY_SNIPPET_CHARS: usize = 300;
 
 async fn api_error_message(resp: reqwest::Response, code: u16) -> String {
     let body = resp.text().await.unwrap_or_default();
-    serde_json::from_str::<Value>(&body)
+    let detail = serde_json::from_str::<Value>(&body)
         .ok()
         .and_then(|v| v["error"]["message"].as_str().map(str::to_string))
         .unwrap_or_else(|| {
             let snippet: String = body.trim().chars().take(ERROR_BODY_SNIPPET_CHARS).collect();
             if snippet.is_empty() {
-                format!("HTTP {code}")
+                "ответ без тела".to_string()
             } else {
-                format!("HTTP {code}: {snippet}")
+                snippet
             }
-        })
+        });
+    format!("HTTP {code}: {detail}")
 }
 
 async fn pump_sse_stream(
@@ -347,7 +348,11 @@ impl AnthropicClient {
             .await
             .map_err(|e| LlmError::Network(e.to_string()))?;
         if resp.status().as_u16() != 200 {
-            return Err(LlmError::Api(format!("models HTTP {}", resp.status().as_u16())));
+            let code = resp.status().as_u16();
+            return Err(LlmError::Api(format!(
+                "models: {}",
+                api_error_message(resp, code).await
+            )));
         }
         let v: Value = resp
             .json()
