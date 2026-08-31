@@ -44,6 +44,7 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean;
 }) {
+  const outsideCloseRef = React.useRef<HTMLButtonElement>(null);
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
@@ -51,7 +52,11 @@ function DialogContent({
         data-slot="dialog-content"
         className="group pointer-events-none fixed inset-0 z-50 flex items-center justify-center outline-none"
         {...props}
+        onPointerDown={(e) => {
+          if (e.target === e.currentTarget) outsideCloseRef.current?.click();
+        }}
       >
+        <DialogPrimitive.Close ref={outsideCloseRef} aria-hidden tabIndex={-1} className="hidden" />
         <div
           data-slot="dialog-panel"
           className={cn(
