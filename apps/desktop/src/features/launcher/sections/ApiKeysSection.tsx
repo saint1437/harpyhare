@@ -1,10 +1,12 @@
 import { AccessCodeForm } from "@/components/AccessCodeForm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SelectItem } from "@/components/ui/select";
 import { openExternal } from "@/ipc/commands";
+import type { LlmProvider, SttProvider } from "@/ipc/types";
 import { apiKeyInfo, type ApiKeyId } from "@/lib/api-keys";
 import type { SectionProps } from "../contract";
-import { SettingBlock, SettingGroup, SettingRow } from "../fields";
+import { SettingBlock, SettingGroup, SettingRow, SettingSelect } from "../fields";
 
 type ApiKeysSectionProps = SectionProps & {
   onRedeem: (code: string) => Promise<string | null>;
@@ -14,16 +16,22 @@ const KEY_FIELDS: { id: ApiKeyId; placeholder: string }[] = [
   { id: "anthropic", placeholder: "sk-ant-…" },
   { id: "xclis", placeholder: "sk-…" },
   { id: "groq", placeholder: "gsk_…" },
+  { id: "deepgram", placeholder: "dg_…" },
 ];
+
+function isActiveKey(id: ApiKeyId, llmProvider: LlmProvider, sttProvider: SttProvider): boolean {
+  if (id === "anthropic" || id === "xclis") return id === llmProvider;
+  return id === sttProvider;
+}
 
 export function ApiKeysSection({ draft, set, onRedeem }: ApiKeysSectionProps) {
   if (draft.access_token.trim() !== "") {
     return (
       <SettingGroup
         title="Доступ к API"
-        description="Запросы идут через общий доступ по коду, свои ключи не используются."
+        description="Запросы идут через общий доступ по коду, свои ключи и выбранные провайдеры не используются."
       >
-        <SettingRow label="Код доступа активен" hint="Отвязка вернёт запросы на ваши ключи API.">
+        <SettingRow label="Код доступа активен" hint="Отвязка вернёт запросы на ваши API-ключи.">
           <Button
             variant="ghost"
             size="sm"
@@ -41,15 +49,51 @@ export function ApiKeysSection({ draft, set, onRedeem }: ApiKeysSectionProps) {
   return (
     <SettingGroup
       title="Доступ к API"
-      description="Для Claude нужен ключ Anthropic или Xclis. Для распознавания речи — Groq."
+      description="Оригинальные Anthropic + Groq оставлены. Xclis и Deepgram добавлены как отдельные альтернативы — можно смешивать как угодно."
     >
-      <SettingBlock label="Код доступа" hint="Быстрый путь: заводить ключи не нужно.">
+      <SettingBlock label="Код доступа" hint="Быстрый путь: заводить собственные ключи не нужно.">
         <AccessCodeForm onRedeem={onRedeem} />
       </SettingBlock>
+
+      <SettingRow label="Claude API" hint="Куда отправлять текст, контекст и скриншоты.">
+        <SettingSelect
+          ariaLabel="Провайдер Claude API"
+          value={draft.llm_provider}
+          onValueChange={(v) => {
+            set("llm_provider", v as LlmProvider);
+          }}
+        >
+          <SelectItem value="anthropic">Anthropic · официальный</SelectItem>
+          <SelectItem value="xclis">Xclis · альтернативный</SelectItem>
+        </SettingSelect>
+      </SettingRow>
+
+      <SettingRow label="Распознавание речи" hint="Движок, который получает записанный системный звук.">
+        <SettingSelect
+          ariaLabel="Провайдер распознавания речи"
+          value={draft.stt_provider}
+          onValueChange={(v) => {
+            const provider = v as SttProvider;
+            set("stt_provider", provider);
+            if (provider === "deepgram" && draft.stt_translate) {
+              set("stt_translate", false);
+            }
+          }}
+        >
+          <SelectItem value="groq">Groq · Whisper</SelectItem>
+          <SelectItem value="deepgram">Deepgram · Nova-3</SelectItem>
+        </SettingSelect>
+      </SettingRow>
+
       {KEY_FIELDS.map(({ id, placeholder }) => {
         const info = apiKeyInfo(id);
+        const active = isActiveKey(id, draft.llm_provider, draft.stt_provider);
         return (
-          <SettingBlock key={id} label={`Ключ ${info.name}`} hint={`Нужен для ${info.purpose}.`}>
+          <SettingBlock
+            key={id}
+            label={`Ключ ${info.name}`}
+            hint={`${active ? "Используется сейчас. " : "Сохранён как запасной. "}Нужен для ${info.purpose}.`}
+          >
             <div className="flex items-center gap-2">
               <Input
                 type="password"
