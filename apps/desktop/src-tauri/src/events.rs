@@ -22,6 +22,7 @@ const EVENT_OFFICIAL_PRESETS_UPDATED: &str = "official-presets-updated";
 const EVENT_SCREENSHOT_READY: &str = "screenshot-ready";
 const EVENT_SCREENSHOT_ERROR: &str = "screenshot-error";
 const EVENT_FOCUS_PROMPT: &str = "focus-prompt";
+const EVENT_DUPLICATE_CHAT: &str = "duplicate-chat";
 
 #[derive(Clone, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -151,6 +152,10 @@ pub fn toggle_mini(app: &AppHandle) {
 
 pub fn focus_prompt(app: &AppHandle) {
     let _ = app.emit(EVENT_FOCUS_PROMPT, ());
+}
+
+pub fn duplicate_chat(app: &AppHandle) {
+    let _ = app.emit(EVENT_DUPLICATE_CHAT, ());
 }
 
 pub fn resize_key(app: &AppHandle, dx: i32, dy: i32) {

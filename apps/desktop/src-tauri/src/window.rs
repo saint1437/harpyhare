@@ -112,6 +112,11 @@ const GLOBAL_HOTKEYS: &[(&str, GlobalRegistrar, GlobalUnregistrar)] = &[
     (hotkeys::ACTION_TELEPROMPTER, hotkey::register_teleprompter, hotkey::unregister_teleprompter),
     (hotkeys::ACTION_SCREENSHOT, hotkey::register_screenshot, hotkey::unregister_screenshot),
     (hotkeys::ACTION_FOCUS_PROMPT, hotkey::register_focus_prompt, hotkey::unregister_focus_prompt),
+    (
+        hotkeys::ACTION_DUPLICATE_CHAT,
+        hotkey::register_duplicate_chat,
+        hotkey::unregister_duplicate_chat,
+    ),
     (hotkeys::ACTION_MOVE_WINDOW, hotkey::register_arrow_family, hotkey::unregister_arrow_family),
     (hotkeys::ACTION_RESIZE_WINDOW, hotkey::register_arrow_family, hotkey::unregister_arrow_family),
 ];
@@ -172,6 +177,11 @@ pub fn on_toggle_mini(app: &AppHandle) {
         }
         events::toggle_mini(app);
     }
+}
+
+pub fn on_duplicate_chat(app: &AppHandle) {
+    show_and_focus_prompt(app);
+    crate::events::duplicate_chat(app);
 }
 
 pub fn on_toggle_teleprompter(app: &AppHandle) {

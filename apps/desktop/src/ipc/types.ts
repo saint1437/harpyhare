@@ -99,4 +99,5 @@ export interface EventMap {
   "screenshot-ready": { mediaType: string; dataBase64: string };
   "screenshot-error": AppError;
   "focus-prompt": null;
+  "duplicate-chat": null;
 }

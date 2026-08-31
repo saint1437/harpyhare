@@ -270,9 +270,9 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         id: ACTION_DUPLICATE_CHAT,
         group: "Чат",
         label: "Дубликат чата",
-        hint: "Новый чат с параметрами текущего, без сообщений.",
+        hint: "Новый чат с параметрами текущего, работает из любого приложения.",
         kind: HotkeyKind::Combo,
-        scope: HotkeyScope::Hud,
+        scope: HotkeyScope::Global,
         default_combo: primary_combo!(shift_token!(), "N"),
     },
     HotkeyAction {

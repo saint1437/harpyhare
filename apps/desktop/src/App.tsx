@@ -707,7 +707,7 @@ export default function App() {
     setMiniMode(false);
     focusPromptSoon();
   }, [chatsRef, focusPromptSoon]);
-  useComboKey(effectiveCombo(settings.hotkeys, "duplicate_chat"), true, duplicateActiveChat);
+  useEffect(() => onEvent("duplicate-chat", duplicateActiveChat), [duplicateActiveChat]);
 
   const openModelMenu = useCallback(() => {
     setModelMenuOpen(true);
