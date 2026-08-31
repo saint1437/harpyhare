@@ -1,4 +1,4 @@
-export type ApiKeyId = "anthropic" | "xclis" | "groq";
+export type ApiKeyId = "anthropic" | "xclis" | "groq" | "deepgram";
 
 export interface ApiKeyInfo {
   id: ApiKeyId;
@@ -17,14 +17,20 @@ const API_KEYS = [
   {
     id: "xclis",
     name: "Xclis",
-    purpose: "ответов Claude через Xclis",
+    purpose: "ответов Claude через альтернативный Anthropic-совместимый API",
     consoleUrl: "https://xclis.ai",
   },
   {
     id: "groq",
     name: "Groq",
-    purpose: "распознавания речи",
+    purpose: "распознавания речи через Whisper",
     consoleUrl: "https://console.groq.com/keys",
+  },
+  {
+    id: "deepgram",
+    name: "Deepgram",
+    purpose: "распознавания речи через Nova-3",
+    consoleUrl: "https://console.deepgram.com/",
   },
 ] as const satisfies readonly ApiKeyInfo[];
 
@@ -38,30 +44,40 @@ export interface ApiKeySettings {
   anthropic_api_key: string;
   xclis_api_key: string;
   groq_api_key: string;
+  deepgram_api_key: string;
+  llm_provider: string;
+  stt_provider: string;
   access_token: string;
+}
+
+function selectedClaudeKey(settings: ApiKeySettings): ApiKeyId {
+  return settings.llm_provider === "xclis" ? "xclis" : "anthropic";
+}
+
+function selectedSttKey(settings: ApiKeySettings): ApiKeyId {
+  return settings.stt_provider === "deepgram" ? "deepgram" : "groq";
 }
 
 export function missingApiKeys(settings: ApiKeySettings): ApiKeyInfo[] {
   if (settings.access_token.trim() !== "") return [];
 
+  const selectedClaude = selectedClaudeKey(settings);
+  const selectedStt = selectedSttKey(settings);
   const missing: ApiKeyInfo[] = [];
-  const hasClaudeKey =
-    settings.anthropic_api_key.trim() !== "" || settings.xclis_api_key.trim() !== "";
 
-  if (!hasClaudeKey) missing.push(apiKeyInfo("anthropic"));
-  if (settings.groq_api_key.trim() === "") missing.push(apiKeyInfo("groq"));
+  if (settings[`${selectedClaude}_api_key`].trim() === "") {
+    missing.push(apiKeyInfo(selectedClaude));
+  }
+  if (settings[`${selectedStt}_api_key`].trim() === "") {
+    missing.push(apiKeyInfo(selectedStt));
+  }
 
   return missing;
 }
 
 export function missingKeysNotice(missing: ApiKeyInfo[]): string {
-  if (missing.some((k) => k.id === "anthropic")) {
-    const needsGroq = missing.some((k) => k.id === "groq");
-    return needsGroq
-      ? "Добавьте ключ Anthropic или Xclis и ключ Groq, либо введите код доступа"
-      : "Добавьте ключ Anthropic или Xclis, либо введите код доступа";
-  }
+  if (missing.length === 0) return "";
   const noun = missing.length === 1 ? "ключ" : "ключи";
   const names = missing.map((k) => k.name).join(" и ");
-  return `Добавьте ${noun} ${names} или введите код доступа`;
+  return `Добавьте ${noun} ${names} для выбранных провайдеров или введите код доступа`;
 }
