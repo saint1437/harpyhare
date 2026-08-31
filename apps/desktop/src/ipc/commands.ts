@@ -32,6 +32,7 @@ export const {
   saveContextLibrary,
   setPreviewHtml,
   setPttSuspended,
+  setSttKeyterms,
   setWindowSize,
   stopMainWindow,
 } = commands;
@@ -43,11 +44,12 @@ export async function startWindowDrag(): Promise<void> {
 export async function sendToClaude(
   messages: ChatMessageDto[],
   chatId: string,
+  streamId: string,
   system: string,
   model: string,
   options: RequestOptions,
 ): Promise<void> {
-  await commands.sendToClaude(messages, chatId, system, model, options);
+  await commands.sendToClaude(messages, chatId, streamId, system, model, options);
 }
 
 export async function countChatTokens(

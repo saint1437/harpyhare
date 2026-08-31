@@ -1,6 +1,7 @@
-import { STT_PROVIDER_OPENAI } from "./stt-providers";
+import { MODEL_PROVIDERS } from "./models";
+import { STT_PROVIDERS, sttProviderKeyId } from "./stt-providers";
 
-export type ApiKeyId = "anthropic" | "groq" | "openai";
+export type ApiKeyId = "anthropic" | "groq" | "openai" | "xai";
 
 export interface ApiKeyInfo {
   id: ApiKeyId;
@@ -25,8 +26,14 @@ const API_KEYS = [
   {
     id: "openai",
     name: "OpenAI",
-    purpose: "распознавания речи через OpenAI",
+    purpose: "ответов GPT и распознавания речи через OpenAI",
     consoleUrl: "https://platform.openai.com/api-keys",
+  },
+  {
+    id: "xai",
+    name: "xAI",
+    purpose: "ответов Grok",
+    consoleUrl: "https://console.x.ai/team/default/api-keys",
   },
 ] as const satisfies readonly ApiKeyInfo[];
 
@@ -40,24 +47,64 @@ export interface ApiKeySettings {
   anthropic_api_key: string;
   groq_api_key: string;
   openai_api_key: string;
+  xai_api_key: string;
   access_token: string;
   stt_provider: string;
 }
 
-function sttKeyId(provider: string): ApiKeyId {
-  return provider === STT_PROVIDER_OPENAI ? "openai" : "groq";
-}
-
-export function missingApiKeys(settings: ApiKeySettings): ApiKeyInfo[] {
+export function sttProvidersMissingKey(settings: ApiKeySettings): readonly string[] {
   if (settings.access_token.trim() !== "") return [];
-  const required: readonly ApiKeyId[] = ["anthropic", sttKeyId(settings.stt_provider)];
-  return API_KEYS.filter(
-    (k) => required.includes(k.id) && settings[`${k.id}_api_key`].trim() === "",
-  );
+  return STT_PROVIDERS.filter((p) => settings[`${p.keyId}_api_key`].trim() === "").map((p) => p.id);
 }
 
-export function missingKeysNotice(missing: ApiKeyInfo[]): string {
-  const noun = missing.length === 1 ? "ключ" : "ключи";
-  const names = missing.map((k) => k.name).join(" и ");
-  return `Добавьте ${noun} ${names} или введите код доступа`;
+/**
+ * Answer-model providers the app cannot reach right now. An access code covers
+ * every provider the relay proxies — Claude and GPT alike — so it unlocks both.
+ */
+export function modelProvidersMissingKey(settings: ApiKeySettings): readonly string[] {
+  return MODEL_PROVIDERS.filter((p) => {
+    // An access code covers only what the relay proxies. A vendor it does not
+    // (Grok) still needs the user's own key, and the picker keeps it locked.
+    if (p.proxied && settings.access_token.trim() !== "") return false;
+    return settings[`${p.keyId}_api_key`].trim() === "";
+  }).map((p) => p.id);
+}
+
+/** What still stands between the user and a working session. */
+export interface AccessGap {
+  kind: "answers" | "speech";
+  label: string;
+}
+
+/** Answer vendors reachable right now — with a key of their own or via a code. */
+export function availableAnswerProviders(settings: ApiKeySettings): readonly string[] {
+  const locked = modelProvidersMissingKey(settings);
+  return MODEL_PROVIDERS.filter((p) => !locked.includes(p.id)).map((p) => p.id);
+}
+
+/**
+ * The two things the app genuinely needs, and neither of them names a vendor.
+ *
+ * It used to demand an Anthropic key specifically, from back when Claude was
+ * the only way to get an answer. **Any one answer vendor is enough now** — the
+ * requirement is a working pair (something to answer with, something to hear
+ * with), not a particular company.
+ */
+export function accessGaps(settings: ApiKeySettings): AccessGap[] {
+  const gaps: AccessGap[] = [];
+  if (availableAnswerProviders(settings).length === 0) {
+    const names = MODEL_PROVIDERS.map((p) => p.label).join(", ");
+    gaps.push({
+      kind: "answers",
+      label: `Добавьте ключ любого провайдера ответов (${names}) или введите код доступа`,
+    });
+  }
+  const speech = sttProviderKeyId(settings.stt_provider);
+  if (sttProvidersMissingKey(settings).includes(settings.stt_provider)) {
+    gaps.push({
+      kind: "speech",
+      label: `Добавьте ключ ${apiKeyInfo(speech).name} для распознавания речи или выберите другого провайдера`,
+    });
+  }
+  return gaps;
 }

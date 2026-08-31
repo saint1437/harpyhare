@@ -68,6 +68,7 @@ pub fn create_launcher_window(app: &AppHandle, settings: &settings::Settings) ->
     .resizable(true)
     .center()
     .theme(Some(tauri::Theme::Dark))
+    .shadow(false)
     .content_protected(!settings.screen_share_visible)
     .build()
     .map_err(|e| e.to_string())?;
@@ -94,6 +95,7 @@ fn create_main_window(app: &AppHandle, settings: &settings::Settings) -> Result<
     .decorations(false)
     .always_on_top(true)
     .visible_on_all_workspaces(true)
+    .shadow(false)
     .content_protected(!settings.screen_share_visible)
     .center()
     .build()
@@ -180,6 +182,9 @@ pub fn on_toggle_mini(app: &AppHandle) {
 }
 
 pub fn on_duplicate_chat(app: &AppHandle) {
+    if main_window(app).is_none() {
+        return;
+    }
     show_and_focus_prompt(app);
     crate::events::duplicate_chat(app);
 }

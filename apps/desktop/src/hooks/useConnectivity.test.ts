@@ -42,16 +42,23 @@ describe("useConnectivity", () => {
     });
   });
 
-  it("reportNetworkError поднимает offline", async () => {
+  it("reportNetworkError поднимает offline и сразу перепроверяет", async () => {
     probeConnectivity.mockResolvedValue(true);
     const { result } = renderHook(() => useConnectivity());
     await waitFor(() => {
       expect(result.current.offline).toBe(false);
     });
+    const callsBefore = probeConnectivity.mock.calls.length;
     act(() => {
       result.current.reportNetworkError();
     });
     expect(result.current.offline).toBe(true);
+    await waitFor(() => {
+      expect(probeConnectivity.mock.calls.length).toBeGreaterThan(callsBefore);
+    });
+    await waitFor(() => {
+      expect(result.current.offline).toBe(false);
+    });
   });
 
   it("событие offline → offline=true", async () => {
@@ -67,7 +74,7 @@ describe("useConnectivity", () => {
   });
 
   it("событие online перепроверяет связь и снимает offline при успехе", async () => {
-    probeConnectivity.mockResolvedValueOnce(false);
+    probeConnectivity.mockResolvedValue(false);
     const { result } = renderHook(() => useConnectivity());
     await waitFor(() => {
       expect(result.current.offline).toBe(true);
@@ -79,5 +86,51 @@ describe("useConnectivity", () => {
     await waitFor(() => {
       expect(result.current.offline).toBe(false);
     });
+  });
+
+  it("retry перепроверяет и снимает offline при успехе", async () => {
+    probeConnectivity.mockResolvedValue(false);
+    const { result } = renderHook(() => useConnectivity());
+    await waitFor(() => {
+      expect(result.current.offline).toBe(true);
+    });
+    probeConnectivity.mockResolvedValue(true);
+    act(() => {
+      result.current.retry();
+    });
+    await waitFor(() => {
+      expect(result.current.offline).toBe(false);
+    });
+  });
+
+  it("поздний провал старой пробы не возвращает offline после успеха", async () => {
+    const pending: ((value: boolean) => void)[] = [];
+    probeConnectivity.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          pending.push(resolve);
+        }),
+    );
+    setOnLine(false);
+    const { result } = renderHook(() => useConnectivity());
+    expect(result.current.offline).toBe(true);
+    await waitFor(() => {
+      expect(pending.length).toBeGreaterThan(0);
+    });
+    const stale = [...pending];
+    pending.length = 0;
+    probeConnectivity.mockResolvedValue(true);
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+    await waitFor(() => {
+      expect(result.current.offline).toBe(false);
+    });
+    act(() => {
+      for (const resolve of stale) {
+        resolve(false);
+      }
+    });
+    expect(result.current.offline).toBe(false);
   });
 });

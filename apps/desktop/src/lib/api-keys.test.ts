@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { missingApiKeys, missingKeysNotice } from "./api-keys";
+import { accessGaps, availableAnswerProviders, modelProvidersMissingKey } from "./api-keys";
+import { PROVIDER_ANTHROPIC, PROVIDER_OPENAI, PROVIDER_XAI } from "./models";
 import { STT_PROVIDER_GROQ, STT_PROVIDER_OPENAI } from "./stt-providers";
 
 const keys = (
@@ -8,78 +9,94 @@ const keys = (
   accessToken = "",
   sttProvider: string = STT_PROVIDER_GROQ,
   openai = "",
+  xai = "",
 ) => ({
   anthropic_api_key: anthropic,
   groq_api_key: groq,
   openai_api_key: openai,
+  xai_api_key: xai,
   access_token: accessToken,
   stt_provider: sttProvider,
 });
 
-describe("missingApiKeys", () => {
-  it("оба ключа заданы — ничего не отсутствует", () => {
-    expect(missingApiKeys(keys("sk-ant-x", "gsk_y"))).toEqual([]);
+describe("accessGaps", () => {
+  it("без единого ключа не хватает и ответов, и распознавания", () => {
+    const gaps = accessGaps(keys("", "")).map((g) => g.kind);
+    expect(gaps).toEqual(["answers", "speech"]);
   });
 
-  it("оба ключа пустые — отсутствуют оба, Anthropic первым", () => {
-    const missing = missingApiKeys(keys("", ""));
-    expect(missing.map((k) => k.id)).toEqual(["anthropic", "groq"]);
-  });
-
-  it("нет только одного ключа", () => {
-    expect(missingApiKeys(keys("sk-ant-x", "")).map((k) => k.id)).toEqual(["groq"]);
-    expect(missingApiKeys(keys("", "gsk_y")).map((k) => k.id)).toEqual(["anthropic"]);
-  });
-
-  it("провайдер OpenAI требует ключ OpenAI вместо Groq", () => {
-    const missing = missingApiKeys(keys("sk-ant-x", "", "", STT_PROVIDER_OPENAI));
-    expect(missing.map((k) => k.id)).toEqual(["openai"]);
-  });
-
-  it("провайдер OpenAI с ключом OpenAI не требует Groq", () => {
-    expect(missingApiKeys(keys("sk-ant-x", "", "", STT_PROVIDER_OPENAI, "sk-oai"))).toEqual([]);
-  });
-
-  it("на провайдере Groq пустой ключ OpenAI не считается отсутствующим", () => {
-    expect(missingApiKeys(keys("sk-ant-x", "gsk_y", "", STT_PROVIDER_GROQ, ""))).toEqual([]);
-  });
-
-  it("ключ из одних пробелов считается отсутствующим", () => {
-    expect(missingApiKeys(keys("   ", "gsk_y")).map((k) => k.id)).toEqual(["anthropic"]);
-  });
-
-  it("код доступа заменяет ключи — ничего не отсутствует", () => {
-    expect(missingApiKeys(keys("", "", "itk_token"))).toEqual([]);
-    expect(missingApiKeys(keys("", "", "itk_token", STT_PROVIDER_OPENAI))).toEqual([]);
-  });
-
-  it("код из одних пробелов не считается активным", () => {
-    expect(missingApiKeys(keys("", "", "   ")).map((k) => k.id)).toEqual(["anthropic", "groq"]);
-  });
-
-  it("у каждого ключа есть https-ссылка на консоль", () => {
-    for (const k of missingApiKeys(keys("", ""))) {
-      expect(k.consoleUrl).toMatch(/^https:\/\//);
+  it("ЛЮБОГО одного ключа ответов достаточно — Anthropic больше не обязателен", () => {
+    // Ключ Groq закрывает распознавание, ключ ответов — любой из трёх.
+    for (const answerKey of [
+      keys("sk-ant", "gsk_y"),
+      keys("", "gsk_y", "", STT_PROVIDER_GROQ, "sk-oai"),
+      keys("", "gsk_y", "", STT_PROVIDER_GROQ, "", "xai-key"),
+    ]) {
+      expect(accessGaps(answerKey)).toEqual([]);
     }
+  });
+
+  it("ключ ответов без ключа распознавания — не хватает только речи", () => {
+    const gaps = accessGaps(keys("sk-ant", ""));
+    expect(gaps.map((g) => g.kind)).toEqual(["speech"]);
+    expect(gaps[0]?.label).toContain("Groq");
+  });
+
+  it("подсказка про речь называет ключ выбранного провайдера", () => {
+    const gaps = accessGaps(keys("sk-ant", "gsk_y", "", STT_PROVIDER_OPENAI));
+    expect(gaps.map((g) => g.kind)).toEqual(["speech"]);
+    expect(gaps[0]?.label).toContain("OpenAI");
+  });
+
+  it("свой ключ распознавания закрывает речь без ключа ответов того же вендора", () => {
+    expect(accessGaps(keys("sk-ant", "", "", STT_PROVIDER_OPENAI, "sk-oai"))).toEqual([]);
+  });
+
+  it("код доступа закрывает обе потребности сам", () => {
+    expect(accessGaps(keys("", "", "itk_token"))).toEqual([]);
   });
 });
 
-describe("missingKeysNotice", () => {
-  it("единственное число для одного ключа", () => {
-    expect(missingKeysNotice(missingApiKeys(keys("sk-ant-x", "")))).toBe(
-      "Добавьте ключ Groq или введите код доступа",
-    );
+describe("availableAnswerProviders", () => {
+  it("перечисляет только тех, до кого реально дотянуться", () => {
+    expect(availableAnswerProviders(keys("", ""))).toEqual([]);
+    expect(availableAnswerProviders(keys("sk-ant", ""))).toEqual([PROVIDER_ANTHROPIC]);
+    const xaiOnly = keys("", "", "", STT_PROVIDER_GROQ, "", "xai-key");
+    expect(availableAnswerProviders(xaiOnly)).toEqual([PROVIDER_XAI]);
   });
 
-  it("множественное число и перечисление для двух ключей", () => {
-    expect(missingKeysNotice(missingApiKeys(keys("", "")))).toBe(
-      "Добавьте ключи Anthropic и Groq или введите код доступа",
-    );
+  it("код доступа открывает проксируемых, но не Grok", () => {
+    const available = availableAnswerProviders(keys("", "", "itk_token"));
+    expect(available).toContain(PROVIDER_ANTHROPIC);
+    expect(available).toContain(PROVIDER_OPENAI);
+    expect(available).not.toContain(PROVIDER_XAI);
+  });
+});
+
+describe("modelProvidersMissingKey", () => {
+  it("без ключей заперты все вендоры ответов", () => {
+    const locked = modelProvidersMissingKey(keys("", ""));
+    expect(locked).toContain(PROVIDER_ANTHROPIC);
+    expect(locked).toContain(PROVIDER_OPENAI);
+    expect(locked).toContain(PROVIDER_XAI);
   });
 
-  it("на провайдере OpenAI перечисляются Anthropic и OpenAI", () => {
-    expect(missingKeysNotice(missingApiKeys(keys("", "", "", STT_PROVIDER_OPENAI)))).toBe(
-      "Добавьте ключи Anthropic и OpenAI или введите код доступа",
-    );
+  it("код доступа открывает только тех, кого проксирует relay", () => {
+    // У Grok нет роута в воркере, поэтому код доступа его НЕ открывает —
+    // иначе пикер предлагал бы модель, которая ответит 404.
+    const locked = modelProvidersMissingKey(keys("", "", "itk_token"));
+    expect(locked).not.toContain(PROVIDER_ANTHROPIC);
+    expect(locked).not.toContain(PROVIDER_OPENAI);
+    expect(locked).toContain(PROVIDER_XAI);
+  });
+
+  it("свой ключ xAI открывает Grok и при коде доступа", () => {
+    const withXai = keys("", "", "itk_token", STT_PROVIDER_GROQ, "", "xai-key");
+    expect(modelProvidersMissingKey(withXai)).not.toContain(PROVIDER_XAI);
+  });
+
+  it("свой ключ открывает вендора без кода доступа", () => {
+    const withXai = keys("", "", "", STT_PROVIDER_GROQ, "", "xai-key");
+    expect(modelProvidersMissingKey(withXai)).not.toContain(PROVIDER_XAI);
   });
 });

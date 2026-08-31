@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   curatedModels,
+  defaultModelFor,
   DEFAULT_MODEL,
+  MODEL_PROVIDERS,
+  PROVIDER_XAI,
   FALLBACK_MODELS,
+  modelGroups,
   modelLabel,
+  withLockedModels,
+  PROVIDER_ANTHROPIC,
+  PROVIDER_OPENAI,
   selectableModels,
   thinkingLocked,
   type ModelInfo,
@@ -12,12 +19,16 @@ import {
 const model = (id: string, extra: Partial<ModelInfo> = {}): ModelInfo => ({
   id,
   displayName: id,
+  provider: PROVIDER_ANTHROPIC,
   adaptive: true,
   alwaysThinks: false,
   codeExec: true,
   maxInputTokens: 0,
   ...extra,
 });
+
+const gpt = (id: string, extra: Partial<ModelInfo> = {}): ModelInfo =>
+  model(id, { provider: PROVIDER_OPENAI, ...extra });
 
 describe("models", () => {
   it("дефолт — haiku 4.5, он есть в фолбэк-списке", () => {
@@ -61,6 +72,81 @@ describe("models", () => {
 
   it("curatedModels на фолбэке — тот же фолбэк", () => {
     expect(curatedModels(FALLBACK_MODELS)).toEqual(FALLBACK_MODELS);
+  });
+
+  it("curatedModels курирует по семействам только Claude, модели OpenAI отдаёт как есть", () => {
+    const fetched = [
+      model("claude-opus-4-8"),
+      model("claude-sonnet-5"),
+      model("claude-sonnet-4-6"),
+      model("claude-haiku-4-5-20251001"),
+      gpt("gpt-5.6-terra"),
+      gpt("gpt-5.6-sol"),
+      gpt("gpt-5.4-mini"),
+    ];
+    expect(curatedModels(fetched).map((m) => m.id)).toEqual([
+      "claude-opus-4-8",
+      "claude-sonnet-5",
+      "claude-haiku-4-5-20251001",
+      "gpt-5.6-terra",
+      "gpt-5.6-sol",
+      "gpt-5.4-mini",
+    ]);
+  });
+
+  it("withLockedModels дописывает вендора, которого бэкенд не вернул", () => {
+    const onlyClaude = FALLBACK_MODELS.filter((m) => m.provider === PROVIDER_ANTHROPIC);
+    const merged = withLockedModels(onlyClaude);
+    expect(merged.some((m) => m.provider === PROVIDER_OPENAI)).toBe(true);
+    expect(merged.filter((m) => m.provider === PROVIDER_ANTHROPIC)).toEqual(onlyClaude);
+  });
+
+  it("withLockedModels ничего не дублирует, когда вендор уже ответил", () => {
+    expect(withLockedModels(FALLBACK_MODELS)).toEqual(FALLBACK_MODELS);
+  });
+
+  it("modelGroups: один провайдер — одна группа", () => {
+    const onlyClaude = FALLBACK_MODELS.filter((m) => m.provider === PROVIDER_ANTHROPIC);
+    const groups = modelGroups(onlyClaude);
+    expect(groups.length).toBe(1);
+    expect(groups[0]?.label).toBe("Claude");
+    expect(groups[0]?.models).toEqual(onlyClaude);
+  });
+
+  it("modelGroups раскладывает модели по провайдерам в порядке реестра", () => {
+    const groups = modelGroups([gpt("gpt-5.6-terra"), model("claude-opus-4-8")]);
+    expect(groups.map((g) => g.label)).toEqual(["Claude", "OpenAI"]);
+    expect(groups[0]?.models.map((m) => m.id)).toEqual(["claude-opus-4-8"]);
+    expect(groups[1]?.models.map((m) => m.id)).toEqual(["gpt-5.6-terra"]);
+  });
+
+  it("modelGroups не теряет модель чата, оставшуюся без провайдера", () => {
+    const groups = modelGroups(selectableModels(FALLBACK_MODELS, "gpt-снятая-с-учёта"));
+    expect(groups.at(-1)?.label).toBe("Другие");
+    expect(groups.at(-1)?.models.map((m) => m.id)).toEqual(["gpt-снятая-с-учёта"]);
+  });
+
+  it("defaultModelFor берёт первого доступного вендора, а не всегда Claude", () => {
+    const anthropicLocked = MODEL_PROVIDERS.filter((p) => p.id !== PROVIDER_OPENAI).map(
+      (p) => p.id,
+    );
+    const chosen = defaultModelFor(anthropicLocked);
+    expect(FALLBACK_MODELS.find((m) => m.id === chosen)?.provider).toBe(PROVIDER_OPENAI);
+  });
+
+  it("defaultModelFor с одним лишь ключом xAI открывает чат на Grok", () => {
+    const onlyXai = MODEL_PROVIDERS.filter((p) => p.id !== PROVIDER_XAI).map((p) => p.id);
+    const chosen = defaultModelFor(onlyXai);
+    expect(FALLBACK_MODELS.find((m) => m.id === chosen)?.provider).toBe(PROVIDER_XAI);
+  });
+
+  it("defaultModelFor без единого вендора остаётся на дефолте", () => {
+    const allLocked = MODEL_PROVIDERS.map((p) => p.id);
+    expect(defaultModelFor(allLocked)).toBe(DEFAULT_MODEL);
+  });
+
+  it("defaultModelFor без запертых вендоров — дефолт первого в реестре", () => {
+    expect(defaultModelFor([])).toBe(DEFAULT_MODEL);
   });
 
   it("thinkingLocked: без adaptive или «думает всегда»", () => {

@@ -9,7 +9,8 @@ use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
 
 use crate::app_state::{
-    build_capture, cancel_stt_stream, current_settings, llm_provider, stt_engine, App, SttStream,
+    build_capture, cancel_stt_stream, current_settings, llm_provider, stt_engine, stt_keyterms,
+    App, SttStream,
 };
 use crate::error::{AppError, ErrorCode};
 use crate::{audio, capture, events, hotkey, state, stt};
@@ -123,6 +124,7 @@ pub fn on_ptt_pressed(app: &AppHandle) {
 fn start_streaming_transcription(app: &AppHandle) -> capture::ChunkSink {
     let st = app.state::<App>();
     let stt_client = stt_engine(app);
+    let keyterms = stt_keyterms(app);
     let cancel = CancellationToken::new();
     let broken = Arc::new(AtomicBool::new(false));
     let (tx, rx) = tokio::sync::mpsc::channel::<SttBodyChunk>(STT_STREAM_CHANNEL_CAPACITY);
@@ -136,7 +138,7 @@ fn start_streaming_transcription(app: &AppHandle) -> capture::ChunkSink {
     let handle = {
         let cancel = cancel.clone();
         tauri::async_runtime::spawn(
-            async move { stt_client.transcribe_stream(body_stream, cancel).await },
+            async move { stt_client.transcribe_stream(body_stream, &keyterms, cancel).await },
         )
     };
     if let Some(old) = st.stt_stream.lock().unwrap().replace(SttStream {
@@ -288,8 +290,9 @@ fn deliver_transcript(app: &AppHandle, text: String) {
 
 async fn transcribe_and_emit(app: AppHandle, samples: Vec<f32>) {
     let stt_client = stt_engine(&app);
+    let keyterms = stt_keyterms(&app);
     let t = std::time::Instant::now();
-    let res = stt_client.transcribe(&samples).await;
+    let res = stt_client.transcribe(&samples, &keyterms).await;
     eprintln!("[perf] stt transcribe (wav+upload+inference) {:?}", t.elapsed());
     match res {
         Ok(text) => deliver_transcript(&app, text),

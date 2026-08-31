@@ -17,7 +17,6 @@ export interface LauncherPanelProps {
   updater: UpdaterApi;
   launching: boolean;
   saving: boolean;
-  error: string | null;
   onRedeem: (code: string) => Promise<string | null>;
   onCheckUpdates: () => Promise<UpdateInfo | null>;
   onSave: (next: Settings) => void;

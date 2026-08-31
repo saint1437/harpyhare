@@ -20,6 +20,7 @@ export interface Settings {
   anthropic_api_key: string;
   groq_api_key: string;
   openai_api_key: string;
+  xai_api_key: string;
   access_token: string;
   prompt_presets: PromptPreset[];
   hotkeys: HotkeyBinding[];
@@ -85,10 +86,10 @@ export interface EventMap {
   "state-changed": RecorderState;
   "transcript-ready": string;
   "stt-error": AppError;
-  "llm-delta": { chatId: string; delta: string };
-  "llm-done": { chatId: string };
-  "llm-error": AppError & { chatId: string };
-  "llm-usage": { chatId: string; inputTokens: number };
+  "llm-delta": { chatId: string; streamId: string; delta: string };
+  "llm-done": { chatId: string; streamId: string };
+  "llm-error": AppError & { chatId: string; streamId: string };
+  "llm-usage": { chatId: string; streamId: string; inputTokens: number };
   "update-available": UpdateInfo;
   "update-progress": UpdateProgress;
   "update-done": { version: string };

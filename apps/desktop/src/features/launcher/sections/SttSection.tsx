@@ -4,7 +4,7 @@ import { SETTINGS_LIMITS } from "@/ipc/bindings";
 import { listAudioOutputDevices } from "@/ipc/commands";
 import type { AudioOutputDevice } from "@/ipc/types";
 import { queryKeys } from "@/lib/query-client";
-import { STT_PROVIDERS } from "@/lib/stt-providers";
+import { STT_PROVIDERS, sttProviderSupportsTranslate } from "@/lib/stt-providers";
 import type { SectionProps } from "../contract";
 import { SettingGroup, SettingRow, SettingSelect, SettingSlider, SettingSwitch } from "../fields";
 
@@ -65,6 +65,8 @@ function CaptureDeviceRow({ draft, set }: SectionProps) {
 }
 
 export function SttSection({ draft, set }: SectionProps) {
+  const translateAvailable = sttProviderSupportsTranslate(draft.stt_provider);
+  const translatingNow = draft.stt_translate && translateAvailable;
   return (
     <SettingGroup
       title="Распознавание речи"
@@ -83,7 +85,7 @@ export function SttSection({ draft, set }: SectionProps) {
           }}
         >
           {STT_PROVIDERS.map((p) => (
-            <SelectItem key={p.value} value={p.value}>
+            <SelectItem key={p.id} value={p.id}>
               {p.label}
             </SelectItem>
           ))}
@@ -92,7 +94,7 @@ export function SttSection({ draft, set }: SectionProps) {
       <SettingRow
         label="Язык распознавания"
         hint={
-          draft.stt_translate
+          translatingNow
             ? "При переводе язык определяется автоматически."
             : "Распознавание точнее, когда язык задан явно."
         }
@@ -100,7 +102,7 @@ export function SttSection({ draft, set }: SectionProps) {
         <SettingSelect
           ariaLabel="Язык распознавания"
           value={draft.stt_language === "" ? STT_LANGUAGE_AUTO : draft.stt_language}
-          disabled={draft.stt_translate}
+          disabled={translatingNow}
           onValueChange={(v) => {
             set("stt_language", v === STT_LANGUAGE_AUTO ? "" : v);
           }}
@@ -114,11 +116,16 @@ export function SttSection({ draft, set }: SectionProps) {
       </SettingRow>
       <SettingRow
         label="Перевод на английский"
-        hint="Речь на любом языке приходит в чат по-английски."
+        hint={
+          translateAvailable
+            ? "Речь на любом языке приходит в чат по-английски."
+            : "Выбранный провайдер не умеет переводить — выбери другого."
+        }
       >
         <SettingSwitch
           ariaLabel="Перевод на английский"
-          checked={draft.stt_translate}
+          checked={draft.stt_translate && translateAvailable}
+          disabled={!translateAvailable}
           onCheckedChange={(v) => {
             set("stt_translate", v);
           }}

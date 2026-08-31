@@ -47,6 +47,24 @@ describe("useContextLibrary", () => {
     expect(saved).toContain("Новая");
   });
 
+  it("на размонтировании сбрасывает несохранённые правки на диск", async () => {
+    vi.useFakeTimers();
+    try {
+      const { result, unmount } = renderHook(() => useContextLibrary());
+      await act(async () => Promise.resolve());
+      act(() => {
+        result.current.addFolder("Новая");
+      });
+      expect(saveContextLibrary).not.toHaveBeenCalled();
+      unmount();
+      expect(saveContextLibrary).toHaveBeenCalled();
+      const saved = saveContextLibrary.mock.calls[0]?.[0] ?? "";
+      expect(saved).toContain("Новая");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("addDoc + removeFolder переносит материал в корень", async () => {
     const { result } = renderHook(() => useContextLibrary());
     await act(async () => Promise.resolve());

@@ -282,7 +282,7 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         hint: "Выбор голосовой модели и модели ответа.",
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Hud,
-        default_combo: primary_combo!("X"),
+        default_combo: primary_combo!(shift_token!(), "M"),
     },
     HotkeyAction {
         id: ACTION_TELEPROMPTER,

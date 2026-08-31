@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import type { ModelInfo } from "@/lib/models";
+import { PROVIDER_ANTHROPIC, PROVIDER_OPENAI, type ModelInfo } from "@/lib/models";
 import { STT_PROVIDER_GROQ, STT_PROVIDER_OPENAI } from "@/lib/stt-providers";
 import { ModelCommandMenu } from "./ModelCommandMenu";
 
@@ -23,6 +23,7 @@ const models: ModelInfo[] = [
   {
     id: "claude-opus-5",
     displayName: "Claude Opus 5",
+    provider: PROVIDER_ANTHROPIC,
     adaptive: true,
     alwaysThinks: false,
     codeExec: true,
@@ -31,6 +32,7 @@ const models: ModelInfo[] = [
   {
     id: "claude-haiku-4-5",
     displayName: "Claude Haiku 4.5",
+    provider: PROVIDER_ANTHROPIC,
     adaptive: false,
     alwaysThinks: false,
     codeExec: false,
@@ -43,8 +45,10 @@ const renderMenu = (overrides: Partial<Parameters<typeof ModelCommandMenu>[0]> =
     open: true,
     onOpenChange: vi.fn(),
     sttProvider: STT_PROVIDER_GROQ,
+    providersMissingKey: [] as readonly string[],
     onSwitchSttProvider: vi.fn(),
     models,
+    modelProvidersMissingKey: [] as readonly string[],
     activeModelId: "claude-haiku-4-5",
     onSelectModel: vi.fn(),
     ...overrides,
@@ -72,6 +76,12 @@ describe("ModelCommandMenu", () => {
     expect(props.onSelectModel).not.toHaveBeenCalled();
   });
 
+  it("доступная модель идёт без замка", () => {
+    renderMenu();
+    const item = screen.getByText("Opus 5").closest("[data-slot=command-item]");
+    expect(item?.querySelector("svg.lucide-lock")).toBeNull();
+  });
+
   it("выбор модели ответа отдаёт id и закрывает меню", () => {
     const props = renderMenu();
     fireEvent.click(screen.getByText("Opus 5"));
@@ -83,5 +93,69 @@ describe("ModelCommandMenu", () => {
   it("модель чата вне каталога всё равно попадает в список", () => {
     renderMenu({ activeModelId: "claude-sonnet-4" });
     expect(screen.getByText("claude-sonnet-4")).toBeTruthy();
+  });
+
+  it("модели двух провайдеров идут отдельными группами с именем вендора", () => {
+    renderMenu({
+      models: [
+        ...models,
+        {
+          id: "gpt-5.6-terra",
+          displayName: "GPT-5.6 Terra",
+          provider: PROVIDER_OPENAI,
+          adaptive: true,
+          alwaysThinks: false,
+          codeExec: true,
+          maxInputTokens: 0,
+        },
+      ],
+    });
+    expect(screen.getByText("Модель ответа · Claude")).toBeTruthy();
+    expect(screen.getByText("Модель ответа · OpenAI")).toBeTruthy();
+    expect(screen.queryByText("Модель ответа")).toBeNull();
+    expect(screen.getByText("GPT-5.6 Terra")).toBeTruthy();
+  });
+
+  it("без ключа модели вендора видны, но с подсказкой и не выбираются", () => {
+    const props = renderMenu({
+      models: [
+        ...models,
+        {
+          id: "gpt-5.6-terra",
+          displayName: "GPT-5.6 Terra",
+          provider: PROVIDER_OPENAI,
+          adaptive: true,
+          alwaysThinks: false,
+          codeExec: true,
+          maxInputTokens: 0,
+        },
+      ],
+      modelProvidersMissingKey: [PROVIDER_OPENAI],
+    });
+    const item = screen.getByText("GPT-5.6 Terra").closest("[data-slot=command-item]");
+    expect(item?.getAttribute("data-disabled")).toBe("true");
+    expect(item?.querySelector("svg.lucide-lock")).toBeTruthy();
+    expect(screen.getAllByText("нет ключа").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText("GPT-5.6 Terra"));
+    expect(props.onSelectModel).not.toHaveBeenCalled();
+  });
+
+  it("выбор модели OpenAI отдаёт её id", () => {
+    const props = renderMenu({
+      models: [
+        {
+          id: "gpt-5.6-terra",
+          displayName: "GPT-5.6 Terra",
+          provider: PROVIDER_OPENAI,
+          adaptive: true,
+          alwaysThinks: false,
+          codeExec: true,
+          maxInputTokens: 0,
+        },
+      ],
+      activeModelId: "gpt-5.6-terra",
+    });
+    fireEvent.click(screen.getByText("GPT-5.6 Terra"));
+    expect(props.onSelectModel).toHaveBeenCalledWith("gpt-5.6-terra");
   });
 });

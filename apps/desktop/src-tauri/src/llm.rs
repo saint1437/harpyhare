@@ -1,3 +1,10 @@
+//! The LLM port and the Anthropic client.
+//!
+//! Adding a vendor touches three places and none of them is here: a row in
+//! `registry`, a module beside `openai`, and one arm in
+//! `app_state::build_provider`. See «Как добавить нового LLM-вендора» in
+//! `apps/desktop/CLAUDE.md`.
+
 use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -5,17 +12,40 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
+use http::{Credential, LlmHttp};
+
+/// Transport shared by every vendor: pool, auth, status mapping, SSE pumping.
+pub mod http;
+/// The OpenAI Responses dialect, shared by more than one vendor.
+pub mod responses;
+/// The one table a new vendor is declared in; exported to the frontend.
+pub mod registry;
+/// Dispatches each request to the vendor that owns the requested model.
+pub mod router;
+
 pub const APP_USER_AGENT: &str = concat!("AudioSystem/", env!("CARGO_PKG_VERSION"));
+
+pub const PROVIDER_ANTHROPIC: &str = "anthropic";
+pub const PROVIDER_OPENAI: &str = "openai";
+pub const PROVIDER_XAI: &str = "xai";
+
+/// New chats start here. Paired with `DEFAULT_MODEL` in `lib/chats.ts`,
+/// which reads it out of the generated registry rather than repeating it.
+pub const DEFAULT_MODEL: &str = "claude-haiku-4-5-20251001";
+
+pub const UNKNOWN_MAX_INPUT_TOKENS: u32 = 0;
+pub const UNKNOWN_TOKEN_COUNT: u32 = 0;
 
 const ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com";
 const MESSAGES_PATH: &str = "/v1/messages";
 const COUNT_TOKENS_PATH: &str = "/v1/messages/count_tokens";
-const MODELS_PATH: &str = "/v1/models";
+pub(crate) const MODELS_PATH: &str = "/v1/models";
 const MODELS_PAGE_LIMIT: u32 = 100;
 
 const API_KEY_HEADER: &str = "x-api-key";
 const VERSION_HEADER: &str = "anthropic-version";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
+const ANTHROPIC_KEY_LABEL: &str = "Anthropic";
 
 const MAX_TOKENS: u32 = 64000;
 
@@ -35,20 +65,22 @@ const ALWAYS_THINKING_PREFIXES: [&str; 2] = ["claude-fable", "claude-mythos"];
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(60);
 const HTTP2_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(30);
-const WARM_UP_TIMEOUT: Duration = Duration::from_secs(5);
-const LIST_MODELS_TIMEOUT: Duration = Duration::from_secs(15);
+const HTTP2_KEEP_ALIVE_TIMEOUT: Duration = Duration::from_secs(5);
+const PROBE_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+pub(crate) const WARM_UP_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const LIST_MODELS_TIMEOUT: Duration = Duration::from_secs(15);
 
 const SSE_EVENT_SEPARATOR: &str = "\n\n";
 const SSE_DATA_PREFIX: &str = "data: ";
 
 const TRUNCATED_STREAM_ERROR: &str = "ответ оборван до завершения";
-const UNKNOWN_API_ERROR: &str = "неизвестная ошибка API";
+pub(crate) const UNKNOWN_API_ERROR: &str = "неизвестная ошибка API";
 
 #[derive(Debug, thiserror::Error)]
 pub enum LlmError {
-    #[error("Неверный ключ Anthropic — проверь в настройках")]
-    BadApiKey,
-    #[error("Anthropic перегружен, попробуй позже ({0})")]
+    #[error("Неверный ключ {0} — проверь в настройках")]
+    BadApiKey(&'static str),
+    #[error("Сервис ответов перегружен, попробуй позже ({0})")]
     Retryable(u16),
     #[error("Нет соединения — проверь интернет/VPN: {0}")]
     Network(String),
@@ -62,7 +94,7 @@ impl crate::error::CodedError for LlmError {
     fn code(&self) -> crate::error::ErrorCode {
         use crate::error::ErrorCode;
         match self {
-            LlmError::BadApiKey => ErrorCode::BadApiKey,
+            LlmError::BadApiKey(_) => ErrorCode::BadApiKey,
             LlmError::Retryable(_) => ErrorCode::Retryable,
             LlmError::Network(_) => ErrorCode::Network,
             LlmError::Api(_) => ErrorCode::Api,
@@ -95,6 +127,8 @@ pub trait LlmStreamSink: Send {
 
 #[async_trait::async_trait]
 pub trait LlmProvider: Send + Sync {
+    fn provider_id(&self) -> &'static str;
+    fn known_models(&self) -> Vec<ModelInfo>;
     async fn stream(
         &self,
         request: LlmRequest,
@@ -107,17 +141,13 @@ pub trait LlmProvider: Send + Sync {
     async fn warm_up(&self);
 }
 
-#[derive(Clone)]
-enum Auth {
-    ApiKey(String),
-    ProxyBearer(String),
-}
+/// Sent on every Anthropic request; `warm_up` is the deliberate exception —
+/// it only opens the socket and throws the answer away.
+const ANTHROPIC_HEADERS: http::StaticHeaders = &[(VERSION_HEADER, ANTHROPIC_VERSION)];
 
 #[derive(Clone)]
 pub struct AnthropicClient {
-    auth: Auth,
-    base_url: String,
-    client: reqwest::Client,
+    http: LlmHttp,
     catalog: ModelCatalog,
 }
 
@@ -126,6 +156,7 @@ pub struct AnthropicClient {
 pub struct ModelInfo {
     pub id: String,
     pub display_name: String,
+    pub provider: String,
     pub adaptive: bool,
     pub always_thinks: bool,
     pub code_exec: bool,
@@ -155,30 +186,19 @@ fn model_info_from_json(v: &Value) -> Option<ModelInfo> {
         .unwrap_or_else(|| fallback_code_exec(&id));
     Some(ModelInfo {
         always_thinks: always_thinks(&id),
+        provider: PROVIDER_ANTHROPIC.into(),
         adaptive,
         code_exec,
-        max_input_tokens: v["max_input_tokens"].as_u64().unwrap_or(0) as u32,
+        max_input_tokens: v["max_input_tokens"]
+            .as_u64()
+            .unwrap_or(UNKNOWN_MAX_INPUT_TOKENS.into()) as u32,
         id,
         display_name,
     })
 }
 
 pub fn fallback_models() -> Vec<ModelInfo> {
-    [
-        ("claude-opus-4-8", "Claude Opus 4.8", true),
-        ("claude-sonnet-5", "Claude Sonnet 5", true),
-        ("claude-haiku-4-5-20251001", "Claude Haiku 4.5", false),
-    ]
-    .into_iter()
-    .map(|(id, name, caps)| ModelInfo {
-        id: id.into(),
-        display_name: name.into(),
-        adaptive: caps,
-        code_exec: caps,
-        always_thinks: false,
-        max_input_tokens: 0,
-    })
-    .collect()
+    registry::catalog_models(PROVIDER_ANTHROPIC)
 }
 
 pub fn thinking_value(info: Option<&ModelInfo>, model_id: &str, requested: bool) -> Option<Value> {
@@ -212,23 +232,39 @@ pub fn web_search_value(info: Option<&ModelInfo>, model_id: &str, requested: boo
     Some(tool)
 }
 
-fn build_http_client(read_timeout: Duration) -> reqwest::Client {
+pub(crate) fn build_http_client(read_timeout: Duration) -> reqwest::Client {
     reqwest::Client::builder()
         .user_agent(APP_USER_AGENT)
         .connect_timeout(CONNECT_TIMEOUT)
         .read_timeout(read_timeout)
         .pool_idle_timeout(None)
         .http2_keep_alive_interval(HTTP2_KEEP_ALIVE_INTERVAL)
+        .http2_keep_alive_timeout(HTTP2_KEEP_ALIVE_TIMEOUT)
         .http2_keep_alive_while_idle(true)
         .build()
         .expect("reqwest client")
 }
 
-async fn require_ok_status(resp: reqwest::Response, proxy: bool) -> Result<reqwest::Response, LlmError> {
+pub(crate) fn build_probe_http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent(APP_USER_AGENT)
+        .connect_timeout(PROBE_CONNECT_TIMEOUT)
+        .timeout(WARM_UP_TIMEOUT)
+        .pool_max_idle_per_host(0)
+        .http1_only()
+        .build()
+        .expect("probe reqwest client")
+}
+
+pub(crate) async fn require_ok_status(
+    resp: reqwest::Response,
+    key_label: &'static str,
+    proxy: bool,
+) -> Result<reqwest::Response, LlmError> {
     match resp.status().as_u16() {
         200 => Ok(resp),
         code @ (401 | 403) if proxy => Err(LlmError::Api(api_error_message(resp, code).await)),
-        401 | 403 => Err(LlmError::BadApiKey),
+        401 | 403 => Err(LlmError::BadApiKey(key_label)),
         code @ (429 | 500..=599) => Err(LlmError::Retryable(code)),
         code => Err(LlmError::Api(api_error_message(resp, code).await)),
     }
@@ -236,7 +272,7 @@ async fn require_ok_status(resp: reqwest::Response, proxy: bool) -> Result<reqwe
 
 const ERROR_BODY_SNIPPET_CHARS: usize = 120;
 
-async fn api_error_message(resp: reqwest::Response, code: u16) -> String {
+pub(crate) async fn api_error_message(resp: reqwest::Response, code: u16) -> String {
     let body = resp.text().await.unwrap_or_default();
     serde_json::from_str::<Value>(&body)
         .ok()
@@ -251,12 +287,12 @@ async fn api_error_message(resp: reqwest::Response, code: u16) -> String {
         })
 }
 
-async fn pump_sse_stream(
+pub(crate) async fn pump_sse_stream(
     resp: reqwest::Response,
+    mut parser: SseParser,
     cancel: &CancellationToken,
     sink: &mut dyn LlmStreamSink,
 ) -> Result<(), LlmError> {
-    let mut parser = SseParser::new();
     let mut stream = resp.bytes_stream();
     loop {
         let chunk = tokio::select! {
@@ -271,7 +307,12 @@ async fn pump_sse_stream(
             match out {
                 SseOut::TextDelta(t) => sink.text_delta(&t),
                 SseOut::InputTokens(n) => sink.input_tokens(n),
-                SseOut::Done => return Ok(()),
+                SseOut::Done(tokens) => {
+                    if let Some(n) = tokens {
+                        sink.input_tokens(n);
+                    }
+                    return Ok(());
+                }
                 SseOut::ApiError(m) => return Err(LlmError::Api(m)),
             }
         }
@@ -280,25 +321,38 @@ async fn pump_sse_stream(
 
 impl AnthropicClient {
     pub fn new(api_key: String) -> Self {
-        Self {
-            auth: Auth::ApiKey(api_key),
-            base_url: ANTHROPIC_BASE_URL.into(),
-            client: build_http_client(DEFAULT_READ_TIMEOUT),
-            catalog: ModelCatalog::default(),
-        }
+        Self::over(
+            LlmHttp::direct(
+                ANTHROPIC_BASE_URL,
+                Credential::ApiKeyHeader { header: API_KEY_HEADER, key: api_key },
+                ANTHROPIC_KEY_LABEL,
+            ),
+        )
     }
+
     pub fn for_proxy(access_token: String, base_url: String) -> Self {
-        Self {
-            auth: Auth::ProxyBearer(access_token),
-            base_url,
-            client: build_http_client(DEFAULT_READ_TIMEOUT),
-            catalog: ModelCatalog::default(),
-        }
+        Self::over(LlmHttp::proxied(base_url, access_token, ANTHROPIC_KEY_LABEL))
     }
+
+    fn over(http: LlmHttp) -> Self {
+        Self { http: http.with_headers(ANTHROPIC_HEADERS), catalog: ModelCatalog::default() }
+    }
+
     pub fn with_catalog(mut self, catalog: ModelCatalog) -> Self {
         self.catalog = catalog;
         self
     }
+
+    pub fn with_base_url(mut self, url: String) -> Self {
+        self.http = self.http.with_base_url(url);
+        self
+    }
+
+    pub fn with_read_timeout(mut self, d: Duration) -> Self {
+        self.http = self.http.with_read_timeout(d);
+        self
+    }
+
     fn cached_model(&self, model_id: &str) -> Option<ModelInfo> {
         self.catalog
             .lock()
@@ -307,6 +361,7 @@ impl AnthropicClient {
             .find(|m| m.id == model_id)
             .cloned()
     }
+
     fn capability_fields(&self, request: &LlmRequest) -> (Option<Value>, Option<Value>) {
         let info = self.cached_model(&request.model);
         (
@@ -314,66 +369,18 @@ impl AnthropicClient {
             web_search_value(info.as_ref(), &request.model, request.options.web_search),
         )
     }
-    fn is_proxy(&self) -> bool {
-        matches!(self.auth, Auth::ProxyBearer(_))
-    }
-    fn authorize(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        match &self.auth {
-            Auth::ApiKey(key) => req.header(API_KEY_HEADER, key),
-            Auth::ProxyBearer(token) => req.bearer_auth(token),
-        }
-    }
-    pub fn with_base_url(mut self, url: String) -> Self {
-        self.base_url = url;
-        self
-    }
-    pub fn with_read_timeout(mut self, d: Duration) -> Self {
-        self.client = build_http_client(d);
-        self
-    }
 
     async fn fetch_models(&self) -> Result<Vec<ModelInfo>, LlmError> {
-        let req = self
-            .client
-            .get(format!(
-                "{}{MODELS_PATH}?limit={MODELS_PAGE_LIMIT}",
-                self.base_url
-            ))
-            .header(VERSION_HEADER, ANTHROPIC_VERSION)
-            .timeout(LIST_MODELS_TIMEOUT);
-        let resp = self
-            .authorize(req)
-            .send()
-            .await
-            .map_err(|e| LlmError::Network(e.to_string()))?;
-        if resp.status().as_u16() != 200 {
-            return Err(LlmError::Api(format!("models HTTP {}", resp.status().as_u16())));
-        }
-        let v: Value = resp
-            .json()
-            .await
-            .map_err(|e| LlmError::Network(e.to_string()))?;
+        let path = format!("{MODELS_PATH}?limit={MODELS_PAGE_LIMIT}");
+        let v = self.http.get_json(&path, LIST_MODELS_TIMEOUT).await?;
         Ok(v["data"]
             .as_array()
             .map(|arr| arr.iter().filter_map(model_info_from_json).collect())
             .unwrap_or_default())
     }
 
-    fn messages_request(&self) -> reqwest::RequestBuilder {
-        self.authorize(self.client.post(format!("{}{MESSAGES_PATH}", self.base_url)))
-            .header(VERSION_HEADER, ANTHROPIC_VERSION)
-    }
-
     async fn post_count_tokens(&self, body: Value) -> Result<u32, LlmError> {
-        let resp = self
-            .authorize(self.client.post(format!("{}{COUNT_TOKENS_PATH}", self.base_url)))
-            .header(VERSION_HEADER, ANTHROPIC_VERSION)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| LlmError::Network(e.to_string()))?;
-        let resp = require_ok_status(resp, self.is_proxy()).await?;
-        let v: Value = resp.json().await.map_err(|e| LlmError::Network(e.to_string()))?;
+        let v = self.http.post_json(COUNT_TOKENS_PATH, &body).await?;
         v["input_tokens"]
             .as_u64()
             .map(|n| n as u32)
@@ -386,18 +393,22 @@ impl AnthropicClient {
         cancel: CancellationToken,
         sink: &mut dyn LlmStreamSink,
     ) -> Result<(), LlmError> {
-        let send = self.messages_request().json(&body).send();
-        let resp = tokio::select! {
-            r = send => r.map_err(|e| LlmError::Network(e.to_string()))?,
-            _ = cancel.cancelled() => return Err(LlmError::Cancelled),
-        };
-        let resp = require_ok_status(resp, self.is_proxy()).await?;
-        pump_sse_stream(resp, &cancel, sink).await
+        self.http
+            .post_sse(MESSAGES_PATH, &body, SseParser::anthropic(), cancel, sink)
+            .await
     }
 }
 
 #[async_trait::async_trait]
 impl LlmProvider for AnthropicClient {
+    fn provider_id(&self) -> &'static str {
+        PROVIDER_ANTHROPIC
+    }
+
+    fn known_models(&self) -> Vec<ModelInfo> {
+        fallback_models()
+    }
+
     async fn stream(
         &self,
         request: LlmRequest,
@@ -436,21 +447,11 @@ impl LlmProvider for AnthropicClient {
     }
 
     async fn reachable(&self) -> bool {
-        let req = self
-            .client
-            .get(format!("{}{MODELS_PATH}", self.base_url))
-            .header(VERSION_HEADER, ANTHROPIC_VERSION)
-            .timeout(WARM_UP_TIMEOUT);
-        self.authorize(req).send().await.is_ok()
+        self.http.reachable(MODELS_PATH).await
     }
 
     async fn warm_up(&self) {
-        let _ = self
-            .client
-            .get(format!("{}{MODELS_PATH}", self.base_url))
-            .timeout(WARM_UP_TIMEOUT)
-            .send()
-            .await;
+        self.http.warm_up(MODELS_PATH).await;
     }
 }
 
@@ -560,19 +561,30 @@ pub fn build_request_body(
 pub enum SseOut {
     TextDelta(String),
     InputTokens(u32),
-    Done,
+    Done(Option<u32>),
     ApiError(String),
 }
 
-#[derive(Default)]
+pub type SseBlockParser = fn(&str) -> Option<SseOut>;
+
 pub struct SseParser {
     buf: String,
     tail: Vec<u8>,
+    parse_block: SseBlockParser,
+}
+
+pub(crate) fn sse_data_json(block: &str) -> Option<Value> {
+    let data_line = block.lines().find(|l| l.starts_with(SSE_DATA_PREFIX))?;
+    serde_json::from_str(&data_line[SSE_DATA_PREFIX.len()..]).ok()
 }
 
 impl SseParser {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn anthropic() -> Self {
+        Self::with_block_parser(parse_anthropic_block)
+    }
+
+    pub fn with_block_parser(parse_block: SseBlockParser) -> Self {
+        Self { buf: String::new(), tail: Vec::new(), parse_block }
     }
 
     pub fn feed(&mut self, chunk: &str) -> Vec<SseOut> {
@@ -581,7 +593,7 @@ impl SseParser {
         let mut start = 0;
         while let Some(rel) = self.buf[start..].find(SSE_EVENT_SEPARATOR) {
             let pos = start + rel;
-            if let Some(parsed) = Self::parse_block(&self.buf[start..pos]) {
+            if let Some(parsed) = (self.parse_block)(&self.buf[start..pos]) {
                 out.push(parsed);
             }
             start = pos + SSE_EVENT_SEPARATOR.len();
@@ -608,27 +620,26 @@ impl SseParser {
             }
         }
     }
+}
 
-    fn parse_block(block: &str) -> Option<SseOut> {
-        let data_line = block.lines().find(|l| l.starts_with(SSE_DATA_PREFIX))?;
-        let v: serde_json::Value = serde_json::from_str(&data_line[SSE_DATA_PREFIX.len()..]).ok()?;
-        match v["type"].as_str()? {
-            "content_block_delta" if v["delta"]["type"] == "text_delta" => {
-                Some(SseOut::TextDelta(v["delta"]["text"].as_str()?.to_string()))
-            }
-            "message_start" => {
-                let usage = &v["message"]["usage"];
-                let total = usage["input_tokens"].as_u64().unwrap_or(0)
-                    + usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
-                    + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
-                (total > 0).then_some(SseOut::InputTokens(total as u32))
-            }
-            "message_stop" => Some(SseOut::Done),
-            "error" => Some(SseOut::ApiError(
-                v["error"]["message"].as_str().unwrap_or(UNKNOWN_API_ERROR).to_string(),
-            )),
-            _ => None,
+fn parse_anthropic_block(block: &str) -> Option<SseOut> {
+    let v = sse_data_json(block)?;
+    match v["type"].as_str()? {
+        "content_block_delta" if v["delta"]["type"] == "text_delta" => {
+            Some(SseOut::TextDelta(v["delta"]["text"].as_str()?.to_string()))
         }
+        "message_start" => {
+            let usage = &v["message"]["usage"];
+            let total = usage["input_tokens"].as_u64().unwrap_or(0)
+                + usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
+                + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
+            (total > 0).then_some(SseOut::InputTokens(total as u32))
+        }
+        "message_stop" => Some(SseOut::Done(None)),
+        "error" => Some(SseOut::ApiError(
+            v["error"]["message"].as_str().unwrap_or(UNKNOWN_API_ERROR).to_string(),
+        )),
+        _ => None,
     }
 }
 

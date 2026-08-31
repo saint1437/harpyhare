@@ -8,8 +8,28 @@ const TMP_FILE_EXTENSION: &str = "tmp";
 pub const THEME_GRAY: &str = "gray";
 pub const THEME_BLACK: &str = "black";
 
-pub const STT_PROVIDER_GROQ: &str = "groq";
-pub const STT_PROVIDER_OPENAI: &str = "openai";
+/// Ids of the API-key fields below, as the LLM registry and the frontend name
+/// them. `api_key_for` is the only place the two vocabularies meet.
+pub const API_KEY_ANTHROPIC: &str = "anthropic";
+pub const API_KEY_GROQ: &str = "groq";
+pub const API_KEY_OPENAI: &str = "openai";
+pub const API_KEY_XAI: &str = "xai";
+
+/// The key a registry row asks for, or `""` when it names one that does not
+/// exist — which the pickers render as a permanent lock rather than a crash.
+pub fn api_key_for<'a>(s: &'a Settings, key_id: &str) -> &'a str {
+    match key_id {
+        API_KEY_ANTHROPIC => &s.anthropic_api_key,
+        API_KEY_GROQ => &s.groq_api_key,
+        API_KEY_OPENAI => &s.openai_api_key,
+        API_KEY_XAI => &s.xai_api_key,
+        _ => "",
+    }
+}
+
+/// Re-exported from the STT registry, which owns the list. Kept as names so
+/// call sites read as intent rather than as string literals.
+pub use crate::stt::registry::{PROVIDER_GROQ as STT_PROVIDER_GROQ, PROVIDER_OPENAI as STT_PROVIDER_OPENAI};
 
 pub const QUICK_ACTION_LIMIT: usize = 9;
 
@@ -70,7 +90,7 @@ impl SettingsLimits {
 
 pub mod defaults {
     pub const STT_LANGUAGE: &str = "ru";
-    pub const STT_PROVIDER: &str = super::STT_PROVIDER_GROQ;
+
     pub const THEME: &str = super::THEME_GRAY;
 }
 
@@ -147,6 +167,7 @@ pub struct Settings {
     pub anthropic_api_key: String,
     pub groq_api_key: String,
     pub openai_api_key: String,
+    pub xai_api_key: String,
     pub access_token: String,
     pub prompt_presets: Vec<PromptPreset>,
     pub hotkeys: Vec<crate::hotkeys::HotkeyBinding>,
@@ -183,6 +204,7 @@ impl Default for Settings {
             anthropic_api_key: String::new(),
             groq_api_key: String::new(),
             openai_api_key: String::new(),
+            xai_api_key: String::new(),
             access_token: String::new(),
             prompt_presets: Vec::new(),
             hotkeys: Vec::new(),
@@ -194,7 +216,7 @@ impl Default for Settings {
             skipped_version: String::new(),
             stt_language: defaults::STT_LANGUAGE.into(),
             stt_translate: false,
-            stt_provider: defaults::STT_PROVIDER.into(),
+            stt_provider: crate::stt::registry::default_spec().id.into(),
             screen_share_visible: false,
             teleprompter_speed: limits::teleprompter::SPEED.default,
             teleprompter_font_size: limits::teleprompter::FONT_SIZE.default,
@@ -231,9 +253,9 @@ impl Settings {
         if self.theme != THEME_GRAY && self.theme != THEME_BLACK {
             self.theme = defaults::THEME.into();
         }
-        if self.stt_provider != STT_PROVIDER_GROQ && self.stt_provider != STT_PROVIDER_OPENAI {
-            self.stt_provider = defaults::STT_PROVIDER.into();
-        }
+        // The registry owns "unknown resolves to the default"; clamping here by
+        // hand would be a second, silently divergent copy of that rule.
+        self.stt_provider = crate::stt::registry::resolve(&self.stt_provider).id.into();
         self.quick_actions.truncate(QUICK_ACTION_LIMIT);
         crate::hotkeys::normalize(&mut self.hotkeys);
     }
@@ -259,6 +281,7 @@ impl Settings {
         anthropic: Option<String>,
         groq: Option<String>,
         openai: Option<String>,
+        xai: Option<String>,
     ) {
         if !self.access_token.is_empty() {
             return;
@@ -277,6 +300,7 @@ impl Settings {
         fill_if_empty(&mut self.anthropic_api_key, anthropic);
         fill_if_empty(&mut self.groq_api_key, groq);
         fill_if_empty(&mut self.openai_api_key, openai);
+        fill_if_empty(&mut self.xai_api_key, xai);
     }
 
     pub fn save(&self, path: &Path) -> std::io::Result<()> {

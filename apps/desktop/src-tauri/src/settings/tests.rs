@@ -219,22 +219,45 @@ fn load_missing_stt_and_screen_share_fields_default() {
     assert_eq!(s.stt_language, "ru");
     assert!(!s.stt_translate);
     assert!(!s.screen_share_visible);
+    assert_eq!(s.stt_provider, STT_PROVIDER_GROQ);
+}
+
+#[test]
+fn clamp_resets_unknown_stt_provider() {
+    let mut s = Settings { stt_provider: "elevenlabs".into(), ..Default::default() };
+    s.clamp();
+    assert_eq!(s.stt_provider, STT_PROVIDER_GROQ);
+    s.stt_provider = STT_PROVIDER_OPENAI.into();
+    s.clamp();
+    assert_eq!(s.stt_provider, STT_PROVIDER_OPENAI);
 }
 
 #[test]
 fn env_fallback_fills_only_empty_keys() {
     let mut s = Settings::default();
-    s.apply_key_fallback(Some("env-ant".into()), Some("env-groq".into()), Some("env-oai".into()));
+    s.apply_key_fallback(
+        Some("env-ant".into()),
+        Some("env-groq".into()),
+        Some("env-oai".into()),
+        Some("env-xai".into()),
+    );
     assert_eq!(s.anthropic_api_key, "env-ant");
     assert_eq!(s.groq_api_key, "env-groq");
+    assert_eq!(s.openai_api_key, "env-oai");
 }
 
 #[test]
 fn env_fallback_skipped_entirely_when_access_token_set() {
     let mut s = Settings { access_token: "itk_x".into(), ..Default::default() };
-    s.apply_key_fallback(Some("env-ant".into()), Some("env-groq".into()), Some("env-oai".into()));
+    s.apply_key_fallback(
+        Some("env-ant".into()),
+        Some("env-groq".into()),
+        Some("env-oai".into()),
+        Some("env-xai".into()),
+    );
     assert_eq!(s.anthropic_api_key, "");
     assert_eq!(s.groq_api_key, "");
+    assert_eq!(s.openai_api_key, "");
 }
 
 #[test]
@@ -249,17 +272,24 @@ fn load_missing_access_token_defaults_empty() {
 #[test]
 fn env_fallback_does_not_override_saved_keys() {
     let mut s = Settings { anthropic_api_key: "saved".into(), ..Default::default() };
-    s.apply_key_fallback(Some("env-ant".into()), Some("env-groq".into()), Some("env-oai".into()));
+    s.apply_key_fallback(
+        Some("env-ant".into()),
+        Some("env-groq".into()),
+        Some("env-oai".into()),
+        Some("env-xai".into()),
+    );
     assert_eq!(s.anthropic_api_key, "saved");
     assert_eq!(s.groq_api_key, "env-groq");
+    assert_eq!(s.openai_api_key, "env-oai");
 }
 
 #[test]
 fn env_fallback_ignores_none_and_blank() {
     let mut s = Settings::default();
-    s.apply_key_fallback(None, Some("   ".into()), None);
+    s.apply_key_fallback(None, Some("   ".into()), None, None);
     assert_eq!(s.anthropic_api_key, "");
     assert_eq!(s.groq_api_key, "");
+    assert_eq!(s.openai_api_key, "");
 }
 
 #[test]

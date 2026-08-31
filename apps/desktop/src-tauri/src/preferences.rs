@@ -11,6 +11,7 @@ const ENV_FILE_NAME: &str = ".env";
 const ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
 const GROQ_API_KEY_ENV: &str = "GROQ_API_KEY";
 const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
+const XAI_API_KEY_ENV: &str = "XAI_API_KEY";
 
 pub fn load_dotenv_files() {
     let _ = dotenvy::dotenv();
@@ -29,6 +30,7 @@ pub fn load_settings_with_env_key_fallback(app: &AppHandle) -> settings::Setting
         std::env::var(ANTHROPIC_API_KEY_ENV).ok(),
         std::env::var(GROQ_API_KEY_ENV).ok(),
         std::env::var(OPENAI_API_KEY_ENV).ok(),
+        std::env::var(XAI_API_KEY_ENV).ok(),
     );
     settings
 }
@@ -54,19 +56,30 @@ pub fn set_settings(
     new_settings.clamp();
     let st = app.state::<App>();
     let old = st.settings.lock().unwrap().clone();
-    reregister_changed_hotkeys(&app, &old, &new_settings)?;
-    rebuild_changed_api_clients(&st, &old, &new_settings);
-    apply_screen_share_visibility_change(&app, &old, &new_settings);
-    apply_buffer_settings_change(&app, &old, &new_settings);
     let capture_device_changed = old.capture_device_uid != new_settings.capture_device_uid;
     new_settings
         .save(&settings_path(&app))
         .map_err(|e| e.to_string())?;
+    reregister_changed_hotkeys(&app, &old, &new_settings)?;
+    rebuild_changed_api_clients(&st, &old, &new_settings);
+    apply_screen_share_visibility_change(&app, &old, &new_settings);
+    apply_buffer_settings_change(&app, &old, &new_settings);
     *st.settings.lock().unwrap() = new_settings.clone();
     if capture_device_changed {
         request_capture_rebuild(&app);
     }
     Ok(new_settings)
+}
+
+/// Pushed by the frontend whenever the active chat (or its prompt) changes.
+///
+/// Not persisted and not part of `Settings`: these terms are read out of the
+/// prompt the user is already writing, and they follow the active chat rather
+/// than the installation.
+#[tauri::command]
+#[specta::specta]
+pub fn set_stt_keyterms(app: AppHandle, keyterms: Vec<String>) {
+    *app.state::<App>().stt_keyterms.lock().unwrap() = keyterms;
 }
 
 #[tauri::command]
@@ -132,11 +145,22 @@ fn rebuild_changed_api_clients(st: &App, old: &settings::Settings, new: &setting
         || old.stt_language != new.stt_language
         || old.stt_translate != new.stt_translate
     {
-        *st.stt.lock().unwrap() = build_stt_client(new);
+        let rebuilt = build_stt_client(new);
+        *st.stt.lock().unwrap() = Arc::clone(&rebuilt);
+        tauri::async_runtime::spawn(async move { rebuilt.warm_up().await });
     }
-    if access_token_changed || old.anthropic_api_key != new.anthropic_api_key {
+    if access_token_changed || llm_credentials_changed(old, new) {
         *st.llm.lock().unwrap() = build_llm_client(new, Arc::clone(&st.models));
     }
+}
+
+/// Any key some answer vendor depends on. Reads the registry instead of naming
+/// fields, so a vendor added there starts rebuilding its client on a key edit
+/// without anyone remembering to extend this condition.
+fn llm_credentials_changed(old: &settings::Settings, new: &settings::Settings) -> bool {
+    crate::llm::registry::PROVIDERS.iter().any(|spec| {
+        settings::api_key_for(old, spec.key_id) != settings::api_key_for(new, spec.key_id)
+    })
 }
 
 fn apply_screen_share_visibility_change(

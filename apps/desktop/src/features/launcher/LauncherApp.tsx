@@ -4,6 +4,7 @@ import { useSettingsStore } from "@/hooks/useSettingsStore";
 import { useUpdater } from "@/hooks/useUpdater";
 import { launchMainWindow, redeemAccessCode } from "@/ipc/commands";
 import type { Settings } from "@/ipc/types";
+import { notify } from "@/lib/notify";
 import { applyTheme } from "@/lib/window-controls";
 import { LauncherPanel } from "./LauncherPanel";
 import { useLauncherReadiness } from "./useLauncherReadiness";
@@ -19,7 +20,6 @@ export function LauncherApp() {
   const readiness = useLauncherReadiness(settings);
   const [launching, setLaunching] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const redeem = useCallback(
     async (code: string): Promise<string | null> => {
@@ -31,12 +31,14 @@ export function LauncherApp() {
   );
 
   const persist = async (next: Settings): Promise<boolean> => {
-    setError(null);
     setSaving(true);
     try {
       const failure = await save(next);
-      if (failure !== null) setError(failure);
-      return failure === null;
+      if (failure !== null) {
+        notify({ variant: "error", title: "Ошибка", message: failure });
+        return false;
+      }
+      return true;
     } finally {
       setSaving(false);
     }
@@ -56,7 +58,7 @@ export function LauncherApp() {
           return;
         }
       } catch (e) {
-        setError(String(e));
+        notify({ variant: "error", title: "Ошибка", message: String(e) });
       }
       setLaunching(false);
     })();
@@ -77,7 +79,6 @@ export function LauncherApp() {
       readiness={readiness}
       launching={launching}
       saving={saving}
-      error={error}
       onRedeem={redeem}
       onCheckUpdates={updater.checkNow}
       onSave={handleSave}

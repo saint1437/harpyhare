@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { RequestOptions } from "@/lib/chats";
 import type { AppError } from "@/lib/errors";
+import { MODEL_PROVIDERS, PROVIDER_ANTHROPIC, PROVIDER_OPENAI } from "@/lib/models";
 import type { ModelInfo } from "@/lib/models";
+import { API_KEY_IDS } from "@/lib/api-keys";
+import { STT_PROVIDERS, STT_PROVIDER_GROQ, STT_PROVIDER_OPENAI } from "@/lib/stt-providers";
 import type { Platform } from "@/lib/platform";
 import type { PromptPreset } from "@/lib/presets";
 import type * as Rust from "./bindings";
@@ -54,5 +57,77 @@ const contract = {
 describe("рукописные типы IPC против сгенерированных из Rust", () => {
   it("совпадают по форме — иначе tsc не соберёт этот файл", () => {
     expect(Object.values(contract).every(Boolean)).toBe(true);
+  });
+});
+
+describe("реестр LLM-провайдеров из Rust", () => {
+  it("у каждого провайдера keyId — существующий ключ API", () => {
+    // Первым это ловит tsc: константа печатается `as const`, поэтому keyId
+    // приезжает литеральным типом и присваивание его `ApiKeyId` проверяется на
+    // сборке. Тест оставлен как читаемая формулировка того же инварианта.
+    for (const p of MODEL_PROVIDERS) {
+      expect(API_KEY_IDS, `провайдер ${p.id}`).toContain(p.keyId);
+    }
+  });
+
+  it("id, на которые ссылается фронт, реально объявлены в реестре", () => {
+    const ids = MODEL_PROVIDERS.map((p) => p.id);
+    expect(ids).toContain(PROVIDER_ANTHROPIC);
+    expect(ids).toContain(PROVIDER_OPENAI);
+  });
+
+  it("реестр непустой и без дублей", () => {
+    const ids = MODEL_PROVIDERS.map((p) => p.id);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("реестр STT-вендоров из Rust", () => {
+  it("у каждого вендора keyId — существующий ключ API", () => {
+    for (const p of STT_PROVIDERS) {
+      expect(API_KEY_IDS, `вендор ${p.id}`).toContain(p.keyId);
+    }
+  });
+
+  it("id, на которые ссылается фронт, реально объявлены в реестре", () => {
+    const ids = STT_PROVIDERS.map((p) => p.id);
+    expect(ids).toContain(STT_PROVIDER_GROQ);
+    expect(ids).toContain(STT_PROVIDER_OPENAI);
+  });
+
+  it("реестр непустой и без дублей", () => {
+    const ids = STT_PROVIDERS.map((p) => p.id);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("транспорт вендора на фронт не уезжает — пикер выбирает, но не звонит", () => {
+    // Списком запрещённого, а не разрешённого: у пикера появляются новые поля
+    // (supportsTranslate), а вот адрес и модель вендора появиться не должны.
+    const transport = [
+      "baseUrl",
+      "wire",
+      "path",
+      "transcribePath",
+      "translatePath",
+      "warmUpPath",
+      "transcribeModel",
+      "translateModel",
+      "temperature",
+      "keyLabel",
+    ];
+    for (const p of STT_PROVIDERS) {
+      for (const field of transport) {
+        expect(Object.keys(p), `вендор ${p.id}`).not.toContain(field);
+      }
+    }
+  });
+
+  it("умение переводить объявлено у каждого вендора", () => {
+    for (const p of STT_PROVIDERS) {
+      expect(typeof p.supportsTranslate, `вендор ${p.id}`).toBe("boolean");
+    }
+    expect(STT_PROVIDERS.find((p) => p.id === "xai")?.supportsTranslate).toBe(false);
   });
 });

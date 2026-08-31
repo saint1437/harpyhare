@@ -14,6 +14,10 @@ vi.mock("@/ipc/events", () => ({
     };
   },
 }));
+vi.mock("@/lib/notify", () => ({
+  notifyAppError: vi.fn(),
+  notify: vi.fn(),
+}));
 vi.mock("@/ipc/commands", () => ({
   sendToClaude: (...args: unknown[]) => sendToClaude(...args),
   cancelStream: (...args: unknown[]) => {
@@ -23,8 +27,23 @@ vi.mock("@/ipc/commands", () => ({
 
 import { useClaudeStream } from "./useClaudeStream";
 
+function streamIdOf(chatId: string, nth = -1): string {
+  const calls = sendToClaude.mock.calls.filter((c) => c[1] === chatId);
+  const call = nth < 0 ? calls[calls.length + nth] : calls[nth];
+  const streamId = call?.[2];
+  return typeof streamId === "string" ? streamId : "";
+}
+
+function withStreamId(payload: unknown): unknown {
+  if (typeof payload !== "object" || payload === null) return payload;
+  const fields = payload as Record<string, unknown>;
+  const chatId = fields["chatId"];
+  if (typeof chatId !== "string" || "streamId" in fields) return payload;
+  return { ...fields, streamId: streamIdOf(chatId) };
+}
+
 function emit(name: string, payload: unknown) {
-  act(() => handlers.get(name)?.(payload));
+  act(() => handlers.get(name)?.(withStreamId(payload)));
 }
 
 let frameCallbacks: FrameRequestCallback[] = [];
@@ -161,7 +180,7 @@ describe("useClaudeStream (per-chat)", () => {
     act(() => {
       result.current.stop("A");
     });
-    expect(cancelStream).toHaveBeenCalledWith("A");
+    expect(cancelStream).toHaveBeenCalledWith("A", streamIdOf("A"));
     emit("llm-delta", { chatId: "A", delta: "поздно" });
     expect(result.current.partial["A"]).toBeUndefined();
   });
@@ -187,6 +206,43 @@ describe("useClaudeStream (per-chat)", () => {
     expect(result.current.partial["A"]).toBeUndefined();
     emit("llm-done", { chatId: "A" });
     expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("stop затем новый send не закрывает новый стрим поздним llm-done", () => {
+    const onComplete = vi.fn();
+    const { result } = renderHook(() => useClaudeStream(onComplete));
+    act(
+      () =>
+        void result.current.send(
+          "A",
+          [{ role: "user", text: "q", images: [] }],
+          "",
+          "claude-opus-4-8",
+          { thinking: true, webSearch: false },
+        ),
+    );
+    emit("llm-delta", { chatId: "A", delta: "старый" });
+    act(() => {
+      result.current.stop("A");
+    });
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    act(
+      () =>
+        void result.current.send(
+          "A",
+          [{ role: "user", text: "q2", images: [] }],
+          "",
+          "claude-opus-4-8",
+          { thinking: true, webSearch: false },
+        ),
+    );
+    emit("llm-done", { chatId: "A", streamId: streamIdOf("A", 0) });
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(result.current.streaming["A"]).toBe(true);
+    emit("llm-delta", { chatId: "A", delta: "новый" });
+    emit("llm-done", { chatId: "A" });
+    expect(onComplete).toHaveBeenCalledTimes(2);
+    expect(onComplete).toHaveBeenLastCalledWith("A", "новый");
   });
 
   it("stop без полученного текста не трогает onComplete", () => {

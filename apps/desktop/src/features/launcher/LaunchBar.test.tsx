@@ -8,7 +8,7 @@ const PERMISSIONS_STUB = {} as PermissionsApi;
 
 function readiness(overrides: Partial<LauncherReadiness> = {}): LauncherReadiness {
   return {
-    missingKeys: [],
+    gaps: [],
     permissions: PERMISSIONS_STUB,
     blockers: [],
     checking: false,

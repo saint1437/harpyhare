@@ -3,6 +3,7 @@ import {
   Check,
   Crop,
   Eraser,
+  Lock,
   NotebookText,
   RotateCcw,
   SlidersHorizontal,
@@ -30,7 +31,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -46,7 +49,13 @@ import {
   type ContextDoc,
   type ContextLibrary,
 } from "@/lib/context-library";
-import { modelLabel, selectableModels, thinkingLocked, type ModelInfo } from "@/lib/models";
+import {
+  modelGroups,
+  modelLabel,
+  selectableModels,
+  thinkingLocked,
+  type ModelInfo,
+} from "@/lib/models";
 import { cn } from "@/lib/utils";
 import { AttachmentChip } from "./AttachmentChip";
 import { QuickActionsBar } from "./QuickActionsBar";
@@ -65,6 +74,7 @@ export interface ComposerProps {
   presets: { id: string; name: string }[];
   library: ContextLibrary;
   models: ModelInfo[];
+  modelProvidersMissingKey: readonly string[];
   onCaptureRegion: () => void;
   promptRef: RefObject<HTMLTextAreaElement | null>;
   quickActions: QuickAction[];
@@ -77,6 +87,7 @@ const SELECT_CONTENT_POSITION = "popper";
 const NO_PRESET_VALUE = "none";
 const THINKING_PARAM_LABEL = "Thinking";
 const WEB_SEARCH_PARAM_LABEL = "Веб-поиск";
+const MISSING_KEY_HINT = "нет ключа";
 
 function pasteHasImages(items: DataTransferItemList) {
   return extractImageItems(items).length > 0;
@@ -129,6 +140,7 @@ function PromptTextarea(props: PromptTextareaProps) {
         const sendShortcutPressed = e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing;
         if (sendShortcutPressed) {
           e.preventDefault();
+          e.stopPropagation();
           props.onSend();
         }
       }}
@@ -183,21 +195,44 @@ function ParamToggle(props: ParamToggleProps) {
 interface ModelSelectProps {
   value: string;
   models: ModelInfo[];
+  providersMissingKey: readonly string[];
   onChange: (model: string) => void;
 }
 
 function ModelSelect(props: ModelSelectProps) {
+  const groups = modelGroups(props.models);
+  const showHeadings = groups.length > 1;
   return (
     <Select value={props.value} onValueChange={props.onChange}>
       <SelectTrigger className={SELECT_TRIGGER_CLASS}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent position={SELECT_CONTENT_POSITION}>
-        {props.models.map((m) => (
-          <SelectItem key={m.id} value={m.id}>
-            {modelLabel(m)}
-          </SelectItem>
-        ))}
+        {groups.map((group) => {
+          const locked = props.providersMissingKey.includes(group.id);
+          return (
+            <SelectGroup key={group.id}>
+              {showHeadings && (
+                <SelectLabel>
+                  {group.label}
+                  {locked && (
+                    <span className="ml-1.5 text-hint font-normal text-muted-foreground">
+                      {MISSING_KEY_HINT}
+                    </span>
+                  )}
+                </SelectLabel>
+              )}
+              {group.models.map((m) => (
+                <SelectItem key={m.id} value={m.id} disabled={locked}>
+                  <span className="flex items-center gap-1.5">
+                    {locked && <Lock className="size-3" aria-hidden />}
+                    {modelLabel(m)}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          );
+        })}
       </SelectContent>
     </Select>
   );
@@ -243,7 +278,10 @@ function ParamRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-type RequestParamsProps = Pick<ComposerProps, "chat" | "onPatch" | "presets"> & {
+type RequestParamsProps = Pick<
+  ComposerProps,
+  "chat" | "onPatch" | "presets" | "modelProvidersMissingKey"
+> & {
   modelOptions: ModelInfo[];
   thinkingDisabled: boolean;
 };
@@ -266,6 +304,7 @@ function RequestParamsPopover(props: RequestParamsProps) {
           <ParamRow label="Модель">
             <ModelSelect
               models={props.modelOptions}
+              providersMissingKey={props.modelProvidersMissingKey}
               value={props.chat.model}
               onChange={(model) => {
                 props.onPatch({ model });
@@ -363,6 +402,7 @@ function ComposerToolbar(props: ComposerToolbarProps) {
         chat={props.chat}
         onPatch={props.onPatch}
         modelOptions={props.modelOptions}
+        modelProvidersMissingKey={props.modelProvidersMissingKey}
         thinkingDisabled={props.thinkingDisabled}
         presets={props.presets}
       />
@@ -578,6 +618,7 @@ export function Composer(props: ComposerProps) {
           showRetry={props.showRetry}
           onRetry={props.onRetry}
           modelOptions={modelOptions}
+          modelProvidersMissingKey={props.modelProvidersMissingKey}
           thinkingDisabled={thinkingDisabled}
           presets={props.presets}
           streaming={props.streaming}

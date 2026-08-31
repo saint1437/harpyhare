@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { Check, Lock } from "lucide-react";
 import {
   CommandDialog,
   CommandEmpty,
@@ -7,7 +7,13 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { modelLabel, selectableModels, type ModelInfo } from "@/lib/models";
+import {
+  modelGroups,
+  modelLabel,
+  selectableModels,
+  type ModelGroup,
+  type ModelInfo,
+} from "@/lib/models";
 import { STT_PROVIDERS } from "@/lib/stt-providers";
 import { cn } from "@/lib/utils";
 
@@ -17,13 +23,22 @@ const INPUT_PLACEHOLDER = "Найти модель…";
 const EMPTY_TEXT = "Ничего не найдено.";
 const VOICE_GROUP_HEADING = "Голосовая модель";
 const ANSWER_GROUP_HEADING = "Модель ответа";
+const PROVIDER_HEADING_SEPARATOR = " · ";
+const MISSING_KEY_HINT = "нет ключа";
+
+function answerGroupHeading(group: ModelGroup, groupCount: number): string {
+  if (groupCount < 2) return ANSWER_GROUP_HEADING;
+  return `${ANSWER_GROUP_HEADING}${PROVIDER_HEADING_SEPARATOR}${group.label}`;
+}
 
 interface ModelCommandMenuProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   sttProvider: string;
+  providersMissingKey: readonly string[];
   onSwitchSttProvider: (provider: string) => void;
   models: ModelInfo[];
+  modelProvidersMissingKey: readonly string[];
   activeModelId: string;
   onSelectModel: (id: string) => void;
 }
@@ -36,12 +51,14 @@ export function ModelCommandMenu({
   open,
   onOpenChange,
   sttProvider,
+  providersMissingKey,
   onSwitchSttProvider,
   models,
+  modelProvidersMissingKey,
   activeModelId,
   onSelectModel,
 }: ModelCommandMenuProps) {
-  const answerModels = selectableModels(models, activeModelId);
+  const answerGroups = modelGroups(selectableModels(models, activeModelId));
   const close = () => {
     onOpenChange(false);
   };
@@ -56,35 +73,59 @@ export function ModelCommandMenu({
       <CommandList>
         <CommandEmpty>{EMPTY_TEXT}</CommandEmpty>
         <CommandGroup heading={VOICE_GROUP_HEADING}>
-          {STT_PROVIDERS.map((p) => (
-            <CommandItem
-              key={p.value}
-              value={`${VOICE_GROUP_HEADING} ${p.label}`}
-              onSelect={() => {
-                onSwitchSttProvider(p.value);
-                close();
-              }}
-            >
-              {p.label}
-              <ActiveMark active={p.value === sttProvider} />
-            </CommandItem>
-          ))}
+          {STT_PROVIDERS.map((p) => {
+            const missingKey = providersMissingKey.includes(p.id);
+            return (
+              <CommandItem
+                key={p.id}
+                value={p.label}
+                keywords={[VOICE_GROUP_HEADING]}
+                disabled={missingKey}
+                onSelect={() => {
+                  onSwitchSttProvider(p.id);
+                  close();
+                }}
+              >
+                {missingKey && <Lock aria-hidden />}
+                {p.label}
+                {missingKey && (
+                  <span className="ml-auto text-hint text-muted-foreground">
+                    {MISSING_KEY_HINT}
+                  </span>
+                )}
+                <ActiveMark active={p.id === sttProvider} />
+              </CommandItem>
+            );
+          })}
         </CommandGroup>
-        <CommandGroup heading={ANSWER_GROUP_HEADING}>
-          {answerModels.map((m) => (
-            <CommandItem
-              key={m.id}
-              value={`${ANSWER_GROUP_HEADING} ${modelLabel(m)}`}
-              onSelect={() => {
-                onSelectModel(m.id);
-                close();
-              }}
-            >
-              {modelLabel(m)}
-              <ActiveMark active={m.id === activeModelId} />
-            </CommandItem>
-          ))}
-        </CommandGroup>
+        {answerGroups.map((group) => {
+          const locked = modelProvidersMissingKey.includes(group.id);
+          return (
+            <CommandGroup key={group.id} heading={answerGroupHeading(group, answerGroups.length)}>
+              {group.models.map((m) => (
+                <CommandItem
+                  key={m.id}
+                  value={modelLabel(m)}
+                  keywords={[ANSWER_GROUP_HEADING, group.label]}
+                  disabled={locked}
+                  onSelect={() => {
+                    onSelectModel(m.id);
+                    close();
+                  }}
+                >
+                  {locked && <Lock aria-hidden />}
+                  {modelLabel(m)}
+                  {locked && (
+                    <span className="ml-auto text-hint text-muted-foreground">
+                      {MISSING_KEY_HINT}
+                    </span>
+                  )}
+                  <ActiveMark active={m.id === activeModelId} />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          );
+        })}
       </CommandList>
     </CommandDialog>
   );

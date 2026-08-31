@@ -26,12 +26,15 @@ export interface ContextLibraryApi {
   updateDoc: (id: string, patch: Partial<Pick<ContextDoc, "name" | "text">>) => void;
   removeDoc: (id: string) => void;
   moveDoc: (id: string, folderId: string) => void;
+  flush: () => Promise<void>;
 }
 
 export function useContextLibrary(): ContextLibraryApi {
   const [library, setLibrary] = useState<ContextLibrary>(EMPTY_LIBRARY);
   const loaded = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const libraryRef = useRef(library);
+  libraryRef.current = library;
 
   useEffect(() => {
     let live = true;
@@ -46,16 +49,35 @@ export function useContextLibrary(): ContextLibraryApi {
     };
   }, []);
 
+  const pending = useRef(false);
+
+  const flush = useCallback((): Promise<void> => {
+    if (!loaded.current || !pending.current) return Promise.resolve();
+    pending.current = false;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = undefined;
+    return saveContextLibrary(serializeLibrary(libraryRef.current)).then(() => undefined);
+  }, []);
+
   useEffect(() => {
     if (!loaded.current) return;
+    pending.current = true;
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
+      pending.current = false;
       void saveContextLibrary(serializeLibrary(library));
     }, SAVE_DEBOUNCE_MS);
     return () => {
       clearTimeout(saveTimer.current);
     };
   }, [library]);
+
+  useEffect(
+    () => () => {
+      void flush();
+    },
+    [flush],
+  );
 
   return {
     library,
@@ -80,5 +102,6 @@ export function useContextLibrary(): ContextLibraryApi {
     moveDoc: useCallback((id, folderId) => {
       setLibrary((lib) => moveDoc(lib, id, folderId));
     }, []),
+    flush,
   };
 }

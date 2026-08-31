@@ -1,13 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { listModels } from "@/ipc/commands";
-import { curatedModels, FALLBACK_MODELS, type ModelInfo } from "@/lib/models";
+import { curatedModels, FALLBACK_MODELS, withLockedModels, type ModelInfo } from "@/lib/models";
 import { queryKeys } from "@/lib/query-client";
 
 const MODELS_STALE_MS = 60 * 60 * 1000;
 
 async function listModelsOrFallback(): Promise<ModelInfo[]> {
   const fetched = await listModels();
-  return curatedModels(fetched.length > 0 ? fetched : FALLBACK_MODELS);
+  return curatedModels(withLockedModels(fetched.length > 0 ? fetched : FALLBACK_MODELS));
 }
 
 export function useModels(): ModelInfo[] {

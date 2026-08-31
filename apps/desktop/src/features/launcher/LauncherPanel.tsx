@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
 import type { Settings } from "@/ipc/types";
-import { isPresetFilled, mergePresets } from "@/lib/presets";
-import { isQuickActionFilled } from "@/lib/quick-actions";
+import { mergePresets } from "@/lib/presets";
+import { normalizeDraft } from "@/lib/settings-draft";
 import { ContextLibraryPanel } from "./ContextLibraryPanel";
 import type { LauncherPanelProps, SetSetting } from "./contract";
 import { LaunchBar } from "./LaunchBar";
@@ -16,9 +16,9 @@ import { ScreenShell } from "./ScreenShell";
 import { PresetsSection, type PresetsUpdate } from "./sections/PresetsSection";
 import { DEFAULT_SETTINGS_TAB, type SettingsTabId } from "./settings-tabs";
 import { Sidebar, type SidebarNotice } from "./Sidebar";
+import { useDraftAutosave } from "./useDraftAutosave";
 
 const RISE_STEP_MS = 50;
-const AUTOSAVE_DEBOUNCE_MS = 600;
 
 export interface LauncherDestination {
   screen: ScreenId;
@@ -29,14 +29,6 @@ function riseDelay(order: number): CSSProperties {
   return { animationDelay: `${String(order * RISE_STEP_MS)}ms` };
 }
 
-function normalizeDraft(draft: Settings): Settings {
-  return {
-    ...draft,
-    prompt_presets: draft.prompt_presets.filter(isPresetFilled),
-    quick_actions: draft.quick_actions.filter(isQuickActionFilled),
-  };
-}
-
 export function LauncherPanel({
   settings,
   contextLibrary,
@@ -44,7 +36,6 @@ export function LauncherPanel({
   updater,
   launching,
   saving,
-  error,
   onRedeem,
   onCheckUpdates,
   onSave,
@@ -110,22 +101,7 @@ export function LauncherPanel({
     );
   }, [settings.access_token]);
 
-  const onSaveRef = useRef(onSave);
-  useEffect(() => {
-    onSaveRef.current = onSave;
-  }, [onSave]);
-
-  const lastQueuedDraft = useRef(draft);
-  useEffect(() => {
-    if (launching || draft === lastQueuedDraft.current) return;
-    lastQueuedDraft.current = draft;
-    const timer = setTimeout(() => {
-      onSaveRef.current(normalizeDraft(draft));
-    }, AUTOSAVE_DEBOUNCE_MS);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [draft, launching]);
+  useDraftAutosave(draft, launching, onSave);
 
   const checkUpdates = () => {
     setCheckState("checking");
@@ -169,13 +145,6 @@ export function LauncherPanel({
           }}
         />
       </div>
-
-      {error !== null && (
-        <div className="flex items-center gap-2.5 rounded-lg bg-destructive/10 px-3 py-2 ring-1 ring-destructive/30 ring-inset">
-          <span className="size-1.5 shrink-0 rounded-full bg-destructive" aria-hidden />
-          <span className="min-w-0 text-body text-destructive">{error}</span>
-        </div>
-      )}
 
       <div className="flex min-h-0 min-w-0 flex-1 gap-3 md:gap-4">
         <div className="launcher-rise flex min-h-0" style={riseDelay(1)}>

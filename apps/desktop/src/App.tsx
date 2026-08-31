@@ -20,12 +20,14 @@ import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel"
 import { StatusBar, type ContextUsage } from "@/components/StatusBar";
 import { Teleprompter } from "@/components/Teleprompter";
 import { DOCK_BUTTON_CLASS, type ToolbarDockItem } from "@/components/ToolbarDock";
+import { LiquidMetalBorder } from "@/components/ui/liquid-metal-border";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
 import { useComboKey } from "@/hooks/useComboKey";
 import { useConnectivity } from "@/hooks/useConnectivity";
 import { useContextLibrary } from "@/hooks/useContextLibrary";
+import { useErrorToasts } from "@/hooks/useErrorToasts";
 import { useLatestRef } from "@/hooks/useLatestRef";
 import { useModels } from "@/hooks/useModels";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
@@ -47,6 +49,7 @@ import {
   startWindowDrag,
   stopMainWindow,
   copyImageToClipboard,
+  setSttKeyterms,
 } from "@/ipc/commands";
 import { onEvent, onWindowResized, type LogicalWindowSize } from "@/ipc/events";
 import type {
@@ -57,14 +60,19 @@ import type {
   RecorderState,
   Settings,
 } from "@/ipc/types";
+import { modelProvidersMissingKey, sttProvidersMissingKey } from "@/lib/api-keys";
 import { chatRequestOptions, type Chat, type ChatMessage } from "@/lib/chats";
 import { appendTranscript } from "@/lib/composer";
 import { libraryContextBlocks, type ContextLibrary } from "@/lib/context-library";
-import { internalError, isNetworkError, isRetryable, type AppError } from "@/lib/errors";
+import { isNetworkError, isRetryable, type AppError } from "@/lib/errors";
 import { effectiveCombo, formatCombo } from "@/lib/hotkeys";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
+import { chatKeyterms, stripKeywordBlocks } from "@/lib/keywords";
 import { imagePngBase64, messageCopyImage, messageCopyText } from "@/lib/message-clipboard";
+import { isActivityStatus } from "@/lib/mini-status";
+import { defaultModelFor } from "@/lib/models";
 import type { ModelInfo } from "@/lib/models";
+import { notify } from "@/lib/notify";
 import { mergePresets, presetText, type PromptPreset } from "@/lib/presets";
 import { queryKeys } from "@/lib/query-client";
 import { filledQuickActions } from "@/lib/quick-actions";
@@ -97,15 +105,40 @@ function draftImages(chat: Chat): ImagePayload[] {
   return chat.draftAttachments.map((a) => a.payload);
 }
 
-function chatSystemPrompt(presets: PromptPreset[], chat: Chat, library: ContextLibrary): string {
+/** Every piece of text a chat contributes to its system prompt, raw. */
+function chatPromptSources(presets: PromptPreset[], chat: Chat, library: ContextLibrary): string[] {
   const context = chat.context.trim();
   return [
     presetText(presets, chat.presetId),
     ...libraryContextBlocks(library, chat.libraryDocIds),
     context === "" ? "" : `${USER_CONTEXT_SYSTEM_HEADER}${context}`,
-  ]
+  ].filter((s) => s !== "");
+}
+
+/**
+ * `[keywords]: [...]` declarations are stripped here: they configure speech
+ * recognition, and the answering model has no business being handed a
+ * directive it is expected to ignore.
+ */
+function chatSystemPrompt(presets: PromptPreset[], chat: Chat, library: ContextLibrary): string {
+  return chatPromptSources(presets, chat, library)
+    .map(stripKeywordBlocks)
     .filter((s) => s !== "")
     .join(SYSTEM_BLOCKS_SEPARATOR);
+}
+
+/**
+ * Keeps the backend's copy of the active chat's declared terms current.
+ *
+ * Recognition starts from a global hotkey, with no React in the loop, so the
+ * terms have to be pushed ahead of time rather than passed at call time. The
+ * join guards the effect: a new array of the same terms must not re-send.
+ */
+function useSttKeyterms(keyterms: string[]): void {
+  const joined = keyterms.join("\u0000");
+  useEffect(() => {
+    void setSttKeyterms(joined === "" ? [] : joined.split("\u0000"));
+  }, [joined]);
 }
 
 function lastHtmlBlock(markdown: string): string | undefined {
@@ -386,7 +419,6 @@ function useSendPipeline(
 
 interface AppHeaderProps {
   state: RecorderState;
-  error: AppError | null;
   hotkeys: HotkeyBinding[];
   updater: UpdaterApi;
   chats: ChatsApi;
@@ -408,7 +440,6 @@ interface AppHeaderProps {
 
 function AppHeader({
   state,
-  error,
   hotkeys,
   updater,
   chats,
@@ -487,7 +518,6 @@ function AppHeader({
   return (
     <StatusBar
       state={state}
-      error={error?.message ?? null}
       contextUsage={contextUsage}
       dockItems={dockItems}
       tabs={
@@ -512,6 +542,7 @@ function AppHeader({
 interface AppComposerProps {
   chats: ChatsApi;
   models: ModelInfo[];
+  modelProvidersMissingKey: readonly string[];
   presets: PromptPreset[];
   library: ContextLibrary;
   onCaptureRegion: () => void;
@@ -529,6 +560,7 @@ interface AppComposerProps {
 function AppComposer({
   chats,
   models,
+  modelProvidersMissingKey,
   presets,
   library,
   onCaptureRegion,
@@ -564,6 +596,7 @@ function AppComposer({
       presets={presets}
       library={library}
       models={models}
+      modelProvidersMissingKey={modelProvidersMissingKey}
       onCaptureRegion={onCaptureRegion}
       promptRef={promptRef}
       quickActions={quickActions}
@@ -581,9 +614,18 @@ export default function App() {
     bumpOpacity,
     bumpWindowSize,
     applyNativeWindowSize,
+    flush: flushSettings,
   } = useSettings();
   const state = useRecorder();
-  const chats = useChats();
+  useErrorToasts();
+  // Read at chat-creation time, not at render time: a key added mid-session
+  // changes what the next chat opens on without a reload.
+  const settingsForModel = useLatestRef(settings);
+  const newChatModel = useCallback(
+    () => defaultModelFor(modelProvidersMissingKey(settingsForModel.current)),
+    [settingsForModel],
+  );
+  const chats = useChats(newChatModel);
   const models = useModels();
   const updater = useUpdater();
 
@@ -595,8 +637,7 @@ export default function App() {
   const miniModeRef = useLatestRef(miniMode);
   const teleprompterResumeRef = useRef({ text: "", offset: 0 });
 
-  const { sttError, showRetry, setSttError, clearError, clearFeedback, retry } =
-    useSttFeedback(state);
+  const { sttError, showRetry, clearError, clearFeedback, retry } = useSttFeedback(state);
   const { previewHtml, previewOpen, openPreview, togglePreview, closePreview } = usePreviewPanel();
   const nativeSizeRef = useRef<LogicalWindowSize>({ width: 0, height: 0 });
   const resizeGuardUntilRef = useRef(0);
@@ -688,13 +729,19 @@ export default function App() {
   usePttSuspend(effectiveCombo(settings.hotkeys, "record"));
   const connectivity = useConnectivity();
   const promptUnavailable = teleprompterOpen || connectivity.offline || miniMode;
-  const promptRef = usePromptFocus(promptUnavailable);
+  const { ref: promptRef, focus: focusPrompt } = usePromptFocus(promptUnavailable);
 
+  const focusFrameRef = useRef(0);
   const focusPromptSoon = useCallback(() => {
-    requestAnimationFrame(() => {
-      promptRef.current?.focus();
-    });
-  }, [promptRef]);
+    cancelAnimationFrame(focusFrameRef.current);
+    focusFrameRef.current = requestAnimationFrame(focusPrompt);
+  }, [focusPrompt]);
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(focusFrameRef.current);
+    },
+    [],
+  );
 
   const createChat = useCallback(() => {
     chatsRef.current.newChat();
@@ -710,7 +757,7 @@ export default function App() {
   useEffect(() => onEvent("duplicate-chat", duplicateActiveChat), [duplicateActiveChat]);
 
   const openModelMenu = useCallback(() => {
-    setModelMenuOpen(true);
+    setModelMenuOpen((o) => !o);
   }, []);
   useComboKey(effectiveCombo(settings.hotkeys, "model_menu"), !promptUnavailable, openModelMenu);
 
@@ -777,6 +824,8 @@ export default function App() {
   const active = chats.active;
   const activeId = chats.activeId;
   const activeStreaming = !!stream.streaming[activeId];
+  const anyStreaming = Object.values(stream.streaming).some(Boolean);
+  const activityFrame = isActivityStatus(state, anyStreaming);
   const error: AppError | null = sttError ?? screenshot.error ?? stream.error[activeId] ?? null;
   const partial = activeStreaming ? (stream.partial[activeId] ?? "") : null;
   const reportNetworkError = connectivity.reportNetworkError;
@@ -794,6 +843,7 @@ export default function App() {
     () => chatSystemPrompt(presets, active, contextLibrary.library),
     [presets, active, contextLibrary.library],
   );
+  useSttKeyterms(chatKeyterms(chatPromptSources(presets, active, contextLibrary.library)));
   const projectedTokens = useProjectedContextTokens(active, activeSystem, activeStreaming);
   const usedTokens = projectedTokens > 0 ? projectedTokens : active.lastInputTokens;
   const contextUsage: ContextUsage | null =
@@ -802,8 +852,9 @@ export default function App() {
       : null;
 
   const saveSettingsReportingError = (next: Settings) => {
+    if (settingsLoading) return;
     void save(next).then((err) => {
-      if (err) setSttError(internalError(settingsSaveErrorText(err)));
+      if (err) notify({ variant: "error", title: "Ошибка", message: settingsSaveErrorText(err) });
     });
   };
 
@@ -820,7 +871,7 @@ export default function App() {
     void imagePngBase64(image)
       .then(copyImageToClipboard)
       .catch(() => {
-        setSttError(internalError(COPY_IMAGE_ERROR_TEXT));
+        notify({ variant: "error", title: "Ошибка", message: COPY_IMAGE_ERROR_TEXT });
       });
   };
 
@@ -836,6 +887,9 @@ export default function App() {
     saveSettingsReportingError({ ...settingsRef.current, stt_provider: provider });
   };
 
+  const providersMissingKey = sttProvidersMissingKey(settings);
+  const answerProvidersMissingKey = modelProvidersMissingKey(settings);
+
   const skipUpdate = () => {
     const skipped = updater.info?.version ?? "";
     setUpdateOpen(false);
@@ -847,11 +901,17 @@ export default function App() {
     if (event.button === 0 && event.target === event.currentTarget) void startWindowDrag();
   }, []);
 
+  const leaveToLauncher = () => {
+    void Promise.allSettled([chats.flush(), contextLibrary.flush(), flushSettings()]).then(
+      stopMainWindow,
+    );
+  };
+
   if (miniMode) {
     return (
       <MiniHud
         state={state}
-        streaming={Object.values(stream.streaming).some(Boolean)}
+        streaming={anyStreaming}
         hasError={error !== null}
         unreadAnswer={unreadAnswer}
         expandCombo={effectiveCombo(settings.hotkeys, "toggle_window")}
@@ -868,10 +928,10 @@ export default function App() {
       style={{ gap: SHELL_COLUMN_GAP_PX, padding: SHELL_PADDING_PX }}
       onMouseDown={onShellDragStart}
     >
+      <LiquidMetalBorder active={activityFrame} />
       <div className="flex shrink-0 flex-col gap-2.5" style={{ width: chatColumnWidth }}>
         <AppHeader
           state={state}
-          error={error}
           hotkeys={settings.hotkeys}
           updater={updater}
           chats={chats}
@@ -883,16 +943,14 @@ export default function App() {
           onNewChat={createChat}
           onDuplicateChat={duplicateActiveChat}
           onToggleScreenShare={toggleScreenShareVisible}
-          onOpenModelMenu={() => {
-            setModelMenuOpen(true);
-          }}
+          onOpenModelMenu={openModelMenu}
           onCopy={() => {
             copyLastAssistantMessage(active.messages);
           }}
           onOpenTeleprompter={() => {
             setTeleprompterOpen(true);
           }}
-          onStop={() => void stopMainWindow()}
+          onStop={leaveToLauncher}
           onCollapse={() => {
             setMiniMode(true);
           }}
@@ -920,6 +978,7 @@ export default function App() {
         <AppComposer
           chats={chats}
           models={models}
+          modelProvidersMissingKey={answerProvidersMissingKey}
           presets={presets}
           library={contextLibrary.library}
           onCaptureRegion={screenshot.capture}
@@ -943,8 +1002,10 @@ export default function App() {
         open={modelMenuOpen}
         onOpenChange={setModelMenuOpen}
         sttProvider={settings.stt_provider}
+        providersMissingKey={providersMissingKey}
         onSwitchSttProvider={switchSttProvider}
         models={models}
+        modelProvidersMissingKey={answerProvidersMissingKey}
         activeModelId={active.model}
         onSelectModel={(id) => {
           chats.patchChat(chats.activeId, { model: id });
@@ -977,7 +1038,7 @@ export default function App() {
         />
       )}
 
-      {connectivity.offline && <ConnectivityOverlay />}
+      {connectivity.offline && <ConnectivityOverlay onRetry={connectivity.retry} />}
 
       {updater.info && (
         <UpdateDialog

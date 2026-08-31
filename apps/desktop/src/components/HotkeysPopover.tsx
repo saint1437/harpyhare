@@ -26,6 +26,8 @@ export interface HotkeysPopoverProps {
   triggerClass?: string;
 }
 
+const POPOVER_COLLISION_PADDING_PX = 8;
+
 const COMBO_ICONS: Record<ComboIconName, LucideIcon> = {
   cmd: Command,
   shift: ArrowBigUp,
@@ -70,8 +72,8 @@ export function HotkeysPopover({ hotkeys, triggerClass }: HotkeysPopoverProps) {
       <PopoverContent
         side="left"
         align="start"
-        collisionPadding={8}
-        className="max-h-(--radix-popover-content-available-height) w-80 overflow-y-auto p-3"
+        collisionPadding={POPOVER_COLLISION_PADDING_PX}
+        className="max-h-(--radix-popover-content-available-height) w-80 max-w-(--radix-popover-content-available-width) overflow-y-auto p-3"
       >
         <div className="grid grid-cols-[max-content_1fr] items-center gap-x-2.5 gap-y-1">
           {groups.map((group, index) => (

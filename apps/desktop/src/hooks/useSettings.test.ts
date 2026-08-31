@@ -72,7 +72,9 @@ describe("useSettings", () => {
       vi.advanceTimersByTime(400);
     });
     expect(setSettings).toHaveBeenCalledTimes(1);
-    expect(setSettings.mock.calls[0]?.[0]?.window_width).toBe(980);
+    expect(setSettings.mock.calls[0]?.[0]?.window_width).toBe(
+      DEFAULT_SETTINGS.window_width + DEFAULT_SETTINGS.resize_step,
+    );
     vi.useRealTimers();
   });
 
@@ -157,6 +159,96 @@ describe("useSettings", () => {
       vi.advanceTimersByTime(400);
     });
     expect(setSettings).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it("на размонтировании сбрасывает несохранённый размер на диск", async () => {
+    vi.useFakeTimers();
+    getSettings.mockResolvedValue(DEFAULT_SETTINGS);
+    const { result, unmount } = renderHook(() => useSettings());
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    setSettings.mockClear();
+    act(() => {
+      result.current.bumpWindowSize("width", 1);
+    });
+    expect(setSettings).not.toHaveBeenCalled();
+    unmount();
+    expect(setSettings).toHaveBeenCalledTimes(1);
+    expect(setSettings.mock.calls[0]?.[0]?.window_width).toBe(
+      DEFAULT_SETTINGS.window_width + DEFAULT_SETTINGS.resize_step,
+    );
+    vi.useRealTimers();
+  });
+
+  it("bumpWindowSize и bumpOpacity персистят одним вызовом с обоими изменениями", async () => {
+    vi.useFakeTimers();
+    getSettings.mockResolvedValue(DEFAULT_SETTINGS);
+    const { result } = renderHook(() => useSettings());
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    setSettings.mockClear();
+    act(() => {
+      result.current.bumpWindowSize("width", 1);
+    });
+    act(() => {
+      result.current.bumpOpacity(-1);
+    });
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(setSettings).toHaveBeenCalledTimes(1);
+    expect(setSettings.mock.calls[0]?.[0]?.window_width).toBe(
+      DEFAULT_SETTINGS.window_width + DEFAULT_SETTINGS.resize_step,
+    );
+    expect(setSettings.mock.calls[0]?.[0]?.window_opacity).toBeCloseTo(0.8);
+    vi.useRealTimers();
+  });
+
+  it("явный save отменяет отложенный persist, чтобы не затереть свежие поля", async () => {
+    vi.useFakeTimers();
+    getSettings.mockResolvedValue(DEFAULT_SETTINGS);
+    const { result } = renderHook(() => useSettings());
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    setSettings.mockClear();
+    act(() => {
+      result.current.bumpOpacity(-1);
+    });
+    await act(async () => {
+      await result.current.save({ ...result.current.settings, skipped_version: "9.9.9" });
+    });
+    expect(setSettings).toHaveBeenCalledTimes(1);
+    expect(setSettings.mock.calls[0]?.[0]?.skipped_version).toBe("9.9.9");
+    expect(setSettings.mock.calls[0]?.[0]?.window_opacity).toBeCloseTo(0.8);
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(setSettings).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it("явный save со снимком, снятым до хоткея, не теряет отложенное изменение", async () => {
+    vi.useFakeTimers();
+    getSettings.mockResolvedValue(DEFAULT_SETTINGS);
+    const { result } = renderHook(() => useSettings());
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    setSettings.mockClear();
+    const staleSnapshot = { ...result.current.settings };
+    act(() => {
+      result.current.bumpOpacity(-1);
+    });
+    await act(async () => {
+      await result.current.save({ ...staleSnapshot, skipped_version: "9.9.9" });
+    });
+    expect(setSettings).toHaveBeenCalledTimes(1);
+    expect(setSettings.mock.calls[0]?.[0]?.skipped_version).toBe("9.9.9");
+    expect(setSettings.mock.calls[0]?.[0]?.window_opacity).toBeCloseTo(0.8);
     vi.useRealTimers();
   });
 });

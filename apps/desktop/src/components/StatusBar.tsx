@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
+import { StatusOrb } from "@/components/StatusOrb";
+import { ORB_STATE_IDLE, type OrbState } from "@/components/ui/thinking-orbs";
 import { useWindowDrag } from "@/hooks/useWindowDrag";
 import type { RecorderState } from "@/ipc/types";
 import { cn } from "@/lib/utils";
-import { EqBars, type EqBarsProps } from "./EqBars";
 import { ToolbarDock, type ToolbarDockItem } from "./ToolbarDock";
 
 export interface ContextUsage {
@@ -12,7 +13,6 @@ export interface ContextUsage {
 
 export interface StatusBarProps {
   state: RecorderState;
-  error: string | null;
   tabs: ReactNode;
   dockItems: ToolbarDockItem[];
   contextUsage: ContextUsage | null;
@@ -44,26 +44,21 @@ function ContextUsageGauge({ usage }: { usage: ContextUsage }) {
   );
 }
 
-function indicatorProps(state: RecorderState, showError: boolean): EqBarsProps {
-  if (state === "recording") return { animated: true, barClass: "bg-recording" };
-  if (state === "transcribing") return { animated: true, barClass: "bg-primary" };
-  return { animated: false, barClass: showError ? "bg-destructive" : "bg-muted-foreground/50" };
+function recorderOrb(state: RecorderState): OrbState {
+  if (state === "recording") return "listening";
+  if (state === "transcribing") return "working";
+  return ORB_STATE_IDLE;
 }
 
-export function StatusBar({ state, error, tabs, dockItems, contextUsage }: StatusBarProps) {
-  const showError = error !== null && state === "idle";
+export function StatusBar({ state, tabs, dockItems, contextUsage }: StatusBarProps) {
   const onDragMouseDown = useWindowDrag();
+  const orb = recorderOrb(state);
 
   return (
     <header className="flex min-h-7 items-center gap-2" onMouseDown={onDragMouseDown}>
-      <EqBars {...indicatorProps(state, showError)} />
+      <StatusOrb state={orb} />
       {tabs}
-      <span
-        title={showError ? error : undefined}
-        className="min-w-0 flex-1 truncate text-caption text-destructive"
-      >
-        {showError ? error : ""}
-      </span>
+      <span className="min-w-0 flex-1" />
       <div className="flex shrink-0 items-center gap-1.5">
         {contextUsage && <ContextUsageGauge usage={contextUsage} />}
         <ToolbarDock items={dockItems} />

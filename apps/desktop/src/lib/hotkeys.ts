@@ -89,8 +89,11 @@ export function effectiveCombo(
   id: HotkeyActionId,
   platform: Platform = PLATFORM,
 ): string {
-  const bound = [...bindings].reverse().find((b) => b.action === id);
-  return bound ? bound.combo : defaultCombo(id, platform);
+  for (let i = bindings.length - 1; i >= 0; i--) {
+    const bound = bindings[i];
+    if (bound?.action === id) return bound.combo;
+  }
+  return defaultCombo(id, platform);
 }
 
 export function splitCombo(combo: string): { modifiers: string[]; key: string | null } {

@@ -28,7 +28,7 @@ function DialogOverlay({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 z-50 rounded-[var(--window-radius)] bg-black/55 duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+        "fixed inset-0 z-50 rounded-[var(--window-radius)] bg-black/55 duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:fill-mode-forwards data-[state=open]:animate-in data-[state=open]:fade-in-0",
         className,
       )}
       {...props}
@@ -50,9 +50,11 @@ function DialogContent({
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
-        className="group pointer-events-none fixed inset-0 z-50 flex items-center justify-center outline-none"
+        className="group fixed inset-0 z-50 flex items-center justify-center duration-200 outline-none data-[state=closed]:animate-out"
         {...props}
         onPointerDown={(e) => {
+          props.onPointerDown?.(e);
+          if (e.defaultPrevented) return;
           if (e.target === e.currentTarget) outsideCloseRef.current?.click();
         }}
       >
@@ -60,7 +62,7 @@ function DialogContent({
         <div
           data-slot="dialog-panel"
           className={cn(
-            "pointer-events-auto relative grid w-full max-w-[calc(100%-2rem)] gap-3.5 rounded-xl border bg-popover p-5 shadow-modal duration-200 outline-none group-data-[state=closed]:animate-out group-data-[state=closed]:fade-out-0 group-data-[state=closed]:zoom-out-95 group-data-[state=open]:animate-in group-data-[state=open]:fade-in-0 group-data-[state=open]:zoom-in-95 sm:max-w-lg",
+            "pointer-events-auto relative grid w-full max-w-[calc(100%-2rem)] gap-3.5 rounded-xl border bg-popover p-5 shadow-modal duration-200 outline-none group-data-[state=closed]:animate-out group-data-[state=closed]:fade-out-0 group-data-[state=closed]:fill-mode-forwards group-data-[state=closed]:zoom-out-95 group-data-[state=open]:animate-in group-data-[state=open]:fade-in-0 group-data-[state=open]:zoom-in-95 sm:max-w-lg",
             className,
           )}
         >

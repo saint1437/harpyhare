@@ -296,6 +296,21 @@ describe("useChats", () => {
     expect(saveChats).toHaveBeenCalledTimes(1);
   });
 
+  it("на размонтировании сбрасывает несохранённые чаты на диск", async () => {
+    const { result, unmount } = renderHook(() => useChats());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(1);
+    });
+    saveChats.mockClear();
+    act(() => {
+      result.current.newChat();
+    });
+    expect(saveChats).not.toHaveBeenCalled();
+    unmount();
+    expect(saveChats).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(saveChats.mock.calls[0]?.[0]))).toHaveLength(2);
+  });
+
   it("addDraftImage добавляет вложение в черновик активного чата", async () => {
     vi.useRealTimers();
     const { result } = renderHook(() => useChats());
@@ -319,9 +334,26 @@ describe("useChats — активный чат переживает выход",
     { id: "one", title: "Чат 1", messages: [], draft: "" },
     { id: "two", title: "Чат 2", messages: [], draft: "" },
   ]);
+  const memory = new Map<string, string>();
+
+  beforeEach(() => {
+    memory.clear();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        memory.set(key, value);
+      },
+      clear: () => {
+        memory.clear();
+      },
+      removeItem: (key: string) => {
+        memory.delete(key);
+      },
+    });
+  });
 
   afterEach(() => {
-    localStorage.clear();
+    vi.unstubAllGlobals();
   });
 
   it("открывается тот чат, в котором вышли, а не первый", async () => {

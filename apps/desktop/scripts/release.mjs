@@ -148,7 +148,7 @@ const assertToolingReady = () => {
   if (capture("git", ["status", "--porcelain"]) !== "") {
     die("git-дерево не чистое — закоммить или отложи изменения");
   }
-  if (!existsSync(keyPath)) die(`нет ключа подписи ${keyPath} (см. README, раздел «Релиз»)`);
+  if (!existsSync(keyPath)) die(`нет ключа подписи ${keyPath}`);
   run("gh", ["auth", "status"], { stdio: "ignore" });
 };
 

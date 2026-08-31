@@ -24,7 +24,7 @@ function emitFocusPrompt() {
 }
 
 function PromptField({ suspended, text }: { suspended: boolean; text: string }) {
-  const ref = usePromptFocus(suspended);
+  const { ref } = usePromptFocus(suspended);
   return createElement("textarea", { ref, defaultValue: text });
 }
 

@@ -34,7 +34,6 @@
   --surface: oklch(1 0 0 / 6%);
   --surface-active: oklch(1 0 0 / 11%);
   --code-surface: oklch(0 0 0 / 30%);
-  --recording: oklch(0.62 0.2 18);
 }
 
 :root[data-theme="black"] {
@@ -72,7 +71,6 @@
   --color-surface: var(--surface);
   --color-surface-active: var(--surface-active);
   --color-code-surface: var(--code-surface);
-  --color-recording: var(--recording);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -148,7 +146,6 @@ body.launcher {
 
 @media (prefers-reduced-motion: reduce) {
   .launcher-rise,
-  .eq-bar,
   .thinking-shimmer {
     animation: none;
   }
@@ -164,6 +161,25 @@ body.launcher {
     var(--background) calc(var(--app-opacity) * 100%),
     transparent
   );
+}
+
+.liquid-metal-frame {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.liquid-metal-frame-host,
+.liquid-metal-frame canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 * {
@@ -314,21 +330,6 @@ svg.lucide {
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
-  }
-}
-
-.eq-bar {
-  transform-origin: center;
-  animation: eq 1.1s ease-in-out infinite;
-}
-
-@keyframes eq {
-  0%,
-  100% {
-    transform: scaleY(0.35);
-  }
-  50% {
-    transform: scaleY(1);
   }
 }
 

@@ -49,6 +49,7 @@ describe("commands (Tauri IPC)", () => {
     await sendToClaude(
       [{ role: "user", text: "hi", images: [] }],
       "chat-1",
+      "stream-1",
       "sys",
       "claude-opus-4-8",
       { thinking: true, webSearch: false },
@@ -56,6 +57,7 @@ describe("commands (Tauri IPC)", () => {
     expect(invoke).toHaveBeenCalledWith("send_to_claude", {
       messages: [{ role: "user", text: "hi", images: [] }],
       chatId: "chat-1",
+      streamId: "stream-1",
       system: "sys",
       model: "claude-opus-4-8",
       options: { thinking: true, webSearch: false },

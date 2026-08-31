@@ -15,3 +15,7 @@ export function miniStatus(
   if (unreadAnswer) return "unread";
   return "idle";
 }
+
+export function isActivityStatus(state: RecorderState, streaming: boolean): boolean {
+  return state === "recording" || state === "transcribing" || streaming;
+}

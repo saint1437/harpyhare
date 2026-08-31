@@ -100,13 +100,22 @@ export function SettingSelect({
 export function SettingSwitch({
   checked,
   ariaLabel,
+  disabled,
   onCheckedChange,
 }: {
   checked: boolean;
   ariaLabel: string;
+  disabled?: boolean;
   onCheckedChange: (value: boolean) => void;
 }) {
-  return <Switch checked={checked} aria-label={ariaLabel} onCheckedChange={onCheckedChange} />;
+  return (
+    <Switch
+      checked={checked}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onCheckedChange={onCheckedChange}
+    />
+  );
 }
 
 const READOUT_DISPLAY_PRECISION = 3;
