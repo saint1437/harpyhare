@@ -144,6 +144,25 @@ async fn transcribe_maps_401_to_bad_key() {
 }
 
 #[tokio::test]
+async fn transcribe_preserves_403_body_message() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+            "error": {"message": "model access denied"}
+        })))
+        .mount(&server)
+        .await;
+    let stt = GroqStt::new("gsk_test".into()).with_base_url(server.uri());
+    match stt.transcribe(&samples()).await {
+        Err(SttError::Other(m)) => {
+            assert!(m.contains("Groq HTTP 403"));
+            assert!(m.contains("model access denied"));
+        }
+        other => panic!("ожидалась детальная ошибка 403, получено: {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn proxy_mode_401_maps_to_bad_access_code_with_body_message() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
