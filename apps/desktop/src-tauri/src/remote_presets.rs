@@ -39,12 +39,8 @@ fn cache_path(app: &AppHandle) -> PathBuf {
     crate::app_state::app_data_file(app, CACHE_FILE_NAME)
 }
 
-pub fn load_initial(app: &AppHandle) -> Vec<PromptPreset> {
-    std::fs::read_to_string(cache_path(app))
-        .ok()
-        .and_then(|raw| PresetPool::parse(&raw))
-        .unwrap_or_else(PresetPool::bundled)
-        .presets
+pub fn load_initial(_app: &AppHandle) -> Vec<PromptPreset> {
+    PresetPool::bundled().presets
 }
 
 pub fn spawn_refresh(app: AppHandle) {
