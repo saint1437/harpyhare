@@ -18,7 +18,7 @@ const API_KEYS = [
     id: "xclis",
     name: "Xclis",
     purpose: "ответов Claude через альтернативный Anthropic-совместимый API",
-    consoleUrl: "https://xclis.ai",
+    consoleUrl: "https://xclis.ai/ref/MGJST",
   },
   {
     id: "groq",
@@ -68,8 +68,8 @@ export function missingApiKeys(settings: ApiKeySettings): ApiKeyInfo[] {
   if (settings[`${selectedClaude}_api_key`].trim() === "") {
     missing.push(apiKeyInfo(selectedClaude));
   }
-  if (settings[`${selectedStt}_api_key`].trim() === "") {
-    missing.push(apiKeyInfo(selectedStt));
+  if (settings[`${selectedSttKey}_api_key`].trim() === "") {
+    missing.push(apiKeyInfo(selectedSttKey));
   }
 
   return missing;
