@@ -124,7 +124,7 @@ pub fn build_llm_client(
     let client = if !s.access_token.is_empty() {
         llm::AnthropicClient::for_proxy(s.access_token.clone(), access::proxy_base_url())
     } else if s.llm_provider == settings::LLM_PROVIDER_XCLIS {
-        llm::AnthropicClient::new(s.xclis_api_key.clone()).with_base_url(XCLIS_BASE_URL.to_string())
+        llm::AnthropicClient::for_xclis(s.xclis_api_key.clone(), XCLIS_BASE_URL.to_string())
     } else {
         llm::AnthropicClient::new(s.anthropic_api_key.clone())
     };
