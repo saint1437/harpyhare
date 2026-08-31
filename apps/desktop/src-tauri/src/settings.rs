@@ -8,6 +8,11 @@ const TMP_FILE_EXTENSION: &str = "tmp";
 pub const THEME_GRAY: &str = "gray";
 pub const THEME_BLACK: &str = "black";
 
+pub const LLM_PROVIDER_ANTHROPIC: &str = "anthropic";
+pub const LLM_PROVIDER_XCLIS: &str = "xclis";
+pub const STT_PROVIDER_GROQ: &str = "groq";
+pub const STT_PROVIDER_DEEPGRAM: &str = "deepgram";
+
 pub const QUICK_ACTION_LIMIT: usize = 9;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, specta::Type)]
@@ -143,6 +148,9 @@ pub struct Settings {
     pub anthropic_api_key: String,
     pub xclis_api_key: String,
     pub groq_api_key: String,
+    pub deepgram_api_key: String,
+    pub llm_provider: String,
+    pub stt_provider: String,
     pub access_token: String,
     pub prompt_presets: Vec<PromptPreset>,
     pub hotkeys: Vec<crate::hotkeys::HotkeyBinding>,
@@ -178,6 +186,9 @@ impl Default for Settings {
             anthropic_api_key: String::new(),
             xclis_api_key: String::new(),
             groq_api_key: String::new(),
+            deepgram_api_key: String::new(),
+            llm_provider: LLM_PROVIDER_ANTHROPIC.into(),
+            stt_provider: STT_PROVIDER_GROQ.into(),
             access_token: String::new(),
             prompt_presets: Vec::new(),
             hotkeys: Vec::new(),
@@ -225,6 +236,12 @@ impl Settings {
         if self.theme != THEME_GRAY && self.theme != THEME_BLACK {
             self.theme = defaults::THEME.into();
         }
+        if self.llm_provider != LLM_PROVIDER_ANTHROPIC && self.llm_provider != LLM_PROVIDER_XCLIS {
+            self.llm_provider = LLM_PROVIDER_ANTHROPIC.into();
+        }
+        if self.stt_provider != STT_PROVIDER_GROQ && self.stt_provider != STT_PROVIDER_DEEPGRAM {
+            self.stt_provider = STT_PROVIDER_GROQ.into();
+        }
         self.quick_actions.truncate(QUICK_ACTION_LIMIT);
         crate::hotkeys::normalize(&mut self.hotkeys);
     }
@@ -235,8 +252,15 @@ impl Settings {
                 let mut value: serde_json::Value = serde_json::from_str(&raw)
                     .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
                 crate::hotkeys::migrate_legacy_fields(&mut value);
-                serde_json::from_value::<Settings>(value)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?
+                let had_llm_provider = value.get("llm_provider").is_some();
+                let mut loaded = serde_json::from_value::<Settings>(value)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+                // Before provider selection existed, a non-empty Xclis key implicitly selected Xclis.
+                // Preserve that behaviour for existing installations during migration.
+                if !had_llm_provider && !loaded.xclis_api_key.trim().is_empty() {
+                    loaded.llm_provider = LLM_PROVIDER_XCLIS.into();
+                }
+                loaded
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Settings::default(),
             Err(e) => return Err(e),
