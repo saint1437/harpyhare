@@ -18,11 +18,13 @@ export interface ToolbarDockItem {
 
 export interface ToolbarDockProps {
   items: ToolbarDockItem[];
-  vertical: boolean;
+  slackPx: number;
 }
 
 const HIDDEN_CLIP = "inset(0px 100% 0px 0px round 8px)";
 const RAIL_EDGE_MARGIN_PX = 10;
+const COLLAPSE_SLACK_PX = 8;
+const EXPAND_EXTRA_SLACK_PX = 24;
 const SPRING_X = { type: "spring", stiffness: 650, damping: 44, mass: 0.7 } as const;
 const SPRING_CLIP = { type: "spring", stiffness: 720, damping: 52, mass: 0.7 } as const;
 const COLLAPSE_SPRING = { type: "spring", stiffness: 460, damping: 42, mass: 0.9 } as const;
@@ -111,14 +113,15 @@ function TooltipRail({
   );
 }
 
-export function ToolbarDock({ items, vertical }: ToolbarDockProps) {
+export function ToolbarDock({ items, slackPx }: ToolbarDockProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
   const segRefs = useRef<(HTMLDivElement | null)[]>([]);
   const btnRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
   const reducedMotion = usePrefersReducedMotion();
-  const [collapsed, setCollapsed] = useState(vertical);
+  const [vertical, setVertical] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [stripWidth, setStripWidth] = useState(0);
   const [railVisible, setRailVisible] = useState(false);
   const [railPos, setRailPos] = useState({ x: 0, clip: HIDDEN_CLIP });
@@ -129,6 +132,12 @@ export function ToolbarDock({ items, vertical }: ToolbarDockProps) {
   const dropdownOpen = vertical && !collapsed;
   const toggleLabel = collapsed ? EXPAND_LABEL : COLLAPSE_LABEL;
   const railEntries: RailEntry[] = [...items, { id: "toggle", label: toggleLabel }];
+
+  useEffect(() => {
+    if (!vertical && slackPx < COLLAPSE_SLACK_PX) setVertical(true);
+    else if (vertical && stripWidth > 0 && slackPx >= stripWidth + EXPAND_EXTRA_SLACK_PX)
+      setVertical(false);
+  }, [slackPx, vertical, stripWidth]);
 
   useEffect(() => {
     setCollapsed(vertical);
@@ -187,7 +196,7 @@ export function ToolbarDock({ items, vertical }: ToolbarDockProps) {
     <div ref={wrapperRef} className="relative shrink-0" onMouseLeave={hideRail}>
       <div className="flex items-center rounded-full bg-background p-0.5 ring-1 ring-border ring-inset">
         <motion.div
-          key={vertical ? "vertical" : "horizontal"}
+          key={`${String(vertical)}:${items.map((item) => item.id).join(",")}`}
           className="relative h-6 overflow-hidden"
           initial={false}
           animate={{ width: stripOpen ? stripWidth : 0 }}

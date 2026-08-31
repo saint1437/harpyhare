@@ -1,8 +1,9 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useWindowDrag } from "@/hooks/useWindowDrag";
 import type { RecorderState } from "@/ipc/types";
 import { cn } from "@/lib/utils";
 import { EqBars, type EqBarsProps } from "./EqBars";
+import { ToolbarDock, type ToolbarDockItem } from "./ToolbarDock";
 
 export interface ContextUsage {
   usedTokens: number;
@@ -13,8 +14,26 @@ export interface StatusBarProps {
   state: RecorderState;
   error: string | null;
   tabs: ReactNode;
-  dock: ReactNode;
+  dockItems: ToolbarDockItem[];
   contextUsage: ContextUsage | null;
+}
+
+function useSlackWidth(): [React.RefObject<HTMLSpanElement | null>, number] {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [slackPx, setSlackPx] = useState(Number.POSITIVE_INFINITY);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      setSlackPx(el.offsetWidth);
+    });
+    observer.observe(el);
+    setSlackPx(el.offsetWidth);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+  return [ref, slackPx];
 }
 
 const CONTEXT_USAGE_WARN_PERCENT = 80;
@@ -49,15 +68,17 @@ function indicatorProps(state: RecorderState, showError: boolean): EqBarsProps {
   return { animated: false, barClass: showError ? "bg-destructive" : "bg-muted-foreground/50" };
 }
 
-export function StatusBar({ state, error, tabs, dock, contextUsage }: StatusBarProps) {
+export function StatusBar({ state, error, tabs, dockItems, contextUsage }: StatusBarProps) {
   const showError = error !== null && state === "idle";
   const onDragMouseDown = useWindowDrag();
+  const [spacerRef, slackPx] = useSlackWidth();
 
   return (
     <header className="flex min-h-7 items-center gap-2" onMouseDown={onDragMouseDown}>
       <EqBars {...indicatorProps(state, showError)} />
       {tabs}
       <span
+        ref={spacerRef}
         title={showError ? error : undefined}
         className="min-w-0 flex-1 truncate text-caption text-destructive"
       >
@@ -65,7 +86,7 @@ export function StatusBar({ state, error, tabs, dock, contextUsage }: StatusBarP
       </span>
       <div className="flex shrink-0 items-center gap-1.5">
         {contextUsage && <ContextUsageGauge usage={contextUsage} />}
-        {dock}
+        <ToolbarDock items={dockItems} slackPx={slackPx} />
       </div>
     </header>
   );

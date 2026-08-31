@@ -19,7 +19,7 @@ import { ModelCommandMenu } from "@/components/ModelCommandMenu";
 import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
 import { StatusBar, type ContextUsage } from "@/components/StatusBar";
 import { Teleprompter } from "@/components/Teleprompter";
-import { DOCK_BUTTON_CLASS, ToolbarDock, type ToolbarDockItem } from "@/components/ToolbarDock";
+import { DOCK_BUTTON_CLASS, type ToolbarDockItem } from "@/components/ToolbarDock";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
@@ -137,20 +137,6 @@ function updateBadge(updater: UpdaterApi, onOpen: () => void): DockUpdate | null
   };
 }
 
-const DOCK_COLLAPSE_BELOW_PX = 460;
-const DOCK_HYSTERESIS_PX = 10;
-const DOCK_EXTRA_PER_TAB_PX = 30;
-
-function useDockVertical(windowWidth: number, chatCount: number): boolean {
-  const collapseBelow = DOCK_COLLAPSE_BELOW_PX + Math.max(0, chatCount - 1) * DOCK_EXTRA_PER_TAB_PX;
-  const expandAbove = collapseBelow + DOCK_HYSTERESIS_PX;
-  const [vertical, setVertical] = useState(windowWidth < collapseBelow);
-  useEffect(() => {
-    if (windowWidth < collapseBelow) setVertical(true);
-    else if (windowWidth >= expandAbove) setVertical(false);
-  }, [windowWidth, collapseBelow, expandAbove]);
-  return vertical;
-}
 const SCREEN_SHARE_VISIBLE_LABEL = "Видно при демонстрации экрана — нажмите, чтобы скрыть";
 const SCREEN_SHARE_HIDDEN_LABEL = "Скрыто при демонстрации экрана — нажмите, чтобы показывать";
 
@@ -408,7 +394,6 @@ interface AppHeaderProps {
   canCopy: boolean;
   canTeleprompt: boolean;
   contextUsage: ContextUsage | null;
-  dockVertical: boolean;
   screenShareVisible: boolean;
   onToggleScreenShare: () => void;
   onOpenModelMenu: () => void;
@@ -429,7 +414,6 @@ function AppHeader({
   canCopy,
   canTeleprompt,
   contextUsage,
-  dockVertical,
   screenShareVisible,
   onToggleScreenShare,
   onOpenModelMenu,
@@ -441,20 +425,12 @@ function AppHeader({
 }: AppHeaderProps) {
   const update = updateBadge(updater, onOpenUpdate);
   const dockItems: ToolbarDockItem[] = [
-    {
-      id: "copy",
-      label: "Копировать последний ответ",
-      icon: <Copy />,
-      disabled: !canCopy,
-      onClick: onCopy,
-    },
-    {
-      id: "teleprompter",
-      label: "Суфлёр",
-      icon: <ScrollText />,
-      disabled: !canTeleprompt,
-      onClick: onOpenTeleprompter,
-    },
+    ...(canCopy
+      ? [{ id: "copy", label: "Копировать последний ответ", icon: <Copy />, onClick: onCopy }]
+      : []),
+    ...(canTeleprompt
+      ? [{ id: "teleprompter", label: "Суфлёр", icon: <ScrollText />, onClick: onOpenTeleprompter }]
+      : []),
     {
       id: "models",
       label: "Модели",
@@ -501,7 +477,7 @@ function AppHeader({
       state={state}
       error={error?.message ?? null}
       contextUsage={contextUsage}
-      dock={<ToolbarDock items={dockItems} vertical={dockVertical} />}
+      dockItems={dockItems}
       tabs={
         <ChatTabs
           chats={chats.chats}
@@ -600,7 +576,6 @@ export default function App() {
   const chats = useChats();
   const models = useModels();
   const updater = useUpdater();
-  const dockVertical = useDockVertical(settings.window_width, chats.chats.length);
 
   const [updateOpen, setUpdateOpen] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
@@ -884,7 +859,6 @@ export default function App() {
           canCopy={canCopy}
           canTeleprompt={canTeleprompt}
           contextUsage={contextUsage}
-          dockVertical={dockVertical}
           screenShareVisible={settings.screen_share_visible}
           onToggleScreenShare={toggleScreenShareVisible}
           onOpenModelMenu={() => {
