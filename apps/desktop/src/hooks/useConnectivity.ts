@@ -1,7 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { probeConnectivity } from "@/ipc/commands";
-
-const PROBE_INTERVAL_MS = 4000;
 
 export interface Connectivity {
   offline: boolean;
@@ -11,22 +8,16 @@ export interface Connectivity {
 export function useConnectivity(): Connectivity {
   const [offline, setOffline] = useState(() => !navigator.onLine);
 
-  const check = useCallback(async () => {
-    try {
-      const reachable = await probeConnectivity();
-      setOffline(!reachable);
-    } catch {
-      setOffline(true);
-    }
-  }, []);
-
+  // Недоступность конкретного API (Claude, Xclis, Groq и т. п.) не означает,
+  // что у компьютера нет интернета. Ошибку сервиса показывает сам запрос.
   const reportNetworkError = useCallback(() => {
-    setOffline(true);
+    return;
   }, []);
 
   useEffect(() => {
-    void check();
-    const onOnline = () => void check();
+    const onOnline = () => {
+      setOffline(false);
+    };
     const onOffline = () => {
       setOffline(true);
     };
@@ -36,15 +27,7 @@ export function useConnectivity(): Connectivity {
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
-  }, [check]);
-
-  useEffect(() => {
-    if (!offline) return;
-    const timer = setInterval(() => void check(), PROBE_INTERVAL_MS);
-    return () => {
-      clearInterval(timer);
-    };
-  }, [offline, check]);
+  }, []);
 
   return { offline, reportNetworkError };
 }
