@@ -640,8 +640,6 @@ impl LlmProvider for AnthropicClient {
 pub struct ImageAttachment {
     pub media_type: String,
     pub data: String,
-    #[serde(default)]
-    pub images: Vec<ImageAttachment>,
 }
 
 #[derive(Debug, Clone, Deserialize, specta::Type)]
