@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { ORB_SIZE_INLINE, ORB_THEME, ThinkingOrb } from "@/components/ui/thinking-orbs";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 
 const SECOND_MS = 1000;
 const SECONDS_PER_MINUTE = 60;
@@ -30,9 +32,15 @@ function useElapsedSeconds(startedAt: number) {
 
 export function ThinkingIndicator({ startedAt }: { startedAt: number }) {
   const seconds = useElapsedSeconds(startedAt);
+  const reducedMotion = usePrefersReducedMotion();
 
   return (
     <div className="flex animate-in items-baseline gap-2 duration-200 fade-in motion-reduce:animate-none">
+      {!reducedMotion && (
+        <span className="self-center" aria-hidden>
+          <ThinkingOrb state="solving" size={ORB_SIZE_INLINE} theme={ORB_THEME} />
+        </span>
+      )}
       <span className="thinking-shimmer text-body font-medium" aria-live="polite">
         Думает…
       </span>
