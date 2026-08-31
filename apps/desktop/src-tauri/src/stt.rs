@@ -27,7 +27,7 @@ pub enum SttError {
     BadAccessCode(String),
     #[error("Сервис распознавания перегружен, попробуй позже ({0})")]
     Retryable(u16),
-    #[error("Нет соединения — проверь интернет/VPN: {0}")]
+    #[error("Нет соединения — проверь интернет: {0}")]
     Network(String),
     #[error("{0}")]
     Other(String),
@@ -156,7 +156,11 @@ impl GroqStt {
             code @ (401 | 403) if self.proxy => {
                 Err(SttError::BadAccessCode(Self::message_from_body(code, resp).await))
             }
-            401 | 403 => Err(SttError::BadApiKey),
+            401 => Err(SttError::BadApiKey),
+            403 => {
+                let message = Self::message_from_body(403, resp).await;
+                Err(SttError::Other(format!("Groq HTTP 403: {message}")))
+            }
             code @ (429 | 500..=599) => Err(SttError::Retryable(code)),
             code => Err(SttError::Other(Self::message_from_body(code, resp).await)),
         }
@@ -177,9 +181,8 @@ impl GroqStt {
             .ok()
             .and_then(|v| v["error"]["message"].as_str().map(str::to_string))
             .filter(|m| !m.trim().is_empty())
-            .unwrap_or_else(|| format!("Groq HTTP {code}"))
+            .unwrap_or_else(|| format!("ответ без описания (HTTP {code})"))
     }
-
 }
 
 #[async_trait::async_trait]
