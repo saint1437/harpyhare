@@ -31,7 +31,7 @@ futures-util = "0.3.32"
 tokio = { version = "1.52.3", features = ["full"] }
 tokio-util = "0.7.18"
 tokio-tungstenite = { version = "0.28", features = ["rustls-tls-native-roots"] }
-reqwest = { version = "0.13.4", features = ["json", "multipart", "stream"] }
+reqwest = { version = "0.13.4", features = ["json", "multipart", "stream", "query"] }
 async-trait = "0.1.89"
 dotenvy = "0.15.7"
 ringbuf = "0.4.8"
