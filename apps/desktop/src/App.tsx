@@ -441,12 +441,20 @@ function AppHeader({
 }: AppHeaderProps) {
   const update = updateBadge(updater, onOpenUpdate);
   const dockItems: ToolbarDockItem[] = [
-    ...(canCopy
-      ? [{ id: "copy", label: "Копировать последний ответ", icon: <Copy />, onClick: onCopy }]
-      : []),
-    ...(canTeleprompt
-      ? [{ id: "teleprompter", label: "Суфлёр", icon: <ScrollText />, onClick: onOpenTeleprompter }]
-      : []),
+    {
+      id: "copy",
+      label: "Копировать последний ответ",
+      icon: <Copy />,
+      disabled: !canCopy,
+      onClick: onCopy,
+    },
+    {
+      id: "teleprompter",
+      label: "Суфлёр",
+      icon: <ScrollText />,
+      disabled: !canTeleprompt,
+      onClick: onOpenTeleprompter,
+    },
     {
       id: "models",
       label: "Модели",

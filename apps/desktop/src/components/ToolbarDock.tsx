@@ -12,6 +12,7 @@ export interface ToolbarDockItem {
   element?: ReactNode;
   shortcut?: string;
   iconClass?: string;
+  disabled?: boolean;
   onClick?: () => void;
 }
 
@@ -50,6 +51,7 @@ function DockButton({
           title={vertical ? item.label : ""}
           aria-label={item.label}
           className={cn(DOCK_BUTTON_CLASS, item.iconClass)}
+          disabled={item.disabled}
           onClick={item.onClick}
         >
           {item.icon}
