@@ -128,6 +128,12 @@ export function ToolbarDock({ items, vertical }: ToolbarDockProps) {
   const toggleLabel = collapsed ? EXPAND_LABEL : COLLAPSE_LABEL;
   const railEntries: RailEntry[] = [...items, { id: "toggle", label: toggleLabel }];
 
+  const prevVerticalRef = useRef(vertical);
+  const verticalJustChanged = prevVerticalRef.current !== vertical;
+  useEffect(() => {
+    prevVerticalRef.current = vertical;
+  });
+
   useEffect(() => {
     setCollapsed(vertical);
   }, [vertical]);
@@ -188,7 +194,7 @@ export function ToolbarDock({ items, vertical }: ToolbarDockProps) {
           className="relative h-6 overflow-hidden"
           initial={false}
           animate={{ width: stripOpen ? stripWidth : 0 }}
-          transition={reducedMotion ? INSTANT : COLLAPSE_SPRING}
+          transition={reducedMotion || verticalJustChanged ? INSTANT : COLLAPSE_SPRING}
         >
           <div ref={stripRef} className="absolute top-0 right-0 flex h-6 items-center gap-0.5">
             {items.map((item, i) => (
