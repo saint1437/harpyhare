@@ -19,6 +19,7 @@ const VERSION_HEADER: &str = "anthropic-version";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
 const MAX_TOKENS: u32 = 64000;
+const XCLIS_MAX_TOKENS: u32 = 32768;
 
 const THINKING_ADAPTIVE: &str = "adaptive";
 const THINKING_DISABLED: &str = "disabled";
@@ -47,7 +48,7 @@ const UNKNOWN_API_ERROR: &str = "неизвестная ошибка API";
 
 #[derive(Debug, thiserror::Error)]
 pub enum LlmError {
-    #[error("Неверный ключ Anthropic — проверь в настройках")]
+    #[error("Неверный API-ключ — проверь выбранного провайдера и ключ в настройках")]
     BadApiKey,
     #[error("Anthropic перегружен, попробуй позже ({0})")]
     Retryable(u16),
@@ -120,6 +121,7 @@ pub struct AnthropicClient {
     base_url: String,
     client: reqwest::Client,
     catalog: ModelCatalog,
+    xclis_compat: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
@@ -265,8 +267,7 @@ async fn require_ok_status(resp: reqwest::Response, proxy: bool) -> Result<reqwe
     match resp.status().as_u16() {
         200 => Ok(resp),
         code @ (401 | 403) if proxy => Err(LlmError::Api(api_error_message(resp, code).await)),
-        401 | 403 => Err(LlmError::BadApiKey),
-        code @ (429 | 500..=599) => Err(LlmError::Api(api_error_message(resp, code).await)),
+        401 => Err(LlmError::BadApiKey),
         code => Err(LlmError::Api(api_error_message(resp, code).await)),
     }
 }
@@ -316,6 +317,84 @@ async fn pump_sse_stream(
     }
 }
 
+fn strip_cache_control(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            map.remove("cache_control");
+            for child in map.values_mut() {
+                strip_cache_control(child);
+            }
+        }
+        Value::Array(items) => {
+            for child in items {
+                strip_cache_control(child);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn normalize_xclis_system(body: &mut Value) {
+    let Some(system) = body.get_mut("system") else {
+        return;
+    };
+    let text = system
+        .as_array()
+        .and_then(|items| (items.len() == 1).then_some(items))
+        .and_then(|items| items[0]["text"].as_str())
+        .map(str::to_string);
+    if let Some(text) = text {
+        *system = json!(text);
+    }
+}
+
+fn xclis_compatible_body(mut body: Value) -> Value {
+    strip_cache_control(&mut body);
+    normalize_xclis_system(&mut body);
+    if let Some(object) = body.as_object_mut() {
+        if object.contains_key("max_tokens") {
+            object.insert("max_tokens".into(), json!(XCLIS_MAX_TOKENS));
+        }
+        if object.contains_key("stream") {
+            object.insert("stream".into(), json!(false));
+        }
+        let disabled = object
+            .get("thinking")
+            .and_then(|v| v["type"].as_str())
+            .is_some_and(|kind| kind == THINKING_DISABLED);
+        if disabled {
+            object.remove("thinking");
+        }
+        if object.get("system").is_some_and(|v| v.as_str() == Some("")) {
+            object.remove("system");
+        }
+    }
+    body
+}
+
+fn response_input_tokens(v: &Value) -> u32 {
+    let usage = &v["usage"];
+    (usage["input_tokens"].as_u64().unwrap_or(0)
+        + usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
+        + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0)) as u32
+}
+
+fn response_text(v: &Value) -> String {
+    v["content"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter(|item| item["type"].as_str() == Some("text"))
+                .filter_map(|item| item["text"].as_str())
+                .collect::<Vec<_>>()
+                .join("")
+        })
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
 impl AnthropicClient {
     pub fn new(api_key: String) -> Self {
         Self {
@@ -323,20 +402,35 @@ impl AnthropicClient {
             base_url: ANTHROPIC_BASE_URL.into(),
             client: build_http_client(DEFAULT_READ_TIMEOUT),
             catalog: ModelCatalog::default(),
+            xclis_compat: false,
         }
     }
+
     pub fn for_proxy(access_token: String, base_url: String) -> Self {
         Self {
             auth: Auth::ProxyBearer(access_token),
             base_url,
             client: build_http_client(DEFAULT_READ_TIMEOUT),
             catalog: ModelCatalog::default(),
+            xclis_compat: false,
         }
     }
+
+    pub fn for_xclis(api_key: String, base_url: String) -> Self {
+        Self {
+            auth: Auth::ApiKey(api_key),
+            base_url,
+            client: build_direct_http_client(DEFAULT_READ_TIMEOUT),
+            catalog: ModelCatalog::default(),
+            xclis_compat: true,
+        }
+    }
+
     pub fn with_catalog(mut self, catalog: ModelCatalog) -> Self {
         self.catalog = catalog;
         self
     }
+
     fn cached_model(&self, model_id: &str) -> Option<ModelInfo> {
         self.catalog
             .lock()
@@ -345,29 +439,37 @@ impl AnthropicClient {
             .find(|m| m.id == model_id)
             .cloned()
     }
+
     fn capability_fields(&self, request: &LlmRequest) -> (Option<Value>, Option<Value>) {
         let info = self.cached_model(&request.model);
+        let thinking = if self.xclis_compat && !request.options.thinking {
+            None
+        } else {
+            thinking_value(info.as_ref(), &request.model, request.options.thinking)
+        };
         (
-            thinking_value(info.as_ref(), &request.model, request.options.thinking),
+            thinking,
             web_search_value(info.as_ref(), &request.model, request.options.web_search),
         )
     }
+
     fn is_proxy(&self) -> bool {
         matches!(self.auth, Auth::ProxyBearer(_))
     }
+
     fn authorize(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
         match &self.auth {
             Auth::ApiKey(key) => req.header(API_KEY_HEADER, key),
             Auth::ProxyBearer(token) => req.bearer_auth(token),
         }
     }
+
     pub fn with_base_url(mut self, url: String) -> Self {
         self.base_url = url;
-        // Custom Anthropic-compatible endpoints should be reached directly. reqwest enables
-        // system/environment proxies by default, which can leave a dead VPN/proxy in the path.
         self.client = build_direct_http_client(DEFAULT_READ_TIMEOUT);
         self
     }
+
     pub fn with_read_timeout(mut self, d: Duration) -> Self {
         self.client = if self.base_url == ANTHROPIC_BASE_URL {
             build_http_client(d)
@@ -440,6 +542,31 @@ impl AnthropicClient {
         let resp = require_ok_status(resp, self.is_proxy()).await?;
         pump_sse_stream(resp, &cancel, sink).await
     }
+
+    async fn complete_message(
+        &self,
+        body: Value,
+        cancel: CancellationToken,
+        sink: &mut dyn LlmStreamSink,
+    ) -> Result<(), LlmError> {
+        let send = self.messages_request().json(&body).send();
+        let resp = tokio::select! {
+            result = send => result.map_err(network_error)?,
+            _ = cancel.cancelled() => return Err(LlmError::Cancelled),
+        };
+        let resp = require_ok_status(resp, self.is_proxy()).await?;
+        let value: Value = resp.json().await.map_err(network_error)?;
+        let input_tokens = response_input_tokens(&value);
+        if input_tokens > 0 {
+            sink.input_tokens(input_tokens);
+        }
+        let text = response_text(&value);
+        if text.is_empty() {
+            return Err(LlmError::Api("Xclis вернул ответ без текстового content-блока".into()));
+        }
+        sink.text_delta(&text);
+        Ok(())
+    }
 }
 
 #[async_trait::async_trait]
@@ -458,7 +585,11 @@ impl LlmProvider for AnthropicClient {
             thinking,
             web_search,
         );
-        self.stream_message(body, cancel, sink).await
+        if self.xclis_compat {
+            self.complete_message(xclis_compatible_body(body), cancel, sink).await
+        } else {
+            self.stream_message(body, cancel, sink).await
+        }
     }
 
     async fn count_tokens(&self, request: LlmRequest) -> Result<u32, LlmError> {
@@ -470,6 +601,11 @@ impl LlmProvider for AnthropicClient {
             thinking,
             web_search,
         );
+        let body = if self.xclis_compat {
+            xclis_compatible_body(body)
+        } else {
+            body
+        };
         self.post_count_tokens(body).await
     }
 
@@ -504,6 +640,8 @@ impl LlmProvider for AnthropicClient {
 pub struct ImageAttachment {
     pub media_type: String,
     pub data: String,
+    #[serde(default)]
+    pub images: Vec<ImageAttachment>,
 }
 
 #[derive(Debug, Clone, Deserialize, specta::Type)]
