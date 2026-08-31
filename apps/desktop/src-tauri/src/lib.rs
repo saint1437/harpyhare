@@ -7,6 +7,8 @@ pub mod chat;
 pub mod chats;
 pub mod clipboard;
 pub mod context_import;
+#[cfg(target_os = "windows")]
+pub mod deepgram_curl;
 pub mod error;
 pub mod events;
 pub mod hotkey;
