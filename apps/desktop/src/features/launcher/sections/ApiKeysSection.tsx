@@ -16,7 +16,7 @@ const KEY_FIELDS: { id: ApiKeyId; placeholder: string }[] = [
   { id: "anthropic", placeholder: "sk-ant-…" },
   { id: "xclis", placeholder: "sk-…" },
   { id: "groq", placeholder: "gsk_…" },
-  { id: "deepgram", placeholder: "dg_…" },
+  { id: "deepgram", placeholder: "Deepgram API key" },
 ];
 
 function isActiveKey(id: ApiKeyId, llmProvider: LlmProvider, sttProvider: SttProvider): boolean {
@@ -47,77 +47,87 @@ export function ApiKeysSection({ draft, set, onRedeem }: ApiKeysSectionProps) {
   }
 
   return (
-    <SettingGroup
-      title="Доступ к API"
-      description="Оригинальные Anthropic + Groq оставлены. Xclis и Deepgram добавлены как отдельные альтернативы — можно смешивать как угодно."
-    >
-      <SettingBlock label="Код доступа" hint="Быстрый путь: заводить собственные ключи не нужно.">
-        <AccessCodeForm onRedeem={onRedeem} />
-      </SettingBlock>
-
-      <SettingRow label="Claude API" hint="Куда отправлять текст, контекст и скриншоты.">
-        <SettingSelect
-          ariaLabel="Провайдер Claude API"
-          value={draft.llm_provider}
-          onValueChange={(v) => {
-            set("llm_provider", v as LlmProvider);
-          }}
-        >
-          <SelectItem value="anthropic">Anthropic · официальный</SelectItem>
-          <SelectItem value="xclis">Xclis · альтернативный</SelectItem>
-        </SettingSelect>
-      </SettingRow>
-
-      <SettingRow label="Распознавание речи" hint="Движок, который получает записанный системный звук.">
-        <SettingSelect
-          ariaLabel="Провайдер распознавания речи"
-          value={draft.stt_provider}
-          onValueChange={(v) => {
-            const provider = v as SttProvider;
-            set("stt_provider", provider);
-            if (provider === "deepgram" && draft.stt_translate) {
-              set("stt_translate", false);
-            }
-          }}
-        >
-          <SelectItem value="groq">Groq · Whisper</SelectItem>
-          <SelectItem value="deepgram">Deepgram · Nova-3</SelectItem>
-        </SettingSelect>
-      </SettingRow>
-
-      {KEY_FIELDS.map(({ id, placeholder }) => {
-        const info = apiKeyInfo(id);
-        const active = isActiveKey(id, draft.llm_provider, draft.stt_provider);
-        return (
-          <SettingBlock
-            key={id}
-            label={`Ключ ${info.name}`}
-            hint={`${active ? "Используется сейчас. " : "Сохранён как запасной. "}Нужен для ${info.purpose}.`}
+    <>
+      <SettingGroup
+        title="Провайдеры"
+        description="Оригинальные сервисы сохранены, альтернативные можно включать независимо друг от друга."
+      >
+        <SettingRow label="Claude" hint="Текст, контекст и скриншоты отправляются выбранному API.">
+          <SettingSelect
+            ariaLabel="Провайдер Claude API"
+            value={draft.llm_provider}
+            onValueChange={(v) => {
+              set("llm_provider", v as LlmProvider);
+            }}
           >
-            <div className="flex items-center gap-2">
-              <Input
-                type="password"
-                autoComplete="off"
-                aria-label={`Ключ ${info.name}`}
-                placeholder={placeholder}
-                value={draft[`${id}_api_key`]}
-                onChange={(e) => {
-                  set(`${id}_api_key`, e.target.value);
-                }}
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  void openExternal(info.consoleUrl);
-                }}
-              >
-                Где взять
-              </Button>
-            </div>
-          </SettingBlock>
-        );
-      })}
-    </SettingGroup>
+            <SelectItem value="anthropic">Anthropic · официальный</SelectItem>
+            <SelectItem value="xclis">Xclis · альтернативный</SelectItem>
+          </SettingSelect>
+        </SettingRow>
+
+        <SettingRow
+          label="Распознавание речи"
+          hint="Системный звук распознаётся выбранным STT-сервисом."
+        >
+          <SettingSelect
+            ariaLabel="Провайдер распознавания речи"
+            value={draft.stt_provider}
+            onValueChange={(v) => {
+              const provider = v as SttProvider;
+              set("stt_provider", provider);
+              if (provider === "deepgram" && draft.stt_translate) {
+                set("stt_translate", false);
+              }
+            }}
+          >
+            <SelectItem value="groq">Groq · Whisper</SelectItem>
+            <SelectItem value="deepgram">Deepgram · Nova-3</SelectItem>
+          </SettingSelect>
+        </SettingRow>
+      </SettingGroup>
+
+      <SettingGroup
+        title="Ключи API"
+        description="Ключи сохраняются отдельно: активный используется сейчас, остальные остаются запасными."
+      >
+        <SettingBlock label="Код доступа" hint="Быстрый путь: собственные API-ключи не нужны.">
+          <AccessCodeForm onRedeem={onRedeem} />
+        </SettingBlock>
+
+        {KEY_FIELDS.map(({ id, placeholder }) => {
+          const info = apiKeyInfo(id);
+          const active = isActiveKey(id, draft.llm_provider, draft.stt_provider);
+          return (
+            <SettingBlock
+              key={id}
+              label={`Ключ ${info.name}`}
+              hint={`${active ? "Используется сейчас. " : "Сохранён как запасной. "}${info.purpose}.`}
+            >
+              <div className="flex items-center gap-2">
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  aria-label={`Ключ ${info.name}`}
+                  placeholder={placeholder}
+                  value={draft[`${id}_api_key`]}
+                  onChange={(e) => {
+                    set(`${id}_api_key`, e.target.value);
+                  }}
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    void openExternal(info.consoleUrl);
+                  }}
+                >
+                  Где взять
+                </Button>
+              </div>
+            </SettingBlock>
+          );
+        })}
+      </SettingGroup>
+    </>
   );
 }
