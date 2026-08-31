@@ -138,13 +138,13 @@ function updateBadge(updater: UpdaterApi, onOpen: () => void): DockUpdate | null
 }
 
 const DOCK_COLLAPSE_BELOW_PX = 460;
-const DOCK_EXPAND_ABOVE_PX = 520;
+const DOCK_EXPAND_ABOVE_PX = 470;
 
 function useDockVertical(windowWidth: number): boolean {
   const [vertical, setVertical] = useState(windowWidth < DOCK_COLLAPSE_BELOW_PX);
   useEffect(() => {
     if (windowWidth < DOCK_COLLAPSE_BELOW_PX) setVertical(true);
-    else if (windowWidth > DOCK_EXPAND_ABOVE_PX) setVertical(false);
+    else if (windowWidth >= DOCK_EXPAND_ABOVE_PX) setVertical(false);
   }, [windowWidth]);
   return vertical;
 }
