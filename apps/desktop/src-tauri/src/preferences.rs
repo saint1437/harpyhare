@@ -124,13 +124,19 @@ fn reregister_changed_hotkeys(
 fn rebuild_changed_api_clients(st: &App, old: &settings::Settings, new: &settings::Settings) {
     let access_token_changed = old.access_token != new.access_token;
     if access_token_changed
+        || old.stt_provider != new.stt_provider
         || old.groq_api_key != new.groq_api_key
+        || old.deepgram_api_key != new.deepgram_api_key
         || old.stt_language != new.stt_language
         || old.stt_translate != new.stt_translate
     {
         *st.stt.lock().unwrap() = build_stt_client(new);
     }
-    if access_token_changed || old.anthropic_api_key != new.anthropic_api_key {
+    if access_token_changed
+        || old.llm_provider != new.llm_provider
+        || old.anthropic_api_key != new.anthropic_api_key
+        || old.xclis_api_key != new.xclis_api_key
+    {
         *st.llm.lock().unwrap() = build_llm_client(new, Arc::clone(&st.models));
     }
 }
@@ -158,4 +164,3 @@ fn apply_buffer_settings_change(
         c.set_buffering(new.buffer_enabled);
     }
 }
-
