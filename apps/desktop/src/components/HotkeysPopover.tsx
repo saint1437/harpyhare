@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 
 export interface HotkeysPopoverProps {
   hotkeys: HotkeyBinding[];
+  triggerClass?: string;
 }
 
 const COMBO_ICONS: Record<ComboIconName, LucideIcon> = {
@@ -57,12 +58,12 @@ function ComboChip({ combo }: { combo: string }) {
   );
 }
 
-export function HotkeysPopover({ hotkeys }: HotkeysPopoverProps) {
+export function HotkeysPopover({ hotkeys, triggerClass }: HotkeysPopoverProps) {
   const groups = hotkeyGroups(hotkeys);
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <IconButton title="Горячие клавиши">
+        <IconButton title="Горячие клавиши" className={triggerClass}>
           <Keyboard />
         </IconButton>
       </PopoverTrigger>

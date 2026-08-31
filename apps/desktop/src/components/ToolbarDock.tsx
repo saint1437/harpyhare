@@ -26,6 +26,8 @@ const SPRING_CLIP = { type: "spring", stiffness: 720, damping: 52, mass: 0.7 } a
 const COLLAPSE_SPRING = { type: "spring", stiffness: 460, damping: 42, mass: 0.9 } as const;
 const INSTANT = { duration: 0 } as const;
 
+export const DOCK_BUTTON_CLASS = "rounded-full hover:bg-transparent";
+
 const EXPAND_LABEL = "Развернуть панель";
 const COLLAPSE_LABEL = "Свернуть панель";
 
@@ -46,7 +48,7 @@ function DockButton({
         <IconButton
           title={vertical ? item.label : ""}
           aria-label={item.label}
-          className={cn("rounded-full", item.iconClass)}
+          className={cn(DOCK_BUTTON_CLASS, item.iconClass)}
           onClick={item.onClick}
         >
           {item.icon}
@@ -193,7 +195,7 @@ export function ToolbarDock({ items, vertical }: ToolbarDockProps) {
         <IconButton
           title={collapsed ? EXPAND_LABEL : COLLAPSE_LABEL}
           aria-expanded={!collapsed}
-          className="rounded-full"
+          className={DOCK_BUTTON_CLASS}
           onClick={() => {
             hideRail();
             setCollapsed((c) => !c);

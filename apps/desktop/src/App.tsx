@@ -19,7 +19,7 @@ import { ModelCommandMenu } from "@/components/ModelCommandMenu";
 import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
 import { StatusBar, type ContextUsage } from "@/components/StatusBar";
 import { Teleprompter } from "@/components/Teleprompter";
-import { ToolbarDock, type ToolbarDockItem } from "@/components/ToolbarDock";
+import { DOCK_BUTTON_CLASS, ToolbarDock, type ToolbarDockItem } from "@/components/ToolbarDock";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
@@ -455,7 +455,11 @@ function AppHeader({
     ...(canCopy
       ? [{ id: "copy", label: "Копировать последний ответ", icon: <Copy />, onClick: onCopy }]
       : []),
-    { id: "hotkeys", label: "Горячие клавиши", element: <HotkeysPopover hotkeys={hotkeys} /> },
+    {
+      id: "hotkeys",
+      label: "Горячие клавиши",
+      element: <HotkeysPopover hotkeys={hotkeys} triggerClass={DOCK_BUTTON_CLASS} />,
+    },
     ...(update
       ? [
           {
