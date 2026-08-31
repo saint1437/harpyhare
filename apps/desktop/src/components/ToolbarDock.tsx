@@ -59,6 +59,12 @@ function DockButton({
   );
 }
 
+interface RailEntry {
+  id: string;
+  label: string;
+  shortcut?: string;
+}
+
 function TooltipRail({
   items,
   visible,
@@ -67,7 +73,7 @@ function TooltipRail({
   snap,
   segRef,
 }: {
-  items: ToolbarDockItem[];
+  items: RailEntry[];
   visible: boolean;
   x: number;
   clip: string;
@@ -119,6 +125,8 @@ export function ToolbarDock({ items, vertical }: ToolbarDockProps) {
 
   const stripOpen = !vertical && !collapsed;
   const dropdownOpen = vertical && !collapsed;
+  const toggleLabel = collapsed ? EXPAND_LABEL : COLLAPSE_LABEL;
+  const railEntries: RailEntry[] = [...items, { id: "toggle", label: toggleLabel }];
 
   useEffect(() => {
     setCollapsed(vertical);
@@ -198,17 +206,28 @@ export function ToolbarDock({ items, vertical }: ToolbarDockProps) {
             ))}
           </div>
         </motion.div>
-        <IconButton
-          title={collapsed ? EXPAND_LABEL : COLLAPSE_LABEL}
-          aria-expanded={!collapsed}
-          className={DOCK_BUTTON_CLASS}
-          onClick={() => {
-            hideRail();
-            setCollapsed((c) => !c);
+        <span
+          ref={(el) => {
+            btnRefs.current[items.length] = el;
+          }}
+          className="relative inline-flex shrink-0"
+          onMouseEnter={() => {
+            reveal(items.length);
           }}
         >
-          <Menu />
-        </IconButton>
+          <IconButton
+            title={vertical ? toggleLabel : ""}
+            aria-label={toggleLabel}
+            aria-expanded={!collapsed}
+            className={DOCK_BUTTON_CLASS}
+            onClick={() => {
+              hideRail();
+              setCollapsed((c) => !c);
+            }}
+          >
+            <Menu />
+          </IconButton>
+        </span>
       </div>
       {dropdownOpen && (
         <div className="absolute top-full right-0 z-30 mt-1.5 flex flex-col items-center gap-0.5 rounded-2xl bg-background p-0.5 shadow-pop ring-1 ring-border ring-inset">
@@ -218,8 +237,8 @@ export function ToolbarDock({ items, vertical }: ToolbarDockProps) {
         </div>
       )}
       <TooltipRail
-        items={items}
-        visible={railVisible && stripOpen}
+        items={railEntries}
+        visible={railVisible && !vertical}
         x={railPos.x}
         clip={railPos.clip}
         snap={railSnap.current || reducedMotion}
