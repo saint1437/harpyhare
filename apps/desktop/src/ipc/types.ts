@@ -18,6 +18,7 @@ export interface QuickAction {
 
 export interface Settings {
   anthropic_api_key: string;
+  xclis_api_key: string;
   groq_api_key: string;
   access_token: string;
   prompt_presets: PromptPreset[];
@@ -50,6 +51,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   ...SETTINGS_DEFAULTS,
+  xclis_api_key: "",
   prompt_presets: [...SETTINGS_DEFAULTS.prompt_presets],
   hotkeys: [...SETTINGS_DEFAULTS.hotkeys],
   quick_actions: [...SETTINGS_DEFAULTS.quick_actions],
