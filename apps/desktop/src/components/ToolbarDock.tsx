@@ -10,6 +10,7 @@ export interface ToolbarDockItem {
   element?: ReactNode;
   shortcut?: string;
   iconClass?: string;
+  disabled?: boolean;
   onClick?: () => void;
 }
 
@@ -53,7 +54,7 @@ export function ToolbarDock({ items }: ToolbarDockProps) {
         </IconButton>
       </span>
       {open && (
-        <div className="absolute top-full right-0 z-30 mt-1.5 flex flex-col items-center gap-0.5 rounded-2xl bg-background p-0.5 shadow-pop ring-1 ring-border ring-inset">
+        <div className="absolute top-full right-0 z-30 mt-1.5 flex origin-top animate-in flex-col items-center gap-0.5 rounded-2xl bg-background p-0.5 shadow-pop ring-1 ring-border duration-200 fade-in-0 zoom-in-95 [animation-timing-function:cubic-bezier(0.34,1.56,0.64,1)] ring-inset slide-in-from-top-1 motion-reduce:animate-none">
           {items.map((item) => (
             <span key={item.id} className="relative inline-flex shrink-0">
               {item.element ?? (
@@ -63,6 +64,7 @@ export function ToolbarDock({ items }: ToolbarDockProps) {
                   }
                   aria-label={item.label}
                   className={cn(DOCK_BUTTON_CLASS, item.iconClass)}
+                  disabled={item.disabled}
                   onClick={() => {
                     item.onClick?.();
                     setOpen(false);
