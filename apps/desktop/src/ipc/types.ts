@@ -16,10 +16,16 @@ export interface QuickAction {
   prompt: string;
 }
 
+export type LlmProvider = "anthropic" | "xclis";
+export type SttProvider = "groq" | "deepgram";
+
 export interface Settings {
   anthropic_api_key: string;
   xclis_api_key: string;
   groq_api_key: string;
+  deepgram_api_key: string;
+  llm_provider: LlmProvider;
+  stt_provider: SttProvider;
   access_token: string;
   prompt_presets: PromptPreset[];
   hotkeys: HotkeyBinding[];
@@ -52,6 +58,9 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   ...SETTINGS_DEFAULTS,
   xclis_api_key: "",
+  deepgram_api_key: "",
+  llm_provider: "anthropic",
+  stt_provider: "groq",
   prompt_presets: [...SETTINGS_DEFAULTS.prompt_presets],
   hotkeys: [...SETTINGS_DEFAULTS.hotkeys],
   quick_actions: [...SETTINGS_DEFAULTS.quick_actions],
