@@ -67,12 +67,14 @@ function compareFamilyModels(a: ModelInfo, b: ModelInfo, family: string): number
 
 export function curatedModels(models: ModelInfo[]): ModelInfo[] {
   const baseModels = models.filter((m) => !m.id.endsWith(THINKING_SUFFIX));
-  const picked = CURATED_FAMILIES.flatMap((family) => {
+  const picked: ModelInfo[] = [];
+  for (const family of CURATED_FAMILIES) {
     const candidates = baseModels
       .filter((m) => m.id.includes(`-${family}-`))
       .sort((a, b) => compareFamilyModels(a, b, family));
-    return candidates.length === 0 ? [] : [candidates[0]];
-  });
+    const candidate = candidates[0];
+    if (candidate !== undefined) picked.push(candidate);
+  }
   return picked.length > 0 ? picked : baseModels;
 }
 
