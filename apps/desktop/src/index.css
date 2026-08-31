@@ -156,14 +156,29 @@ body.launcher {
 
 #root {
   height: 100vh;
+  width: 100vw;
+  overflow: hidden;
 }
 
 .app-shell {
+  width: 100vw;
+  max-width: 100vw;
+  box-sizing: border-box;
   background-color: color-mix(
     in oklch,
     var(--background) calc(var(--app-opacity) * 100%),
     transparent
   );
+}
+
+/* The saved logical width can differ from the real WebView client area by a few
+   pixels on Windows/DPI scaling. Let the main chat column consume the actual
+   viewport instead of trusting the stale inline pixel width from settings. */
+.app-shell > div:first-child {
+  width: auto !important;
+  max-width: 100%;
+  min-width: 0;
+  flex: 1 1 0% !important;
 }
 
 * {
