@@ -1,8 +1,6 @@
 import { Menu } from "lucide-react";
-import { motion } from "motion/react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { IconButton } from "@/components/IconButton";
-import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { cn } from "@/lib/utils";
 
 export interface ToolbarDockItem {
@@ -12,242 +10,71 @@ export interface ToolbarDockItem {
   element?: ReactNode;
   shortcut?: string;
   iconClass?: string;
-  disabled?: boolean;
   onClick?: () => void;
 }
 
 export interface ToolbarDockProps {
   items: ToolbarDockItem[];
-  slackPx: number;
 }
-
-const HIDDEN_CLIP = "inset(0px 100% 0px 0px round 8px)";
-const RAIL_EDGE_MARGIN_PX = 10;
-const COLLAPSE_SLACK_PX = 8;
-const EXPAND_EXTRA_SLACK_PX = 24;
-const STRIP_ITEM_PX = 26;
-const STRIP_END_GAP_PX = 24;
-const SPRING_X = { type: "spring", stiffness: 650, damping: 44, mass: 0.7 } as const;
-const SPRING_CLIP = { type: "spring", stiffness: 720, damping: 52, mass: 0.7 } as const;
-const INSTANT = { duration: 0 } as const;
 
 export const DOCK_BUTTON_CLASS = "rounded-full hover:bg-transparent";
 
-const EXPAND_LABEL = "Развернуть панель";
-const COLLAPSE_LABEL = "Свернуть панель";
+const OPEN_LABEL = "Панель действий";
 
-function DockButton({
-  item,
-  vertical,
-  onHover,
-  buttonRef,
-}: {
-  item: ToolbarDockItem;
-  vertical: boolean;
-  onHover?: () => void;
-  buttonRef?: (el: HTMLSpanElement | null) => void;
-}) {
-  return (
-    <span ref={buttonRef} className="relative inline-flex shrink-0" onMouseEnter={onHover}>
-      {item.element ?? (
-        <IconButton
-          title={vertical ? item.label : ""}
-          aria-label={item.label}
-          className={cn(DOCK_BUTTON_CLASS, item.iconClass)}
-          disabled={item.disabled}
-          onClick={item.onClick}
-        >
-          {item.icon}
-        </IconButton>
-      )}
-    </span>
-  );
-}
-
-interface RailEntry {
-  id: string;
-  label: string;
-  shortcut?: string;
-}
-
-function TooltipRail({
-  items,
-  visible,
-  x,
-  clip,
-  snap,
-  segRef,
-}: {
-  items: RailEntry[];
-  visible: boolean;
-  x: number;
-  clip: string;
-  snap: boolean;
-  segRef: (index: number) => (el: HTMLDivElement | null) => void;
-}) {
-  return (
-    <div
-      className="pointer-events-none absolute top-full left-0 z-30 mt-2"
-      style={{ visibility: visible ? "visible" : "hidden" }}
-    >
-      <motion.div
-        initial={false}
-        animate={{ x, clipPath: clip }}
-        transition={{ x: snap ? INSTANT : SPRING_X, clipPath: snap ? INSTANT : SPRING_CLIP }}
-        style={{ willChange: "transform, clip-path" }}
-        className="relative flex w-max rounded-lg bg-foreground text-background shadow-pop"
-      >
-        {items.map((item, i) => (
-          <div key={item.id} ref={segRef(i)} className="inline-flex h-8 items-center px-3">
-            <span className="flex items-center gap-1.5 text-caption font-medium whitespace-nowrap">
-              {item.label}
-              {item.shortcut !== undefined && (
-                <kbd className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-sm border border-background/30 px-1 font-sans text-hint">
-                  {item.shortcut}
-                </kbd>
-              )}
-            </span>
-          </div>
-        ))}
-      </motion.div>
-    </div>
-  );
-}
-
-export function ToolbarDock({ items, slackPx }: ToolbarDockProps) {
+export function ToolbarDock({ items }: ToolbarDockProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const segRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const btnRefs = useRef<(HTMLSpanElement | null)[]>([]);
-
-  const reducedMotion = usePrefersReducedMotion();
-  const [vertical, setVertical] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
-  const [railVisible, setRailVisible] = useState(false);
-  const [railPos, setRailPos] = useState({ x: 0, clip: HIDDEN_CLIP });
-  const railWasVisible = useRef(false);
-  const railSnap = useRef(true);
-
-  const stripOpen = !vertical && !collapsed;
-  const dropdownOpen = vertical && !collapsed;
-  const toggleLabel = collapsed ? EXPAND_LABEL : COLLAPSE_LABEL;
-  const railEntries: RailEntry[] = [...items, { id: "toggle", label: toggleLabel }];
-
-  const stripNeedPx = items.length * STRIP_ITEM_PX + STRIP_END_GAP_PX;
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (!vertical && slackPx < COLLAPSE_SLACK_PX) setVertical(true);
-    else if (vertical && slackPx >= stripNeedPx + EXPAND_EXTRA_SLACK_PX) setVertical(false);
-  }, [slackPx, vertical, stripNeedPx]);
-
-  useEffect(() => {
-    setCollapsed(vertical);
-  }, [vertical]);
-
-  const reveal = useCallback((index: number) => {
-    const seg = segRefs.current[index];
-    const btn = btnRefs.current[index];
-    const rail = seg?.parentElement;
-    const wrapper = wrapperRef.current;
-    if (!seg || !btn || !rail || !wrapper) return;
-    const railWidth = rail.offsetWidth || 1;
-    const leftPct = (seg.offsetLeft / railWidth) * 100;
-    const rightPct = ((railWidth - seg.offsetLeft - seg.offsetWidth) / railWidth) * 100;
-    const wrapperBox = wrapper.getBoundingClientRect();
-    const btnBox = btn.getBoundingClientRect();
-    const segCenter = seg.offsetLeft + seg.offsetWidth / 2;
-    const btnCenter = btnBox.left - wrapperBox.left + btnBox.width / 2;
-    const minX = RAIL_EDGE_MARGIN_PX - (wrapperBox.left + seg.offsetLeft);
-    const maxX =
-      window.innerWidth -
-      RAIL_EDGE_MARGIN_PX -
-      (wrapperBox.left + seg.offsetLeft + seg.offsetWidth);
-    railSnap.current = !railWasVisible.current;
-    railWasVisible.current = true;
-    setRailVisible(true);
-    setRailPos({
-      x: Math.min(maxX, Math.max(minX, btnCenter - segCenter)),
-      clip: `inset(0px ${String(rightPct)}% 0px ${String(leftPct)}% round 8px)`,
-    });
-  }, []);
-
-  const hideRail = useCallback(() => {
-    railWasVisible.current = false;
-    setRailVisible(false);
-  }, []);
-
-  useEffect(() => {
-    if (!dropdownOpen) return;
+    if (!open) return;
     const onPointerDown = (e: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setCollapsed(true);
+        setOpen(false);
       }
     };
     document.addEventListener("mousedown", onPointerDown);
     return () => {
       document.removeEventListener("mousedown", onPointerDown);
     };
-  }, [dropdownOpen]);
+  }, [open]);
 
   return (
-    <div ref={wrapperRef} className="relative shrink-0" onMouseLeave={hideRail}>
-      <div className="flex items-center rounded-full bg-background p-0.5 ring-1 ring-border ring-inset">
-        {stripOpen && (
-          <div className="flex h-6 items-center gap-0.5">
-            {items.map((item, i) => (
-              <DockButton
-                key={item.id}
-                item={item}
-                vertical={false}
-                onHover={() => {
-                  reveal(i);
-                }}
-                buttonRef={(el) => {
-                  btnRefs.current[i] = el;
-                }}
-              />
-            ))}
-          </div>
-        )}
-        <span
-          ref={(el) => {
-            btnRefs.current[items.length] = el;
-          }}
-          className="relative inline-flex shrink-0"
-          onMouseEnter={() => {
-            reveal(items.length);
+    <div ref={wrapperRef} className="relative shrink-0">
+      <span className="flex items-center rounded-full bg-background p-0.5 ring-1 ring-border ring-inset">
+        <IconButton
+          title={OPEN_LABEL}
+          aria-expanded={open}
+          className={DOCK_BUTTON_CLASS}
+          onClick={() => {
+            setOpen((o) => !o);
           }}
         >
-          <IconButton
-            title={vertical ? toggleLabel : ""}
-            aria-label={toggleLabel}
-            aria-expanded={!collapsed}
-            className={DOCK_BUTTON_CLASS}
-            onClick={() => {
-              hideRail();
-              setCollapsed((c) => !c);
-            }}
-          >
-            <Menu />
-          </IconButton>
-        </span>
-      </div>
-      {dropdownOpen && (
+          <Menu />
+        </IconButton>
+      </span>
+      {open && (
         <div className="absolute top-full right-0 z-30 mt-1.5 flex flex-col items-center gap-0.5 rounded-2xl bg-background p-0.5 shadow-pop ring-1 ring-border ring-inset">
           {items.map((item) => (
-            <DockButton key={item.id} item={item} vertical />
+            <span key={item.id} className="relative inline-flex shrink-0">
+              {item.element ?? (
+                <IconButton
+                  title={
+                    item.shortcut === undefined ? item.label : `${item.label} — ${item.shortcut}`
+                  }
+                  aria-label={item.label}
+                  className={cn(DOCK_BUTTON_CLASS, item.iconClass)}
+                  onClick={() => {
+                    item.onClick?.();
+                    setOpen(false);
+                  }}
+                >
+                  {item.icon}
+                </IconButton>
+              )}
+            </span>
           ))}
         </div>
       )}
-      <TooltipRail
-        items={railEntries}
-        visible={railVisible && !vertical}
-        x={railPos.x}
-        clip={railPos.clip}
-        snap={railSnap.current || reducedMotion}
-        segRef={(index) => (el) => {
-          segRefs.current[index] = el;
-        }}
-      />
     </div>
   );
 }
