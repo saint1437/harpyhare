@@ -100,13 +100,22 @@ export function SettingSelect({
 export function SettingSwitch({
   checked,
   ariaLabel,
+  disabled,
   onCheckedChange,
 }: {
   checked: boolean;
   ariaLabel: string;
+  disabled?: boolean;
   onCheckedChange: (value: boolean) => void;
 }) {
-  return <Switch checked={checked} aria-label={ariaLabel} onCheckedChange={onCheckedChange} />;
+  return (
+    <Switch
+      checked={checked}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onCheckedChange={onCheckedChange}
+    />
+  );
 }
 
 const READOUT_DISPLAY_PRECISION = 3;
@@ -219,35 +228,34 @@ export function SettingSlider({
   min,
   max,
   step,
-  ariaLabel,
-  readout,
-  disabled,
   displayScale = 1,
+  readout,
+  ariaLabel,
+  disabled,
   onChange,
 }: {
   value: number;
   min: number;
   max: number;
   step: number;
-  ariaLabel: string;
-  readout: string;
-  disabled?: boolean;
   displayScale?: number;
+  readout: string;
+  ariaLabel: string;
+  disabled?: boolean;
   onChange: (value: number) => void;
 }) {
   return (
-    <div className="flex w-full items-center gap-2.5">
+    <div className="flex w-full min-w-0 items-center gap-2">
       <Slider
-        className="min-w-0 flex-1"
+        value={[value]}
         min={min}
         max={max}
         step={step}
-        value={[value]}
         disabled={disabled}
         aria-label={ariaLabel}
-        onValueChange={([next]) => {
-          if (next === undefined) return;
-          onChange(next);
+        onValueChange={(values) => {
+          const next = values[0];
+          if (next !== undefined) onChange(next);
         }}
       />
       <SliderReadout
