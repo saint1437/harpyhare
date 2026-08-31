@@ -68,8 +68,8 @@ export function missingApiKeys(settings: ApiKeySettings): ApiKeyInfo[] {
   if (settings[`${selectedClaude}_api_key`].trim() === "") {
     missing.push(apiKeyInfo(selectedClaude));
   }
-  if (settings[`${selectedSttKey}_api_key`].trim() === "") {
-    missing.push(apiKeyInfo(selectedSttKey));
+  if (settings[`${selectedStt}_api_key`].trim() === "") {
+    missing.push(apiKeyInfo(selectedStt));
   }
 
   return missing;
