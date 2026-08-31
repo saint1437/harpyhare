@@ -10,9 +10,9 @@ async function listModelsOrFallback(): Promise<ModelInfo[]> {
   return curatedModels(fetched.length > 0 ? fetched : FALLBACK_MODELS);
 }
 
-export function useModels(): ModelInfo[] {
+export function useModels(provider: string): ModelInfo[] {
   const { data } = useQuery({
-    queryKey: queryKeys.models,
+    queryKey: queryKeys.models(provider),
     queryFn: listModelsOrFallback,
     staleTime: MODELS_STALE_MS,
     placeholderData: FALLBACK_MODELS,
