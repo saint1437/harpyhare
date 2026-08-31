@@ -175,6 +175,12 @@ svg.lucide {
   stroke-width: 1.75;
 }
 
+.prose-answer {
+  min-width: 0;
+  padding-right: 8px;
+  overflow-wrap: anywhere;
+}
+
 .prose-answer > :first-child {
   margin-top: 0;
 }
