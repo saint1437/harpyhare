@@ -21,6 +21,7 @@ export interface ToolbarDockProps {
 }
 
 const HIDDEN_CLIP = "inset(0px 100% 0px 0px round 8px)";
+const RAIL_EDGE_MARGIN_PX = 10;
 const SPRING_X = { type: "spring", stiffness: 650, damping: 44, mass: 0.7 } as const;
 const SPRING_CLIP = { type: "spring", stiffness: 720, damping: 52, mass: 0.7 } as const;
 const COLLAPSE_SPRING = { type: "spring", stiffness: 460, damping: 42, mass: 0.9 } as const;
@@ -140,11 +141,16 @@ export function ToolbarDock({ items, vertical }: ToolbarDockProps) {
     const btnBox = btn.getBoundingClientRect();
     const segCenter = seg.offsetLeft + seg.offsetWidth / 2;
     const btnCenter = btnBox.left - wrapperBox.left + btnBox.width / 2;
+    const minX = RAIL_EDGE_MARGIN_PX - (wrapperBox.left + seg.offsetLeft);
+    const maxX =
+      window.innerWidth -
+      RAIL_EDGE_MARGIN_PX -
+      (wrapperBox.left + seg.offsetLeft + seg.offsetWidth);
     railSnap.current = !railWasVisible.current;
     railWasVisible.current = true;
     setRailVisible(true);
     setRailPos({
-      x: btnCenter - segCenter,
+      x: Math.min(maxX, Math.max(minX, btnCenter - segCenter)),
       clip: `inset(0px ${String(rightPct)}% 0px ${String(leftPct)}% round 8px)`,
     });
   }, []);

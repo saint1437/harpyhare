@@ -428,12 +428,18 @@ function AppHeader({
 }: AppHeaderProps) {
   const update = updateBadge(updater, onOpenUpdate);
   const dockItems: ToolbarDockItem[] = [
+    ...(canCopy
+      ? [{ id: "copy", label: "Копировать последний ответ", icon: <Copy />, onClick: onCopy }]
+      : []),
+    ...(canTeleprompt
+      ? [{ id: "teleprompter", label: "Суфлёр", icon: <ScrollText />, onClick: onOpenTeleprompter }]
+      : []),
     {
-      id: "mini",
-      label: "Свернуть в мини-режим",
-      icon: <Minus />,
-      shortcut: formatCombo(effectiveCombo(hotkeys, "toggle_window")),
-      onClick: onCollapse,
+      id: "models",
+      label: "Модели",
+      icon: <Cpu />,
+      shortcut: formatCombo(effectiveCombo(hotkeys, "model_menu")),
+      onClick: onOpenModelMenu,
     },
     {
       id: "screen-share",
@@ -442,19 +448,6 @@ function AppHeader({
       iconClass: screenShareVisible ? "text-primary hover:text-primary/85" : undefined,
       onClick: onToggleScreenShare,
     },
-    {
-      id: "models",
-      label: "Модели",
-      icon: <Cpu />,
-      shortcut: formatCombo(effectiveCombo(hotkeys, "model_menu")),
-      onClick: onOpenModelMenu,
-    },
-    ...(canTeleprompt
-      ? [{ id: "teleprompter", label: "Суфлёр", icon: <ScrollText />, onClick: onOpenTeleprompter }]
-      : []),
-    ...(canCopy
-      ? [{ id: "copy", label: "Копировать последний ответ", icon: <Copy />, onClick: onCopy }]
-      : []),
     {
       id: "hotkeys",
       label: "Горячие клавиши",
@@ -473,6 +466,13 @@ function AppHeader({
           },
         ]
       : []),
+    {
+      id: "mini",
+      label: "Свернуть в мини-режим",
+      icon: <Minus />,
+      shortcut: formatCombo(effectiveCombo(hotkeys, "toggle_window")),
+      onClick: onCollapse,
+    },
     { id: "stop", label: "Стоп — вернуться в лаунчер", icon: <Square />, onClick: onStop },
   ];
   return (
