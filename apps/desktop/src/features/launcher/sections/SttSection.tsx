@@ -4,6 +4,7 @@ import { SETTINGS_LIMITS } from "@/ipc/bindings";
 import { listAudioOutputDevices } from "@/ipc/commands";
 import type { AudioOutputDevice } from "@/ipc/types";
 import { queryKeys } from "@/lib/query-client";
+import { STT_PROVIDERS } from "@/lib/stt-providers";
 import type { SectionProps } from "../contract";
 import { SettingGroup, SettingRow, SettingSelect, SettingSlider, SettingSwitch } from "../fields";
 
@@ -71,11 +72,29 @@ export function SttSection({ draft, set }: SectionProps) {
     >
       <CaptureDeviceRow draft={draft} set={set} />
       <SettingRow
+        label="Провайдер распознавания"
+        hint="OpenAI точнее удерживает английские термины в русской речи."
+      >
+        <SettingSelect
+          ariaLabel="Провайдер распознавания"
+          value={draft.stt_provider}
+          onValueChange={(v) => {
+            set("stt_provider", v);
+          }}
+        >
+          {STT_PROVIDERS.map((p) => (
+            <SelectItem key={p.value} value={p.value}>
+              {p.label}
+            </SelectItem>
+          ))}
+        </SettingSelect>
+      </SettingRow>
+      <SettingRow
         label="Язык распознавания"
         hint={
           draft.stt_translate
             ? "При переводе язык определяется автоматически."
-            : "Whisper распознаёт точнее, когда язык задан явно."
+            : "Распознавание точнее, когда язык задан явно."
         }
       >
         <SettingSelect

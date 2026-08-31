@@ -19,6 +19,7 @@ export interface QuickAction {
 export interface Settings {
   anthropic_api_key: string;
   groq_api_key: string;
+  openai_api_key: string;
   access_token: string;
   prompt_presets: PromptPreset[];
   hotkeys: HotkeyBinding[];
@@ -30,6 +31,7 @@ export interface Settings {
   skipped_version: string;
   stt_language: string;
   stt_translate: boolean;
+  stt_provider: string;
   screen_share_visible: boolean;
   teleprompter_speed: number;
   teleprompter_font_size: number;

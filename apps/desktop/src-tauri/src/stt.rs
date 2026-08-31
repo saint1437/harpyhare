@@ -8,6 +8,16 @@ const WARM_UP_ENDPOINT: &str = "/openai/v1/models";
 const TRANSCRIBE_MODEL: &str = "whisper-large-v3-turbo";
 const TRANSLATE_MODEL: &str = "whisper-large-v3";
 const DEFAULT_LANGUAGE: &str = "ru";
+const GROQ_KEY_LABEL: &str = "Groq";
+
+const OPENAI_BASE_URL: &str = "https://api.openai.com";
+const OPENAI_TRANSCRIPTIONS_ENDPOINT: &str = "/v1/audio/transcriptions";
+const OPENAI_TRANSLATIONS_ENDPOINT: &str = "/v1/audio/translations";
+const OPENAI_WARM_UP_ENDPOINT: &str = "/v1/models";
+
+const OPENAI_TRANSCRIBE_MODEL: &str = "gpt-4o-mini-transcribe";
+const OPENAI_TRANSLATE_MODEL: &str = "whisper-1";
+const OPENAI_KEY_LABEL: &str = "OpenAI";
 
 const WAV_MIME: &str = "audio/wav";
 const WAV_FILE_NAME: &str = "audio.wav";
@@ -21,8 +31,8 @@ const STREAM_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_se
 
 #[derive(Debug, thiserror::Error)]
 pub enum SttError {
-    #[error("Неверный ключ Groq — проверь в настройках")]
-    BadApiKey,
+    #[error("Неверный ключ {0} — проверь в настройках")]
+    BadApiKey(&'static str),
     #[error("{0}")]
     BadAccessCode(String),
     #[error("Сервис распознавания перегружен, попробуй позже ({0})")]
@@ -37,7 +47,7 @@ impl crate::error::CodedError for SttError {
     fn code(&self) -> crate::error::ErrorCode {
         use crate::error::ErrorCode;
         match self {
-            SttError::BadApiKey => ErrorCode::BadApiKey,
+            SttError::BadApiKey(_) => ErrorCode::BadApiKey,
             SttError::BadAccessCode(_) => ErrorCode::BadAccessCode,
             SttError::Retryable(_) => ErrorCode::Retryable,
             SttError::Network(_) => ErrorCode::Network,
@@ -60,8 +70,15 @@ pub trait SttEngine: Send + Sync {
     async fn warm_up(&self);
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum SttVendor {
+    Groq,
+    OpenAi,
+}
+
 #[derive(Clone)]
-pub struct GroqStt {
+pub struct SttHttpClient {
+    vendor: SttVendor,
     api_key: String,
     base_url: String,
     timeout: std::time::Duration,
@@ -82,17 +99,26 @@ fn warm_pooled_client() -> reqwest::Client {
         .expect("reqwest client")
 }
 
-impl GroqStt {
-    pub fn new(api_key: String) -> Self {
+impl SttHttpClient {
+    fn with_vendor(vendor: SttVendor, api_key: String, base_url: &str) -> Self {
         Self {
+            vendor,
             api_key,
-            base_url: GROQ_BASE_URL.into(),
+            base_url: base_url.into(),
             timeout: DEFAULT_REQUEST_TIMEOUT,
             client: warm_pooled_client(),
             language: DEFAULT_LANGUAGE.into(),
             translate: false,
             proxy: false,
         }
+    }
+
+    pub fn groq(api_key: String) -> Self {
+        Self::with_vendor(SttVendor::Groq, api_key, GROQ_BASE_URL)
+    }
+
+    pub fn openai(api_key: String) -> Self {
+        Self::with_vendor(SttVendor::OpenAi, api_key, OPENAI_BASE_URL)
     }
 
     pub fn with_base_url(mut self, url: String) -> Self {
@@ -117,25 +143,51 @@ impl GroqStt {
     }
 }
 
-impl GroqStt {
+impl SttHttpClient {
     fn model(&self) -> &'static str {
-        if self.translate { TRANSLATE_MODEL } else { TRANSCRIBE_MODEL }
+        match (self.vendor, self.translate) {
+            (SttVendor::Groq, false) => TRANSCRIBE_MODEL,
+            (SttVendor::Groq, true) => TRANSLATE_MODEL,
+            (SttVendor::OpenAi, false) => OPENAI_TRANSCRIBE_MODEL,
+            (SttVendor::OpenAi, true) => OPENAI_TRANSLATE_MODEL,
+        }
+    }
+
+    fn key_label(&self) -> &'static str {
+        match self.vendor {
+            SttVendor::Groq => GROQ_KEY_LABEL,
+            SttVendor::OpenAi => OPENAI_KEY_LABEL,
+        }
     }
 
     fn form_with(&self, part: reqwest::multipart::Part) -> reqwest::multipart::Form {
         let mut form = reqwest::multipart::Form::new()
             .part("file", part.file_name(WAV_FILE_NAME))
             .text("model", self.model())
-            .text("temperature", "0")
             .text("response_format", "json");
-        if !self.translate && !self.language.is_empty() {
-            form = form.text("language", self.language.clone());
+        if self.vendor == SttVendor::Groq {
+            form = form.text("temperature", "0");
         }
-        form
+        if self.translate || self.language.is_empty() {
+            return form;
+        }
+        form.text("language", self.language.clone())
     }
 
     fn endpoint(&self) -> &'static str {
-        if self.translate { TRANSLATIONS_ENDPOINT } else { TRANSCRIPTIONS_ENDPOINT }
+        match (self.vendor, self.translate) {
+            (SttVendor::Groq, false) => TRANSCRIPTIONS_ENDPOINT,
+            (SttVendor::Groq, true) => TRANSLATIONS_ENDPOINT,
+            (SttVendor::OpenAi, false) => OPENAI_TRANSCRIPTIONS_ENDPOINT,
+            (SttVendor::OpenAi, true) => OPENAI_TRANSLATIONS_ENDPOINT,
+        }
+    }
+
+    fn warm_up_endpoint(&self) -> &'static str {
+        match self.vendor {
+            SttVendor::Groq => WARM_UP_ENDPOINT,
+            SttVendor::OpenAi => OPENAI_WARM_UP_ENDPOINT,
+        }
     }
 
     fn request_with(
@@ -156,7 +208,7 @@ impl GroqStt {
             code @ (401 | 403) if self.proxy => {
                 Err(SttError::BadAccessCode(Self::message_from_body(code, resp).await))
             }
-            401 | 403 => Err(SttError::BadApiKey),
+            401 | 403 => Err(SttError::BadApiKey(self.key_label())),
             code @ (429 | 500..=599) => Err(SttError::Retryable(code)),
             code => Err(SttError::Other(Self::message_from_body(code, resp).await)),
         }
@@ -166,7 +218,7 @@ impl GroqStt {
         let v: serde_json::Value = resp.json().await.map_err(|e| SttError::Other(e.to_string()))?;
         Ok(v["text"]
             .as_str()
-            .ok_or_else(|| SttError::Other("ответ Groq без поля text".into()))?
+            .ok_or_else(|| SttError::Other("ответ распознавания без поля text".into()))?
             .trim()
             .to_string())
     }
@@ -177,13 +229,12 @@ impl GroqStt {
             .ok()
             .and_then(|v| v["error"]["message"].as_str().map(str::to_string))
             .filter(|m| !m.trim().is_empty())
-            .unwrap_or_else(|| format!("Groq HTTP {code}"))
+            .unwrap_or_else(|| format!("распознавание: HTTP {code}"))
     }
-
 }
 
 #[async_trait::async_trait]
-impl SttEngine for GroqStt {
+impl SttEngine for SttHttpClient {
     async fn transcribe_stream(
         &self,
         chunks: AudioChunkStream,
@@ -203,7 +254,7 @@ impl SttEngine for GroqStt {
     async fn warm_up(&self) {
         let _ = self
             .client
-            .get(format!("{}{}", self.base_url, WARM_UP_ENDPOINT))
+            .get(format!("{}{}", self.base_url, self.warm_up_endpoint()))
             .timeout(WARM_UP_TIMEOUT)
             .send()
             .await;

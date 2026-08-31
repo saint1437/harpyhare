@@ -13,7 +13,7 @@ fn llm_errors_map_to_codes() {
 
 #[test]
 fn stt_errors_map_to_codes() {
-    assert_eq!(SttError::BadApiKey.code(), ErrorCode::BadApiKey);
+    assert_eq!(SttError::BadApiKey("Groq").code(), ErrorCode::BadApiKey);
     assert_eq!(
         SttError::BadAccessCode("x".into()).code(),
         ErrorCode::BadAccessCode

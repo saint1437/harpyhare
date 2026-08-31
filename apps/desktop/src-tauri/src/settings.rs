@@ -8,6 +8,9 @@ const TMP_FILE_EXTENSION: &str = "tmp";
 pub const THEME_GRAY: &str = "gray";
 pub const THEME_BLACK: &str = "black";
 
+pub const STT_PROVIDER_GROQ: &str = "groq";
+pub const STT_PROVIDER_OPENAI: &str = "openai";
+
 pub const QUICK_ACTION_LIMIT: usize = 9;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, specta::Type)]
@@ -67,6 +70,7 @@ impl SettingsLimits {
 
 pub mod defaults {
     pub const STT_LANGUAGE: &str = "ru";
+    pub const STT_PROVIDER: &str = super::STT_PROVIDER_GROQ;
     pub const THEME: &str = super::THEME_GRAY;
 }
 
@@ -142,6 +146,7 @@ fn seeded_quick_actions() -> Vec<QuickAction> {
 pub struct Settings {
     pub anthropic_api_key: String,
     pub groq_api_key: String,
+    pub openai_api_key: String,
     pub access_token: String,
     pub prompt_presets: Vec<PromptPreset>,
     pub hotkeys: Vec<crate::hotkeys::HotkeyBinding>,
@@ -153,6 +158,7 @@ pub struct Settings {
     pub skipped_version: String,
     pub stt_language: String,
     pub stt_translate: bool,
+    pub stt_provider: String,
     pub screen_share_visible: bool,
     pub teleprompter_speed: f64,
     pub teleprompter_font_size: f64,
@@ -176,6 +182,7 @@ impl Default for Settings {
         Self {
             anthropic_api_key: String::new(),
             groq_api_key: String::new(),
+            openai_api_key: String::new(),
             access_token: String::new(),
             prompt_presets: Vec::new(),
             hotkeys: Vec::new(),
@@ -187,6 +194,7 @@ impl Default for Settings {
             skipped_version: String::new(),
             stt_language: defaults::STT_LANGUAGE.into(),
             stt_translate: false,
+            stt_provider: defaults::STT_PROVIDER.into(),
             screen_share_visible: false,
             teleprompter_speed: limits::teleprompter::SPEED.default,
             teleprompter_font_size: limits::teleprompter::FONT_SIZE.default,
@@ -223,6 +231,9 @@ impl Settings {
         if self.theme != THEME_GRAY && self.theme != THEME_BLACK {
             self.theme = defaults::THEME.into();
         }
+        if self.stt_provider != STT_PROVIDER_GROQ && self.stt_provider != STT_PROVIDER_OPENAI {
+            self.stt_provider = defaults::STT_PROVIDER.into();
+        }
         self.quick_actions.truncate(QUICK_ACTION_LIMIT);
         crate::hotkeys::normalize(&mut self.hotkeys);
     }
@@ -243,7 +254,12 @@ impl Settings {
         Ok(settings)
     }
 
-    pub fn apply_key_fallback(&mut self, anthropic: Option<String>, groq: Option<String>) {
+    pub fn apply_key_fallback(
+        &mut self,
+        anthropic: Option<String>,
+        groq: Option<String>,
+        openai: Option<String>,
+    ) {
         if !self.access_token.is_empty() {
             return;
         }
@@ -260,6 +276,7 @@ impl Settings {
         }
         fill_if_empty(&mut self.anthropic_api_key, anthropic);
         fill_if_empty(&mut self.groq_api_key, groq);
+        fill_if_empty(&mut self.openai_api_key, openai);
     }
 
     pub fn save(&self, path: &Path) -> std::io::Result<()> {

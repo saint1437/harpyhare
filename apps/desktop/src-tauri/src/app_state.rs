@@ -92,13 +92,19 @@ pub fn build_capture(settings: &settings::Settings) -> Option<capture::SystemAud
 }
 
 pub fn build_stt_client(s: &settings::Settings) -> Arc<dyn stt::SttEngine> {
-    let base = if s.access_token.is_empty() {
-        stt::GroqStt::new(s.groq_api_key.clone())
+    let openai = s.stt_provider == settings::STT_PROVIDER_OPENAI;
+    let direct = s.access_token.is_empty();
+    let key = if !direct {
+        s.access_token.clone()
+    } else if openai {
+        s.openai_api_key.clone()
     } else {
-        stt::GroqStt::new(s.access_token.clone())
-            .with_base_url(access::proxy_base_url())
-            .with_proxy(true)
+        s.groq_api_key.clone()
     };
+    let mut base = if openai { stt::SttHttpClient::openai(key) } else { stt::SttHttpClient::groq(key) };
+    if !direct {
+        base = base.with_base_url(access::proxy_base_url()).with_proxy(true);
+    }
     Arc::new(
         base.with_language(s.stt_language.clone())
             .with_translate(s.stt_translate),

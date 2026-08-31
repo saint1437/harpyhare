@@ -13,6 +13,7 @@ type ApiKeysSectionProps = SectionProps & {
 const KEY_FIELDS: { id: ApiKeyId; placeholder: string }[] = [
   { id: "anthropic", placeholder: "sk-ant-…" },
   { id: "groq", placeholder: "gsk_…" },
+  { id: "openai", placeholder: "sk-…" },
 ];
 
 export function ApiKeysSection({ draft, set, onRedeem }: ApiKeysSectionProps) {

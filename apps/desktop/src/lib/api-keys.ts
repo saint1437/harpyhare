@@ -1,4 +1,6 @@
-export type ApiKeyId = "anthropic" | "groq";
+import { STT_PROVIDER_OPENAI } from "./stt-providers";
+
+export type ApiKeyId = "anthropic" | "groq" | "openai";
 
 export interface ApiKeyInfo {
   id: ApiKeyId;
@@ -17,8 +19,14 @@ const API_KEYS = [
   {
     id: "groq",
     name: "Groq",
-    purpose: "распознавания речи",
+    purpose: "распознавания речи через Whisper",
     consoleUrl: "https://console.groq.com/keys",
+  },
+  {
+    id: "openai",
+    name: "OpenAI",
+    purpose: "распознавания речи через OpenAI",
+    consoleUrl: "https://platform.openai.com/api-keys",
   },
 ] as const satisfies readonly ApiKeyInfo[];
 
@@ -31,12 +39,21 @@ export function apiKeyInfo(id: ApiKeyId): ApiKeyInfo {
 export interface ApiKeySettings {
   anthropic_api_key: string;
   groq_api_key: string;
+  openai_api_key: string;
   access_token: string;
+  stt_provider: string;
+}
+
+function sttKeyId(provider: string): ApiKeyId {
+  return provider === STT_PROVIDER_OPENAI ? "openai" : "groq";
 }
 
 export function missingApiKeys(settings: ApiKeySettings): ApiKeyInfo[] {
   if (settings.access_token.trim() !== "") return [];
-  return API_KEYS.filter((k) => settings[`${k.id}_api_key`].trim() === "");
+  const required: readonly ApiKeyId[] = ["anthropic", sttKeyId(settings.stt_provider)];
+  return API_KEYS.filter(
+    (k) => required.includes(k.id) && settings[`${k.id}_api_key`].trim() === "",
+  );
 }
 
 export function missingKeysNotice(missing: ApiKeyInfo[]): string {

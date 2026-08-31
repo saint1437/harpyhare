@@ -263,7 +263,7 @@ async fn finish_transcribe(app: AppHandle, samples: Vec<f32>) {
                     eprintln!("[perf] stop → transcript (stream) {:?}", t.elapsed());
                     return deliver_transcript(&app, text);
                 }
-                Ok(Err(e @ (stt::SttError::BadApiKey | stt::SttError::BadAccessCode(_)))) => {
+                Ok(Err(e @ (stt::SttError::BadApiKey(_) | stt::SttError::BadAccessCode(_)))) => {
                     return finish_transcription(&app, Err(AppError::from(&e)));
                 }
                 Ok(Err(e)) => {

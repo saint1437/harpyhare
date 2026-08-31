@@ -57,7 +57,7 @@ fn main() {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(DOTENV_RELATIVE_PATH),
     );
     let key = std::env::var(GROQ_KEY_ENV).expect("GROQ_API_KEY в .env");
-    let stt = harpyhare_lib::stt::GroqStt::new(key);
+    let stt = harpyhare_lib::stt::SttHttpClient::groq(key);
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async move {

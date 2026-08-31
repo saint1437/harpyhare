@@ -18,7 +18,6 @@ impl wiremock::Match for BodyLacks {
         !String::from_utf8_lossy(&request.body).contains(self.0)
     }
 }
-
 #[tokio::test]
 async fn transcribe_returns_text_on_success() {
     let server = MockServer::start().await;
@@ -28,7 +27,7 @@ async fn transcribe_returns_text_on_success() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "привет мир"})))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("gsk_test".into()).with_base_url(server.uri());
+    let stt = SttHttpClient::groq("gsk_test".into()).with_base_url(server.uri());
     assert_eq!(stt.transcribe(&samples()).await.unwrap(), "привет мир");
 }
 
@@ -42,7 +41,7 @@ async fn transcribe_sends_language_field_by_default() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "ок"})))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("k".into()).with_base_url(server.uri());
+    let stt = SttHttpClient::groq("k".into()).with_base_url(server.uri());
     assert_eq!(stt.transcribe(&samples()).await.unwrap(), "ок");
 }
 
@@ -55,7 +54,7 @@ async fn empty_language_means_autodetect_field_omitted() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "auto"})))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("k".into())
+    let stt = SttHttpClient::groq("k".into())
         .with_base_url(server.uri())
         .with_language(String::new());
     assert_eq!(stt.transcribe(&samples()).await.unwrap(), "auto");
@@ -72,10 +71,71 @@ async fn translate_uses_translations_endpoint_and_large_v3() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "hello"})))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("k".into())
+    let stt = SttHttpClient::groq("k".into())
         .with_base_url(server.uri())
         .with_translate(true);
     assert_eq!(stt.transcribe(&samples()).await.unwrap(), "hello");
+}
+
+#[tokio::test]
+async fn openai_transcribe_sends_gpt_4o_mini_with_language_and_no_temperature() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(OPENAI_TRANSCRIPTIONS_ENDPOINT))
+        .and(header("authorization", "Bearer sk_test"))
+        .and(BodyHas(OPENAI_TRANSCRIBE_MODEL))
+        .and(BodyHas("language"))
+        .and(BodyLacks("temperature"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "map ок"})))
+        .mount(&server)
+        .await;
+    let stt = SttHttpClient::openai("sk_test".into()).with_base_url(server.uri());
+    assert_eq!(stt.transcribe(&samples()).await.unwrap(), "map ок");
+}
+
+#[tokio::test]
+async fn openai_empty_language_omits_language_field() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(OPENAI_TRANSCRIPTIONS_ENDPOINT))
+        .and(BodyLacks("language"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "auto"})))
+        .mount(&server)
+        .await;
+    let stt = SttHttpClient::openai("k".into())
+        .with_base_url(server.uri())
+        .with_language(String::new());
+    assert_eq!(stt.transcribe(&samples()).await.unwrap(), "auto");
+}
+
+#[tokio::test]
+async fn openai_translate_uses_whisper_1_on_translations_endpoint() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(OPENAI_TRANSLATIONS_ENDPOINT))
+        .and(BodyHas(OPENAI_TRANSLATE_MODEL))
+        .and(BodyLacks("language"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "hello"})))
+        .mount(&server)
+        .await;
+    let stt = SttHttpClient::openai("k".into())
+        .with_base_url(server.uri())
+        .with_translate(true);
+    assert_eq!(stt.transcribe(&samples()).await.unwrap(), "hello");
+}
+
+#[tokio::test]
+async fn openai_401_names_openai_key() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    let stt = SttHttpClient::openai("bad".into()).with_base_url(server.uri());
+    match stt.transcribe(&samples()).await {
+        Err(SttError::BadApiKey(label)) => assert_eq!(label, OPENAI_KEY_LABEL),
+        other => panic!("ожидался BadApiKey, получено: {other:?}"),
+    }
 }
 
 #[tokio::test]
@@ -89,7 +149,7 @@ async fn transcribe_stream_sends_chunked_body_and_parses_text() {
         )
         .mount(&server)
         .await;
-    let stt = GroqStt::new("gsk_test".into()).with_base_url(server.uri());
+    let stt = SttHttpClient::groq("gsk_test".into()).with_base_url(server.uri());
 
     let chunks: Vec<Result<Vec<u8>, std::io::Error>> = vec![
         Ok(crate::audio::wav_header_streaming().to_vec()),
@@ -112,7 +172,7 @@ async fn transcribe_stream_cancel_aborts() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"text": "x"})))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("k".into()).with_base_url(server.uri());
+    let stt = SttHttpClient::groq("k".into()).with_base_url(server.uri());
     let endless =
         futures_util::stream::repeat_with(|| Ok::<Vec<u8>, std::io::Error>(vec![0u8; 512]))
             .then(|c| async {
@@ -139,8 +199,11 @@ async fn transcribe_maps_401_to_bad_key() {
         .respond_with(ResponseTemplate::new(401))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("bad".into()).with_base_url(server.uri());
-    assert!(matches!(stt.transcribe(&samples()).await, Err(SttError::BadApiKey)));
+    let stt = SttHttpClient::groq("bad".into()).with_base_url(server.uri());
+    match stt.transcribe(&samples()).await {
+        Err(SttError::BadApiKey(label)) => assert_eq!(label, GROQ_KEY_LABEL),
+        other => panic!("ожидался BadApiKey, получено: {other:?}"),
+    }
 }
 
 #[tokio::test]
@@ -152,7 +215,7 @@ async fn proxy_mode_401_maps_to_bad_access_code_with_body_message() {
         })))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("itk_bad".into())
+    let stt = SttHttpClient::groq("itk_bad".into())
         .with_base_url(server.uri())
         .with_proxy(true);
     match stt.transcribe(&samples()).await {
@@ -169,7 +232,7 @@ async fn transcribe_maps_429_and_5xx_to_retryable() {
             .respond_with(ResponseTemplate::new(code))
             .mount(&server)
             .await;
-        let stt = GroqStt::new("k".into()).with_base_url(server.uri());
+        let stt = SttHttpClient::groq("k".into()).with_base_url(server.uri());
         assert!(matches!(stt.transcribe(&samples()).await, Err(SttError::Retryable(_))));
     }
 }
@@ -181,7 +244,7 @@ async fn transcribe_200_without_text_field_is_error() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"unexpected": true})))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("k".into()).with_base_url(server.uri());
+    let stt = SttHttpClient::groq("k".into()).with_base_url(server.uri());
     assert!(matches!(stt.transcribe(&samples()).await, Err(SttError::Other(_))));
 }
 
@@ -192,7 +255,7 @@ async fn transcribe_maps_timeout_to_network() {
         .respond_with(ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(3)))
         .mount(&server)
         .await;
-    let stt = GroqStt::new("k".into())
+    let stt = SttHttpClient::groq("k".into())
         .with_base_url(server.uri())
         .with_timeout(std::time::Duration::from_millis(200));
     assert!(matches!(stt.transcribe(&samples()).await, Err(SttError::Network(_))));

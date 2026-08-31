@@ -10,6 +10,7 @@ use crate::{access, hotkey, settings};
 const ENV_FILE_NAME: &str = ".env";
 const ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
 const GROQ_API_KEY_ENV: &str = "GROQ_API_KEY";
+const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
 
 pub fn load_dotenv_files() {
     let _ = dotenvy::dotenv();
@@ -27,6 +28,7 @@ pub fn load_settings_with_env_key_fallback(app: &AppHandle) -> settings::Setting
     settings.apply_key_fallback(
         std::env::var(ANTHROPIC_API_KEY_ENV).ok(),
         std::env::var(GROQ_API_KEY_ENV).ok(),
+        std::env::var(OPENAI_API_KEY_ENV).ok(),
     );
     settings
 }
@@ -125,6 +127,8 @@ fn rebuild_changed_api_clients(st: &App, old: &settings::Settings, new: &setting
     let access_token_changed = old.access_token != new.access_token;
     if access_token_changed
         || old.groq_api_key != new.groq_api_key
+        || old.openai_api_key != new.openai_api_key
+        || old.stt_provider != new.stt_provider
         || old.stt_language != new.stt_language
         || old.stt_translate != new.stt_translate
     {
