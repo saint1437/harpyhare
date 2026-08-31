@@ -1,4 +1,4 @@
-export type ApiKeyId = "anthropic" | "groq";
+export type ApiKeyId = "anthropic" | "xclis" | "groq";
 
 export interface ApiKeyInfo {
   id: ApiKeyId;
@@ -11,8 +11,14 @@ const API_KEYS = [
   {
     id: "anthropic",
     name: "Anthropic",
-    purpose: "ответов Claude",
+    purpose: "ответов Claude через официальный API",
     consoleUrl: "https://console.anthropic.com/settings/keys",
+  },
+  {
+    id: "xclis",
+    name: "Xclis",
+    purpose: "ответов Claude через Xclis",
+    consoleUrl: "https://xclis.ai",
   },
   {
     id: "groq",
@@ -30,16 +36,31 @@ export function apiKeyInfo(id: ApiKeyId): ApiKeyInfo {
 
 export interface ApiKeySettings {
   anthropic_api_key: string;
+  xclis_api_key: string;
   groq_api_key: string;
   access_token: string;
 }
 
 export function missingApiKeys(settings: ApiKeySettings): ApiKeyInfo[] {
   if (settings.access_token.trim() !== "") return [];
-  return API_KEYS.filter((k) => settings[`${k.id}_api_key`].trim() === "");
+
+  const missing: ApiKeyInfo[] = [];
+  const hasClaudeKey =
+    settings.anthropic_api_key.trim() !== "" || settings.xclis_api_key.trim() !== "";
+
+  if (!hasClaudeKey) missing.push(apiKeyInfo("anthropic"));
+  if (settings.groq_api_key.trim() === "") missing.push(apiKeyInfo("groq"));
+
+  return missing;
 }
 
 export function missingKeysNotice(missing: ApiKeyInfo[]): string {
+  if (missing.some((k) => k.id === "anthropic")) {
+    const needsGroq = missing.some((k) => k.id === "groq");
+    return needsGroq
+      ? "Добавьте ключ Anthropic или Xclis и ключ Groq, либо введите код доступа"
+      : "Добавьте ключ Anthropic или Xclis, либо введите код доступа";
+  }
   const noun = missing.length === 1 ? "ключ" : "ключи";
   const names = missing.map((k) => k.name).join(" и ");
   return `Добавьте ${noun} ${names} или введите код доступа`;
