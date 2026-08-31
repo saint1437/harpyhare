@@ -137,7 +137,17 @@ function updateBadge(updater: UpdaterApi, onOpen: () => void): DockUpdate | null
   };
 }
 
-const DOCK_VERTICAL_BREAKPOINT_PX = 460;
+const DOCK_COLLAPSE_BELOW_PX = 460;
+const DOCK_EXPAND_ABOVE_PX = 520;
+
+function useDockVertical(windowWidth: number): boolean {
+  const [vertical, setVertical] = useState(windowWidth < DOCK_COLLAPSE_BELOW_PX);
+  useEffect(() => {
+    if (windowWidth < DOCK_COLLAPSE_BELOW_PX) setVertical(true);
+    else if (windowWidth > DOCK_EXPAND_ABOVE_PX) setVertical(false);
+  }, [windowWidth]);
+  return vertical;
+}
 const SCREEN_SHARE_VISIBLE_LABEL = "Видно при демонстрации экрана — нажмите, чтобы скрыть";
 const SCREEN_SHARE_HIDDEN_LABEL = "Скрыто при демонстрации экрана — нажмите, чтобы показывать";
 
@@ -579,6 +589,7 @@ export default function App() {
   const chats = useChats();
   const models = useModels();
   const updater = useUpdater();
+  const dockVertical = useDockVertical(settings.window_width);
 
   const [updateOpen, setUpdateOpen] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
@@ -862,7 +873,7 @@ export default function App() {
           canCopy={canCopy}
           canTeleprompt={canTeleprompt}
           contextUsage={contextUsage}
-          dockVertical={settings.window_width < DOCK_VERTICAL_BREAKPOINT_PX}
+          dockVertical={dockVertical}
           screenShareVisible={settings.screen_share_visible}
           onToggleScreenShare={toggleScreenShareVisible}
           onOpenModelMenu={() => {
