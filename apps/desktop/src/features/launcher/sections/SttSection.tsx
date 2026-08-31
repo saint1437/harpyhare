@@ -64,10 +64,13 @@ function CaptureDeviceRow({ draft, set }: SectionProps) {
 }
 
 export function SttSection({ draft, set }: SectionProps) {
+  const deepgram = draft.stt_provider === "deepgram";
+  const engineName = deepgram ? "Deepgram Nova-3" : "Groq Whisper";
+
   return (
     <SettingGroup
       title="Распознавание речи"
-      description="Что именно слушает приложение и на каком языке расшифровывает."
+      description={`Сейчас используется ${engineName}. Провайдер переключается во вкладке «Доступ».`}
     >
       <CaptureDeviceRow draft={draft} set={set} />
       <SettingRow
@@ -75,7 +78,9 @@ export function SttSection({ draft, set }: SectionProps) {
         hint={
           draft.stt_translate
             ? "При переводе язык определяется автоматически."
-            : "Whisper распознаёт точнее, когда язык задан явно."
+            : deepgram
+              ? "Nova-3 работает точнее, когда язык задан явно; автоопределение тоже поддерживается."
+              : "Whisper распознаёт точнее, когда язык задан явно."
         }
       >
         <SettingSelect
@@ -95,7 +100,11 @@ export function SttSection({ draft, set }: SectionProps) {
       </SettingRow>
       <SettingRow
         label="Перевод на английский"
-        hint="Речь на любом языке приходит в чат по-английски."
+        hint={
+          deepgram
+            ? "В этой интеграции перевод оставлен за оригинальным Groq Whisper; для Deepgram доступна транскрипция Nova-3."
+            : "Речь на любом языке приходит в чат по-английски."
+        }
       >
         <SettingSwitch
           ariaLabel="Перевод на английский"
