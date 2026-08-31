@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Copy, Cpu, ScrollText } from "lucide-react";
+import { ArrowDownCircle, Copy, Cpu, Eye, EyeOff, Minus, ScrollText, Square } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -14,13 +14,12 @@ import { ChatTabs } from "@/components/ChatTabs";
 import { Composer } from "@/components/Composer";
 import { ConnectivityOverlay } from "@/components/ConnectivityOverlay";
 import { HotkeysPopover } from "@/components/HotkeysPopover";
-import { IconButton } from "@/components/IconButton";
 import { MiniHud } from "@/components/MiniHud";
 import { ModelCommandMenu } from "@/components/ModelCommandMenu";
 import { PREVIEW_PANEL_WIDTH_PX, PreviewPanel } from "@/components/PreviewPanel";
-import { ScreenShareIndicator } from "@/components/ScreenShareIndicator";
-import { StatusBar, type ContextUsage, type StatusBarProps } from "@/components/StatusBar";
+import { StatusBar, type ContextUsage } from "@/components/StatusBar";
 import { Teleprompter } from "@/components/Teleprompter";
+import { ToolbarDock, type ToolbarDockItem } from "@/components/ToolbarDock";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { useChats, type ChatsApi } from "@/hooks/useChats";
 import { useClaudeStream, type ClaudeStreams } from "@/hooks/useClaudeStream";
@@ -62,7 +61,7 @@ import { chatRequestOptions, type Chat, type ChatMessage } from "@/lib/chats";
 import { appendTranscript } from "@/lib/composer";
 import { libraryContextBlocks, type ContextLibrary } from "@/lib/context-library";
 import { internalError, isNetworkError, isRetryable, type AppError } from "@/lib/errors";
-import { effectiveCombo } from "@/lib/hotkeys";
+import { effectiveCombo, formatCombo } from "@/lib/hotkeys";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
 import { imagePngBase64, messageCopyImage, messageCopyText } from "@/lib/message-clipboard";
 import type { ModelInfo } from "@/lib/models";
@@ -70,6 +69,7 @@ import { mergePresets, presetText, type PromptPreset } from "@/lib/presets";
 import { queryKeys } from "@/lib/query-client";
 import { filledQuickActions } from "@/lib/quick-actions";
 import { toReadingText } from "@/lib/teleprompter";
+import { cn } from "@/lib/utils";
 import { nativeSizeEcho, windowSizesEqual } from "@/lib/window-size";
 
 const SHELL_COLUMN_GAP_PX = 10;
@@ -122,7 +122,13 @@ function lastAssistantText(messages: ChatMessage[]): string {
   return [...messages].reverse().find((m) => m.role === "assistant")?.text ?? "";
 }
 
-function updateBadge(updater: UpdaterApi, onOpen: () => void): StatusBarProps["update"] {
+interface DockUpdate {
+  version: string;
+  busy: boolean;
+  onOpen: () => void;
+}
+
+function updateBadge(updater: UpdaterApi, onOpen: () => void): DockUpdate | null {
   if (updater.status === "idle" || !updater.info) return null;
   return {
     version: updater.info.version,
@@ -130,6 +136,10 @@ function updateBadge(updater: UpdaterApi, onOpen: () => void): StatusBarProps["u
     onOpen,
   };
 }
+
+const DOCK_VERTICAL_BREAKPOINT_PX = 660;
+const SCREEN_SHARE_VISIBLE_LABEL = "Видно при демонстрации экрана — нажмите, чтобы скрыть";
+const SCREEN_SHARE_HIDDEN_LABEL = "Скрыто при демонстрации экрана — нажмите, чтобы показывать";
 
 interface SttFeedback {
   sttError: AppError | null;
@@ -385,6 +395,7 @@ interface AppHeaderProps {
   canCopy: boolean;
   canTeleprompt: boolean;
   contextUsage: ContextUsage | null;
+  dockVertical: boolean;
   screenShareVisible: boolean;
   onToggleScreenShare: () => void;
   onOpenModelMenu: () => void;
@@ -405,6 +416,7 @@ function AppHeader({
   canCopy,
   canTeleprompt,
   contextUsage,
+  dockVertical,
   screenShareVisible,
   onToggleScreenShare,
   onOpenModelMenu,
@@ -414,15 +426,57 @@ function AppHeader({
   onCollapse,
   onOpenUpdate,
 }: AppHeaderProps) {
+  const update = updateBadge(updater, onOpenUpdate);
+  const dockItems: ToolbarDockItem[] = [
+    {
+      id: "mini",
+      label: "Свернуть в мини-режим",
+      icon: <Minus />,
+      shortcut: formatCombo(effectiveCombo(hotkeys, "toggle_window")),
+      onClick: onCollapse,
+    },
+    {
+      id: "screen-share",
+      label: screenShareVisible ? SCREEN_SHARE_VISIBLE_LABEL : SCREEN_SHARE_HIDDEN_LABEL,
+      icon: screenShareVisible ? <Eye /> : <EyeOff />,
+      iconClass: screenShareVisible ? "text-primary hover:text-primary/85" : undefined,
+      onClick: onToggleScreenShare,
+    },
+    {
+      id: "models",
+      label: "Модели",
+      icon: <Cpu />,
+      shortcut: formatCombo(effectiveCombo(hotkeys, "model_menu")),
+      onClick: onOpenModelMenu,
+    },
+    ...(canTeleprompt
+      ? [{ id: "teleprompter", label: "Суфлёр", icon: <ScrollText />, onClick: onOpenTeleprompter }]
+      : []),
+    ...(canCopy
+      ? [{ id: "copy", label: "Копировать последний ответ", icon: <Copy />, onClick: onCopy }]
+      : []),
+    { id: "hotkeys", label: "Горячие клавиши", element: <HotkeysPopover hotkeys={hotkeys} /> },
+    ...(update
+      ? [
+          {
+            id: "update",
+            label: update.busy
+              ? `Обновление до ${update.version}…`
+              : `Доступна версия ${update.version}`,
+            icon: <ArrowDownCircle className={cn(update.busy && "animate-pulse")} />,
+            iconClass: "text-primary hover:text-primary/85",
+            onClick: update.onOpen,
+          },
+        ]
+      : []),
+    { id: "stop", label: "Стоп — вернуться в лаунчер", icon: <Square />, onClick: onStop },
+  ];
   return (
     <StatusBar
       state={state}
       error={error?.message ?? null}
-      toggleHotkey={effectiveCombo(hotkeys, "toggle_window")}
       contextUsage={contextUsage}
-      update={updateBadge(updater, onOpenUpdate)}
-      onStop={onStop}
-      onCollapse={onCollapse}
+      dock={<ToolbarDock items={dockItems} vertical={dockVertical} />}
       tabs={
         <ChatTabs
           chats={chats.chats}
@@ -439,25 +493,6 @@ function AppHeader({
           }}
           duplicateCombo={effectiveCombo(hotkeys, "duplicate_chat")}
         />
-      }
-      actions={
-        <>
-          <ScreenShareIndicator visible={screenShareVisible} onToggle={onToggleScreenShare} />
-          <IconButton title="Модели" onClick={onOpenModelMenu}>
-            <Cpu />
-          </IconButton>
-          {canTeleprompt && (
-            <IconButton title="Суфлёр" onClick={onOpenTeleprompter}>
-              <ScrollText />
-            </IconButton>
-          )}
-          {canCopy && (
-            <IconButton title="Копировать последний ответ" onClick={onCopy}>
-              <Copy />
-            </IconButton>
-          )}
-          <HotkeysPopover hotkeys={hotkeys} />
-        </>
       }
     />
   );
@@ -823,6 +858,7 @@ export default function App() {
           canCopy={canCopy}
           canTeleprompt={canTeleprompt}
           contextUsage={contextUsage}
+          dockVertical={settings.window_width < DOCK_VERTICAL_BREAKPOINT_PX}
           screenShareVisible={settings.screen_share_visible}
           onToggleScreenShare={toggleScreenShareVisible}
           onOpenModelMenu={() => {

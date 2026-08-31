@@ -1,10 +1,6 @@
-import { ArrowDownCircle, Minus, Square } from "lucide-react";
 import type { ReactNode } from "react";
-import { IconButton } from "@/components/IconButton";
-import { Button } from "@/components/ui/button";
 import { useWindowDrag } from "@/hooks/useWindowDrag";
 import type { RecorderState } from "@/ipc/types";
-import { formatCombo } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { EqBars, type EqBarsProps } from "./EqBars";
 
@@ -16,13 +12,9 @@ export interface ContextUsage {
 export interface StatusBarProps {
   state: RecorderState;
   error: string | null;
-  toggleHotkey: string;
   tabs: ReactNode;
-  actions: ReactNode;
+  dock: ReactNode;
   contextUsage: ContextUsage | null;
-  update: { version: string; busy: boolean; onOpen: () => void } | null;
-  onStop: () => void;
-  onCollapse: () => void;
 }
 
 const CONTEXT_USAGE_WARN_PERCENT = 80;
@@ -57,29 +49,12 @@ function indicatorProps(state: RecorderState, showError: boolean): EqBarsProps {
   return { animated: false, barClass: showError ? "bg-destructive" : "bg-muted-foreground/50" };
 }
 
-export function StatusBar({
-  state,
-  error,
-  toggleHotkey,
-  tabs,
-  actions,
-  contextUsage,
-  update,
-  onStop,
-  onCollapse,
-}: StatusBarProps) {
+export function StatusBar({ state, error, tabs, dock, contextUsage }: StatusBarProps) {
   const showError = error !== null && state === "idle";
   const onDragMouseDown = useWindowDrag();
 
   return (
     <header className="flex min-h-7 items-center gap-2" onMouseDown={onDragMouseDown}>
-      <IconButton
-        title={`Свернуть в мини-режим — вернуть: ${formatCombo(toggleHotkey)}`}
-        aria-label="Свернуть в мини-режим"
-        onClick={onCollapse}
-      >
-        <Minus />
-      </IconButton>
       <EqBars {...indicatorProps(state, showError)} />
       {tabs}
       <span
@@ -88,31 +63,10 @@ export function StatusBar({
       >
         {showError ? error : ""}
       </span>
-      <div className="flex shrink-0 items-center gap-0.5">
+      <div className="flex shrink-0 items-center gap-1.5">
         {contextUsage && <ContextUsageGauge usage={contextUsage} />}
-        {actions}
-        {update && <UpdateBadge update={update} />}
-        <IconButton title="Стоп — вернуться в лаунчер" onClick={onStop}>
-          <Square />
-        </IconButton>
+        {dock}
       </div>
     </header>
-  );
-}
-
-function UpdateBadge({ update }: { update: NonNullable<StatusBarProps["update"]> }) {
-  const availableTitle = `Доступна версия ${update.version}`;
-  return (
-    <Button
-      variant="ghost"
-      size="compact"
-      onClick={update.onOpen}
-      aria-label={availableTitle}
-      title={update.busy ? `Обновление до ${update.version}…` : availableTitle}
-      className="font-mono text-muted-foreground tabular-nums"
-    >
-      <ArrowDownCircle className={cn("text-primary", update.busy && "animate-pulse")} />
-      {update.version}
-    </Button>
   );
 }
