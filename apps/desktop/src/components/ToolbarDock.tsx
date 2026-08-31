@@ -167,7 +167,7 @@ export function ToolbarDock({ items, vertical }: ToolbarDockProps) {
 
   return (
     <div ref={wrapperRef} className="relative shrink-0" onMouseLeave={hideRail}>
-      <div className="flex items-center rounded-full border border-border bg-background p-1 shadow-lg">
+      <div className="flex items-center rounded-full bg-background p-0.5 ring-1 ring-border ring-inset">
         <motion.div
           className="relative h-6 overflow-hidden"
           initial={false}
@@ -203,7 +203,7 @@ export function ToolbarDock({ items, vertical }: ToolbarDockProps) {
         </IconButton>
       </div>
       {dropdownOpen && (
-        <div className="absolute top-full right-0 z-30 mt-2 flex flex-col items-center gap-0.5 rounded-2xl border border-border bg-background p-1 shadow-lg">
+        <div className="absolute top-full right-0 z-30 mt-1.5 flex flex-col items-center gap-0.5 rounded-2xl bg-background p-0.5 shadow-pop ring-1 ring-border ring-inset">
           {items.map((item) => (
             <DockButton key={item.id} item={item} vertical />
           ))}

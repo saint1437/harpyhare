@@ -137,7 +137,7 @@ function updateBadge(updater: UpdaterApi, onOpen: () => void): DockUpdate | null
   };
 }
 
-const DOCK_VERTICAL_BREAKPOINT_PX = 660;
+const DOCK_VERTICAL_BREAKPOINT_PX = 460;
 const SCREEN_SHARE_VISIBLE_LABEL = "Видно при демонстрации экрана — нажмите, чтобы скрыть";
 const SCREEN_SHARE_HIDDEN_LABEL = "Скрыто при демонстрации экрана — нажмите, чтобы показывать";
 
