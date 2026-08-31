@@ -520,8 +520,9 @@ impl SttEngine for DeepgramStt {
             }
         }
 
+        let close_stream = serde_json::json!({ "type": "CloseStream" }).to_string();
         writer
-            .send(WsMessage::Text(r#"{"type":"CloseStream"}"#.into()))
+            .send(WsMessage::Text(close_stream.into()))
             .await
             .map_err(|e| SttError::Network(format!("Deepgram CloseStream: {e}")))?;
 
