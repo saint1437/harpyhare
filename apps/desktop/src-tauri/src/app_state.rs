@@ -7,7 +7,7 @@ use std::sync::{
 use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
 
-use crate::{access, capture, llm, settings, state, stt};
+use crate::{access, capture, llm, settings, state, stt, xclis};
 
 const SETTINGS_FILE_NAME: &str = "settings.json";
 const CHATS_FILE_NAME: &str = "chats.json";
@@ -121,14 +121,19 @@ pub fn build_llm_client(
     s: &settings::Settings,
     catalog: llm::ModelCatalog,
 ) -> Arc<dyn llm::LlmProvider> {
-    let client = if !s.access_token.is_empty() {
-        llm::AnthropicClient::for_proxy(s.access_token.clone(), access::proxy_base_url())
-    } else if s.llm_provider == settings::LLM_PROVIDER_XCLIS {
-        llm::AnthropicClient::for_xclis(s.xclis_api_key.clone(), XCLIS_BASE_URL.to_string())
-    } else {
-        llm::AnthropicClient::new(s.anthropic_api_key.clone())
-    };
-    Arc::new(client.with_catalog(catalog))
+    if !s.access_token.is_empty() {
+        return Arc::new(
+            llm::AnthropicClient::for_proxy(s.access_token.clone(), access::proxy_base_url())
+                .with_catalog(catalog),
+        );
+    }
+    if s.llm_provider == settings::LLM_PROVIDER_XCLIS {
+        return Arc::new(
+            xclis::XclisClient::new(s.xclis_api_key.clone(), XCLIS_BASE_URL.to_string())
+                .with_catalog(catalog),
+        );
+    }
+    Arc::new(llm::AnthropicClient::new(s.anthropic_api_key.clone()).with_catalog(catalog))
 }
 
 pub fn build_app_state(
