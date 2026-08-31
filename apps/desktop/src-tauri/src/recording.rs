@@ -88,6 +88,12 @@ fn rebuild_capture_now(app: &AppHandle) {
     rebuild_capture(app);
 }
 
+fn deepgram_uses_batch_transcription(app: &AppHandle) -> bool {
+    let settings = current_settings(app);
+    settings.access_token.is_empty()
+        && settings.stt_provider == crate::settings::STT_PROVIDER_DEEPGRAM
+}
+
 pub fn on_ptt_pressed(app: &AppHandle) {
     let st = app.state::<App>();
     if st.capture_rebuild_pending.swap(false, Ordering::SeqCst) {
@@ -104,9 +110,17 @@ pub fn on_ptt_pressed(app: &AppHandle) {
     if action != state::Action::StartCapture {
         return;
     }
-    let sink = start_streaming_transcription(app);
+
+    // Deepgram is intentionally batch-only here. The capture layer still keeps the
+    // rolling pre-roll buffer and returns pre-roll + the current PTT recording on stop().
+    // Groq keeps its existing upload-streaming path.
+    let sink = if deepgram_uses_batch_transcription(app) {
+        None
+    } else {
+        Some(start_streaming_transcription(app))
+    };
     if let Some(c) = st.capture.lock().unwrap().as_mut() {
-        if let Err(e) = c.start(Some(sink)) {
+        if let Err(e) = c.start(sink) {
             cancel_stt_stream(app);
             events::stt_error(app, AppError::from(&e));
             st.recorder.lock().unwrap().on(state::Event::Cancel);
@@ -356,4 +370,3 @@ pub async fn retry_transcription(app: AppHandle) {
 pub fn list_audio_output_devices() -> Vec<capture::OutputDeviceInfo> {
     capture::list_output_devices()
 }
-
