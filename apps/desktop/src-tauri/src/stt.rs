@@ -250,8 +250,20 @@ const DEEPGRAM_PROJECTS_ENDPOINT: &str = "/v1/projects";
 const DEEPGRAM_MODEL: &str = "nova-3";
 const DEEPGRAM_MULTI_LANGUAGE: &str = "multi";
 const DEEPGRAM_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+const DEEPGRAM_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 const WAV_HEADER_LEN: usize = 44;
 const ERROR_BODY_LIMIT: usize = 300;
+
+fn deepgram_http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent(crate::llm::APP_USER_AGENT)
+        .connect_timeout(CONNECT_TIMEOUT)
+        .pool_idle_timeout(None)
+        .no_proxy()
+        .http1_only()
+        .build()
+        .expect("Deepgram reqwest client")
+}
 
 #[derive(Clone)]
 pub struct DeepgramStt {
@@ -266,7 +278,7 @@ impl DeepgramStt {
         Self {
             api_key,
             base_url: DEEPGRAM_BASE_URL.into(),
-            client: warm_pooled_client(),
+            client: deepgram_http_client(),
             language: DEFAULT_LANGUAGE.into(),
         }
     }
@@ -302,7 +314,7 @@ impl DeepgramStt {
                 ("smart_format", "true"),
             ])
             .body(wav)
-            .timeout(DEFAULT_REQUEST_TIMEOUT)
+            .timeout(DEEPGRAM_REQUEST_TIMEOUT)
     }
 
     fn websocket_url(&self) -> String {
@@ -396,7 +408,7 @@ impl DeepgramStt {
             .request(wav)
             .send()
             .await
-            .map_err(|e| SttError::Network(e.to_string()))?;
+            .map_err(|e| SttError::Network(format!("Deepgram HTTP transport: {e:?}")))?;
         self.parse_response(resp).await
     }
 
