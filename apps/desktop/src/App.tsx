@@ -395,6 +395,8 @@ interface AppHeaderProps {
   canTeleprompt: boolean;
   contextUsage: ContextUsage | null;
   screenShareVisible: boolean;
+  onNewChat: () => void;
+  onDuplicateChat: () => void;
   onToggleScreenShare: () => void;
   onOpenModelMenu: () => void;
   onCopy: () => void;
@@ -415,6 +417,8 @@ function AppHeader({
   canTeleprompt,
   contextUsage,
   screenShareVisible,
+  onNewChat,
+  onDuplicateChat,
   onToggleScreenShare,
   onOpenModelMenu,
   onCopy,
@@ -496,10 +500,8 @@ function AppHeader({
             stream.stop(id);
             chats.removeChat(id);
           }}
-          onNew={chats.newChat}
-          onDuplicate={() => {
-            chats.duplicateChat(chats.activeId);
-          }}
+          onNew={onNewChat}
+          onDuplicate={onDuplicateChat}
           duplicateCombo={effectiveCombo(hotkeys, "duplicate_chat")}
         />
       }
@@ -688,14 +690,24 @@ export default function App() {
   const promptUnavailable = teleprompterOpen || connectivity.offline || miniMode;
   const promptRef = usePromptFocus(promptUnavailable);
 
+  const focusPromptSoon = useCallback(() => {
+    requestAnimationFrame(() => {
+      promptRef.current?.focus();
+    });
+  }, [promptRef]);
+
+  const createChat = useCallback(() => {
+    chatsRef.current.newChat();
+    setMiniMode(false);
+    focusPromptSoon();
+  }, [chatsRef, focusPromptSoon]);
+
   const duplicateActiveChat = useCallback(() => {
     chatsRef.current.duplicateChat(chatsRef.current.activeId);
-  }, [chatsRef]);
-  useComboKey(
-    effectiveCombo(settings.hotkeys, "duplicate_chat"),
-    !promptUnavailable,
-    duplicateActiveChat,
-  );
+    setMiniMode(false);
+    focusPromptSoon();
+  }, [chatsRef, focusPromptSoon]);
+  useComboKey(effectiveCombo(settings.hotkeys, "duplicate_chat"), true, duplicateActiveChat);
 
   const openModelMenu = useCallback(() => {
     setModelMenuOpen(true);
@@ -868,6 +880,8 @@ export default function App() {
           canTeleprompt={canTeleprompt}
           contextUsage={contextUsage}
           screenShareVisible={settings.screen_share_visible}
+          onNewChat={createChat}
+          onDuplicateChat={duplicateActiveChat}
           onToggleScreenShare={toggleScreenShareVisible}
           onOpenModelMenu={() => {
             setModelMenuOpen(true);
