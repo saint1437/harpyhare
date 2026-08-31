@@ -141,6 +141,7 @@ fn seeded_quick_actions() -> Vec<QuickAction> {
 #[serde(default)]
 pub struct Settings {
     pub anthropic_api_key: String,
+    pub xclis_api_key: String,
     pub groq_api_key: String,
     pub access_token: String,
     pub prompt_presets: Vec<PromptPreset>,
@@ -175,6 +176,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             anthropic_api_key: String::new(),
+            xclis_api_key: String::new(),
             groq_api_key: String::new(),
             access_token: String::new(),
             prompt_presets: Vec::new(),
