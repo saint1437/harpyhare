@@ -314,20 +314,19 @@ impl XclisClient {
     /// даёт 400 «all messages have empty content», а у чужой — тот самый 404.
     /// Ни одного сгенерированного токена. Проверки идут параллельно: каталог
     /// приходит целиком, и ждать их по очереди незачем.
-    async fn only_served(&self, models: Vec<ModelInfo>) -> Vec<ModelInfo> {
-        let verdicts = futures_util::future::join_all(
-            models.iter().map(|m| self.model_is_served(Self::upstream_id(&m.id))),
-        )
-        .await;
+    async fn served_ids(&self, advertised: Vec<String>) -> HashSet<String> {
+        let verdicts =
+            futures_util::future::join_all(advertised.iter().map(|id| self.model_is_served(id)))
+                .await;
         let mut rejected = self.rejected.lock().unwrap();
-        models
+        advertised
             .into_iter()
             .zip(verdicts)
-            .filter_map(|(model, served)| {
+            .filter_map(|(id, served)| {
                 if served {
-                    return Some(model);
+                    return Some(id);
                 }
-                rejected.insert(Self::upstream_id(&model.id).to_string());
+                rejected.insert(id);
                 None
             })
             .collect()
@@ -498,22 +497,29 @@ impl XclisClient {
             .collect()
     }
 
-    fn parse_models(value: &Value) -> Vec<ModelInfo> {
+    fn advertised_ids(value: &Value) -> Vec<String> {
+        value["data"]
+            .as_array()
+            .map(|raw| raw.iter().filter_map(|v| v["id"].as_str().map(str::to_string)).collect())
+            .unwrap_or_default()
+    }
+
+    /// Модели строятся ТОЛЬКО из обслуживаемых id — и это же множество решает,
+    /// умеет ли модель размышлять. Считать `adaptive` по объявленному списку
+    /// нельзя: у Xclis единственная суффиксная модель группы была объявлена и
+    /// при этом мертва, то есть переключатель размышления обещал бы то, чего
+    /// вендор не сделает, и отправка падала бы с 404.
+    fn models_from(value: &Value, served: &HashSet<String>) -> Vec<ModelInfo> {
         let raw = value["data"].as_array().cloned().unwrap_or_default();
-        let all_ids: Vec<String> = raw
-            .iter()
-            .filter_map(|v| v["id"].as_str().map(str::to_string))
-            .collect();
+        let all_ids = served;
         let mut models: Vec<ModelInfo> = raw
             .iter()
             .filter_map(|v| {
                 let upstream_id = v["id"].as_str()?;
-                if upstream_id.ends_with(THINKING_SUFFIX) {
+                if upstream_id.ends_with(THINKING_SUFFIX) || !all_ids.contains(upstream_id) {
                     return None;
                 }
-                let adaptive = all_ids
-                    .iter()
-                    .any(|candidate| candidate == &format!("{upstream_id}{THINKING_SUFFIX}"));
+                let adaptive = all_ids.contains(&format!("{upstream_id}{THINKING_SUFFIX}"));
                 Some(ModelInfo {
                     id: format!("{MODEL_PREFIX}{upstream_id}"),
                     display_name: v["display_name"].as_str().unwrap_or(upstream_id).to_string(),
@@ -601,7 +607,8 @@ impl LlmProvider for XclisClient {
             .map_err(Self::network_error)?;
         let resp = Self::checked_response(resp).await?;
         let value: Value = resp.json().await.map_err(Self::network_error)?;
-        let models = self.only_served(Self::parse_models(&value)).await;
+        let served = self.served_ids(Self::advertised_ids(&value)).await;
+        let models = Self::models_from(&value, &served);
         if !models.is_empty() {
             *self.catalog.lock().unwrap() = models.clone();
         }
@@ -662,7 +669,8 @@ mod tests {
                 {"id": "claude-sonnet-5-thinking", "display_name": "Claude Sonnet 5 Thinking"}
             ]
         });
-        let models = XclisClient::parse_models(&value);
+        let served = XclisClient::advertised_ids(&value).into_iter().collect();
+        let models = XclisClient::models_from(&value, &served);
         assert_eq!(models.len(), 1);
         assert_eq!(models[0].id, "xclis/claude-sonnet-5");
         assert_eq!(models[0].provider, PROVIDER_XCLIS);
@@ -687,14 +695,15 @@ mod tests {
     fn thinking_suffix_follows_the_live_catalog() {
         let spec = crate::llm::registry::spec(PROVIDER_XCLIS).expect("Xclis provider");
         let client = XclisClient::new(spec, "key".into());
-        let live = XclisClient::parse_models(&json!({
+        let live_catalog = json!({
             "data": [
                 {"id": "claude-opus-4-6", "display_name": "Claude Opus 4.6"},
                 {"id": "claude-opus-4-6-thinking", "display_name": "Claude Opus 4.6 Thinking"},
                 {"id": "claude-sonnet-5", "display_name": "Claude Sonnet 5"}
             ]
-        }));
-        *client.catalog.lock().unwrap() = live;
+        });
+        let served = XclisClient::advertised_ids(&live_catalog).into_iter().collect();
+        *client.catalog.lock().unwrap() = XclisClient::models_from(&live_catalog, &served);
         assert_eq!(
             client.selected_model("xclis/claude-opus-4-6", true),
             "claude-opus-4-6-thinking"
@@ -726,11 +735,34 @@ mod tests {
             .await;
 
         let client = test_client(&server.uri());
-        let advertised = XclisClient::parse_models(&json!({
-            "data": [{"id": "alive"}, {"id": "dead"}]
-        }));
-        let served = client.only_served(advertised).await;
-        assert_eq!(served.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["xclis/alive"]);
+        let catalog = json!({"data": [{"id": "alive"}, {"id": "dead"}]});
+        let served = client.served_ids(XclisClient::advertised_ids(&catalog)).await;
+        let models = XclisClient::models_from(&catalog, &served);
+        assert_eq!(models.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["xclis/alive"]);
+    }
+
+    /// Объявленная, но мёртвая суффиксная модель не должна давать базовой
+    /// признак «умеет размышлять»: на этом эндпоинте рассуждение включается
+    /// ТОЛЬКО отдельной моделью — `reasoning_effort` и `thinking` шлюз молча
+    /// игнорирует (проверено живьём), — поэтому обещание обернулось бы 404.
+    #[test]
+    fn thinking_capability_ignores_advertised_but_dead_twins() {
+        let catalog = json!({
+            "data": [
+                {"id": "opus"},
+                {"id": "opus-thinking"},
+                {"id": "sonnet"},
+                {"id": "sonnet-thinking"}
+            ]
+        });
+        // Живыми оказались базовые и только один из двух суффиксных.
+        let served: HashSet<String> =
+            ["opus", "opus-thinking", "sonnet"].iter().map(|s| s.to_string()).collect();
+        let models = XclisClient::models_from(&catalog, &served);
+        let adaptive: Vec<(&str, bool)> =
+            models.iter().map(|m| (m.id.as_str(), m.adaptive)).collect();
+        assert!(adaptive.contains(&("xclis/opus", true)), "живой двойник — способность есть");
+        assert!(adaptive.contains(&("xclis/sonnet", false)), "мёртвый двойник — способности нет");
     }
 
     /// Сетевой сбой не должен вычищать пикер: одна недоступность сервера хуже
@@ -738,8 +770,9 @@ mod tests {
     #[tokio::test]
     async fn unreachable_vendor_keeps_the_advertised_models() {
         let client = test_client("http://127.0.0.1:1");
-        let advertised = XclisClient::parse_models(&json!({"data": [{"id": "alive"}]}));
-        assert_eq!(client.only_served(advertised).await.len(), 1);
+        let catalog = json!({"data": [{"id": "alive"}]});
+        let served = client.served_ids(XclisClient::advertised_ids(&catalog)).await;
+        assert_eq!(XclisClient::models_from(&catalog, &served).len(), 1);
     }
 
     #[test]
