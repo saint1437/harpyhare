@@ -33,7 +33,7 @@ fn direct_openai_takes_the_openai_key_and_talks_to_the_vendor() {
 }
 
 #[test]
-fn direct_deepgram_uses_its_own_key_even_with_an_access_code() {
+fn direct_deepgram_takes_the_deepgram_key_and_never_uses_the_relay() {
     let plan = stt_client_plan(&settings_with(settings::STT_PROVIDER_DEEPGRAM, ACCESS_TOKEN));
     assert_eq!(plan.provider_id, stt::registry::PROVIDER_DEEPGRAM);
     assert_eq!(plan.api_key, DEEPGRAM_KEY);
@@ -65,6 +65,7 @@ fn an_unknown_provider_falls_back_to_groq() {
 
 const ANTHROPIC_KEY: &str = "anthropic-key";
 const XAI_KEY: &str = "xai-key";
+const XCLIS_KEY: &str = "xclis-key";
 
 fn keyed_settings(anthropic: &str, openai: &str, access_token: &str) -> settings::Settings {
     settings::Settings {
@@ -89,6 +90,16 @@ fn a_personal_key_reaches_its_vendor_directly() {
     assert!(matches!(
         access_of(llm::PROVIDER_OPENAI, &s),
         Some(ProviderAccess::Direct { api_key }) if api_key == OPENAI_KEY
+    ));
+}
+
+#[test]
+fn xclis_is_direct_even_when_an_access_code_is_present() {
+    let mut s = keyed_settings("", "", ACCESS_TOKEN);
+    s.xclis_api_key = XCLIS_KEY.into();
+    assert!(matches!(
+        access_of(llm::registry::xclis::PROVIDER_XCLIS, &s),
+        Some(ProviderAccess::Direct { api_key }) if api_key == XCLIS_KEY
     ));
 }
 
@@ -129,7 +140,10 @@ fn the_router_is_never_left_without_a_provider() {
     let catalog: llm::ModelCatalog = Arc::new(Mutex::new(Vec::new()));
     let client = build_llm_client(&empty, catalog);
     assert_eq!(client.provider_id(), llm::PROVIDER_ANTHROPIC);
-    assert!(!client.known_models().is_empty());
+    assert!(
+        !client.known_models().is_empty(),
+        "без провайдеров дефолтная модель чата стала бы немаршрутизируемой"
+    );
 }
 
 fn all_keys_filled() -> settings::Settings {
@@ -138,6 +152,7 @@ fn all_keys_filled() -> settings::Settings {
         groq_api_key: GROQ_KEY.into(),
         openai_api_key: OPENAI_KEY.into(),
         xai_api_key: XAI_KEY.into(),
+        xclis_api_key: XCLIS_KEY.into(),
         deepgram_api_key: DEEPGRAM_KEY.into(),
         ..settings::Settings::default()
     }
@@ -149,7 +164,7 @@ fn every_registry_key_id_resolves_to_a_real_settings_field() {
     for spec in llm::registry::PROVIDERS {
         assert!(
             !settings::api_key_for(&s, spec.key_id).is_empty(),
-            "key_id {} у {} не указывает ни на одно поле настроек",
+            "key_id {} у {} не указывает ни на одно поле настроек — добавь поле и ветку в settings::api_key_for",
             spec.key_id,
             spec.id
         );
@@ -168,6 +183,10 @@ fn every_registry_key_id_resolves_to_a_real_settings_field() {
 fn a_vendor_the_relay_does_not_proxy_stays_locked_under_an_access_code() {
     let s = keyed_settings("", "", ACCESS_TOKEN);
     for spec in llm::registry::PROVIDERS.iter().filter(|p| !p.proxied) {
-        assert!(provider_access(spec, &s).is_none(), "{} не проксируется", spec.id);
+        assert!(
+            provider_access(spec, &s).is_none(),
+            "{} не проксируется — код доступа не должен его открывать без личного ключа",
+            spec.id
+        );
     }
 }

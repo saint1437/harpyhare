@@ -193,6 +193,13 @@ fn build_provider(
                 Arc::new(llm::responses::ResponsesClient::direct(spec, api_key))
             }
         },
+        llm::registry::LlmWire::Xclis { .. } => match access {
+            ProviderAccess::Direct { api_key } => Arc::new(
+                llm::registry::xclis::XclisClient::new(spec, api_key)
+                    .with_catalog(Arc::clone(catalog)),
+            ),
+            ProviderAccess::Proxied { .. } => unreachable!("Xclis is a direct provider"),
+        },
     }
 }
 
