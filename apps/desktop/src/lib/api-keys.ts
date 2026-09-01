@@ -1,7 +1,7 @@
 import { MODEL_PROVIDERS } from "./models";
 import { STT_PROVIDERS, sttProviderKeyId } from "./stt-providers";
 
-export type ApiKeyId = "anthropic" | "groq" | "openai" | "xai";
+export type ApiKeyId = "anthropic" | "groq" | "openai" | "xai" | "xclis" | "deepgram";
 
 export interface ApiKeyInfo {
   id: ApiKeyId;
@@ -32,8 +32,20 @@ const API_KEYS = [
   {
     id: "xai",
     name: "xAI",
-    purpose: "ответов Grok",
+    purpose: "ответов Grok и распознавания речи через xAI",
     consoleUrl: "https://console.x.ai/team/default/api-keys",
+  },
+  {
+    id: "xclis",
+    name: "Xclis",
+    purpose: "ответов через Xclis",
+    consoleUrl: "https://xclis.ai/ref/MGJST",
+  },
+  {
+    id: "deepgram",
+    name: "Deepgram",
+    purpose: "распознавания речи через Nova-3",
+    consoleUrl: "https://console.deepgram.com/",
   },
 ] as const satisfies readonly ApiKeyInfo[];
 
@@ -48,11 +60,12 @@ export interface ApiKeySettings {
   groq_api_key: string;
   openai_api_key: string;
   xai_api_key: string;
+  xclis_api_key: string;
+  deepgram_api_key: string;
   access_token: string;
   stt_provider: string;
 }
 
-/** Подпись запертого вендора — одна на оба пикера. */
 export const MISSING_KEY_HINT = "нет ключа";
 
 const RELAY_VENDORS = [...MODEL_PROVIDERS, ...STT_PROVIDERS];
@@ -61,16 +74,10 @@ export function hasAccessCode(settings: ApiKeySettings): boolean {
   return settings.access_token.trim() !== "";
 }
 
-/** Вендоры, до которых код доступа не дотягивается: у relay нет их роута. */
 export function vendorsOutsideCode(): readonly string[] {
   return [...new Set(RELAY_VENDORS.filter((v) => !v.proxied).map((v) => v.label))];
 }
 
-/**
- * Поля ключей, которые есть смысл показывать. Код доступа стоит вместо ключа
- * каждого проксируемого вендора, поэтому под кодом остаются только ключи тех,
- * кого relay не проксирует, — а когда таких нет, полей нет вовсе.
- */
 export function visibleApiKeys(settings: ApiKeySettings): readonly ApiKeyId[] {
   if (!hasAccessCode(settings)) return API_KEY_IDS;
   const outside = new Set(RELAY_VENDORS.filter((v) => !v.proxied).map((v) => v.keyId));
@@ -79,46 +86,28 @@ export function visibleApiKeys(settings: ApiKeySettings): readonly ApiKeyId[] {
 
 export function sttProvidersMissingKey(settings: ApiKeySettings): readonly string[] {
   return STT_PROVIDERS.filter((p) => {
-    // Same rule as the answer vendors: a code covers only what the relay
-    // proxies, and Grok speech is not among its routes.
     if (p.proxied && hasAccessCode(settings)) return false;
     return settings[`${p.keyId}_api_key`].trim() === "";
   }).map((p) => p.id);
 }
 
-/**
- * Answer-model providers the app cannot reach right now. An access code covers
- * every provider the relay proxies — Claude and GPT alike — so it unlocks both.
- */
 export function modelProvidersMissingKey(settings: ApiKeySettings): readonly string[] {
   return MODEL_PROVIDERS.filter((p) => {
-    // An access code covers only what the relay proxies. A vendor it does not
-    // (Grok) still needs the user's own key, and the picker keeps it locked.
     if (p.proxied && hasAccessCode(settings)) return false;
     return settings[`${p.keyId}_api_key`].trim() === "";
   }).map((p) => p.id);
 }
 
-/** What still stands between the user and a working session. */
 export interface AccessGap {
   kind: "answers" | "speech";
   label: string;
 }
 
-/** Answer vendors reachable right now — with a key of their own or via a code. */
 export function availableAnswerProviders(settings: ApiKeySettings): readonly string[] {
   const locked = modelProvidersMissingKey(settings);
   return MODEL_PROVIDERS.filter((p) => !locked.includes(p.id)).map((p) => p.id);
 }
 
-/**
- * The two things the app genuinely needs, and neither of them names a vendor.
- *
- * It used to demand an Anthropic key specifically, from back when Claude was
- * the only way to get an answer. **Any one answer vendor is enough now** — the
- * requirement is a working pair (something to answer with, something to hear
- * with), not a particular company.
- */
 export function accessGaps(settings: ApiKeySettings): AccessGap[] {
   const gaps: AccessGap[] = [];
   if (availableAnswerProviders(settings).length === 0) {

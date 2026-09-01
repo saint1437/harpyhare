@@ -18,11 +18,15 @@ const keys = (
   sttProvider: string = STT_PROVIDER_GROQ,
   openai = "",
   xai = "",
+  xclis = "",
+  deepgram = "",
 ) => ({
   anthropic_api_key: anthropic,
   groq_api_key: groq,
   openai_api_key: openai,
   xai_api_key: xai,
+  xclis_api_key: xclis,
+  deepgram_api_key: deepgram,
   access_token: accessToken,
   stt_provider: sttProvider,
 });
@@ -33,12 +37,12 @@ describe("accessGaps", () => {
     expect(gaps).toEqual(["answers", "speech"]);
   });
 
-  it("ЛЮБОГО одного ключа ответов достаточно — Anthropic больше не обязателен", () => {
-    // Ключ Groq закрывает распознавание, ключ ответов — любой из трёх.
+  it("любого одного ключа ответов достаточно", () => {
     for (const answerKey of [
       keys("sk-ant", "gsk_y"),
       keys("", "gsk_y", "", STT_PROVIDER_GROQ, "sk-oai"),
       keys("", "gsk_y", "", STT_PROVIDER_GROQ, "", "xai-key"),
+      keys("", "gsk_y", "", STT_PROVIDER_GROQ, "", "", "xclis-key"),
     ]) {
       expect(accessGaps(answerKey)).toEqual([]);
     }
@@ -56,11 +60,12 @@ describe("accessGaps", () => {
     expect(gaps[0]?.label).toContain("OpenAI");
   });
 
-  it("свой ключ распознавания закрывает речь без ключа ответов того же вендора", () => {
+  it("свой ключ распознавания закрывает речь", () => {
     expect(accessGaps(keys("sk-ant", "", "", STT_PROVIDER_OPENAI, "sk-oai"))).toEqual([]);
+    expect(accessGaps(keys("sk-ant", "", "", "deepgram", "", "", "", "dg-key"))).toEqual([]);
   });
 
-  it("код доступа закрывает обе потребности сам", () => {
+  it("код доступа закрывает обе потребности на проксируемых провайдерах", () => {
     expect(accessGaps(keys("", "", "itk_token"))).toEqual([]);
   });
 });
@@ -73,51 +78,36 @@ describe("availableAnswerProviders", () => {
     expect(availableAnswerProviders(xaiOnly)).toEqual([PROVIDER_XAI]);
   });
 
-  it("код доступа открывает всех вендоров ответов — relay проксирует каждого", () => {
+  it("код доступа открывает только проксируемые вендоры ответов", () => {
     const available = availableAnswerProviders(keys("", "", "itk_token"));
     expect(available).toContain(PROVIDER_ANTHROPIC);
     expect(available).toContain(PROVIDER_OPENAI);
     expect(available).toContain(PROVIDER_XAI);
+    expect(available).not.toContain("xclis");
   });
 });
 
 describe("modelProvidersMissingKey", () => {
   it("без ключей заперты все вендоры ответов", () => {
     const locked = modelProvidersMissingKey(keys("", ""));
-    expect(locked).toContain(PROVIDER_ANTHROPIC);
-    expect(locked).toContain(PROVIDER_OPENAI);
-    expect(locked).toContain(PROVIDER_XAI);
+    expect(locked).toEqual(MODEL_PROVIDERS.map((p) => p.id));
   });
 
-  it("код доступа не оставляет запертым ни одного вендора ответов", () => {
-    // Замок снимается по флагу proxied реестра, а не по списку id: вендор,
-    // которого воркер не проксирует, обязан остаться запертым сам собой.
+  it("код доступа оставляет запертыми только непроксируемые вендоры", () => {
     const locked = modelProvidersMissingKey(keys("", "", "itk_token"));
     expect(locked).toEqual(MODEL_PROVIDERS.filter((p) => !p.proxied).map((p) => p.id));
-    expect(locked).toEqual([]);
+    expect(locked).toContain("xclis");
   });
 
-  it("свой ключ xAI открывает Grok и при коде доступа", () => {
-    const withXai = keys("", "", "itk_token", STT_PROVIDER_GROQ, "", "xai-key");
-    expect(modelProvidersMissingKey(withXai)).not.toContain(PROVIDER_XAI);
-  });
-
-  it("свой ключ открывает вендора без кода доступа", () => {
-    const withXai = keys("", "", "", STT_PROVIDER_GROQ, "", "xai-key");
-    expect(modelProvidersMissingKey(withXai)).not.toContain(PROVIDER_XAI);
+  it("свой ключ открывает непроксируемого вендора и при коде доступа", () => {
+    const withXclis = keys("", "", "itk_token", STT_PROVIDER_GROQ, "", "", "xclis-key");
+    expect(modelProvidersMissingKey(withXclis)).not.toContain("xclis");
   });
 });
 
 describe("код доступа и непроксируемые вендоры речи", () => {
   it("код доступа открывает только тех, кого проксирует relay", () => {
-    const settings = {
-      anthropic_api_key: "",
-      groq_api_key: "",
-      openai_api_key: "",
-      xai_api_key: "",
-      access_token: "itk_code",
-      stt_provider: "groq",
-    };
+    const settings = keys("", "", "itk_code");
     const locked = sttProvidersMissingKey(settings);
     const proxied = STT_PROVIDERS.filter((p) => p.proxied).map((p) => p.id);
     const direct = STT_PROVIDERS.filter((p) => !p.proxied).map((p) => p.id);
@@ -125,16 +115,9 @@ describe("код доступа и непроксируемые вендоры �
     expect(direct.every((id) => locked.includes(id))).toBe(true);
   });
 
-  it("непроксируемый вендор открывается своим ключом даже без кода", () => {
-    const settings = {
-      anthropic_api_key: "",
-      groq_api_key: "",
-      openai_api_key: "",
-      xai_api_key: "xai-key",
-      access_token: "",
-      stt_provider: "xai",
-    };
-    expect(sttProvidersMissingKey(settings)).not.toContain("xai");
+  it("Deepgram открывается своим ключом даже без кода", () => {
+    const settings = keys("", "", "", "deepgram", "", "", "", "dg-key");
+    expect(sttProvidersMissingKey(settings)).not.toContain("deepgram");
   });
 });
 
@@ -143,7 +126,7 @@ describe("visibleApiKeys", () => {
     expect(visibleApiKeys(keys("", ""))).toEqual(API_KEY_IDS);
   });
 
-  it("код доступа оставляет поля только тех вендоров, кого relay не проксирует", () => {
+  it("код доступа оставляет поля только непроксируемых вендоров", () => {
     const outside = new Set(
       [...MODEL_PROVIDERS, ...STT_PROVIDERS].filter((v) => !v.proxied).map((v) => v.keyId),
     );
@@ -152,8 +135,8 @@ describe("visibleApiKeys", () => {
     );
   });
 
-  it("пока relay проксирует всех, под кодом полей ключей нет вовсе", () => {
-    expect(vendorsOutsideCode()).toEqual([]);
-    expect(visibleApiKeys(keys("sk-ant", "gsk_y", "itk_token"))).toEqual([]);
+  it("под кодом остаются Xclis и Deepgram", () => {
+    expect(vendorsOutsideCode()).toEqual(["Xclis", "Deepgram · Nova-3"]);
+    expect(visibleApiKeys(keys("", "", "itk_token"))).toEqual(["xclis", "deepgram"]);
   });
 });

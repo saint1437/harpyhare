@@ -26,6 +26,8 @@ const KEY_PLACEHOLDERS: Record<ApiKeyId, string> = {
   groq: "gsk_…",
   openai: "sk-…",
   xai: "xai-…",
+  xclis: "sk-…",
+  deepgram: "dg_…",
 };
 
 const GROUP_TITLE = "Доступ к API";
@@ -58,12 +60,6 @@ function VendorState({ ready, label }: { ready: boolean; label: string }) {
   );
 }
 
-/**
- * Which vendors the current keys reach. The point of the screen is no longer
- * "fill both fields" but "any one of these answers, any one of those hears" —
- * so the state of each vendor is shown rather than left to be inferred from
- * whether a field looks filled.
- */
 function VendorSummary({ draft }: Pick<SectionProps, "draft">) {
   const answersLocked = modelProvidersMissingKey(draft);
   const speechLocked = sttProvidersMissingKey(draft);
