@@ -8,6 +8,10 @@ use crate::audio;
 
 /// The one table a vendor is declared in; its picker half is exported to the
 /// frontend, its transport half deliberately is not.
+/// Deepgram говорит не на общем multipart-диалекте: батч — сырой WAV телом,
+/// а низколатентный путь вообще WebSocket. Поэтому у него свой транспорт,
+/// реализующий тот же порт `SttEngine`, а не ветка в общем клиенте.
+pub mod deepgram;
 pub mod registry;
 
 const DEFAULT_LANGUAGE: &str = "ru";
@@ -89,7 +93,7 @@ pub struct SttHttpClient {
     proxy: bool,
 }
 
-fn warm_pooled_client() -> reqwest::Client {
+pub(crate) fn warm_pooled_client() -> reqwest::Client {
     reqwest::Client::builder()
         .user_agent(crate::llm::APP_USER_AGENT)
         .connect_timeout(CONNECT_TIMEOUT)
@@ -106,6 +110,10 @@ impl SttHttpClient {
     /// default vendor rather than failing — the same rule `Settings::clamp`
     /// applies to the stored value.
     pub fn for_provider(provider_id: &str, api_key: String) -> Self {
+        debug_assert!(
+            !matches!(registry::resolve(provider_id).wire, registry::SttWire::Deepgram { .. }),
+            "у Deepgram свой транспорт — общий multipart-клиент его не обслуживает",
+        );
         Self::over(registry::resolve(provider_id), api_key)
     }
 
@@ -208,6 +216,12 @@ impl SttHttpClient {
                 };
                 // The audio part must stay last, so keyterms go in before it.
                 self.with_keyterms(form, keyterms).part("file", file)
+            }
+            // Недостижимо: `for_provider` разворачивает Deepgram в собственный
+            // транспорт ещё до конструктора. Ветка оставлена явной, чтобы новый
+            // диалект нельзя было добавить, забыв про этот клиент.
+            registry::SttWire::Deepgram { .. } => {
+                unreachable!("у Deepgram свой транспорт, см. stt::deepgram")
             }
         }
     }

@@ -19,7 +19,9 @@ fn models_of(spec: &'static registry::SttProviderSpec) -> (&'static str, &'stati
         registry::SttWire::OpenAiMultipart { transcribe_model, translate_model, .. } => {
             (transcribe_model, translate_model)
         }
-        registry::SttWire::Xai { .. } => panic!("у этого вендора нет моделей в запросе"),
+        registry::SttWire::Xai { .. } | registry::SttWire::Deepgram { .. } => {
+            panic!("у этого вендора нет моделей в запросе")
+        }
     }
 }
 

@@ -55,6 +55,7 @@ fn an_unknown_provider_falls_back_to_groq() {
 
 const ANTHROPIC_KEY: &str = "anthropic-key";
 const XAI_KEY: &str = "xai-key";
+const DEEPGRAM_KEY: &str = "deepgram-key";
 
 fn keyed_settings(anthropic: &str, openai: &str, access_token: &str) -> settings::Settings {
     settings::Settings {
@@ -133,6 +134,7 @@ fn all_keys_filled() -> settings::Settings {
         groq_api_key: GROQ_KEY.into(),
         openai_api_key: OPENAI_KEY.into(),
         xai_api_key: XAI_KEY.into(),
+        deepgram_api_key: DEEPGRAM_KEY.into(),
         ..settings::Settings::default()
     }
 }

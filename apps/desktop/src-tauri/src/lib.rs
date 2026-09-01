@@ -64,6 +64,10 @@ pub fn run() {
 }
 
 fn setup_app(handle: &AppHandle) {
+    // tokio-tungstenite (WebSocket Deepgram) ходит через rustls, а тот с 0.23
+    // отказывается выбирать провайдера сам, если в сборке их несколько: первое
+    // же соединение падает с паникой про ambiguous provider. Ставим явно.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     preferences::load_dotenv_files();
     let settings = preferences::load_settings_with_env_key_fallback(handle);
     let official_presets = remote_presets::load_initial(handle);

@@ -142,6 +142,14 @@ pub fn stt_client_plan(s: &settings::Settings) -> SttClientPlan {
 
 pub fn build_stt_client(s: &settings::Settings) -> Arc<dyn stt::SttEngine> {
     let plan = stt_client_plan(s);
+    // Deepgram не обслуживается общим multipart-клиентом: у него свой
+    // транспорт. Прокси-ветки здесь нет намеренно — строка реестра несёт
+    // `proxied: false`, поэтому план всегда приходит с личным ключом.
+    if matches!(stt::registry::resolve(plan.provider_id).wire, stt::registry::SttWire::Deepgram { .. }) {
+        return Arc::new(
+            stt::deepgram::DeepgramStt::new(plan.api_key).with_language(s.stt_language.clone()),
+        );
+    }
     let client = stt::SttHttpClient::for_provider(plan.provider_id, plan.api_key);
     let client = match plan.proxy_base_url {
         Some(url) => client.with_base_url(url).with_proxy(true),

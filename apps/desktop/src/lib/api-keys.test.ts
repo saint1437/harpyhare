@@ -18,11 +18,13 @@ const keys = (
   sttProvider: string = STT_PROVIDER_GROQ,
   openai = "",
   xai = "",
+  deepgram = "",
 ) => ({
   anthropic_api_key: anthropic,
   groq_api_key: groq,
   openai_api_key: openai,
   xai_api_key: xai,
+  deepgram_api_key: deepgram,
   access_token: accessToken,
   stt_provider: sttProvider,
 });
@@ -115,6 +117,7 @@ describe("код доступа и непроксируемые вендоры �
       groq_api_key: "",
       openai_api_key: "",
       xai_api_key: "",
+      deepgram_api_key: "",
       access_token: "itk_code",
       stt_provider: "groq",
     };
@@ -131,6 +134,7 @@ describe("код доступа и непроксируемые вендоры �
       groq_api_key: "",
       openai_api_key: "",
       xai_api_key: "xai-key",
+      deepgram_api_key: "",
       access_token: "",
       stt_provider: "xai",
     };
@@ -152,8 +156,10 @@ describe("visibleApiKeys", () => {
     );
   });
 
-  it("пока relay проксирует всех, под кодом полей ключей нет вовсе", () => {
-    expect(vendorsOutsideCode()).toEqual([]);
-    expect(visibleApiKeys(keys("sk-ant", "gsk_y", "itk_token"))).toEqual([]);
+  it("под кодом остаются поля только тех вендоров, до которых relay не дотягивается", () => {
+    // Deepgram — единственный такой вендор: у relay нет его роута, поэтому код
+    // доступа его не открывает и поле ключа обязано остаться видимым.
+    expect(vendorsOutsideCode()).toEqual(["Deepgram · Nova-3"]);
+    expect(visibleApiKeys(keys("sk-ant", "gsk_y", "itk_token"))).toEqual(["deepgram"]);
   });
 });

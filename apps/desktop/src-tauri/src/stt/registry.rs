@@ -78,6 +78,14 @@ pub enum SttWire {
     },
     /// `POST /v1/stt`: one endpoint, no model to choose, and the audio part
     /// **must come last** — the server rejects a body that leads with it.
+    /// `POST /v1/listen`: сырой WAV телом, без multipart вовсе. Низколатентный
+    /// путь у вендора — WebSocket на том же пути, поэтому у него отдельный
+    /// транспорт (`stt::deepgram`), а не строка значений в общем клиенте.
+    Deepgram {
+        base_url: &'static str,
+        listen_path: &'static str,
+        warm_up_path: &'static str,
+    },
     Xai {
         base_url: &'static str,
         path: &'static str,
@@ -88,13 +96,17 @@ pub enum SttWire {
 impl SttWire {
     pub fn base_url(&self) -> &'static str {
         match self {
-            SttWire::OpenAiMultipart { base_url, .. } | SttWire::Xai { base_url, .. } => base_url,
+            SttWire::OpenAiMultipart { base_url, .. }
+            | SttWire::Xai { base_url, .. }
+            | SttWire::Deepgram { base_url, .. } => base_url,
         }
     }
 
     pub fn warm_up_path(&self) -> &'static str {
         match self {
-            SttWire::OpenAiMultipart { warm_up_path, .. } | SttWire::Xai { warm_up_path, .. } => {
+            SttWire::OpenAiMultipart { warm_up_path, .. }
+            | SttWire::Xai { warm_up_path, .. }
+            | SttWire::Deepgram { warm_up_path, .. } => {
                 warm_up_path
             }
         }
@@ -112,6 +124,7 @@ impl SttWire {
                 }
             }
             SttWire::Xai { path, .. } => path,
+            SttWire::Deepgram { listen_path, .. } => listen_path,
         }
     }
 }
@@ -119,6 +132,7 @@ impl SttWire {
 pub const PROVIDER_GROQ: &str = "groq";
 pub const PROVIDER_OPENAI: &str = "openai";
 pub const PROVIDER_XAI: &str = "xai";
+pub const PROVIDER_DEEPGRAM: &str = "deepgram";
 
 /// Order is UI order, and the first row is the default: an unknown value in
 /// `Settings.stt_provider` resolves to it rather than failing.
@@ -183,6 +197,26 @@ pub const PROVIDERS: &[SttProviderSpec] = &[
             base_url: "https://api.x.ai",
             path: "/v1/stt",
             warm_up_path: "/v1/models",
+        },
+    },
+    // Единственный вендор, который слышит речь ПОКА её говорят: аудио уходит
+    // по WebSocket во время удержания клавиши, а не батчем после отпускания.
+    // Ключевые слова он не принимает, перевода не предлагает, и `proxied: false`
+    // здесь по той же причине, что у Grok — в relay нет его роута.
+    SttProviderSpec {
+        id: PROVIDER_DEEPGRAM,
+        label: "Deepgram · Nova-3",
+        key_id: "deepgram",
+        proxied: false,
+        supports_translate: false,
+        keyterms: SttKeyterms::Unsupported,
+        key_label: "Deepgram",
+        wire: SttWire::Deepgram {
+            // Европейский хост выбран намеренно: у Deepgram он отдельный, и
+            // общий api.deepgram.com на европейский ключ отвечает 401.
+            base_url: "https://api.eu.deepgram.com",
+            listen_path: "/v1/listen",
+            warm_up_path: "/v1/projects",
         },
     },
 ];

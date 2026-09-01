@@ -240,6 +240,7 @@ fn env_fallback_fills_only_empty_keys() {
         Some("env-groq".into()),
         Some("env-oai".into()),
         Some("env-xai".into()),
+        Some("env-dg".into()),
     );
     assert_eq!(s.anthropic_api_key, "env-ant");
     assert_eq!(s.groq_api_key, "env-groq");
@@ -254,10 +255,16 @@ fn env_fallback_skipped_entirely_when_access_token_set() {
         Some("env-groq".into()),
         Some("env-oai".into()),
         Some("env-xai".into()),
+        Some("env-dg".into()),
     );
     assert_eq!(s.anthropic_api_key, "");
     assert_eq!(s.groq_api_key, "");
     assert_eq!(s.openai_api_key, "");
+    // Код доступа не даёт доступа к непроксируемым вендорам, поэтому их ключи
+    // из окружения он подавлять не должен — иначе Grok и Deepgram оказываются
+    // заперты у того, кто ключ как раз положил.
+    assert_eq!(s.xai_api_key, "env-xai");
+    assert_eq!(s.deepgram_api_key, "env-dg");
 }
 
 #[test]
@@ -277,6 +284,7 @@ fn env_fallback_does_not_override_saved_keys() {
         Some("env-groq".into()),
         Some("env-oai".into()),
         Some("env-xai".into()),
+        Some("env-dg".into()),
     );
     assert_eq!(s.anthropic_api_key, "saved");
     assert_eq!(s.groq_api_key, "env-groq");
@@ -286,7 +294,7 @@ fn env_fallback_does_not_override_saved_keys() {
 #[test]
 fn env_fallback_ignores_none_and_blank() {
     let mut s = Settings::default();
-    s.apply_key_fallback(None, Some("   ".into()), None, None);
+    s.apply_key_fallback(None, Some("   ".into()), None, None, None);
     assert_eq!(s.anthropic_api_key, "");
     assert_eq!(s.groq_api_key, "");
     assert_eq!(s.openai_api_key, "");
