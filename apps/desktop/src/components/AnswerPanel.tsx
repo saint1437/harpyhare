@@ -56,7 +56,13 @@ const ASSISTANT_PROSE_CLASS = PROSE_MARKDOWN_CLASS;
 const FLOATING_CHIP_CLASS = "border bg-popover/95 shadow-pop backdrop-blur-sm";
 const MESSAGE_IMAGE_ALT = "Картинка в сообщении";
 const COPY_MESSAGE_TITLE = "Копировать сообщение";
-const ASSISTANT_ACTIONS_GUTTER_CLASS = "pr-13.5";
+/**
+ * Показ/скрытие мгновенные, без `transition-opacity`: в прозрачном фреймлесс-окне
+ * анимация прозрачности выносит элемент в отдельный композитный слой WKWebView,
+ * и при его схлопывании остаются несмытые пиксели.
+ */
+const MESSAGE_ACTIONS_REVEAL_CLASS =
+  "pointer-events-none opacity-0 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100";
 
 function hasHtmlLanguageToken(className: string) {
   return className.split(/\s+/).some((token) => token.toLowerCase() === HTML_LANGUAGE_CLASS);
@@ -124,13 +130,15 @@ function MessageActions({
   onCopy,
   onRemove,
   onResend,
+  className,
 }: {
   onCopy: (() => void) | null;
   onRemove: () => void;
   onResend: (() => void) | null;
+  className?: string;
 }) {
   return (
-    <div className="pointer-events-none flex shrink-0 gap-0.5 opacity-0 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
+    <div className={cn(MESSAGE_ACTIONS_REVEAL_CLASS, "flex shrink-0 gap-0.5", className)}>
       {onCopy && (
         <MessageActionButton title={COPY_MESSAGE_TITLE} onClick={onCopy}>
           <Copy className="size-3.5" />
@@ -168,19 +176,23 @@ function MessageShell({
   onResend: (() => void) | null;
   children: ReactNode;
 }) {
-  const actions = <MessageActions onCopy={onCopy} onRemove={onRemove} onResend={onResend} />;
   if (align === "end") {
     return (
       <div className="group/msg flex items-start justify-end gap-1">
-        {actions}
+        <MessageActions onCopy={onCopy} onRemove={onRemove} onResend={onResend} />
         {children}
       </div>
     );
   }
   return (
-    <div className="group/msg flex items-start gap-1">
-      <div className="min-w-0 flex-1">{children}</div>
-      {actions}
+    <div className="group/msg relative">
+      {children}
+      <MessageActions
+        onCopy={onCopy}
+        onRemove={onRemove}
+        onResend={onResend}
+        className={cn(FLOATING_CHIP_CLASS, "absolute right-0 bottom-0 rounded-md p-0.5")}
+      />
     </div>
   );
 }
@@ -249,7 +261,7 @@ function StreamingTail({ text, components }: { text: string; components: Compone
 function StreamingAssistant({ text, components }: { text: string; components: Components }) {
   const { chunks, tail } = useStreamChunks(text);
   return (
-    <div className={cn(ASSISTANT_PROSE_CLASS, ASSISTANT_ACTIONS_GUTTER_CLASS)}>
+    <div className={ASSISTANT_PROSE_CLASS}>
       {chunks.map((chunk, i) => (
         <MarkdownChunk key={i} text={chunk} components={components} />
       ))}

@@ -34,7 +34,7 @@
 
   --surface: oklch(1 0 0 / 6%);
   --surface-active: oklch(1 0 0 / 11%);
-  --code-surface: oklch(0 0 0 / 30%);
+  --code-surface: oklch(0.12 0.006 285);
 }
 
 :root[data-theme="black"] {
