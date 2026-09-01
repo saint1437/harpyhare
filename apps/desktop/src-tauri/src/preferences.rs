@@ -12,6 +12,8 @@ const ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
 const GROQ_API_KEY_ENV: &str = "GROQ_API_KEY";
 const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
 const XAI_API_KEY_ENV: &str = "XAI_API_KEY";
+const XCLIS_API_KEY_ENV: &str = "XCLIS_API_KEY";
+const DEEPGRAM_API_KEY_ENV: &str = "DEEPGRAM_API_KEY";
 
 pub fn load_dotenv_files() {
     let _ = dotenvy::dotenv();
@@ -23,6 +25,30 @@ pub fn load_dotenv_files() {
     }
 }
 
+fn fill_if_empty(target: &mut String, candidate: Option<String>) {
+    if !target.is_empty() {
+        return;
+    }
+    if let Some(value) = candidate {
+        let value = value.trim();
+        if !value.is_empty() {
+            *target = value.to_string();
+        }
+    }
+}
+
+fn apply_direct_env_key_fallback(
+    settings: &mut settings::Settings,
+    xclis: Option<String>,
+    deepgram: Option<String>,
+) {
+    // Access codes proxy the built-in vendors, but Xclis and Deepgram are
+    // intentionally direct. Their env keys therefore still matter when an
+    // access code is present.
+    fill_if_empty(&mut settings.xclis_api_key, xclis);
+    fill_if_empty(&mut settings.deepgram_api_key, deepgram);
+}
+
 pub fn load_settings_with_env_key_fallback(app: &AppHandle) -> settings::Settings {
     let mut settings = settings::Settings::load(&settings_path(app))
         .unwrap_or_else(|_| settings::Settings::default());
@@ -31,6 +57,11 @@ pub fn load_settings_with_env_key_fallback(app: &AppHandle) -> settings::Setting
         std::env::var(GROQ_API_KEY_ENV).ok(),
         std::env::var(OPENAI_API_KEY_ENV).ok(),
         std::env::var(XAI_API_KEY_ENV).ok(),
+    );
+    apply_direct_env_key_fallback(
+        &mut settings,
+        std::env::var(XCLIS_API_KEY_ENV).ok(),
+        std::env::var(DEEPGRAM_API_KEY_ENV).ok(),
     );
     settings
 }
