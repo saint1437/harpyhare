@@ -24,6 +24,12 @@ const WRAP_ON_LABEL = "Переносить длинные строки";
 const WRAP_OFF_LABEL = "Не переносить строки";
 const ACTION_CLASS = "size-6";
 const MIN_GUTTER_DIGITS = 2;
+/**
+ * Окно узкое и висит поверх созвона: горизонтальная прокрутка там требует
+ * второй руки, а перенос — нет. Форму кода он ломает, но прочитать строку
+ * целиком важнее, и выключается он одной кнопкой.
+ */
+const WRAP_BY_DEFAULT = true;
 
 function gutterDigits(lineCount: number): number {
   return Math.max(MIN_GUTTER_DIGITS, String(lineCount).length);
@@ -52,7 +58,7 @@ function useCopiedFlag(): [copied: boolean, markCopied: () => void] {
 }
 
 export function CodeBlock({ language, code, codeClassName, children }: CodeBlockProps) {
-  const [wrapped, setWrapped] = useState(false);
+  const [wrapped, setWrapped] = useState(WRAP_BY_DEFAULT);
   const [copied, markCopied] = useCopiedFlag();
   const lines = useMemo(() => trimTrailingEmptyLine(splitRenderedLines(children)), [children]);
 

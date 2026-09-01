@@ -50,12 +50,12 @@ describe("CodeBlock", () => {
     expect(number?.getAttribute("aria-hidden")).toBe("true");
   });
 
-  it("переключает перенос длинных строк", () => {
+  it("переносит длинные строки по умолчанию и выключается кнопкой", () => {
     const { container } = renderBlock();
     const block = container.querySelector(".code-block");
-    expect(block?.getAttribute("data-wrap")).toBe("false");
-    fireEvent.click(screen.getByTitle("Переносить длинные строки"));
     expect(block?.getAttribute("data-wrap")).toBe("true");
-    expect(screen.getByTitle("Не переносить строки")).toBeTruthy();
+    fireEvent.click(screen.getByTitle("Не переносить строки"));
+    expect(block?.getAttribute("data-wrap")).toBe("false");
+    expect(screen.getByTitle("Переносить длинные строки")).toBeTruthy();
   });
 });
