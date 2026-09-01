@@ -119,8 +119,6 @@ const GLOBAL_HOTKEYS: &[(&str, GlobalRegistrar, GlobalUnregistrar)] = &[
         hotkey::register_duplicate_chat,
         hotkey::unregister_duplicate_chat,
     ),
-    (hotkeys::ACTION_MOVE_WINDOW, hotkey::register_arrow_family, hotkey::unregister_arrow_family),
-    (hotkeys::ACTION_RESIZE_WINDOW, hotkey::register_arrow_family, hotkey::unregister_arrow_family),
 ];
 
 pub fn register_main_window_hotkeys(app: &AppHandle, s: &settings::Settings) {
@@ -143,15 +141,6 @@ pub fn unregister_main_window_hotkeys_for(app: &AppHandle, s: &settings::Setting
         }
     }
     hotkey::unregister_cancel(app, &hotkeys::effective(&s.hotkeys, hotkeys::ACTION_CANCEL_RECORDING));
-}
-
-pub fn focus_main_window_if_unfocused(app: &AppHandle) {
-    if let Some(w) = main_window(app) {
-        if !w.is_focused().unwrap_or(false) {
-            let _ = w.show();
-            let _ = w.set_focus();
-        }
-    }
 }
 
 pub fn hide_main_window_for_capture(app: &AppHandle) -> bool {

@@ -10,6 +10,7 @@ export function useComboKey(combo: string, enabled: boolean, onTrigger: () => vo
     if (!enabled) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat) return;
+      if (e.defaultPrevented) return;
       if (!matchesPrepared(e, prepared)) return;
       e.preventDefault();
       onTrigger();

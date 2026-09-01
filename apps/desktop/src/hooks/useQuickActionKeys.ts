@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useLatestRef } from "@/hooks/useLatestRef";
-import { matchesModifier, parseModifier } from "@/lib/hotkey-modifier";
+import { matchesModifier, parseFamilyModifier } from "@/lib/hotkey-modifier";
 import { quickActionDigit } from "@/lib/quick-actions";
 
 const DIGIT_CODE_PREFIX = "Digit";
@@ -20,8 +20,8 @@ export function useQuickActionKeys(
   const onRunRef = useLatestRef(onRun);
 
   useEffect(() => {
-    if (combo.trim() === "") return;
-    const expected = parseModifier(combo);
+    const expected = parseFamilyModifier(combo);
+    if (expected === null) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat) return;
       if (!e.code.startsWith(DIGIT_CODE_PREFIX)) return;

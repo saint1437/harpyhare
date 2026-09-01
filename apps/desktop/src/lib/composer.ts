@@ -36,6 +36,10 @@ export function extractImageItems(items: ArrayLike<DataTransferItem>): File[] {
   return files;
 }
 
+export function hasFileItems(items: ArrayLike<DataTransferItem>): boolean {
+  return Array.from(items).some((it) => it.kind === "file");
+}
+
 export function acceptedNewAttachments(current: number, adding: number): number {
   return Math.max(0, Math.min(adding, ATTACHMENT_LIMIT - current));
 }

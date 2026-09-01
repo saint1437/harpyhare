@@ -17,7 +17,7 @@ import { MarkdownChunk } from "@/components/MarkdownChunk";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import type { ChatMessage } from "@/lib/chats";
 import { imageDataUrl, type ImagePayload } from "@/lib/composer";
-import { matchesModifier, parseModifier } from "@/lib/hotkey-modifier";
+import { matchesModifier, parseFamilyModifier } from "@/lib/hotkey-modifier";
 import { isMessageCopyable } from "@/lib/message-clipboard";
 import { splitStableTail } from "@/lib/stream-markdown";
 import { cn } from "@/lib/utils";
@@ -178,7 +178,8 @@ function useHotkeyScroll(
   modifier: string,
 ): void {
   useEffect(() => {
-    const expected = parseModifier(modifier);
+    const expected = parseFamilyModifier(modifier);
+    if (expected === null) return;
     const onKey = (e: KeyboardEvent) => {
       const dir = e.code === "ArrowDown" ? 1 : e.code === "ArrowUp" ? -1 : 0;
       if (dir === 0) return;

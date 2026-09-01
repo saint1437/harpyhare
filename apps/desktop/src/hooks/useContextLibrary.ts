@@ -14,6 +14,7 @@ import {
   type ContextDoc,
   type ContextLibrary,
 } from "@/lib/context-library";
+import { LIBRARY_SUBJECT, onSaveError } from "@/lib/persist-errors";
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -65,7 +66,7 @@ export function useContextLibrary(): ContextLibraryApi {
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       pending.current = false;
-      void saveContextLibrary(serializeLibrary(library));
+      void saveContextLibrary(serializeLibrary(library)).catch(onSaveError(LIBRARY_SUBJECT));
     }, SAVE_DEBOUNCE_MS);
     return () => {
       clearTimeout(saveTimer.current);

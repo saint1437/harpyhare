@@ -103,6 +103,7 @@ export function NotesPanel({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== ESCAPE_KEY) return;
+      if (e.defaultPrevented) return;
       e.preventDefault();
       stepBack();
     };

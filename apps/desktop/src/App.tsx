@@ -64,7 +64,7 @@ import type {
   Settings,
 } from "@/ipc/types";
 import { modelProvidersMissingKey, sttProvidersMissingKey } from "@/lib/api-keys";
-import { chatRequestOptions, type Chat, type ChatMessage } from "@/lib/chats";
+import { CHAT_LIMIT, chatRequestOptions, type Chat, type ChatMessage } from "@/lib/chats";
 import { appendTranscript } from "@/lib/composer";
 import { libraryContextBlocks, type ContextLibrary } from "@/lib/context-library";
 import { isNetworkError, isRetryable, type AppError } from "@/lib/errors";
@@ -77,6 +77,7 @@ import { defaultModelFor } from "@/lib/models";
 import type { ModelInfo } from "@/lib/models";
 import { DEFAULT_MODE, nextMode, NOTES_MODE, type AppModeId } from "@/lib/modes";
 import { notify } from "@/lib/notify";
+import { keyboardLayerOpen } from "@/lib/portalled-layers";
 import { mergePresets, presetText, type PromptPreset } from "@/lib/presets";
 import { queryKeys } from "@/lib/query-client";
 import { filledQuickActions } from "@/lib/quick-actions";
@@ -92,7 +93,19 @@ const USER_CONTEXT_SYSTEM_HEADER = "Контекст от пользовател
 const SYSTEM_BLOCKS_SEPARATOR = "\n\n";
 
 const settingsSaveErrorText = (err: string) => `Ошибка сохранения настроек: ${err}`;
+const leaveSaveErrorText = (err: unknown) =>
+  `Не удалось сохранить перед выходом, окно оставлено открытым: ${String(err)}`;
 const COPY_IMAGE_ERROR_TEXT = "Не удалось скопировать картинку в буфер обмена";
+const CHAT_LIMIT_NOTICE = `Открыто предельное число чатов (${String(CHAT_LIMIT)}) — закройте лишний`;
+const RETRY_ANSWER_LABEL = "Повторить запрос — ответ не пришёл";
+const RETRY_TRANSCRIPTION_LABEL = "Повторить распознавание";
+
+function lastUserMessageIndex(messages: ChatMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === "user") return i;
+  }
+  return -1;
+}
 
 function historyWithNewUserMessage(
   chat: Chat,
@@ -565,6 +578,7 @@ interface AppComposerProps {
   onCaptureRegion: () => void;
   streaming: boolean;
   showRetry: boolean;
+  retryLabel: string;
   onSend: () => void;
   onStop: () => void;
   onRetry: () => void;
@@ -583,6 +597,7 @@ function AppComposer({
   onCaptureRegion,
   streaming,
   showRetry,
+  retryLabel,
   onSend,
   onStop,
   onRetry,
@@ -610,6 +625,7 @@ function AppComposer({
       onRetry={onRetry}
       streaming={streaming}
       showRetry={showRetry}
+      retryLabel={retryLabel}
       presets={presets}
       library={library}
       models={models}
@@ -654,7 +670,6 @@ export default function App() {
   const [unreadAnswer, setUnreadAnswer] = useState(false);
   const notesMode = mode === NOTES_MODE;
   const miniModeRef = useLatestRef(miniMode);
-  const notesModeRef = useLatestRef(notesMode);
   const teleprompterResumeRef = useRef({ text: "", offset: 0 });
 
   const revealChat = useCallback(() => {
@@ -757,15 +772,21 @@ export default function App() {
     ),
   );
 
+  const connectivity = useConnectivity();
+  const promptUnavailable = teleprompterOpen || connectivity.offline || miniMode || notesMode;
+  const promptUnavailableRef = useLatestRef(promptUnavailable);
+  const hotkeySuppressed = useCallback(
+    () => promptUnavailableRef.current || keyboardLayerOpen(),
+    [promptUnavailableRef],
+  );
+
   const sendFromHotkey = useCallback(() => {
-    if (notesModeRef.current) return;
+    if (hotkeySuppressed()) return;
     doSend();
-  }, [doSend, notesModeRef]);
+  }, [doSend, hotkeySuppressed]);
 
   useWindowControls(settings.hotkeys, sendFromHotkey, bumpOpacity, bumpWindowSize);
   usePttSuspend(effectiveCombo(settings.hotkeys, "record"));
-  const connectivity = useConnectivity();
-  const promptUnavailable = teleprompterOpen || connectivity.offline || miniMode || notesMode;
   const { ref: promptRef, focus: focusPrompt } = usePromptFocus(promptUnavailable);
 
   const focusFrameRef = useRef(0);
@@ -780,21 +801,30 @@ export default function App() {
     [],
   );
 
+  const atChatLimit = useCallback(() => {
+    if (chatsRef.current.chats.length < CHAT_LIMIT) return false;
+    notify({ variant: "error", title: "Чаты", message: CHAT_LIMIT_NOTICE });
+    return true;
+  }, [chatsRef]);
+
   const createChat = useCallback(() => {
+    if (atChatLimit()) return;
     chatsRef.current.newChat();
     revealChat();
     focusPromptSoon();
-  }, [chatsRef, focusPromptSoon, revealChat]);
+  }, [atChatLimit, chatsRef, focusPromptSoon, revealChat]);
 
   const duplicateActiveChat = useCallback(() => {
+    if (atChatLimit()) return;
     chatsRef.current.duplicateChat(chatsRef.current.activeId);
     revealChat();
     focusPromptSoon();
-  }, [chatsRef, focusPromptSoon, revealChat]);
+  }, [atChatLimit, chatsRef, focusPromptSoon, revealChat]);
   useEffect(() => onEvent("duplicate-chat", duplicateActiveChat), [duplicateActiveChat]);
 
   const modeSwitchAvailable = !miniMode && !teleprompterOpen && !connectivity.offline;
   const toggleMode = useCallback(() => {
+    if (keyboardLayerOpen()) return;
     setMode(nextMode);
   }, []);
   useComboKey(effectiveCombo(settings.hotkeys, "toggle_mode"), modeSwitchAvailable, toggleMode);
@@ -821,7 +851,7 @@ export default function App() {
   }, [streamRef, chatsRef]);
   useComboKey(
     effectiveCombo(settings.hotkeys, "cancel_stream"),
-    !!stream.streaming[chats.activeId] && !teleprompterOpen,
+    !!stream.streaming[chats.activeId] && !teleprompterOpen && !notesMode,
     stopActiveStream,
   );
 
@@ -839,11 +869,11 @@ export default function App() {
   );
   const runQuickActionAt = useCallback(
     (index: number) => {
-      if (promptUnavailable) return;
+      if (hotkeySuppressed()) return;
       const action = quickActions[index];
       if (action) runQuickAction(action);
     },
-    [promptUnavailable, quickActions, runQuickAction],
+    [hotkeySuppressed, quickActions, runQuickAction],
   );
   useQuickActionKeys(quickActionCombo, quickActions.length, runQuickActionAt);
 
@@ -876,9 +906,21 @@ export default function App() {
   const error: AppError | null = sttError ?? screenshot.error ?? stream.error[activeId] ?? null;
   const partial = activeStreaming ? (stream.partial[activeId] ?? "") : null;
   const reportNetworkError = connectivity.reportNetworkError;
+  const reportedNetworkErrorRef = useRef<AppError | null>(null);
   useEffect(() => {
-    if (isNetworkError(error)) reportNetworkError();
+    if (!isNetworkError(error)) return;
+    if (reportedNetworkErrorRef.current === error) return;
+    reportedNetworkErrorRef.current = error;
+    reportNetworkError();
   }, [error, reportNetworkError]);
+  const streamError = stream.error[activeId] ?? null;
+  const answerRetry = useMemo(() => {
+    if (showRetry || streamError === null || !isRetryable(streamError)) return null;
+    return () => {
+      const index = lastUserMessageIndex(chatsRef.current.active.messages);
+      if (index >= 0) resendFromMessage(index);
+    };
+  }, [showRetry, streamError, chatsRef, resendFromMessage]);
   const teleprompterText = toReadingText(
     partial !== null && partial !== "" ? partial : lastAssistantText(active.messages),
   );
@@ -962,9 +1004,11 @@ export default function App() {
   }, []);
 
   const leaveToLauncher = () => {
-    void Promise.allSettled([chats.flush(), contextLibrary.flush(), flushSettings()]).then(
-      stopMainWindow,
-    );
+    void Promise.all([chats.flush(), contextLibrary.flush(), flushSettings()])
+      .then(stopMainWindow)
+      .catch((err: unknown) => {
+        notify({ variant: "error", title: "Ошибка", message: leaveSaveErrorText(err) });
+      });
   };
 
   if (miniMode) {
@@ -1056,12 +1100,13 @@ export default function App() {
               library={contextLibrary.library}
               onCaptureRegion={screenshot.capture}
               streaming={activeStreaming}
-              showRetry={showRetry}
+              showRetry={answerRetry !== null || showRetry}
+              retryLabel={answerRetry !== null ? RETRY_ANSWER_LABEL : RETRY_TRANSCRIPTION_LABEL}
               onSend={doSend}
               onStop={() => {
                 stream.stop(activeId);
               }}
-              onRetry={retry}
+              onRetry={answerRetry ?? retry}
               promptRef={promptRef}
               quickActions={quickActions}
               quickActionCombo={quickActionCombo}

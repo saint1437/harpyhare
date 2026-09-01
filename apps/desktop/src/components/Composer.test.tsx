@@ -50,6 +50,7 @@ function renderComposer(overrides: Partial<ComposerProps> = {}) {
     onStop: vi.fn(),
     onClearHistory: vi.fn(),
     onRetry: vi.fn(),
+    retryLabel: "Повторить",
     streaming: false,
     showRetry: false,
     presets: [],

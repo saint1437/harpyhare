@@ -2,6 +2,7 @@ import { Menu } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { IconButton } from "@/components/IconButton";
 import { ShortcutTooltip } from "@/components/ShortcutTooltip";
+import { insideFloatingLayer, keyboardLayerOpen } from "@/lib/portalled-layers";
 import { cn } from "@/lib/utils";
 
 export interface ToolbarDockItem {
@@ -25,12 +26,6 @@ export const DOCK_BUTTON_CLASS = "rounded-full hover:bg-transparent";
 const OPEN_LABEL = "Панель действий";
 const CLOSE_LABEL = "Закрыть панель";
 const ESCAPE_KEY = "Escape";
-const PORTALLED_LAYER_SELECTOR =
-  "[data-radix-popper-content-wrapper], [data-slot='popover-content']";
-
-function insidePortalledLayer(target: EventTarget | null): boolean {
-  return target instanceof Element && target.closest(PORTALLED_LAYER_SELECTOR) !== null;
-}
 
 const DOCK_TOOLTIP_SIDE = "left";
 
@@ -63,14 +58,16 @@ export function ToolbarDock({ items, leading }: ToolbarDockProps) {
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (e: MouseEvent) => {
-      if (insidePortalledLayer(e.target)) return;
+      if (insideFloatingLayer(e.target)) return;
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
         setOpen(false);
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== ESCAPE_KEY) return;
-      if (document.querySelector(PORTALLED_LAYER_SELECTOR) !== null) return;
+      if (e.defaultPrevented) return;
+      if (keyboardLayerOpen()) return;
+      e.preventDefault();
       closeAndRestoreFocus();
     };
     document.addEventListener("mousedown", onPointerDown);

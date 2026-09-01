@@ -70,6 +70,7 @@ export interface ComposerProps {
   onStop: () => void;
   onClearHistory: () => void;
   onRetry: () => void;
+  retryLabel: string;
   streaming: boolean;
   showRetry: boolean;
   presets: { id: string; name: string }[];
@@ -351,6 +352,7 @@ type ComposerToolbarProps = RequestParamsProps &
     | "onClearHistory"
     | "showRetry"
     | "onRetry"
+    | "retryLabel"
     | "streaming"
     | "onStop"
     | "onSend"
@@ -412,8 +414,8 @@ function ComposerToolbar(props: ComposerToolbarProps) {
           variant="ghost"
           size="icon-compact"
           onClick={props.onRetry}
-          title="Повторить распознавание"
-          aria-label="Повторить распознавание"
+          title={props.retryLabel}
+          aria-label={props.retryLabel}
         >
           <RotateCcw />
         </Button>
@@ -617,6 +619,7 @@ export function Composer(props: ComposerProps) {
           onOpenContext={openContextDialog}
           showRetry={props.showRetry}
           onRetry={props.onRetry}
+          retryLabel={props.retryLabel}
           modelOptions={modelOptions}
           modelProvidersMissingKey={props.modelProvidersMissingKey}
           thinkingDisabled={thinkingDisabled}

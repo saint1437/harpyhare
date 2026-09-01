@@ -15,6 +15,10 @@ export function parseModifier(spec: string): ModifierState {
   };
 }
 
+export function parseFamilyModifier(spec: string): ModifierState | null {
+  return spec.trim() === "" ? null : parseModifier(spec);
+}
+
 export function matchesModifier(event: ModifierState, expected: ModifierState): boolean {
   return (
     event.metaKey === expected.metaKey &&

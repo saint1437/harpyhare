@@ -23,12 +23,15 @@ import {
   ATTACHMENT_LIMIT,
   downscaleFactor,
   extractImageItems,
+  hasFileItems,
   NO_DOWNSCALE,
   toImagePayload,
   type Attachment,
   type ImagePayload,
 } from "@/lib/composer";
 import { DEFAULT_MODEL } from "@/lib/models";
+import { notify } from "@/lib/notify";
+import { CHATS_SUBJECT, onSaveError } from "@/lib/persist-errors";
 import { useLatestRef } from "./useLatestRef";
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -36,6 +39,9 @@ const DOWNSCALE_JPEG_QUALITY = 0.85;
 const DOWNSCALE_MEDIA_TYPE = "image/jpeg";
 const MIN_CANVAS_SIDE_PX = 1;
 const FILE_READ_ERROR = "Ошибка чтения файла";
+const ATTACHMENT_LIMIT_NOTICE = `Больше ${String(ATTACHMENT_LIMIT)} вложений в одном сообщении нельзя`;
+const UNSUPPORTED_FORMAT_NOTICE = "Такой формат картинки не поддерживается";
+const ATTACHMENT_READ_NOTICE = "Не удалось прочитать картинку";
 const NO_CANVAS_CONTEXT_ERROR = "2D-контекст канваса недоступен";
 
 const EMPTY_CHAT: Chat = {
@@ -53,6 +59,10 @@ const EMPTY_CHAT: Chat = {
   libraryDocIds: [],
   lastInputTokens: 0,
 };
+
+function notifyAttachmentRejected(message: string): void {
+  notify({ variant: "error", title: "Вложение", message });
+}
 
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -172,7 +182,7 @@ function useDebouncedChatsSave(chats: Chat[], loaded: RefObject<boolean>): () =>
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       pending.current = false;
-      void saveChats(serializeChats(chats));
+      void saveChats(serializeChats(chats)).catch(onSaveError(CHATS_SUBJECT));
     }, SAVE_DEBOUNCE_MS);
     return () => {
       clearTimeout(saveTimer.current);
@@ -335,21 +345,32 @@ export function useChats(defaultModel?: () => string): ChatsApi {
   const addDraftAttachments = useCallback(
     async (id: string, items: DataTransferItemList) => {
       const files = extractImageItems(items);
-      if (files.length === 0) return;
+      if (files.length === 0) {
+        if (hasFileItems(items)) notifyAttachmentRejected(UNSUPPORTED_FORMAT_NOTICE);
+        return;
+      }
       const slots = acceptedNewAttachments(draftAttachmentCount(id), files.length);
+      if (slots < files.length) notifyAttachmentRejected(ATTACHMENT_LIMIT_NOTICE);
+      let unreadable = 0;
       for (const file of files.slice(0, slots)) {
         const att = await fileToAttachmentOrNull(file);
         if (att) appendDraftAttachment(id, att);
+        else unreadable += 1;
       }
+      if (unreadable > 0) notifyAttachmentRejected(ATTACHMENT_READ_NOTICE);
     },
     [draftAttachmentCount, appendDraftAttachment],
   );
 
   const addDraftImage = useCallback(
     async (id: string, dataUrl: string, mediaType: string) => {
-      if (acceptedNewAttachments(draftAttachmentCount(id), 1) < 1) return;
+      if (acceptedNewAttachments(draftAttachmentCount(id), 1) < 1) {
+        notifyAttachmentRejected(ATTACHMENT_LIMIT_NOTICE);
+        return;
+      }
       const att = await fileToAttachmentOrNull(dataUrlToFile(dataUrl, mediaType));
       if (att) appendDraftAttachment(id, att);
+      else notifyAttachmentRejected(ATTACHMENT_READ_NOTICE);
     },
     [draftAttachmentCount, appendDraftAttachment],
   );
