@@ -166,24 +166,34 @@ function Assistant({ text, components }: { text: string; components: Components 
   );
 }
 
-function useSettledChunks(stable: string): string[] {
-  const settled = useRef<{ chunks: string[]; consumed: number }>({ chunks: [], consumed: 0 });
-  const state = settled.current;
-  if (stable.length < state.consumed) {
+/**
+ * Уже отрезанные куски копятся, а граница ищется только в том, что дописали
+ * с прошлого кадра: `splitStableTail` гоняет регэксп по всему переданному
+ * префиксу, и на длинном ответе это был бы полный скан на каждый кадр стрима.
+ * Резать по нарастающей корректно, потому что у каждого отрезанного куска
+ * fence-маркеры сбалансированы — граница ищется только вне них.
+ */
+function useStreamChunks(text: string): { chunks: string[]; tail: string } {
+  const accumulated = useRef<{ chunks: string[]; consumed: number }>({ chunks: [], consumed: 0 });
+  const state = accumulated.current;
+  if (text.length < state.consumed) {
     state.chunks = [];
     state.consumed = 0;
   }
-  if (stable.length > state.consumed) {
-    state.chunks = [...state.chunks, stable.slice(state.consumed)];
-    state.consumed = stable.length;
+  const [settled, tail] = splitStableTail(text.slice(state.consumed));
+  if (settled !== "") {
+    state.chunks = [...state.chunks, settled];
+    state.consumed += settled.length;
   }
-  return state.chunks;
+  return { chunks: state.chunks, tail };
 }
 
 function OpenFenceBlock({ fenced }: { fenced: string }) {
+  const body = openFenceBody(fenced);
+  if (body === "") return null;
   return (
     <pre>
-      <code>{openFenceBody(fenced)}</code>
+      <code>{body}</code>
     </pre>
   );
 }
@@ -201,8 +211,7 @@ function StreamingTail({ text, components }: { text: string; components: Compone
 }
 
 function StreamingAssistant({ text, components }: { text: string; components: Components }) {
-  const [stable, tail] = splitStableTail(text);
-  const chunks = useSettledChunks(stable);
+  const { chunks, tail } = useStreamChunks(text);
   return (
     <div className={cn(ASSISTANT_PROSE_CLASS, ASSISTANT_ACTIONS_GUTTER_CLASS)}>
       {chunks.map((chunk, i) => (

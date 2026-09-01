@@ -240,7 +240,7 @@ export interface ChatsApi {
   removeMessage: (id: string, index: number) => void;
   truncateMessages: (id: string, count: number) => void;
   clearMessages: (id: string) => void;
-  restoreMessages: (id: string, messages: ChatMessage[]) => void;
+  restoreMessages: (id: string, messages: ChatMessage[], lastInputTokens: number) => void;
   restoreChat: (chat: Chat, index: number) => void;
   flush: () => Promise<void>;
 }
@@ -447,8 +447,8 @@ export function useChats(defaultModel?: () => string): ChatsApi {
   const active = chats.find((c) => c.id === effectiveActiveId) ?? chats[0] ?? EMPTY_CHAT;
 
   const restoreMessages = useCallback(
-    (id: string, messages: ChatMessage[]) => {
-      patch(id, (c) => ({ ...c, messages }));
+    (id: string, messages: ChatMessage[], lastInputTokens: number) => {
+      patch(id, (c) => ({ ...c, messages, lastInputTokens }));
     },
     [patch],
   );
@@ -458,9 +458,9 @@ export function useChats(defaultModel?: () => string): ChatsApi {
       if (prev.length >= CHAT_LIMIT || prev.some((c) => c.id === chat.id)) return prev;
       const next = [...prev];
       next.splice(Math.min(index, next.length), 0, chat);
+      setActiveId(chat.id);
       return next;
     });
-    setActiveId(chat.id);
   }, []);
 
   return {

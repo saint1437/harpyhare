@@ -102,6 +102,8 @@ const RETRY_ANSWER_LABEL = "Повторить запрос — ответ не 
 const UNDO_LABEL = "Вернуть";
 const CHAT_CLOSED_NOTICE = "Чат закрыт вместе с перепиской";
 const HISTORY_CLEARED_NOTICE = "История чата очищена";
+const UNDO_CHAT_TOAST_PREFIX = "undo-chat|";
+const UNDO_HISTORY_TOAST_PREFIX = "undo-history|";
 const RETRY_TRANSCRIPTION_LABEL = "Повторить распознавание";
 
 function lastUserMessageIndex(messages: ChatMessage[]): number {
@@ -926,7 +928,7 @@ export default function App() {
 
   const active = chats.active;
   const activeId = chats.activeId;
-  const unreadAnswer = Object.values(unreadChats).some(Boolean);
+  const unreadAnswer = chats.chats.some((c) => unreadChats[c.id]);
   const activeStreaming = !!stream.streaming[activeId];
   const anyStreaming = Object.values(stream.streaming).some(Boolean);
   const activityFrame = isActivityStatus(state, anyStreaming);
@@ -1049,6 +1051,7 @@ export default function App() {
       if (!removed) return;
       notify({
         message: CHAT_CLOSED_NOTICE,
+        dedupeKey: `${UNDO_CHAT_TOAST_PREFIX}${id}`,
         action: {
           label: UNDO_LABEL,
           run: () => {
@@ -1062,15 +1065,16 @@ export default function App() {
 
   const clearHistoryWithUndo = useCallback(() => {
     const api = chatsRef.current;
-    const { id, messages } = api.active;
+    const { id, messages, lastInputTokens } = api.active;
     if (messages.length === 0) return;
     api.clearMessages(id);
     notify({
       message: HISTORY_CLEARED_NOTICE,
+      dedupeKey: `${UNDO_HISTORY_TOAST_PREFIX}${id}`,
       action: {
         label: UNDO_LABEL,
         run: () => {
-          chatsRef.current.restoreMessages(id, messages);
+          chatsRef.current.restoreMessages(id, messages, lastInputTokens);
         },
       },
     });

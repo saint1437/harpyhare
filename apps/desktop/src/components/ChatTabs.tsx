@@ -109,9 +109,10 @@ function ChatTab({
   onRemove,
 }: ChatTabProps) {
   const closeOnClick = isActive && closable;
-  const label = closeOnClick ? `Закрыть чат ${String(number)}` : `Чат ${String(number)}`;
+  const name = title === "" ? `Чат ${String(number)}` : title;
+  const label = closeOnClick ? `Закрыть «${name}» вместе с перепиской` : name;
   return (
-    <ShortcutTooltip label={title === "" ? label : title}>
+    <ShortcutTooltip label={label}>
       <button
         ref={ref}
         type="button"
