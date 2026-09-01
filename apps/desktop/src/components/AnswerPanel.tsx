@@ -101,8 +101,9 @@ function makePre(onTogglePreview: (code: string) => void) {
       <CodeBlock
         language={languageFromClassName(code.props.className)}
         code={reactChildrenText(code.props.children)}
+        codeClassName={code.props.className}
       >
-        {children}
+        {code.props.children}
       </CodeBlock>
     );
   };
@@ -241,7 +242,7 @@ function OpenFenceBlock({ fenced }: { fenced: string }) {
   if (body === "") return null;
   return (
     <CodeBlock language={openFenceLanguage(fenced)} code={body}>
-      <code>{body}</code>
+      {body}
     </CodeBlock>
   );
 }

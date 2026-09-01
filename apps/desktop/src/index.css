@@ -266,14 +266,38 @@ svg.lucide {
   height: 8px;
 }
 
-/* Рамку, фон и радиус несёт контейнер блока — у вложенного pre они лишние. */
+/* Рамку, фон и радиус несёт контейнер блока — у вложенного pre они лишние.
+   Горизонтальные отступы сняты с pre и отданы частям строки: иначе липкая
+   колонка номеров прилипала бы к краю padding-бокса, а не к краю прокрутки. */
 .prose-answer .code-block pre {
   margin: 0;
+  padding: 8px 0;
   border: 0;
   border-radius: 0;
   background: none;
 }
-.prose-answer .code-block[data-wrap="true"] pre {
+.prose-answer .code-block .code-line {
+  display: flex;
+}
+.prose-answer .code-block .code-line-number {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex: none;
+  width: calc(var(--code-gutter, 2ch) + 21px);
+  padding: 0 9px 0 12px;
+  background: var(--code-surface);
+  color: color-mix(in oklch, var(--muted-foreground) 65%, transparent);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  user-select: none;
+}
+.prose-answer .code-block .code-line-text {
+  min-width: 0;
+  padding-right: 12px;
+  white-space: pre;
+}
+.prose-answer .code-block[data-wrap="true"] .code-line-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

@@ -1,7 +1,8 @@
 import { Check, Copy, WrapText } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { IconButton } from "@/components/IconButton";
 import { codeLineCount, linesLabel } from "@/lib/code-block";
+import { splitRenderedLines, trimTrailingEmptyLine } from "@/lib/code-lines";
 import { cn } from "@/lib/utils";
 
 export interface CodeBlockProps {
@@ -9,7 +10,9 @@ export interface CodeBlockProps {
   language: string | null;
   /** Сырой текст блока: из него считаются строки и он же уходит в буфер. */
   code: string;
-  /** Подсвеченное содержимое; во время стрима — тот же сырой текст. */
+  /** Классы код-элемента от подсветки — на них висят цвета токенов. */
+  codeClassName?: string;
+  /** Содержимое блока: подсвеченное дерево или сырой текст во время стрима. */
   children: ReactNode;
 }
 
@@ -20,6 +23,11 @@ const COPIED_LABEL = "Скопировано";
 const WRAP_ON_LABEL = "Переносить длинные строки";
 const WRAP_OFF_LABEL = "Не переносить строки";
 const ACTION_CLASS = "size-6";
+const MIN_GUTTER_DIGITS = 2;
+
+function gutterDigits(lineCount: number): number {
+  return Math.max(MIN_GUTTER_DIGITS, String(lineCount).length);
+}
 
 function useCopiedFlag(): [copied: boolean, markCopied: () => void] {
   const [copied, setCopied] = useState(false);
@@ -43,9 +51,10 @@ function useCopiedFlag(): [copied: boolean, markCopied: () => void] {
   return [copied, markCopied];
 }
 
-export function CodeBlock({ language, code, children }: CodeBlockProps) {
+export function CodeBlock({ language, code, codeClassName, children }: CodeBlockProps) {
   const [wrapped, setWrapped] = useState(false);
   const [copied, markCopied] = useCopiedFlag();
+  const lines = useMemo(() => trimTrailingEmptyLine(splitRenderedLines(children)), [children]);
 
   const copy = () => {
     void navigator.clipboard.writeText(code).then(markCopied);
@@ -54,6 +63,7 @@ export function CodeBlock({ language, code, children }: CodeBlockProps) {
   return (
     <div
       data-wrap={wrapped}
+      style={{ "--code-gutter": `${String(gutterDigits(lines.length))}ch` } as CSSProperties}
       className="code-block my-2 overflow-hidden rounded-md bg-code-surface ring-1 ring-border ring-inset"
     >
       <div className="flex items-center gap-2 border-b border-border py-0.5 pr-0.5 pl-2.5 font-mono text-caption">
@@ -81,7 +91,18 @@ export function CodeBlock({ language, code, children }: CodeBlockProps) {
           {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
         </IconButton>
       </div>
-      <pre>{children}</pre>
+      <pre>
+        <code className={codeClassName}>
+          {lines.map((line, index) => (
+            <span key={index} className="code-line">
+              <span className="code-line-number" aria-hidden>
+                {index + 1}
+              </span>
+              <span className="code-line-text">{line}</span>
+            </span>
+          ))}
+        </code>
+      </pre>
     </div>
   );
 }

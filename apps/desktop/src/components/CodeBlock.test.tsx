@@ -9,7 +9,7 @@ afterEach(cleanup);
 function renderBlock(language: string | null = "go") {
   return render(
     <CodeBlock language={language} code={CODE}>
-      <code>{CODE}</code>
+      {CODE}
     </CodeBlock>,
   );
 }
@@ -36,6 +36,18 @@ describe("CodeBlock", () => {
       expect(screen.getByTitle("Скопировано")).toBeTruthy();
     });
     vi.unstubAllGlobals();
+  });
+
+  it("нумерует каждую строку и не рисует лишнюю после завершающего переноса", () => {
+    const { container } = renderBlock();
+    const numbers = [...container.querySelectorAll(".code-line-number")].map((n) => n.textContent);
+    expect(numbers).toEqual(["1", "2", "3"]);
+  });
+
+  it("номера не попадают в выделение", () => {
+    const { container } = renderBlock();
+    const number = container.querySelector(".code-line-number");
+    expect(number?.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("переключает перенос длинных строк", () => {
