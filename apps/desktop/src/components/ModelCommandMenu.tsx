@@ -22,6 +22,7 @@ const MENU_TITLE = "Модели";
 const MENU_DESCRIPTION = "Выбор голосовой модели и модели ответа";
 const INPUT_PLACEHOLDER = "Найти модель…";
 const EMPTY_TEXT = "Ничего не найдено.";
+const PENDING_GROUP_HEADING = "Загружаем каталог";
 const VOICE_GROUP_HEADING = "Голосовая модель";
 const ANSWER_GROUP_HEADING = "Модель ответа";
 const PROVIDER_HEADING_SEPARATOR = " · ";
@@ -82,7 +83,14 @@ export function ModelCommandMenu({
   modelsPending,
   onSelectModel,
 }: ModelCommandMenuProps) {
-  const answerGroups = modelsPending ? [] : modelGroups(selectableModels(models, activeModelId));
+  // Известные модели показываем сразу и обычными: они настоящие, из статических
+  // реестров, и прятать их ради ещё не пришедшего динамического каталога значит
+  // заблокировать заведомо рабочий выбор. Предварительность касается ТОЛЬКО
+  // неизвестной части — она и уходит в отдельную группу ниже.
+  const answerGroups = modelGroups(
+    modelsPending ? models : selectableModels(models, activeModelId),
+  );
+  const activeIsKnown = models.some((m) => m.id === activeModelId);
   const close = () => {
     onOpenChange(false);
   };
@@ -122,15 +130,6 @@ export function ModelCommandMenu({
             );
           })}
         </CommandGroup>
-        {modelsPending && (
-          <CommandGroup heading={ANSWER_GROUP_HEADING}>
-            <CommandItem value={activeModelId} disabled>
-              {activeModelId}
-              <ActiveMark active />
-            </CommandItem>
-            <PendingModelRows />
-          </CommandGroup>
-        )}
         {answerGroups.map((group) => {
           const locked = modelProvidersMissingKey.includes(group.id);
           return (
@@ -159,6 +158,17 @@ export function ModelCommandMenu({
             </CommandGroup>
           );
         })}
+        {modelsPending && (
+          <CommandGroup heading={PENDING_GROUP_HEADING}>
+            {!activeIsKnown && (
+              <CommandItem value={activeModelId} disabled>
+                {activeModelId}
+                <ActiveMark active />
+              </CommandItem>
+            )}
+            <PendingModelRows />
+          </CommandGroup>
+        )}
       </CommandList>
     </CommandDialog>
   );

@@ -168,9 +168,18 @@ describe("ModelCommandMenu пока каталог не пришёл", () => {
     // выбранная модель попала бы в «Другие» и прыгнула бы в свою группу, когда
     // приедет живой список. Пока данные предварительные — группы не строим.
     renderMenu({ modelsPending: true, activeModelId: "xclis/claude-sonnet-5" });
+    // Неизвестная выбранная модель не выдумывает себе группу «Другие»…
     expect(screen.queryByText("Другие")).toBeNull();
     expect(screen.getByText("xclis/claude-sonnet-5")).toBeTruthy();
     expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+  });
+
+  it("уже известные модели остаются доступными, пока каталог грузится", () => {
+    // Прятать их ради ещё не пришедшего динамического каталога значит
+    // заблокировать заведомо рабочий выбор — ровно это и было регрессией.
+    renderMenu({ modelsPending: true, activeModelId: "xclis/claude-sonnet-5" });
+    const known = screen.getByText(/Haiku/).closest("[data-slot='command-item']");
+    expect(known?.getAttribute("data-disabled")).not.toBe("true");
   });
 
   it("с пришедшим каталогом заглушек нет", () => {
