@@ -123,8 +123,14 @@ function draftImages(chat: Chat): ImagePayload[] {
   return chat.draftAttachments.map((a) => a.payload);
 }
 
+type PromptChat = Pick<Chat, "presetId" | "libraryDocIds" | "context">;
+
 /** Every piece of text a chat contributes to its system prompt, raw. */
-function chatPromptSources(presets: PromptPreset[], chat: Chat, library: ContextLibrary): string[] {
+function chatPromptSources(
+  presets: PromptPreset[],
+  chat: PromptChat,
+  library: ContextLibrary,
+): string[] {
   const context = chat.context.trim();
   return [
     presetText(presets, chat.presetId),
@@ -931,16 +937,26 @@ export default function App() {
       if (index >= 0) resendFromMessage(index);
     };
   }, [showRetry, streamError, chatsRef, resendFromMessage]);
-  const teleprompterText = toReadingText(
-    partial !== null && partial !== "" ? partial : lastAssistantText(active.messages),
+  const teleprompterText = useMemo(
+    () =>
+      teleprompterOpen
+        ? toReadingText(
+            partial !== null && partial !== "" ? partial : lastAssistantText(active.messages),
+          )
+        : "",
+    [teleprompterOpen, partial, active.messages],
   );
-  const hasAssistantReply = active.messages.some((m) => m.role === "assistant");
+  const hasAssistantReply = useMemo(
+    () => active.messages.some((m) => m.role === "assistant"),
+    [active.messages],
+  );
   const canCopy = !activeStreaming && hasAssistantReply;
   const canTeleprompt = hasAssistantReply || (partial !== null && partial !== "");
   const activeModelMaxInput = models.find((m) => m.id === active.model)?.maxInputTokens ?? 0;
+  const { presetId, libraryDocIds, context } = active;
   const promptSources = useMemo(
-    () => chatPromptSources(presets, active, contextLibrary.library),
-    [presets, active, contextLibrary.library],
+    () => chatPromptSources(presets, { presetId, libraryDocIds, context }, contextLibrary.library),
+    [presets, presetId, libraryDocIds, context, contextLibrary.library],
   );
   const activeSystem = useMemo(() => chatSystemPrompt(promptSources), [promptSources]);
   useSttKeyterms(useMemo(() => chatKeyterms(promptSources), [promptSources]));
@@ -958,22 +974,25 @@ export default function App() {
     });
   };
 
-  const copyMessage = (index: number) => {
-    const message = chatsRef.current.active.messages[index];
-    if (!message) return;
-    const text = messageCopyText(message);
-    if (text !== "") {
-      void navigator.clipboard.writeText(text);
-      return;
-    }
-    const image = messageCopyImage(message);
-    if (!image) return;
-    void imagePngBase64(image)
-      .then(copyImageToClipboard)
-      .catch(() => {
-        notify({ variant: "error", title: "Ошибка", message: COPY_IMAGE_ERROR_TEXT });
-      });
-  };
+  const copyMessage = useCallback(
+    (index: number) => {
+      const message = chatsRef.current.active.messages[index];
+      if (!message) return;
+      const text = messageCopyText(message);
+      if (text !== "") {
+        void navigator.clipboard.writeText(text);
+        return;
+      }
+      const image = messageCopyImage(message);
+      if (!image) return;
+      void imagePngBase64(image)
+        .then(copyImageToClipboard)
+        .catch(() => {
+          notify({ variant: "error", title: "Ошибка", message: COPY_IMAGE_ERROR_TEXT });
+        });
+    },
+    [chatsRef],
+  );
 
   const toggleScreenShareVisible = () => {
     const current = settingsRef.current;
@@ -1008,6 +1027,13 @@ export default function App() {
     updater.dismiss();
     saveSettingsReportingError({ ...settingsRef.current, skipped_version: skipped });
   };
+
+  const removeMessage = useCallback(
+    (index: number) => {
+      chatsRef.current.removeMessage(chatsRef.current.activeId, index);
+    },
+    [chatsRef],
+  );
 
   const onShellDragStart = useCallback((event: MouseEvent<HTMLElement>) => {
     if (event.button === 0 && event.target === event.currentTarget) void startWindowDrag();
@@ -1096,9 +1122,7 @@ export default function App() {
               scrollModifier={effectiveCombo(settings.hotkeys, "scroll_chat")}
               onTogglePreview={togglePreview}
               onCopyMessage={copyMessage}
-              onRemoveMessage={(index) => {
-                chats.removeMessage(activeId, index);
-              }}
+              onRemoveMessage={removeMessage}
               onResendMessage={resendFromMessage}
             />
 

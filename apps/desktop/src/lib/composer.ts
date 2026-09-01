@@ -57,8 +57,14 @@ export function appendTranscript(draft: string, transcript: string): string {
   return draft + TRANSCRIPT_SEPARATOR + transcript;
 }
 
+const dataUrlByPayload = new WeakMap<ImagePayload, string>();
+
 export function imageDataUrl(image: ImagePayload): string {
-  return `${DATA_URL_SCHEME}${image.media_type}${DATA_URL_BASE64_MARKER}${DATA_URL_BASE64_SEPARATOR}${image.data}`;
+  const cached = dataUrlByPayload.get(image);
+  if (cached !== undefined) return cached;
+  const url = `${DATA_URL_SCHEME}${image.media_type}${DATA_URL_BASE64_MARKER}${DATA_URL_BASE64_SEPARATOR}${image.data}`;
+  dataUrlByPayload.set(image, url);
+  return url;
 }
 
 export function toImagePayload(dataUrl: string, resultMediaType: string): ImagePayload {

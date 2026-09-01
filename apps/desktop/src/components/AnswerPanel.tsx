@@ -1,6 +1,7 @@
 import { Copy, MessagesSquare, RotateCw, Trash2 } from "lucide-react";
 import {
   isValidElement,
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -19,7 +20,7 @@ import type { ChatMessage } from "@/lib/chats";
 import { imageDataUrl, type ImagePayload } from "@/lib/composer";
 import { matchesModifier, parseFamilyModifier } from "@/lib/hotkey-modifier";
 import { isMessageCopyable } from "@/lib/message-clipboard";
-import { splitStableTail } from "@/lib/stream-markdown";
+import { openFenceBody, splitOpenFence, splitStableTail } from "@/lib/stream-markdown";
 import { cn } from "@/lib/utils";
 
 export interface AnswerPanelProps {
@@ -162,12 +163,49 @@ function Assistant({ text, components }: { text: string; components: Components 
   );
 }
 
+function useSettledChunks(stable: string): string[] {
+  const settled = useRef<{ chunks: string[]; consumed: number }>({ chunks: [], consumed: 0 });
+  const state = settled.current;
+  if (stable.length < state.consumed) {
+    state.chunks = [];
+    state.consumed = 0;
+  }
+  if (stable.length > state.consumed) {
+    state.chunks = [...state.chunks, stable.slice(state.consumed)];
+    state.consumed = stable.length;
+  }
+  return state.chunks;
+}
+
+function OpenFenceBlock({ fenced }: { fenced: string }) {
+  return (
+    <pre>
+      <code>{openFenceBody(fenced)}</code>
+    </pre>
+  );
+}
+
+function StreamingTail({ text, components }: { text: string; components: Components }) {
+  const split = splitOpenFence(text);
+  if (split === null) return <MarkdownChunk text={text} components={components} />;
+  const [before, fenced] = split;
+  return (
+    <>
+      {before !== "" && <MarkdownChunk text={before} components={components} />}
+      <OpenFenceBlock fenced={fenced} />
+    </>
+  );
+}
+
 function StreamingAssistant({ text, components }: { text: string; components: Components }) {
   const [stable, tail] = splitStableTail(text);
+  const chunks = useSettledChunks(stable);
   return (
     <div className={cn(ASSISTANT_PROSE_CLASS, ASSISTANT_ACTIONS_GUTTER_CLASS)}>
-      {stable !== "" && <MarkdownChunk text={stable} components={components} />}
-      {tail !== "" && <MarkdownChunk text={tail} components={components} />}
+      {chunks.map((chunk, i) => (
+        <MarkdownChunk key={i} text={chunk} components={components} />
+      ))}
+      {tail !== "" && <StreamingTail text={tail} components={components} />}
     </div>
   );
 }
@@ -273,20 +311,16 @@ function JumpToBottomButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-function ChatMessages({
+const ChatHistory = memo(function ChatHistory({
   messages,
-  partial,
   streaming,
-  streamStartedAt,
   components,
   onCopyMessage,
   onRemoveMessage,
   onResendMessage,
 }: {
   messages: ChatMessage[];
-  partial: string | null;
   streaming: boolean;
-  streamStartedAt?: number;
   components: Components;
   onCopyMessage: (index: number) => void;
   onRemoveMessage: (index: number) => void;
@@ -323,15 +357,9 @@ function ChatMessages({
           )}
         </MessageShell>
       ))}
-      {partial !== null && partial !== "" && (
-        <StreamingAssistant text={partial} components={components} />
-      )}
-      {streaming && (partial === null || partial === "") && (
-        <ThinkingIndicator startedAt={streamStartedAt ?? Date.now()} />
-      )}
     </>
   );
-}
+});
 
 export function AnswerPanel({
   messages,
@@ -383,16 +411,22 @@ export function AnswerPanel({
           {empty ? (
             <EmptyState />
           ) : (
-            <ChatMessages
-              messages={messages}
-              partial={partial}
-              streaming={streaming}
-              streamStartedAt={streamStartedAt}
-              components={components}
-              onCopyMessage={onCopyMessage}
-              onRemoveMessage={onRemoveMessage}
-              onResendMessage={onResendMessage}
-            />
+            <>
+              <ChatHistory
+                messages={messages}
+                streaming={streaming}
+                components={components}
+                onCopyMessage={onCopyMessage}
+                onRemoveMessage={onRemoveMessage}
+                onResendMessage={onResendMessage}
+              />
+              {partial !== null && partial !== "" && (
+                <StreamingAssistant key={chatId} text={partial} components={components} />
+              )}
+              {streaming && (partial === null || partial === "") && (
+                <ThinkingIndicator startedAt={streamStartedAt ?? Date.now()} />
+              )}
+            </>
           )}
         </div>
         {showJump && <JumpToBottomButton onClick={resetToBottom} />}

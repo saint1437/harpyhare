@@ -13,6 +13,18 @@ export function splitStableTail(text: string): [stable: string, tail: string] {
   return ["", text];
 }
 
+export function splitOpenFence(tail: string): [before: string, fenced: string] | null {
+  const markers = [...tail.matchAll(FENCE_MARKER_RE)];
+  const opener = (markers.length & 1) === 1 ? markers[markers.length - 1] : undefined;
+  if (opener?.index === undefined) return null;
+  return [tail.slice(0, opener.index), tail.slice(opener.index)];
+}
+
+export function openFenceBody(fenced: string): string {
+  const lineEnd = fenced.indexOf("\n");
+  return lineEnd < 0 ? "" : fenced.slice(lineEnd + 1);
+}
+
 function insideFence(prefix: string): boolean {
   const fenceMarkerCount = prefix.match(FENCE_MARKER_RE)?.length ?? 0;
   return (fenceMarkerCount & 1) === 1;
