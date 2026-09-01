@@ -124,18 +124,27 @@ impl LlmWire {
 /// Модели Xclis имеют префикс внутри приложения, чтобы никогда не столкнуться
 /// с прямым id Anthropic или OpenAI: у вендора те же имена. Префикс снимается
 /// перед отправкой запроса, а живой `/v1/models` заменяет этот список.
+///
+/// **`adaptive: false` у всех строк — не заглушка, а единственный безопасный
+/// вариант.** У Xclis рассуждение включается не полем запроса, а ОТДЕЛЬНОЙ
+/// моделью с суффиксом `-thinking`, и заводит её вендор не для всех: проверено
+/// живьём — `claude-opus-4-6-thinking` существует, а `claude-sonnet-5-thinking`
+/// отдаёт 404. Набор моделей вдобавок зависит от группы аккаунта, поэтому
+/// угадать его здесь нельзя в принципе. Живой каталог выставляет `adaptive`
+/// честно (`parse_models` ищет двойника с суффиксом среди пришедших id), и до
+/// его прихода обещать способность значит слать запрос в несуществующую модель.
 const XCLIS_MODELS: &[CatalogModel] = &[
     CatalogModel {
         id: "xclis/claude-sonnet-5",
         display_name: "Claude Sonnet 5 · Xclis",
-        adaptive: true,
+        adaptive: false,
         always_thinks: false,
         code_exec: false,
     },
     CatalogModel {
         id: "xclis/claude-opus-4-8",
         display_name: "Claude Opus 4.8 · Xclis",
-        adaptive: true,
+        adaptive: false,
         always_thinks: false,
         code_exec: false,
     },

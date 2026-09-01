@@ -566,18 +566,37 @@ mod tests {
         assert!(models[0].adaptive);
     }
 
+    /// До прихода живого каталога суффикс не дописывается НИКОМУ: вшитый список
+    /// не знает, какие суффиксные модели завёл вендор для этой группы аккаунта.
+    /// Проверено живьём: `claude-opus-4-6-thinking` существует, а
+    /// `claude-sonnet-5-thinking` отдаёт 404 — угадывание здесь стоит запроса
+    /// в несуществующую модель.
     #[test]
-    fn thinking_uses_fallback_catalog_before_live_models_arrive() {
+    fn thinking_suffix_is_not_guessed_before_live_models_arrive() {
         let spec = crate::llm::registry::spec(PROVIDER_XCLIS).expect("Xclis provider");
         let client = XclisClient::new(spec, "key".into());
+        assert_eq!(client.selected_model("xclis/claude-sonnet-5", true), "claude-sonnet-5");
+        assert_eq!(client.selected_model("xclis/gpt-5.6-sol", true), "gpt-5.6-sol");
+    }
+
+    /// А пришедший каталог включает суффикс ровно там, где двойник реально есть.
+    #[test]
+    fn thinking_suffix_follows_the_live_catalog() {
+        let spec = crate::llm::registry::spec(PROVIDER_XCLIS).expect("Xclis provider");
+        let client = XclisClient::new(spec, "key".into());
+        let live = XclisClient::parse_models(&json!({
+            "data": [
+                {"id": "claude-opus-4-6", "display_name": "Claude Opus 4.6"},
+                {"id": "claude-opus-4-6-thinking", "display_name": "Claude Opus 4.6 Thinking"},
+                {"id": "claude-sonnet-5", "display_name": "Claude Sonnet 5"}
+            ]
+        }));
+        *client.catalog.lock().unwrap() = live;
         assert_eq!(
-            client.selected_model("xclis/claude-sonnet-5", true),
-            "claude-sonnet-5-thinking"
+            client.selected_model("xclis/claude-opus-4-6", true),
+            "claude-opus-4-6-thinking"
         );
-        assert_eq!(
-            client.selected_model("xclis/gpt-5.6-sol", true),
-            "gpt-5.6-sol"
-        );
+        assert_eq!(client.selected_model("xclis/claude-sonnet-5", true), "claude-sonnet-5");
     }
 
     #[test]

@@ -159,3 +159,35 @@ fn a_row_needs_nothing_but_data_to_be_well_formed() {
     assert_eq!(models[0].max_input_tokens, UNKNOWN_MAX_INPUT_TOKENS);
     assert!(GEMINI.families.iter().all(|f| GEMINI.catalog.iter().any(|m| m.id.contains(f))));
 }
+
+/// У Xclis рассуждение — отдельная модель с суффиксом `-thinking`, и заводит её
+/// вендор не для всех: `claude-opus-4-6-thinking` существует, а
+/// `claude-sonnet-5-thinking` отдаёт 404. Пока живой каталог не пришёл, обещать
+/// способность нельзя — `selected_model` дописал бы суффикс и отправил запрос
+/// в несуществующую модель.
+#[test]
+fn xclis_fallback_catalog_promises_no_thinking() {
+    let xclis = PROVIDERS
+        .iter()
+        .find(|p| p.id == xclis::PROVIDER_XCLIS)
+        .expect("строка Xclis в реестре");
+    assert!(
+        xclis.catalog.iter().all(|m| !m.adaptive),
+        "вшитый каталог Xclis не может обещать рассуждение: суффиксную модель заводит вендор, \
+         и набор зависит от группы аккаунта",
+    );
+}
+
+/// Модель по умолчанию обязана быть в собственном каталоге вендора: иначе чат
+/// открывается на модели, которой у провайдера нет, и падает на первой отправке.
+#[test]
+fn every_default_model_exists_in_its_own_catalog() {
+    for spec in PROVIDERS {
+        assert!(
+            spec.catalog.iter().any(|m| m.id == spec.default_model),
+            "модель по умолчанию {} вендора {} отсутствует в его каталоге",
+            spec.default_model,
+            spec.id
+        );
+    }
+}
