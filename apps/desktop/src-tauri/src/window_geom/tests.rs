@@ -19,3 +19,18 @@ fn clamps_to_left_when_wider_than_monitor() {
 fn respects_negative_monitor_origin() {
     assert_eq!(clamp_window_x(-100, 760, -1920, 1920), -760);
 }
+
+#[test]
+fn keeps_window_size_that_fits_the_work_area() {
+    assert_eq!(clamp_window_size(960.0, 700.0, 1512.0, 944.0), (960.0, 700.0));
+}
+
+#[test]
+fn trims_window_to_the_work_area_on_both_axes() {
+    assert_eq!(clamp_window_size(1540.0, 1100.0, 1512.0, 944.0), (1512.0, 944.0));
+}
+
+#[test]
+fn leaves_the_mini_capsule_alone() {
+    assert_eq!(clamp_window_size(168.0, 48.0, 1512.0, 944.0), (168.0, 48.0));
+}

@@ -119,7 +119,7 @@ export function ToolbarDock({ items, leading }: ToolbarDockProps) {
                     disabled={item.disabled}
                     onClick={() => {
                       item.onClick?.();
-                      setOpen(false);
+                      closeAndRestoreFocus();
                     }}
                   >
                     {item.icon}

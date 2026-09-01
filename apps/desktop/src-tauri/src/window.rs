@@ -294,6 +294,7 @@ pub fn set_window_size(app: AppHandle, width: f64, height: f64) {
         return;
     };
     let scale = w.scale_factor().unwrap_or(1.0);
+    let (width, height) = clamped_to_work_area(&w, scale, width, height);
     let from_width = w.inner_size().map(|s| s.width as f64 / scale).unwrap_or(width);
     let from_height = w.inner_size().map(|s| s.height as f64 / scale).unwrap_or(height);
     let from_pos = w.outer_position().unwrap_or(tauri::PhysicalPosition::new(0, 0));
@@ -315,6 +316,19 @@ pub fn set_window_size(app: AppHandle, width: f64, height: f64) {
         y: from_pos.y,
     };
     std::thread::spawn(move || run_resize_tween(app, w, tween, my_gen));
+}
+
+fn clamped_to_work_area(w: &WebviewWindow, scale: f64, width: f64, height: f64) -> (f64, f64) {
+    let Some(monitor) = w.current_monitor().ok().flatten() else {
+        return (width, height);
+    };
+    let area = monitor.work_area().size;
+    window_geom::clamp_window_size(
+        width,
+        height,
+        f64::from(area.width) / scale,
+        f64::from(area.height) / scale,
+    )
 }
 
 fn anchored_target_x(w: &WebviewWindow, from_x: i32, width: f64, scale: f64) -> i32 {

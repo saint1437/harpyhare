@@ -50,6 +50,7 @@ function renderComposer(overrides: Partial<ComposerProps> = {}) {
     onStop: vi.fn(),
     onClearHistory: vi.fn(),
     onRetry: vi.fn(),
+    onRestoreFocus: vi.fn(),
     retryLabel: "Повторить",
     streaming: false,
     showRetry: false,
@@ -128,6 +129,6 @@ describe("Composer ModelSelect", () => {
     const { onPatch } = renderComposer({ models: [...CLAUDE_ONLY, GPT] });
     const list = openModelSelect();
     fireEvent.click(list.getByText("GPT-5.6 Terra"));
-    expect(onPatch).toHaveBeenCalledWith({ model: "gpt-5.6-terra" });
+    expect(onPatch).toHaveBeenCalledWith("c1", { model: "gpt-5.6-terra" });
   });
 });

@@ -50,6 +50,7 @@ import {
   type ContextDoc,
   type ContextLibrary,
 } from "@/lib/context-library";
+import { labelWithCombo } from "@/lib/hotkeys";
 import {
   modelGroups,
   modelLabel,
@@ -63,13 +64,14 @@ import { QuickActionsBar } from "./QuickActionsBar";
 
 export interface ComposerProps {
   chat: Chat;
-  onPatch: (patch: ChatPatch) => void;
+  onPatch: (chatId: string, patch: ChatPatch) => void;
   onRemoveAttachment: (index: number) => void;
   onPaste: (items: DataTransferItemList) => void;
   onSend: () => void;
   onStop: () => void;
   onClearHistory: () => void;
   onRetry: () => void;
+  onRestoreFocus: () => void;
   retryLabel: string;
   streaming: boolean;
   showRetry: boolean;
@@ -101,6 +103,8 @@ type PromptTextareaProps = Pick<ComposerProps, "onPaste" | "onSend"> & {
 };
 
 const PROMPT_MAX_HEIGHT_PX = 160;
+const PROMPT_SEND_KEY = "Enter";
+const SEND_LABEL = "Отправить";
 
 function usePromptAutosize(ref: RefObject<HTMLTextAreaElement | null>, value: string): void {
   const fit = useCallback(() => {
@@ -138,7 +142,8 @@ function PromptTextarea(props: PromptTextareaProps) {
         props.onPaste(items);
       }}
       onKeyDown={(e) => {
-        const sendShortcutPressed = e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing;
+        const sendShortcutPressed =
+          e.key === PROMPT_SEND_KEY && !e.shiftKey && !e.nativeEvent.isComposing;
         if (sendShortcutPressed) {
           e.preventDefault();
           e.stopPropagation();
@@ -147,7 +152,8 @@ function PromptTextarea(props: PromptTextareaProps) {
       }}
       spellCheck={false}
       placeholder="Расшифровка появится здесь — или напиши вопрос сам"
-      className="max-h-40 min-h-9 resize-none overflow-y-auto border-0 bg-transparent py-1.5 text-body focus-visible:ring-0"
+      style={{ maxHeight: PROMPT_MAX_HEIGHT_PX }}
+      className="min-h-9 resize-none overflow-y-auto border-0 bg-transparent py-1.5 text-body focus-visible:ring-0"
     />
   );
 }
@@ -308,7 +314,7 @@ function RequestParamsPopover(props: RequestParamsProps) {
               providersMissingKey={props.modelProvidersMissingKey}
               value={props.chat.model}
               onChange={(model) => {
-                props.onPatch({ model });
+                props.onPatch(props.chat.id, { model });
               }}
             />
           </ParamRow>
@@ -317,7 +323,7 @@ function RequestParamsPopover(props: RequestParamsProps) {
               presets={props.presets}
               presetId={props.chat.presetId}
               onChange={(presetId) => {
-                props.onPatch({ presetId });
+                props.onPatch(props.chat.id, { presetId });
               }}
             />
           </ParamRow>
@@ -327,7 +333,7 @@ function RequestParamsPopover(props: RequestParamsProps) {
               value={props.chat.thinkingEnabled}
               disabled={props.thinkingDisabled}
               onChange={(thinkingEnabled) => {
-                props.onPatch({ thinkingEnabled });
+                props.onPatch(props.chat.id, { thinkingEnabled });
               }}
             />
           </ParamRow>
@@ -336,7 +342,7 @@ function RequestParamsPopover(props: RequestParamsProps) {
               label={WEB_SEARCH_PARAM_LABEL}
               value={props.chat.webSearch}
               onChange={(webSearch) => {
-                props.onPatch({ webSearch });
+                props.onPatch(props.chat.id, { webSearch });
               }}
             />
           </ParamRow>
@@ -434,8 +440,8 @@ function ComposerToolbar(props: ComposerToolbarProps) {
         <Button
           size="icon-compact"
           onClick={props.onSend}
-          title="Отправить (⏎)"
-          aria-label="Отправить"
+          title={labelWithCombo(SEND_LABEL, PROMPT_SEND_KEY)}
+          aria-label={SEND_LABEL}
         >
           <ArrowUp />
         </Button>
@@ -575,22 +581,26 @@ export function Composer(props: ComposerProps) {
   const modelOptions = selectableModels(props.models, chat.model);
   const thinkingDisabled = thinkingLocked(modelOptions, chat.model);
   const [contextOpen, setContextOpen] = useState(false);
+  const [contextChatId, setContextChatId] = useState("");
   const [contextDraft, setContextDraft] = useState("");
   const [selectedDraft, setSelectedDraft] = useState<string[]>([]);
   const openContextDialog = () => {
+    setContextChatId(chat.id);
     setContextDraft(chat.context);
     setSelectedDraft(chat.libraryDocIds);
     setContextOpen(true);
   };
   const closeContextDialog = () => {
     setContextOpen(false);
+    props.onRestoreFocus();
   };
   const toggleSelectedDoc = (id: string) => {
     setSelectedDraft((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
   const saveContext = () => {
-    onPatch({ context: contextDraft, libraryDocIds: selectedDraft });
+    onPatch(contextChatId, { context: contextDraft, libraryDocIds: selectedDraft });
     setContextOpen(false);
+    props.onRestoreFocus();
   };
   return (
     <section>
@@ -605,7 +615,7 @@ export function Composer(props: ComposerProps) {
           fieldRef={props.promptRef}
           value={chat.draft}
           onChange={(draft) => {
-            onPatch({ draft });
+            onPatch(chat.id, { draft });
           }}
           onPaste={props.onPaste}
           onSend={props.onSend}

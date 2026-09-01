@@ -2,6 +2,7 @@ import { Minus, Pause, Play, Plus, RotateCcw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { IconButton } from "@/components/IconButton";
 import { matchesPrepared, prepareCombo } from "@/lib/hotkey-match";
+import { labelWithCombo } from "@/lib/hotkeys";
 import {
   advanceOffset,
   clampFont,
@@ -143,7 +144,7 @@ export function Teleprompter({
           <RotateCcw />
         </IconButton>
         <IconButton
-          title={playing ? "Пауза (Пробел)" : "Воспроизвести (Пробел)"}
+          title={labelWithCombo(playing ? "Пауза" : "Воспроизвести", pauseCombo)}
           onClick={() => {
             setPlaying((p) => !p);
           }}
@@ -172,7 +173,7 @@ export function Teleprompter({
           }}
         />
 
-        <IconButton title="Закрыть (Esc)" onClick={onClose}>
+        <IconButton title={labelWithCombo("Закрыть", closeCombo)} onClick={onClose}>
           <X />
         </IconButton>
       </div>

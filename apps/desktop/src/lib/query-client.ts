@@ -22,6 +22,20 @@ export const queryKeys = {
   models: ["models"] as const,
   officialPresets: ["official-presets"] as const,
   audioDevices: ["audio-devices"] as const,
-  countTokens: (model: string, options: RequestOptions, system: string, messagesKey: string) =>
-    ["count-tokens", model, options.thinking, options.webSearch, system, messagesKey] as const,
+  countTokens: (
+    chatId: string,
+    model: string,
+    options: RequestOptions,
+    systemDigest: string,
+    messagesKey: string,
+  ) =>
+    [
+      "count-tokens",
+      chatId,
+      model,
+      options.thinking,
+      options.webSearch,
+      systemDigest,
+      messagesKey,
+    ] as const,
 };

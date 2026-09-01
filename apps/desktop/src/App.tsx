@@ -67,6 +67,7 @@ import { modelProvidersMissingKey, sttProvidersMissingKey } from "@/lib/api-keys
 import { CHAT_LIMIT, chatRequestOptions, type Chat, type ChatMessage } from "@/lib/chats";
 import { appendTranscript } from "@/lib/composer";
 import { libraryContextBlocks, type ContextLibrary } from "@/lib/context-library";
+import { textDigest } from "@/lib/digest";
 import { isNetworkError, isRetryable, type AppError } from "@/lib/errors";
 import { effectiveCombo, formatCombo } from "@/lib/hotkeys";
 import { extractHtmlBlocks } from "@/lib/html-blocks";
@@ -345,8 +346,15 @@ const PROJECTED_TOKENS_STALE_MS = 10 * 60 * 1000;
 
 function useProjectedContextTokens(chat: Chat, system: string, streaming: boolean): number {
   const messagesKey = chat.messages.map((m) => `${m.role}:${String(m.text.length)}`).join("|");
+  const systemDigest = useMemo(() => textDigest(system), [system]);
   const { data } = useQuery({
-    queryKey: queryKeys.countTokens(chat.model, chatRequestOptions(chat), system, messagesKey),
+    queryKey: queryKeys.countTokens(
+      chat.id,
+      chat.model,
+      chatRequestOptions(chat),
+      systemDigest,
+      messagesKey,
+    ),
     queryFn: () => {
       const history: ChatMessageDto[] =
         chat.messages.length > 0
@@ -494,6 +502,7 @@ function AppHeader({
       id: "teleprompter",
       label: "Суфлёр",
       icon: <ScrollText />,
+      shortcut: formatCombo(effectiveCombo(hotkeys, "teleprompter")),
       disabled: !canTeleprompt,
       onClick: onOpenTeleprompter,
     },
@@ -582,6 +591,7 @@ interface AppComposerProps {
   onSend: () => void;
   onStop: () => void;
   onRetry: () => void;
+  onRestoreFocus: () => void;
   promptRef: RefObject<HTMLTextAreaElement | null>;
   quickActions: QuickAction[];
   quickActionCombo: string;
@@ -601,6 +611,7 @@ function AppComposer({
   onSend,
   onStop,
   onRetry,
+  onRestoreFocus,
   promptRef,
   quickActions,
   quickActionCombo,
@@ -610,9 +621,7 @@ function AppComposer({
   return (
     <Composer
       chat={active}
-      onPatch={(patch) => {
-        chats.patchChat(activeId, patch);
-      }}
+      onPatch={chats.patchChat}
       onRemoveAttachment={(i) => {
         chats.removeDraftAttachment(activeId, i);
       }}
@@ -623,6 +632,7 @@ function AppComposer({
         chats.clearMessages(activeId);
       }}
       onRetry={onRetry}
+      onRestoreFocus={onRestoreFocus}
       streaming={streaming}
       showRetry={showRetry}
       retryLabel={retryLabel}
@@ -1107,6 +1117,7 @@ export default function App() {
                 stream.stop(activeId);
               }}
               onRetry={answerRetry ?? retry}
+              onRestoreFocus={focusPromptSoon}
               promptRef={promptRef}
               quickActions={quickActions}
               quickActionCombo={quickActionCombo}
@@ -1120,7 +1131,10 @@ export default function App() {
 
       <ModelCommandMenu
         open={modelMenuOpen}
-        onOpenChange={setModelMenuOpen}
+        onOpenChange={(open) => {
+          setModelMenuOpen(open);
+          if (!open) focusPromptSoon();
+        }}
         sttProvider={settings.stt_provider}
         providersMissingKey={providersMissingKey}
         onSwitchSttProvider={switchSttProvider}
