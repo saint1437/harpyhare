@@ -2,6 +2,7 @@ use super::*;
 
 const GROQ_KEY: &str = "groq-key";
 const OPENAI_KEY: &str = "openai-key";
+const DEEPGRAM_KEY: &str = "deepgram-key";
 const ACCESS_TOKEN: &str = "itk_token";
 
 fn settings_with(provider: &str, access_token: &str) -> settings::Settings {
@@ -10,6 +11,7 @@ fn settings_with(provider: &str, access_token: &str) -> settings::Settings {
         access_token: access_token.into(),
         groq_api_key: GROQ_KEY.into(),
         openai_api_key: OPENAI_KEY.into(),
+        deepgram_api_key: DEEPGRAM_KEY.into(),
         ..settings::Settings::default()
     }
 }
@@ -27,6 +29,14 @@ fn direct_openai_takes_the_openai_key_and_talks_to_the_vendor() {
     let plan = stt_client_plan(&settings_with(settings::STT_PROVIDER_OPENAI, ""));
     assert_eq!(plan.provider_id, stt::registry::PROVIDER_OPENAI);
     assert_eq!(plan.api_key, OPENAI_KEY);
+    assert_eq!(plan.proxy_base_url, None);
+}
+
+#[test]
+fn direct_deepgram_uses_its_own_key_even_with_an_access_code() {
+    let plan = stt_client_plan(&settings_with(settings::STT_PROVIDER_DEEPGRAM, ACCESS_TOKEN));
+    assert_eq!(plan.provider_id, stt::registry::PROVIDER_DEEPGRAM);
+    assert_eq!(plan.api_key, DEEPGRAM_KEY);
     assert_eq!(plan.proxy_base_url, None);
 }
 
@@ -119,33 +129,27 @@ fn the_router_is_never_left_without_a_provider() {
     let catalog: llm::ModelCatalog = Arc::new(Mutex::new(Vec::new()));
     let client = build_llm_client(&empty, catalog);
     assert_eq!(client.provider_id(), llm::PROVIDER_ANTHROPIC);
-    assert!(
-        !client.known_models().is_empty(),
-        "без провайдеров дефолтная модель чата стала бы немаршрутизируемой"
-    );
+    assert!(!client.known_models().is_empty());
 }
 
-/// Every credential the app knows, filled with a distinct value. A new key
-/// field belongs here too — the test below is what tells you so.
 fn all_keys_filled() -> settings::Settings {
     settings::Settings {
         anthropic_api_key: ANTHROPIC_KEY.into(),
         groq_api_key: GROQ_KEY.into(),
         openai_api_key: OPENAI_KEY.into(),
         xai_api_key: XAI_KEY.into(),
+        deepgram_api_key: DEEPGRAM_KEY.into(),
         ..settings::Settings::default()
     }
 }
 
 #[test]
 fn every_registry_key_id_resolves_to_a_real_settings_field() {
-    // `api_key_for` answers "" for an id it does not know, which would lock the
-    // vendor forever with no error anywhere. This is the guard for that typo.
     let s = all_keys_filled();
     for spec in llm::registry::PROVIDERS {
         assert!(
             !settings::api_key_for(&s, spec.key_id).is_empty(),
-            "key_id {} у {} не указывает ни на одно поле настроек — добавь поле и ветку в settings::api_key_for",
+            "key_id {} у {} не указывает ни на одно поле настроек",
             spec.key_id,
             spec.id
         );
@@ -162,13 +166,8 @@ fn every_registry_key_id_resolves_to_a_real_settings_field() {
 
 #[test]
 fn a_vendor_the_relay_does_not_proxy_stays_locked_under_an_access_code() {
-    // Grok has no relay route, so a code must not pretend to unlock it.
     let s = keyed_settings("", "", ACCESS_TOKEN);
     for spec in llm::registry::PROVIDERS.iter().filter(|p| !p.proxied) {
-        assert!(
-            provider_access(spec, &s).is_none(),
-            "{} не проксируется — код доступа не должен его открывать",
-            spec.id
-        );
+        assert!(provider_access(spec, &s).is_none(), "{} не проксируется", spec.id);
     }
 }
