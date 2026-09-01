@@ -148,7 +148,8 @@ body.launcher {
 
 @media (prefers-reduced-motion: reduce) {
   .launcher-rise,
-  .thinking-shimmer {
+  .thinking-shimmer,
+  .animate-pulse {
     animation: none;
   }
 }
@@ -195,6 +196,16 @@ svg.lucide {
 
 .prose-answer > :first-child {
   margin-top: 0;
+}
+.prose-answer p,
+.prose-answer li,
+.prose-answer th,
+.prose-answer td,
+.prose-answer h1,
+.prose-answer h2,
+.prose-answer h3,
+.prose-answer h4 {
+  overflow-wrap: anywhere;
 }
 .prose-answer p {
   margin: 0 0 0.7em;
@@ -304,9 +315,12 @@ svg.lucide {
   border-left: 2px solid var(--primary);
   color: var(--muted-foreground);
 }
+.prose-answer .table-scroll {
+  margin: 0.6em 0;
+  overflow-x: auto;
+}
 .prose-answer table {
   border-collapse: collapse;
-  margin: 0.6em 0;
 }
 .prose-answer th,
 .prose-answer td {

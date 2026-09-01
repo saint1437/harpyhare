@@ -21,10 +21,12 @@ export function ShortcutTooltip({
       <Tooltip>
         <TooltipTrigger asChild>{children}</TooltipTrigger>
         <TooltipContent side={side} sideOffset={SIDE_OFFSET_PX}>
-          <span className="flex items-center gap-1.5 whitespace-nowrap">
+          <span className="flex items-center gap-1.5">
             {label}
             {shortcut !== undefined && shortcut !== "" && (
-              <kbd className="rounded-sm bg-background/20 px-1 font-sans text-hint">{shortcut}</kbd>
+              <kbd className="shrink-0 rounded-sm bg-background/20 px-1 font-sans text-hint whitespace-nowrap">
+                {shortcut}
+              </kbd>
             )}
           </span>
         </TooltipContent>

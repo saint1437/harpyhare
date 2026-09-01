@@ -30,6 +30,8 @@ describe("AnswerPanel — подсветка кода", () => {
         partial={null}
         streaming={false}
         scrollModifier="Alt"
+        recordCombo=""
+        screenshotCombo=""
         onTogglePreview={() => undefined}
         onCopyMessage={() => undefined}
         onRemoveMessage={() => undefined}
@@ -54,6 +56,8 @@ describe("AnswerPanel — подсветка кода", () => {
         partial={null}
         streaming={false}
         scrollModifier="Alt"
+        recordCombo=""
+        screenshotCombo=""
         onTogglePreview={() => undefined}
         onCopyMessage={() => undefined}
         onRemoveMessage={() => undefined}
@@ -75,6 +79,8 @@ describe("AnswerPanel — подсветка кода", () => {
         partial={null}
         streaming={false}
         scrollModifier="Alt"
+        recordCombo=""
+        screenshotCombo=""
         onTogglePreview={() => undefined}
         onCopyMessage={() => undefined}
         onRemoveMessage={() => undefined}
@@ -94,6 +100,8 @@ describe("AnswerPanel — индикатор ожидания", () => {
         partial=""
         streaming={true}
         scrollModifier="Alt"
+        recordCombo=""
+        screenshotCombo=""
         onTogglePreview={() => undefined}
         onCopyMessage={() => undefined}
         onRemoveMessage={() => undefined}
@@ -110,6 +118,8 @@ describe("AnswerPanel — индикатор ожидания", () => {
         partial="Привет"
         streaming={true}
         scrollModifier="Alt"
+        recordCombo=""
+        screenshotCombo=""
         onTogglePreview={() => undefined}
         onCopyMessage={() => undefined}
         onRemoveMessage={() => undefined}
@@ -126,6 +136,8 @@ describe("AnswerPanel — индикатор ожидания", () => {
         partial={null}
         streaming={false}
         scrollModifier="Alt"
+        recordCombo=""
+        screenshotCombo=""
         onTogglePreview={() => undefined}
         onCopyMessage={() => undefined}
         onRemoveMessage={() => undefined}
@@ -150,6 +162,8 @@ describe("AnswerPanel — картинки в сообщении пользов�
         partial={null}
         streaming={false}
         scrollModifier="Alt"
+        recordCombo=""
+        screenshotCombo=""
         onTogglePreview={() => undefined}
         onCopyMessage={() => undefined}
         onRemoveMessage={() => undefined}

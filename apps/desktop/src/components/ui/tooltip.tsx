@@ -25,9 +25,12 @@ function TooltipTrigger({ ...props }: React.ComponentProps<typeof TooltipPrimiti
   return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;
 }
 
+const TOOLTIP_COLLISION_PADDING = 8;
+
 function TooltipContent({
   className,
   sideOffset = 0,
+  collisionPadding = TOOLTIP_COLLISION_PADDING,
   children,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Content>) {
@@ -36,8 +39,9 @@ function TooltipContent({
       <TooltipPrimitive.Content
         data-slot="tooltip-content"
         sideOffset={sideOffset}
+        collisionPadding={collisionPadding}
         className={cn(
-          "z-50 w-fit origin-(--radix-tooltip-content-transform-origin) animate-in rounded-md bg-foreground px-2 py-1 text-caption text-balance text-background duration-150 fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:fill-mode-forwards data-[state=closed]:zoom-out-95",
+          "z-50 w-fit max-w-(--radix-tooltip-content-available-width) origin-(--radix-tooltip-content-transform-origin) animate-in rounded-md bg-foreground px-2 py-1 text-caption text-balance text-background duration-150 fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:fill-mode-forwards data-[state=closed]:zoom-out-95",
           className,
         )}
         {...props}

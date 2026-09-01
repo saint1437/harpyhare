@@ -2,6 +2,7 @@ import type Markdown from "react-markdown";
 import { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import { ExternalLinkAnchor } from "@/components/ExternalLinkAnchor";
+import { ScrollableTable } from "@/components/ScrollableTable";
 
 const PLAIN_TEXT_LANGUAGES = ["html"];
 const AUTODETECT_LANGUAGE_SUBSET = [
@@ -19,7 +20,7 @@ const AUTODETECT_LANGUAGE_SUBSET = [
   "java",
 ];
 
-export const PROSE_MARKDOWN_CLASS = "prose-answer text-chat leading-relaxed text-foreground/90";
+export const PROSE_MARKDOWN_CLASS = "prose-answer text-chat leading-relaxed text-foreground";
 
 export const REHYPE_PLUGINS: NonNullable<Parameters<typeof Markdown>[0]["rehypePlugins"]> = [
   [
@@ -28,4 +29,4 @@ export const REHYPE_PLUGINS: NonNullable<Parameters<typeof Markdown>[0]["rehypeP
   ],
 ];
 
-export const markdownComponents: Components = { a: ExternalLinkAnchor };
+export const markdownComponents: Components = { a: ExternalLinkAnchor, table: ScrollableTable };

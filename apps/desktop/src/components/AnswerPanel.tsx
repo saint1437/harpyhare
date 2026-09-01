@@ -11,6 +11,7 @@ import {
 } from "react";
 import type { ReactNode, RefObject } from "react";
 import { type Components } from "react-markdown";
+import { ComboChip } from "@/components/ComboChip";
 import { HtmlBlockChip } from "@/components/HtmlBlockChip";
 import { IconButton } from "@/components/IconButton";
 import { markdownComponents, PROSE_MARKDOWN_CLASS } from "@/components/markdown-config";
@@ -31,6 +32,8 @@ export interface AnswerPanelProps {
   streamStartedAt?: number;
   scrollStep?: number;
   scrollModifier: string;
+  recordCombo: string;
+  screenshotCombo: string;
   onTogglePreview: (code: string) => void;
   onCopyMessage: (index: number) => void;
   onRemoveMessage: (index: number) => void;
@@ -258,7 +261,23 @@ function useStickToBottom() {
   return { scrollRef, showJump, onScroll, resetToBottom, syncJump };
 }
 
-function EmptyState() {
+function EmptyHint({ combo, text }: { combo: string; text: string }) {
+  if (combo === "") return null;
+  return (
+    <span className="flex items-center gap-1.5 text-caption text-muted-foreground">
+      <ComboChip combo={combo} />
+      {text}
+    </span>
+  );
+}
+
+function EmptyState({
+  recordCombo,
+  screenshotCombo,
+}: {
+  recordCombo: string;
+  screenshotCombo: string;
+}) {
   return (
     <div className="grid h-full place-items-center">
       <div className="flex flex-col items-center gap-2.5 text-center">
@@ -266,6 +285,10 @@ function EmptyState() {
           <MessagesSquare className="size-4 text-muted-foreground" aria-hidden />
         </span>
         <span className="text-body text-muted-foreground">Чат появится здесь</span>
+        <span className="flex flex-col items-center gap-1">
+          <EmptyHint combo={recordCombo} text="удерживай — запишет и распознает речь" />
+          <EmptyHint combo={screenshotCombo} text="снимок области экрана в вопрос" />
+        </span>
       </div>
     </div>
   );
@@ -289,7 +312,7 @@ function MessageImages({ images }: { images: ImagePayload[] }) {
 
 function UserBubble({ text, images }: { text: string; images: ImagePayload[] }) {
   return (
-    <div className="flex max-w-[85%] flex-col gap-1.5 rounded-lg bg-surface px-3 py-1.5 text-chat text-foreground/90 ring-1 ring-border/50 ring-inset">
+    <div className="flex max-w-[85%] flex-col gap-1.5 rounded-lg bg-surface-active px-3 py-1.5 text-chat text-foreground ring-1 ring-border ring-inset">
       <MessageImages images={images} />
       {text !== "" && <span className="min-w-0 break-words whitespace-pre-wrap">{text}</span>}
     </div>
@@ -369,6 +392,8 @@ export function AnswerPanel({
   streamStartedAt,
   scrollStep,
   scrollModifier,
+  recordCombo,
+  screenshotCombo,
   onTogglePreview,
   onCopyMessage,
   onRemoveMessage,
@@ -409,7 +434,7 @@ export function AnswerPanel({
           className="flex min-h-0 w-full flex-col gap-2.5 overflow-y-auto pr-1.5"
         >
           {empty ? (
-            <EmptyState />
+            <EmptyState recordCombo={recordCombo} screenshotCombo={screenshotCombo} />
           ) : (
             <>
               <ChatHistory

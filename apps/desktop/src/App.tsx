@@ -456,6 +456,7 @@ interface AppHeaderProps {
   updater: UpdaterApi;
   chats: ChatsApi;
   stream: ClaudeStreams;
+  unread: Record<string, boolean>;
   mode: AppModeId;
   canCopy: boolean;
   canTeleprompt: boolean;
@@ -479,6 +480,7 @@ function AppHeader({
   updater,
   chats,
   stream,
+  unread,
   mode,
   canCopy,
   canTeleprompt,
@@ -570,6 +572,7 @@ function AppHeader({
           chats={chats.chats}
           activeId={chats.activeId}
           streaming={stream.streaming}
+          unread={unread}
           onSelect={chats.selectChat}
           onRemove={(id) => {
             stream.stop(id);
@@ -683,9 +686,10 @@ export default function App() {
   const [teleprompterOpen, setTeleprompterOpen] = useState(false);
   const [miniMode, setMiniMode] = useState(false);
   const [mode, setMode] = useState<AppModeId>(DEFAULT_MODE);
-  const [unreadAnswer, setUnreadAnswer] = useState(false);
+  const [unreadChats, setUnreadChats] = useState<Record<string, boolean>>({});
   const notesMode = mode === NOTES_MODE;
   const miniModeRef = useLatestRef(miniMode);
+  const notesModeRef = useLatestRef(notesMode);
   const teleprompterResumeRef = useRef({ text: "", offset: 0 });
 
   const revealChat = useCallback(() => {
@@ -747,13 +751,15 @@ export default function App() {
     (chatId: string, text: string) => {
       if (text === "") return;
       chatsRef.current.appendAssistantMessage(chatId, text);
-      if (miniModeRef.current) setUnreadAnswer(true);
+      const unseen =
+        chatId !== chatsRef.current.activeId || miniModeRef.current || notesModeRef.current;
+      if (unseen) setUnreadChats((prev) => ({ ...prev, [chatId]: true }));
       if (!settingsRef.current.auto_preview_html) return;
       if (chatId !== chatsRef.current.activeId) return;
       const block = lastHtmlBlock(text);
       if (block !== undefined) openPreview(block);
     },
-    [chatsRef, settingsRef, miniModeRef, openPreview],
+    [chatsRef, settingsRef, miniModeRef, notesModeRef, openPreview],
   );
 
   const onAssistantUsage = useCallback(
@@ -911,11 +917,14 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (!miniMode) setUnreadAnswer(false);
-  }, [miniMode]);
+    if (miniMode || notesMode) return;
+    const id = chats.activeId;
+    setUnreadChats((prev) => (prev[id] ? { ...prev, [id]: false } : prev));
+  }, [chats.activeId, miniMode, notesMode]);
 
   const active = chats.active;
   const activeId = chats.activeId;
+  const unreadAnswer = Object.values(unreadChats).some(Boolean);
   const activeStreaming = !!stream.streaming[activeId];
   const anyStreaming = Object.values(stream.streaming).some(Boolean);
   const activityFrame = isActivityStatus(state, anyStreaming);
@@ -1076,6 +1085,7 @@ export default function App() {
           updater={updater}
           chats={chats}
           stream={stream}
+          unread={unreadChats}
           mode={mode}
           canCopy={canCopy}
           canTeleprompt={canTeleprompt}
@@ -1120,6 +1130,8 @@ export default function App() {
               streamStartedAt={stream.startedAt[activeId]}
               scrollStep={settings.scroll_step}
               scrollModifier={effectiveCombo(settings.hotkeys, "scroll_chat")}
+              recordCombo={effectiveCombo(settings.hotkeys, "record")}
+              screenshotCombo={effectiveCombo(settings.hotkeys, "screenshot")}
               onTogglePreview={togglePreview}
               onCopyMessage={copyMessage}
               onRemoveMessage={removeMessage}

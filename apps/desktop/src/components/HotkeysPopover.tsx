@@ -1,24 +1,11 @@
-import {
-  ArrowBigUp,
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  ChevronUp,
-  Command,
-  CornerDownLeft,
-  Keyboard,
-  Minus,
-  Option,
-  Plus,
-  type LucideIcon,
-} from "lucide-react";
+import { Keyboard } from "lucide-react";
 import { Fragment } from "react";
+import { ComboChip } from "@/components/ComboChip";
 import { IconButton } from "@/components/IconButton";
 import { SectionLabel } from "@/components/SectionLabel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { HotkeyBinding } from "@/ipc/types";
-import { comboTokens, hotkeyGroups, type ComboIconName, type ComboToken } from "@/lib/hotkeys";
+import { hotkeyGroups } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 
 export interface HotkeysPopoverProps {
@@ -27,38 +14,6 @@ export interface HotkeysPopoverProps {
 }
 
 const POPOVER_COLLISION_PADDING_PX = 8;
-
-const COMBO_ICONS: Record<ComboIconName, LucideIcon> = {
-  cmd: Command,
-  shift: ArrowBigUp,
-  option: Option,
-  ctrl: ChevronUp,
-  enter: CornerDownLeft,
-  up: ArrowUp,
-  down: ArrowDown,
-  left: ArrowLeft,
-  right: ArrowRight,
-  plus: Plus,
-  minus: Minus,
-};
-
-function ComboTokenView({ token }: { token: ComboToken }) {
-  if (token.type === "text") {
-    return <span className="font-mono text-caption text-foreground/90">{token.text}</span>;
-  }
-  const Icon = COMBO_ICONS[token.icon];
-  return <Icon className="size-3 text-foreground/90" />;
-}
-
-function ComboChip({ combo }: { combo: string }) {
-  return (
-    <kbd className="inline-flex h-5 w-full items-center justify-center gap-0.5 rounded-sm bg-surface px-1.5 ring-1 ring-border ring-inset">
-      {comboTokens(combo).map((token, i) => (
-        <ComboTokenView key={i} token={token} />
-      ))}
-    </kbd>
-  );
-}
 
 export function HotkeysPopover({ hotkeys, triggerClass }: HotkeysPopoverProps) {
   const groups = hotkeyGroups(hotkeys);
