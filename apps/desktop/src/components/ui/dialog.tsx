@@ -62,7 +62,7 @@ function DialogContent({
         <div
           data-slot="dialog-panel"
           className={cn(
-            "pointer-events-auto relative grid w-full max-w-[calc(100%-2rem)] gap-3.5 rounded-xl border bg-popover p-5 shadow-modal duration-200 outline-none group-data-[state=closed]:animate-out group-data-[state=closed]:fade-out-0 group-data-[state=closed]:fill-mode-forwards group-data-[state=closed]:zoom-out-95 group-data-[state=open]:animate-in group-data-[state=open]:fade-in-0 group-data-[state=open]:zoom-in-95 sm:max-w-lg",
+            "pointer-events-auto relative grid max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] gap-3.5 overflow-y-auto rounded-xl border bg-popover p-5 shadow-modal duration-200 outline-none group-data-[state=closed]:animate-out group-data-[state=closed]:fade-out-0 group-data-[state=closed]:fill-mode-forwards group-data-[state=closed]:zoom-out-95 group-data-[state=open]:animate-in group-data-[state=open]:fade-in-0 group-data-[state=open]:zoom-in-95 sm:max-w-lg",
             className,
           )}
         >

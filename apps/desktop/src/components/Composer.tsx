@@ -27,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -480,9 +481,41 @@ function LibraryDocToggle({
       )}
     >
       <Check className={`size-3.5 shrink-0 ${selected ? "" : "opacity-0"}`} />
-      <span className="min-w-0 truncate">{doc.name}</span>
+      <span className="min-w-0 truncate" title={doc.name}>
+        {doc.name}
+      </span>
     </button>
   );
+}
+
+const LIBRARY_FILTER_MIN_DOCS = 8;
+const LIBRARY_EMPTY_TEXT =
+  "Библиотека пуста — материалы добавляются в лаунчере на экране «Контексты».";
+const LIBRARY_NOTHING_FOUND_TEXT = "Ничего не найдено";
+const LIBRARY_FILTER_PLACEHOLDER = "Найти материал…";
+const NO_FOLDER_GROUP_NAME = "Без папки";
+
+interface DocGroup {
+  id: string;
+  name: string;
+  docs: ContextDoc[];
+}
+
+function libraryGroups(library: ContextLibrary, query: string): DocGroup[] {
+  const needle = query.trim().toLowerCase();
+  const matches = (doc: ContextDoc) => needle === "" || doc.name.toLowerCase().includes(needle);
+  return [
+    {
+      id: "",
+      name: library.folders.length > 0 ? NO_FOLDER_GROUP_NAME : "",
+      docs: rootDocs(library).filter(matches),
+    },
+    ...library.folders.map((folder) => ({
+      id: folder.id,
+      name: folder.name,
+      docs: docsInFolder(library, folder.id).filter(matches),
+    })),
+  ].filter((group) => group.docs.length > 0);
 }
 
 function LibraryPicker({
@@ -494,35 +527,51 @@ function LibraryPicker({
   selectedDocIds: string[];
   onToggleDoc: (id: string) => void;
 }) {
-  if (library.docs.length === 0) {
-    return (
-      <p className="text-caption text-muted-foreground">
-        Библиотека пуста — материалы добавляются в лаунчере на экране «Контексты».
-      </p>
-    );
-  }
+  const [query, setQuery] = useState("");
+  const groups = libraryGroups(library, query);
   const selected = new Set(selectedDocIds);
-  const groups = [
-    { id: "", name: library.folders.length > 0 ? "Без папки" : "", docs: rootDocs(library) },
-    ...library.folders.map((f) => ({ id: f.id, name: f.name, docs: docsInFolder(library, f.id) })),
-  ].filter((g) => g.docs.length > 0);
+
+  if (library.docs.length === 0) {
+    return <p className="text-caption text-muted-foreground">{LIBRARY_EMPTY_TEXT}</p>;
+  }
+
   return (
-    <div className="flex max-h-48 flex-col gap-1 overflow-y-auto">
-      {groups.map((g) => (
-        <div key={g.id} className="flex flex-col gap-0.5">
-          {g.name !== "" && <SectionLabel className="px-2 pt-1">{g.name}</SectionLabel>}
-          {g.docs.map((doc) => (
-            <LibraryDocToggle
-              key={doc.id}
-              doc={doc}
-              selected={selected.has(doc.id)}
-              onToggle={() => {
-                onToggleDoc(doc.id);
-              }}
-            />
+    <div className="flex min-h-0 flex-col gap-1.5">
+      {library.docs.length >= LIBRARY_FILTER_MIN_DOCS && (
+        <Input
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+          }}
+          placeholder={LIBRARY_FILTER_PLACEHOLDER}
+          aria-label={LIBRARY_FILTER_PLACEHOLDER}
+        />
+      )}
+      {groups.length === 0 ? (
+        <p className="text-caption text-muted-foreground">{LIBRARY_NOTHING_FOUND_TEXT}</p>
+      ) : (
+        <div className="flex max-h-[min(12rem,32dvh)] min-h-0 flex-col gap-1 overflow-y-auto">
+          {groups.map((g) => (
+            <div key={g.id} className="flex flex-col gap-0.5">
+              {g.name !== "" && (
+                <SectionLabel className="truncate px-2 pt-1" title={g.name}>
+                  {g.name}
+                </SectionLabel>
+              )}
+              {g.docs.map((doc) => (
+                <LibraryDocToggle
+                  key={doc.id}
+                  doc={doc}
+                  selected={selected.has(doc.id)}
+                  onToggle={() => {
+                    onToggleDoc(doc.id);
+                  }}
+                />
+              ))}
+            </div>
           ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -535,35 +584,44 @@ function ChatContextDialog(props: ChatContextDialogProps) {
         if (!open) props.onCancel();
       }}
     >
-      <DialogContent className="max-w-[min(480px,95vw)] sm:max-w-[min(480px,95vw)]">
-        <DialogHeader>
+      <DialogContent className="flex max-w-[min(480px,95vw)] flex-col overflow-hidden sm:max-w-[min(480px,95vw)]">
+        <DialogHeader className="shrink-0">
           <DialogTitle>Контекст чата</DialogTitle>
         </DialogHeader>
-        <div className="flex flex-col gap-1.5">
-          <SectionLabel>Из библиотеки</SectionLabel>
-          <LibraryPicker
-            library={props.library}
-            selectedDocIds={props.selectedDocIds}
-            onToggleDoc={props.onToggleDoc}
-          />
+        <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto">
+          <div className="flex min-h-0 flex-col gap-1.5">
+            <SectionLabel>
+              Из библиотеки
+              {props.selectedDocIds.length > 0 && (
+                <span className="ml-1.5 text-muted-foreground tabular-nums">
+                  выбрано {props.selectedDocIds.length}
+                </span>
+              )}
+            </SectionLabel>
+            <LibraryPicker
+              library={props.library}
+              selectedDocIds={props.selectedDocIds}
+              onToggleDoc={props.onToggleDoc}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <SectionLabel>Свой текст</SectionLabel>
+            <p className="text-caption text-muted-foreground">
+              Уникальный справочный текст этого чата — уходит в системный промпт каждого запроса
+              вместе с выбранными материалами.
+            </p>
+            <Textarea
+              rows={6}
+              value={props.draft}
+              onChange={(e) => {
+                props.onDraftChange(e.target.value);
+              }}
+              placeholder="Вставь сюда справочные материалы"
+              className="max-h-40 overflow-y-auto"
+            />
+          </div>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <SectionLabel>Свой текст</SectionLabel>
-          <p className="text-caption text-muted-foreground">
-            Уникальный справочный текст этого чата — уходит в системный промпт каждого запроса
-            вместе с выбранными материалами.
-          </p>
-          <Textarea
-            rows={6}
-            value={props.draft}
-            onChange={(e) => {
-              props.onDraftChange(e.target.value);
-            }}
-            placeholder="Вставь сюда справочные материалы"
-            className="max-h-40 overflow-y-auto"
-          />
-        </div>
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="ghost" onClick={props.onCancel}>
             Отмена
           </Button>

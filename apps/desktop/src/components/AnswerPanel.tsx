@@ -15,6 +15,7 @@ import { CodeBlock } from "@/components/CodeBlock";
 import { ComboChip } from "@/components/ComboChip";
 import { HtmlBlockChip } from "@/components/HtmlBlockChip";
 import { IconButton } from "@/components/IconButton";
+import { ICON_CLUSTER_BUTTON_CLASS, ICON_CLUSTER_CLASS } from "@/components/IconCluster";
 import { markdownComponents, PROSE_MARKDOWN_CLASS } from "@/components/markdown-config";
 import { MarkdownChunk } from "@/components/MarkdownChunk";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
@@ -121,7 +122,11 @@ function MessageActionButton({
   children: ReactNode;
 }) {
   return (
-    <IconButton title={title} onClick={onClick} className={cn("size-6", className)}>
+    <IconButton
+      title={title}
+      onClick={onClick}
+      className={cn("size-6", ICON_CLUSTER_BUTTON_CLASS, className)}
+    >
       {children}
     </IconButton>
   );
@@ -139,7 +144,7 @@ function MessageActions({
   className?: string;
 }) {
   return (
-    <div className={cn(MESSAGE_ACTIONS_REVEAL_CLASS, "flex shrink-0 gap-0.5", className)}>
+    <div className={cn(MESSAGE_ACTIONS_REVEAL_CLASS, "shrink-0", className)}>
       {onCopy && (
         <MessageActionButton title={COPY_MESSAGE_TITLE} onClick={onCopy}>
           <Copy className="size-3.5" />
@@ -180,7 +185,12 @@ function MessageShell({
   if (align === "end") {
     return (
       <div className="group/msg flex items-start justify-end gap-1">
-        <MessageActions onCopy={onCopy} onRemove={onRemove} onResend={onResend} />
+        <MessageActions
+          onCopy={onCopy}
+          onRemove={onRemove}
+          onResend={onResend}
+          className={ICON_CLUSTER_CLASS}
+        />
         {children}
       </div>
     );
@@ -192,7 +202,7 @@ function MessageShell({
         onCopy={onCopy}
         onRemove={onRemove}
         onResend={onResend}
-        className={cn(FLOATING_CHIP_CLASS, "absolute right-0 bottom-0 rounded-md p-0.5")}
+        className={cn(ICON_CLUSTER_CLASS, "absolute right-0 bottom-0")}
       />
     </div>
   );

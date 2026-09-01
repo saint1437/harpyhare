@@ -1,6 +1,7 @@
 import { Menu } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { IconButton } from "@/components/IconButton";
+import { ICON_CLUSTER_CLASS } from "@/components/IconCluster";
 import { ShortcutTooltip } from "@/components/ShortcutTooltip";
 import { insideFloatingLayer, keyboardLayerOpen } from "@/lib/portalled-layers";
 import { cn } from "@/lib/utils";
@@ -80,10 +81,7 @@ export function ToolbarDock({ items, leading }: ToolbarDockProps) {
 
   return (
     <div ref={wrapperRef} className="relative shrink-0">
-      <span
-        data-no-drag
-        className="flex items-center gap-0.5 rounded-full bg-background p-0.5 ring-1 ring-border ring-inset"
-      >
+      <span data-no-drag className={ICON_CLUSTER_CLASS}>
         {leading}
         {leading !== undefined && (
           <span className="mx-0.5 h-4 w-px shrink-0 bg-border" aria-hidden />
