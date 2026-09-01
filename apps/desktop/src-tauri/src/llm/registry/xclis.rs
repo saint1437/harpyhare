@@ -181,13 +181,16 @@ impl XclisClient {
                 return requested.to_string();
             }
             let app_id = format!("{MODEL_PREFIX}{requested}");
-            let supports_thinking = self
-                .catalog
-                .lock()
-                .unwrap()
-                .iter()
-                .find(|m| m.id == app_id)
-                .is_some_and(|m| m.adaptive);
+            let live_capability = {
+                let catalog = self.catalog.lock().unwrap();
+                catalog.iter().find(|m| m.id == app_id).map(|m| m.adaptive)
+            };
+            let supports_thinking = live_capability.unwrap_or_else(|| {
+                catalog_models(PROVIDER_XCLIS)
+                    .iter()
+                    .find(|m| m.id == app_id)
+                    .is_some_and(|m| m.adaptive)
+            });
             if supports_thinking {
                 return format!("{requested}{THINKING_SUFFIX}");
             }
@@ -564,6 +567,20 @@ mod tests {
     }
 
     #[test]
+    fn thinking_uses_fallback_catalog_before_live_models_arrive() {
+        let spec = crate::llm::registry::spec(PROVIDER_XCLIS).expect("Xclis provider");
+        let client = XclisClient::new(spec, "key".into());
+        assert_eq!(
+            client.selected_model("xclis/claude-sonnet-5", true),
+            "claude-sonnet-5-thinking"
+        );
+        assert_eq!(
+            client.selected_model("xclis/gpt-5.6-sol", true),
+            "gpt-5.6-sol"
+        );
+    }
+
+    #[test]
     fn sse_parser_handles_utf8_split_between_network_chunks() {
         let event = "data: {\"choices\":[{\"delta\":{\"content\":\"Привет\"},\"finish_reason\":null}]}\n\n";
         let start = event.find("Привет").unwrap();
@@ -574,6 +591,24 @@ mod tests {
             parser.feed(&event.as_bytes()[split..]),
             vec![StreamEvent::Text("Привет".into())]
         );
+    }
+
+    #[test]
+    fn sse_parser_handles_usage_crlf_and_done() {
+        let mut parser = OpenAiSseParser::default();
+        let events = parser.feed(
+            b"data: {\"choices\":[{\"delta\":{},\"finish_reason\":null}],\"usage\":{\"prompt_tokens\":42}}\r\n\r\ndata: [DONE]\r\n\r\n",
+        );
+        assert_eq!(events, vec![StreamEvent::InputTokens(42), StreamEvent::Done]);
+    }
+
+    #[test]
+    fn sse_parser_finishes_on_finish_reason_without_done_marker() {
+        let mut parser = OpenAiSseParser::default();
+        let events = parser.feed(
+            b"data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n",
+        );
+        assert_eq!(events, vec![StreamEvent::Text("ok".into()), StreamEvent::Done]);
     }
 
     #[test]
