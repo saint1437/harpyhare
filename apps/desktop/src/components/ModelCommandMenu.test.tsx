@@ -49,6 +49,7 @@ const renderMenu = (overrides: Partial<Parameters<typeof ModelCommandMenu>[0]> =
     onSwitchSttProvider: vi.fn(),
     models,
     modelProvidersMissingKey: [] as readonly string[],
+    modelsPending: false,
     activeModelId: "claude-haiku-4-5",
     onSelectModel: vi.fn(),
     ...overrides,
@@ -153,9 +154,27 @@ describe("ModelCommandMenu", () => {
           maxInputTokens: 0,
         },
       ],
+      modelsPending: false,
       activeModelId: "gpt-5.6-terra",
     });
     fireEvent.click(screen.getByText("GPT-5.6 Terra"));
     expect(props.onSelectModel).toHaveBeenCalledWith("gpt-5.6-terra");
+  });
+});
+
+describe("ModelCommandMenu пока каталог не пришёл", () => {
+  it("не раскладывает модели по группам и показывает заглушки", () => {
+    // Вшитый список не знает моделей вендора с динамическим каталогом, поэтому
+    // выбранная модель попала бы в «Другие» и прыгнула бы в свою группу, когда
+    // приедет живой список. Пока данные предварительные — группы не строим.
+    renderMenu({ modelsPending: true, activeModelId: "xclis/claude-sonnet-5" });
+    expect(screen.queryByText("Другие")).toBeNull();
+    expect(screen.getByText("xclis/claude-sonnet-5")).toBeTruthy();
+    expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+  });
+
+  it("с пришедшим каталогом заглушек нет", () => {
+    renderMenu({ modelsPending: false });
+    expect(document.querySelectorAll(".animate-pulse").length).toBe(0);
   });
 });

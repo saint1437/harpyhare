@@ -683,7 +683,7 @@ export default function App() {
     [settingsForModel],
   );
   const chats = useChats(newChatModel);
-  const models = useModels();
+  const { models, pending: modelsPending } = useModels();
   const updater = useUpdater();
 
   const [updateOpen, setUpdateOpen] = useState(false);
@@ -1229,6 +1229,7 @@ export default function App() {
         models={models}
         modelProvidersMissingKey={answerProvidersMissingKey}
         activeModelId={active.model}
+        modelsPending={modelsPending}
         onSelectModel={(id) => {
           chats.patchChat(chats.activeId, { model: id });
         }}

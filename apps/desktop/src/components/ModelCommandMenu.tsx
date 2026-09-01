@@ -40,11 +40,34 @@ interface ModelCommandMenuProps {
   models: ModelInfo[];
   modelProvidersMissingKey: readonly string[];
   activeModelId: string;
+  /** Список моделей ещё предварительный — см. `useModels`. */
+  modelsPending: boolean;
   onSelectModel: (id: string) => void;
 }
 
 function ActiveMark({ active }: { active: boolean }) {
   return <Check className={cn("ml-auto", !active && "invisible")} />;
+}
+
+/**
+ * Пока живой каталог не пришёл, показываем ЗАГЛУШКИ, а не вшитый список.
+ * Разница принципиальная: вшитый список не знает моделей вендора с динамическим
+ * каталогом, поэтому выбранная модель попадала в группу «Другие» и с приходом
+ * настоящего списка прыгала на своё место — выглядело как сбой.
+ *
+ * Высота строк совпадает с настоящими, поэтому список не дёргается при подмене.
+ * Ширины разные: одинаковые полосы читаются как таблица, а не как загрузка.
+ */
+const PENDING_ROW_WIDTHS = ["9rem", "12rem", "10.5rem"];
+
+function PendingModelRows() {
+  return (
+    <div className="flex flex-col gap-1 px-2 py-1.5" aria-hidden>
+      {PENDING_ROW_WIDTHS.map((width) => (
+        <span key={width} className="h-5 animate-pulse rounded-sm bg-surface" style={{ width }} />
+      ))}
+    </div>
+  );
 }
 
 export function ModelCommandMenu({
@@ -56,9 +79,10 @@ export function ModelCommandMenu({
   models,
   modelProvidersMissingKey,
   activeModelId,
+  modelsPending,
   onSelectModel,
 }: ModelCommandMenuProps) {
-  const answerGroups = modelGroups(selectableModels(models, activeModelId));
+  const answerGroups = modelsPending ? [] : modelGroups(selectableModels(models, activeModelId));
   const close = () => {
     onOpenChange(false);
   };
@@ -98,6 +122,15 @@ export function ModelCommandMenu({
             );
           })}
         </CommandGroup>
+        {modelsPending && (
+          <CommandGroup heading={ANSWER_GROUP_HEADING}>
+            <CommandItem value={activeModelId} disabled>
+              {activeModelId}
+              <ActiveMark active />
+            </CommandItem>
+            <PendingModelRows />
+          </CommandGroup>
+        )}
         {answerGroups.map((group) => {
           const locked = modelProvidersMissingKey.includes(group.id);
           return (

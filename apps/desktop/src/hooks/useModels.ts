@@ -10,12 +10,23 @@ async function listModelsOrFallback(): Promise<ModelInfo[]> {
   return curatedModels(withLockedModels(fetched.length > 0 ? fetched : FALLBACK_MODELS));
 }
 
-export function useModels(): ModelInfo[] {
-  const { data } = useQuery({
+export interface ModelsState {
+  models: ModelInfo[];
+  /**
+   * Показанный список ещё предварительный: живой каталог не пришёл. Отличать
+   * это обязательно — вшитый список не знает моделей вендоров с динамическим
+   * каталогом, поэтому выбранная модель выглядела бы «чужой» и попадала в
+   * группу «Другие», а с приходом настоящего списка прыгала бы на своё место.
+   */
+  pending: boolean;
+}
+
+export function useModels(): ModelsState {
+  const { data, isPlaceholderData } = useQuery({
     queryKey: queryKeys.models,
     queryFn: listModelsOrFallback,
     staleTime: MODELS_STALE_MS,
     placeholderData: FALLBACK_MODELS,
   });
-  return data ?? FALLBACK_MODELS;
+  return { models: data ?? FALLBACK_MODELS, pending: isPlaceholderData };
 }

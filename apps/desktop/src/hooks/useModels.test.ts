@@ -39,9 +39,13 @@ describe("useModels", () => {
     };
     listModels.mockResolvedValue([sonnet, fable]);
     const { result } = renderHook(() => useModels(), { wrapper: createQueryWrapper() });
-    expect(result.current).toBe(FALLBACK_MODELS);
+    expect(result.current.models).toBe(FALLBACK_MODELS);
+    // Пока данные предварительные, пикер обязан это знать: вшитый список не
+    // содержит моделей вендора с динамическим каталогом.
+    expect(result.current.pending).toBe(true);
     await waitFor(() => {
-      expect(result.current).toEqual([sonnet, ...LOCKED_OTHERS]);
+      expect(result.current.models).toEqual([sonnet, ...LOCKED_OTHERS]);
+      expect(result.current.pending).toBe(false);
     });
   });
 
@@ -51,6 +55,6 @@ describe("useModels", () => {
     await waitFor(() => {
       expect(listModels).toHaveBeenCalled();
     });
-    expect(result.current).toEqual(FALLBACK_MODELS);
+    expect(result.current.models).toEqual(FALLBACK_MODELS);
   });
 });
