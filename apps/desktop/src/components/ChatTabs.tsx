@@ -93,10 +93,6 @@ interface ChatTabProps {
   onRemove: () => void;
 }
 
-function tabMarkerClass(isStreaming: boolean): string {
-  return isStreaming ? "animate-pulse bg-primary" : "bg-primary";
-}
-
 function ChatTab({
   ref,
   number,
@@ -139,8 +135,8 @@ function ChatTab({
         {(isStreaming || hasUnread) && (
           <span
             className={cn(
-              "absolute -top-0.5 -right-0.5 size-1.5 rounded-full",
-              tabMarkerClass(isStreaming),
+              "absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-primary",
+              isStreaming && "animate-pulse",
             )}
             aria-hidden
           />

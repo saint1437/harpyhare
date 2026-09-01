@@ -172,20 +172,29 @@ function Assistant({ text, components }: { text: string; components: Components 
  * префиксу, и на длинном ответе это был бы полный скан на каждый кадр стрима.
  * Резать по нарастающей корректно, потому что у каждого отрезанного куска
  * fence-маркеры сбалансированы — граница ищется только вне них.
+ *
+ * Накопитель держится в состоянии, а не в рефе: правка рефа в теле рендера
+ * запрещена React и разъезжается при отброшенном рендере. Обновление состояния
+ * прямо в рендере — санкционированный приём для «подстройки под изменившийся
+ * проп»: React перезапускает компонент, ничего не коммитя.
  */
+interface SettledChunks {
+  chunks: string[];
+  consumed: number;
+}
+
+const NO_SETTLED_CHUNKS: SettledChunks = { chunks: [], consumed: 0 };
+
 function useStreamChunks(text: string): { chunks: string[]; tail: string } {
-  const accumulated = useRef<{ chunks: string[]; consumed: number }>({ chunks: [], consumed: 0 });
-  const state = accumulated.current;
-  if (text.length < state.consumed) {
-    state.chunks = [];
-    state.consumed = 0;
-  }
-  const [settled, tail] = splitStableTail(text.slice(state.consumed));
-  if (settled !== "") {
-    state.chunks = [...state.chunks, settled];
-    state.consumed += settled.length;
-  }
-  return { chunks: state.chunks, tail };
+  const [settled, setSettled] = useState<SettledChunks>(NO_SETTLED_CHUNKS);
+  const base = text.length < settled.consumed ? NO_SETTLED_CHUNKS : settled;
+  const [fresh, tail] = splitStableTail(text.slice(base.consumed));
+  const next: SettledChunks =
+    fresh === ""
+      ? base
+      : { chunks: [...base.chunks, fresh], consumed: base.consumed + fresh.length };
+  if (next !== settled) setSettled(next);
+  return { chunks: next.chunks, tail };
 }
 
 function OpenFenceBlock({ fenced }: { fenced: string }) {

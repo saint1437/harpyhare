@@ -136,15 +136,6 @@ export function formatCombo(combo: string, platform: Platform = PLATFORM): strin
   return parts.join(TOKEN_JOINER[platform]);
 }
 
-export function labelWithCombo(
-  label: string,
-  combo: string,
-  platform: Platform = PLATFORM,
-): string {
-  const formatted = formatCombo(combo, platform);
-  return formatted === "" ? label : `${label} (${formatted})`;
-}
-
 export function formatComboWithKey(
   combo: string,
   key: string,

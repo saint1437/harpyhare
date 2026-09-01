@@ -1,8 +1,9 @@
 import { Minus, Pause, Play, Plus, RotateCcw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { IconButton } from "@/components/IconButton";
+import { ShortcutTooltip } from "@/components/ShortcutTooltip";
 import { matchesPrepared, prepareCombo } from "@/lib/hotkey-match";
-import { labelWithCombo } from "@/lib/hotkeys";
+import { formatCombo } from "@/lib/hotkeys";
 import {
   advanceOffset,
   clampFont,
@@ -25,6 +26,9 @@ export interface TeleprompterProps {
 const EDGE_FADE =
   "linear-gradient(to bottom, transparent 0%, black 26%, black 74%, transparent 100%)";
 const EMPTY_HINT = "Нет ответа для суфлёра";
+const PAUSE_LABEL = "Пауза";
+const PLAY_LABEL = "Воспроизвести";
+const CLOSE_LABEL = "Закрыть";
 
 export function Teleprompter({
   text,
@@ -143,14 +147,20 @@ export function Teleprompter({
         <IconButton title="Сначала" onClick={restart}>
           <RotateCcw />
         </IconButton>
-        <IconButton
-          title={labelWithCombo(playing ? "Пауза" : "Воспроизвести", pauseCombo)}
-          onClick={() => {
-            setPlaying((p) => !p);
-          }}
+        <ShortcutTooltip
+          label={playing ? PAUSE_LABEL : PLAY_LABEL}
+          shortcut={formatCombo(pauseCombo)}
         >
-          {playing ? <Pause /> : <Play />}
-        </IconButton>
+          <IconButton
+            title=""
+            aria-label={playing ? PAUSE_LABEL : PLAY_LABEL}
+            onClick={() => {
+              setPlaying((p) => !p);
+            }}
+          >
+            {playing ? <Pause /> : <Play />}
+          </IconButton>
+        </ShortcutTooltip>
 
         <Stepper
           label="Скорость"
@@ -173,9 +183,11 @@ export function Teleprompter({
           }}
         />
 
-        <IconButton title={labelWithCombo("Закрыть", closeCombo)} onClick={onClose}>
-          <X />
-        </IconButton>
+        <ShortcutTooltip label={CLOSE_LABEL} shortcut={formatCombo(closeCombo)}>
+          <IconButton title="" aria-label={CLOSE_LABEL} onClick={onClose}>
+            <X />
+          </IconButton>
+        </ShortcutTooltip>
       </div>
     </div>
   );

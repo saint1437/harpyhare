@@ -18,6 +18,7 @@ import {
   type RefObject,
 } from "react";
 import { SectionLabel } from "@/components/SectionLabel";
+import { ShortcutTooltip } from "@/components/ShortcutTooltip";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -50,7 +51,7 @@ import {
   type ContextDoc,
   type ContextLibrary,
 } from "@/lib/context-library";
-import { labelWithCombo } from "@/lib/hotkeys";
+import { formatCombo } from "@/lib/hotkeys";
 import {
   modelGroups,
   modelLabel,
@@ -437,14 +438,11 @@ function ComposerToolbar(props: ComposerToolbarProps) {
           <Square className="size-3.5 fill-current" />
         </Button>
       ) : (
-        <Button
-          size="icon-compact"
-          onClick={props.onSend}
-          title={labelWithCombo(SEND_LABEL, PROMPT_SEND_KEY)}
-          aria-label={SEND_LABEL}
-        >
-          <ArrowUp />
-        </Button>
+        <ShortcutTooltip label={SEND_LABEL} shortcut={formatCombo(PROMPT_SEND_KEY)}>
+          <Button size="icon-compact" onClick={props.onSend} aria-label={SEND_LABEL}>
+            <ArrowUp />
+          </Button>
+        </ShortcutTooltip>
       )}
     </div>
   );

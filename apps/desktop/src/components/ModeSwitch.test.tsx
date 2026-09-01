@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { UiProviders } from "@/test/ui-wrapper";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { APP_MODES, DEFAULT_MODE, NOTES_MODE } from "@/lib/modes";
 import { ModeSwitch } from "./ModeSwitch";
@@ -9,7 +10,7 @@ afterEach(() => {
 
 function renderSwitch(mode = DEFAULT_MODE) {
   const onSelect = vi.fn();
-  render(<ModeSwitch mode={mode} combo="⌘⇧L" onSelect={onSelect} />);
+  render(<ModeSwitch mode={mode} combo="⌘⇧L" onSelect={onSelect} />, { wrapper: UiProviders });
   return onSelect;
 }
 

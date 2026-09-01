@@ -3,6 +3,7 @@ import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Composer, type ComposerProps } from "./Composer";
 import { createChat } from "@/lib/chats";
+import { UiProviders } from "@/test/ui-wrapper";
 import { EMPTY_LIBRARY } from "@/lib/context-library";
 import { FALLBACK_MODELS, PROVIDER_ANTHROPIC, PROVIDER_OPENAI, type ModelInfo } from "@/lib/models";
 
@@ -65,7 +66,7 @@ function renderComposer(overrides: Partial<ComposerProps> = {}) {
     onQuickAction: vi.fn(),
     ...overrides,
   };
-  render(<Composer {...props} />);
+  render(<Composer {...props} />, { wrapper: UiProviders });
   return {
     onSend,
     onPatch: props.onPatch,
