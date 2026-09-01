@@ -453,7 +453,7 @@ impl XclisClient {
 #[async_trait::async_trait]
 impl LlmProvider for XclisClient {
     fn provider_id(&self) -> &'static str {
-        PROVIDER_XCLIS
+        self.spec.id
     }
 
     fn known_models(&self) -> Vec<ModelInfo> {
