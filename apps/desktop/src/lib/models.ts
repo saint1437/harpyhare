@@ -176,6 +176,12 @@ export function thinkingLocked(models: ModelInfo[], currentId: string): boolean 
  * unlocked (there is no better answer then, and the picker shows why).
  */
 export function defaultModelFor(lockedProviderIds: readonly string[]): string {
-  const usable = MODEL_PROVIDERS.find((p) => !lockedProviderIds.includes(p.id));
+  // Вендор с динамическим каталогом (агрегатор) офлайн не называет дефолта: его
+  // список моделей привязан к ключу и приходит только из живого API. Пока он не
+  // пришёл, открывать на нём чат не на чем — берём следующего, у кого есть что
+  // предложить, иначе чат открылся бы с пустым id модели и падал на отправке.
+  const usable = MODEL_PROVIDERS.find(
+    (p) => !lockedProviderIds.includes(p.id) && p.defaultModel !== "",
+  );
   return usable?.defaultModel ?? DEFAULT_MODEL;
 }

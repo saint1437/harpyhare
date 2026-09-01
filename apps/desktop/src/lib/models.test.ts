@@ -140,6 +140,16 @@ describe("models", () => {
     expect(FALLBACK_MODELS.find((m) => m.id === chosen)?.provider).toBe(PROVIDER_XAI);
   });
 
+  it("defaultModelFor не открывает чат на вендоре с динамическим каталогом", () => {
+    // У агрегатора список моделей привязан к ключу и офлайн неизвестен, поэтому
+    // дефолта он не называет. Открыть на нём чат до прихода живого каталога не
+    // на чем: пустой id модели упал бы на первой же отправке.
+    const dynamic = MODEL_PROVIDERS.filter((p) => p.defaultModel === "");
+    expect(dynamic.length).toBeGreaterThan(0);
+    const onlyDynamic = MODEL_PROVIDERS.filter((p) => p.defaultModel !== "").map((p) => p.id);
+    expect(defaultModelFor(onlyDynamic)).toBe(DEFAULT_MODEL);
+  });
+
   it("defaultModelFor без единого вендора остаётся на дефолте", () => {
     const allLocked = MODEL_PROVIDERS.map((p) => p.id);
     expect(defaultModelFor(allLocked)).toBe(DEFAULT_MODEL);

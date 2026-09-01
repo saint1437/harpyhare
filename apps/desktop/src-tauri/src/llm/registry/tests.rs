@@ -10,7 +10,10 @@ fn every_provider_is_well_formed() {
         assert!(!p.id.is_empty(), "у провайдера пустой id");
         assert!(!p.label.is_empty(), "у {} пустой label", p.id);
         assert!(!p.key_id.is_empty(), "у {} пустой key_id", p.id);
-        assert!(!p.catalog.is_empty(), "у {} пустой оффлайн-каталог", p.id);
+        // Пустой каталог допустим ровно у вендора с динамическим составом
+        // (агрегатор): у него список моделей привязан к ключу, и офлайн честный
+        // ответ — «пока не знаю». Пара «пустой каталог ⇄ пустой дефолт»
+        // проверяется отдельно в `every_provider_defaults_to_a_model_it_actually_offers`.
         for m in p.catalog {
             assert!(!m.id.is_empty(), "в каталоге {} модель без id", p.id);
             assert!(!m.display_name.is_empty(), "{} без display_name", m.id);
@@ -64,9 +67,21 @@ fn catalog_models_are_tagged_with_their_provider_and_unknown_window() {
     }
 }
 
+/// Вендор с динамическим каталогом (Xclis) офлайн не обещает ничего и потому
+/// не называет дефолта: пустой каталог обязан идти в паре с пустым дефолтом,
+/// иначе новый чат открылся бы на модели, которой у провайдера нет.
 #[test]
 fn every_provider_defaults_to_a_model_it_actually_offers() {
     for p in PROVIDERS {
+        if p.catalog.is_empty() {
+            assert!(
+                p.default_model.is_empty(),
+                "{} офлайн не предлагает моделей, но называет дефолт {}",
+                p.id,
+                p.default_model
+            );
+            continue;
+        }
         assert!(
             p.catalog.iter().any(|m| m.id == p.default_model),
             "дефолт {} у {} не в его же каталоге — новый чат открылся бы на недоступной модели",
@@ -160,34 +175,15 @@ fn a_row_needs_nothing_but_data_to_be_well_formed() {
     assert!(GEMINI.families.iter().all(|f| GEMINI.catalog.iter().any(|m| m.id.contains(f))));
 }
 
-/// У Xclis рассуждение — отдельная модель с суффиксом `-thinking`, и заводит её
-/// вендор не для всех: `claude-opus-4-6-thinking` существует, а
-/// `claude-sonnet-5-thinking` отдаёт 404. Пока живой каталог не пришёл, обещать
-/// способность нельзя — `selected_model` дописал бы суффикс и отправил запрос
-/// в несуществующую модель.
+/// Состав моделей Xclis задаётся группой аккаунта на его стороне и меняется без
+/// нашего участия — проверено двумя ключами с непересекающимися каталогами.
+/// Любая вписанная сюда модель была бы обещанием, которое вендор не давал.
 #[test]
-fn xclis_fallback_catalog_promises_no_thinking() {
+fn xclis_promises_nothing_offline() {
     let xclis = PROVIDERS
         .iter()
         .find(|p| p.id == xclis::PROVIDER_XCLIS)
         .expect("строка Xclis в реестре");
-    assert!(
-        xclis.catalog.iter().all(|m| !m.adaptive),
-        "вшитый каталог Xclis не может обещать рассуждение: суффиксную модель заводит вендор, \
-         и набор зависит от группы аккаунта",
-    );
-}
-
-/// Модель по умолчанию обязана быть в собственном каталоге вендора: иначе чат
-/// открывается на модели, которой у провайдера нет, и падает на первой отправке.
-#[test]
-fn every_default_model_exists_in_its_own_catalog() {
-    for spec in PROVIDERS {
-        assert!(
-            spec.catalog.iter().any(|m| m.id == spec.default_model),
-            "модель по умолчанию {} вендора {} отсутствует в его каталоге",
-            spec.default_model,
-            spec.id
-        );
-    }
+    assert!(xclis.catalog.is_empty(), "каталог Xclis известен только из живого /v1/models");
+    assert!(xclis.default_model.is_empty(), "дефолт Xclis тоже приходит из живого каталога");
 }

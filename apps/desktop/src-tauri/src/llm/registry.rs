@@ -121,41 +121,18 @@ impl LlmWire {
     }
 }
 
-/// Модели Xclis имеют префикс внутри приложения, чтобы никогда не столкнуться
-/// с прямым id Anthropic или OpenAI: у вендора те же имена. Префикс снимается
-/// перед отправкой запроса, а живой `/v1/models` заменяет этот список.
+/// **Пусто намеренно, и это не заготовка.** Xclis — агрегатор: состав моделей
+/// задаётся группой аккаунта на его стороне и меняется без нашего участия.
+/// Проверено живьём двумя ключами: у одного каталог был целиком GPT, Grok и
+/// deepseek, у другого — целиком Claude, без единого пересечения. Публичной
+/// документации со списком у вендора нет, только «OpenAI API compatible».
 ///
-/// **`adaptive: false` у всех строк — не заглушка, а единственный безопасный
-/// вариант.** У Xclis рассуждение включается не полем запроса, а ОТДЕЛЬНОЙ
-/// моделью с суффиксом `-thinking`, и заводит её вендор не для всех: проверено
-/// живьём — `claude-opus-4-6-thinking` существует, а `claude-sonnet-5-thinking`
-/// отдаёт 404. Набор моделей вдобавок зависит от группы аккаунта, поэтому
-/// угадать его здесь нельзя в принципе. Живой каталог выставляет `adaptive`
-/// честно (`parse_models` ищет двойника с суффиксом среди пришедших id), и до
-/// его прихода обещать способность значит слать запрос в несуществующую модель.
-const XCLIS_MODELS: &[CatalogModel] = &[
-    CatalogModel {
-        id: "xclis/claude-sonnet-5",
-        display_name: "Claude Sonnet 5 · Xclis",
-        adaptive: false,
-        always_thinks: false,
-        code_exec: false,
-    },
-    CatalogModel {
-        id: "xclis/claude-opus-4-8",
-        display_name: "Claude Opus 4.8 · Xclis",
-        adaptive: false,
-        always_thinks: false,
-        code_exec: false,
-    },
-    CatalogModel {
-        id: "xclis/gpt-5.6-sol",
-        display_name: "GPT-5.6 Sol · Xclis",
-        adaptive: false,
-        always_thinks: false,
-        code_exec: false,
-    },
-];
+/// Поэтому единственный честный офлайн-ответ про Xclis — «пока не знаю»:
+/// `models()` подмешивает вшитый каталог ТОЛЬКО для вендоров, которых бэкенд
+/// не отдал, так что живой `/v1/models` замещает эту пустоту целиком. Вписать
+/// сюда любую модель значит обещать то, чего у конкретной группы может не быть,
+/// — ровно так дефолт `claude-sonnet-5` и оказался несуществующим.
+const XCLIS_MODELS: &[CatalogModel] = &[];
 
 const CLAUDE_MODELS: &[CatalogModel] = &[
     CatalogModel {
@@ -313,7 +290,8 @@ pub const PROVIDERS: &[LlmProviderSpec] = &[
         key_id: "xclis",
         families: &[],
         catalog: XCLIS_MODELS,
-        default_model: "xclis/claude-sonnet-5",
+        // Обещать нечего, пока не пришёл живой каталог: см. XCLIS_MODELS.
+        default_model: "",
         proxied: false,
         wire: LlmWire::Xclis {
             base_url: "https://jp.xclis.ai",
