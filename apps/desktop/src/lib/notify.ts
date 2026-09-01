@@ -48,6 +48,9 @@ export function notify(input: NotifyInput): void {
         },
       }),
     {
+      // Один id на одинаковые сообщения: три чата стримят параллельно, и на
+      // невалидном ключе они дают три копии подряд. Sonner при повторе того же
+      // id обновляет карточку и перезапускает таймер вместо новой очереди.
       id: `${variant}|${input.title ?? ""}|${input.message}`,
       duration:
         input.durationMs ?? (variant === "error" ? ERROR_TOAST_DURATION_MS : TOAST_DURATION_MS),

@@ -125,6 +125,7 @@ function draftImages(chat: Chat): ImagePayload[] {
 
 type PromptChat = Pick<Chat, "presetId" | "libraryDocIds" | "context">;
 
+/** Every piece of text a chat contributes to its system prompt, raw. */
 function chatPromptSources(
   presets: PromptPreset[],
   chat: PromptChat,
@@ -138,6 +139,11 @@ function chatPromptSources(
   ].filter((s) => s !== "");
 }
 
+/**
+ * `[keywords]: [...]` declarations are stripped here: they configure speech
+ * recognition, and the answering model has no business being handed a
+ * directive it is expected to ignore.
+ */
 function chatSystemPrompt(sources: readonly string[]): string {
   return sources
     .map(stripKeywordBlocks)
@@ -145,6 +151,13 @@ function chatSystemPrompt(sources: readonly string[]): string {
     .join(SYSTEM_BLOCKS_SEPARATOR);
 }
 
+/**
+ * Keeps the backend's copy of the active chat's declared terms current.
+ *
+ * Recognition starts from a global hotkey, with no React in the loop, so the
+ * terms have to be pushed ahead of time rather than passed at call time. The
+ * join guards the effect: a new array of the same terms must not re-send.
+ */
 function useSttKeyterms(keyterms: string[]): void {
   const joined = keyterms.join("\u0000");
   useEffect(() => {
@@ -657,6 +670,8 @@ export default function App() {
   } = useSettings();
   const state = useRecorder();
   useErrorToasts();
+  // Read at chat-creation time, not at render time: a key added mid-session
+  // changes what the next chat opens on without a reload.
   const settingsForModel = useLatestRef(settings);
   const newChatModel = useCallback(
     () => defaultModelFor(modelProvidersMissingKey(settingsForModel.current)),
@@ -1003,6 +1018,9 @@ export default function App() {
   const providersMissingKey = useMemo(() => sttProvidersMissingKey(settings), [settings]);
   const answerProvidersMissingKey = useMemo(() => modelProvidersMissingKey(settings), [settings]);
 
+  // Ключ вендора могли убрать (или отвязать код доступа) уже после того, как чат
+  // сел на его модель. Пикер такую модель рисует запертой, но ВЫБРАННОЙ она
+  // оставалась, и отправка уходила в чужого провайдера с неизвестным ему id.
   useEffect(() => {
     if (settingsLoading) return;
     const owner = models.find((m) => m.id === active.model)?.provider;
