@@ -7,7 +7,7 @@ use windows::core::PCWSTR;
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Foundation::{E_ACCESSDENIED, RPC_E_CHANGED_MODE};
 use windows::Win32::Media::Audio::{
-    eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDevice, IMMDeviceEnumerator,
+    eCapture, eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDevice, IMMDeviceEnumerator,
     MMDeviceEnumerator, AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED,
     AUDCLNT_STREAMFLAGS_LOOPBACK, DEVICE_STATE_ACTIVE, WAVEFORMATEX, WAVEFORMATEXTENSIBLE,
 };
@@ -242,14 +242,17 @@ impl Drop for MixFormat {
     }
 }
 
-fn activate_client(device: &IMMDevice) -> Result<(IAudioClient, SampleFormat), CaptureError> {
+fn activate_client(
+    device: &IMMDevice,
+    device_kind: &str,
+) -> Result<(IAudioClient, SampleFormat), CaptureError> {
     let client: IAudioClient =
         unsafe { device.Activate(CLSCTX_ALL, None) }.map_err(backend_error)?;
     let mix = MixFormat(unsafe { client.GetMixFormat() }.map_err(backend_error)?);
     let (format, bits_per_sample) = read_sample_format(mix.0);
     if !format.is_decodable(bits_per_sample) {
         return Err(CaptureError::Backend(format!(
-            "неподдерживаемый формат устройства вывода: {bits_per_sample} бит, float={}",
+            "неподдерживаемый формат {device_kind}: {bits_per_sample} бит, float={}",
             format.is_float
         )));
     }
@@ -258,6 +261,7 @@ fn activate_client(device: &IMMDevice) -> Result<(IAudioClient, SampleFormat), C
 
 pub struct Source {
     device_id: String,
+    loopback: bool,
 }
 
 pub struct Running {
@@ -270,14 +274,28 @@ impl Drop for Running {
     }
 }
 
-pub fn open(output_device_uid: Option<&str>) -> Result<(Source, StreamSpec), CaptureError> {
+pub fn open_system(output_device_uid: Option<&str>) -> Result<(Source, StreamSpec), CaptureError> {
     let _com = ComGuard::enter()?;
     let enumerator = enumerator()?;
     let device = resolve_output_device(&enumerator, output_device_uid)?;
     let source = Source {
         device_id: device_id(&device)?,
+        loopback: true,
     };
-    let (_client, format) = activate_client(&device)?;
+    let (_client, format) = activate_client(&device, "устройства вывода")?;
+    Ok((source, format.spec()))
+}
+
+pub fn open_microphone() -> Result<(Source, StreamSpec), CaptureError> {
+    let _com = ComGuard::enter()?;
+    let enumerator = enumerator()?;
+    let device = unsafe { enumerator.GetDefaultAudioEndpoint(eCapture, eConsole) }
+        .map_err(backend_error)?;
+    let source = Source {
+        device_id: device_id(&device)?,
+        loopback: false,
+    };
+    let (_client, format) = activate_client(&device, "микрофона")?;
     Ok((source, format.spec()))
 }
 
@@ -329,21 +347,27 @@ fn poll_interval(client: &IAudioClient) -> Duration {
     Duration::from_nanos(nanos).clamp(MIN_POLL_INTERVAL, MAX_POLL_INTERVAL)
 }
 
-fn open_stream(device_id: &str, spec: &StreamSpec) -> Result<LoopbackStream, CaptureError> {
+fn open_stream(source: &Source, spec: &StreamSpec) -> Result<LoopbackStream, CaptureError> {
     let enumerator = enumerator()?;
-    let device = device_by_id(&enumerator, device_id)?;
-    let (client, format) = activate_client(&device)?;
+    let device = device_by_id(&enumerator, &source.device_id)?;
+    let device_kind = if source.loopback { "устройства вывода" } else { "микрофона" };
+    let (client, format) = activate_client(&device, device_kind)?;
     if !format.matches(spec) {
         return Err(CaptureError::Backend(
-            "формат устройства вывода изменился — захват пересоздаётся".to_string(),
+            format!("формат {device_kind} изменился — захват пересоздаётся"),
         ));
     }
     let mix = MixFormat(unsafe { client.GetMixFormat() }.map_err(backend_error)?);
     let buffer_duration = (CLIENT_BUFFER_SECONDS * REFERENCE_TIMES_PER_SECOND as f64) as i64;
+    let stream_flags = if source.loopback {
+        AUDCLNT_STREAMFLAGS_LOOPBACK
+    } else {
+        0
+    };
     unsafe {
         client.Initialize(
             AUDCLNT_SHAREMODE_SHARED,
-            AUDCLNT_STREAMFLAGS_LOOPBACK,
+            stream_flags,
             buffer_duration,
             0,
             mix.0,
@@ -519,7 +543,7 @@ fn capture_main(
     let mut announced = false;
 
     while !stop.load(Ordering::Acquire) {
-        match open_stream(&source.device_id, &spec) {
+        match open_stream(&source, &spec) {
             Ok(stream) => {
                 if !announced {
                     announced = true;

@@ -9,8 +9,8 @@ use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
 
 use crate::app_state::{
-    build_capture, cancel_stt_stream, current_settings, llm_provider, stt_engine, stt_keyterms,
-    App, SttStream,
+    build_capture, build_microphone_capture, cancel_stt_stream, current_settings, llm_provider,
+    stt_engine, stt_keyterms, App, SttStream,
 };
 use crate::error::{AppError, ErrorCode};
 use crate::{audio, capture, events, hotkey, state, stt};
@@ -26,6 +26,10 @@ const ERR_NO_CAPTURE: (ErrorCode, &str) = (
     "Захват системного звука недоступен — проверь устройство вывода в настройках",
 );
 const ERR_NO_AUDIO_BUFFER: &str = "нет аудио-буфера";
+const ERR_NO_MICROPHONE: &str =
+    "Микрофон недоступен — проверь устройство ввода и разрешение на микрофон";
+const ERR_MICROPHONE_SILENCE: &str =
+    "Тишина — нечего распознавать (проверь микрофон и разрешение на его использование)";
 #[cfg(target_os = "macos")]
 const ERR_SILENCE: &str = "Тишина — нечего распознавать (если звук играл: проверь право «Запись системного звука» у macOS и устройство захвата в настройках)";
 #[cfg(target_os = "windows")]
@@ -79,6 +83,17 @@ pub fn ensure_capture(app: &AppHandle) -> bool {
     rebuild_capture(app)
 }
 
+fn ensure_microphone_capture(app: &AppHandle) -> bool {
+    let st = app.state::<App>();
+    if st.microphone_capture.lock().unwrap().is_some() {
+        return true;
+    }
+    let capture = build_microphone_capture();
+    let built = capture.is_some();
+    *st.microphone_capture.lock().unwrap() = capture;
+    built
+}
+
 fn rebuild_capture_now(app: &AppHandle) {
     let never_built = app.state::<App>().capture.lock().unwrap().is_none();
     let would_prompt = crate::permissions::AUDIO_REQUIRES_PERMISSION
@@ -89,30 +104,47 @@ fn rebuild_capture_now(app: &AppHandle) {
     rebuild_capture(app);
 }
 
-pub fn on_ptt_pressed(app: &AppHandle) {
+pub fn on_system_ptt_pressed(app: &AppHandle) {
+    on_ptt_pressed(app, state::RecordingSource::System);
+}
+
+pub fn on_microphone_ptt_pressed(app: &AppHandle) {
+    on_ptt_pressed(app, state::RecordingSource::Microphone);
+}
+
+fn on_ptt_pressed(app: &AppHandle, source: state::RecordingSource) {
     let st = app.state::<App>();
-    if st.capture_rebuild_pending.swap(false, Ordering::SeqCst) {
+    if source == state::RecordingSource::System
+        && st.capture_rebuild_pending.swap(false, Ordering::SeqCst)
+    {
         rebuild_capture_now(app);
     }
-    if st.capture.lock().unwrap().is_none() {
-        events::stt_error(
-            app,
-            AppError::new(ERR_NO_CAPTURE.0, ERR_NO_CAPTURE.1),
-        );
+    let available = match source {
+        state::RecordingSource::System => ensure_capture(app),
+        state::RecordingSource::Microphone => ensure_microphone_capture(app),
+    };
+    if !available {
+        let message = match source {
+            state::RecordingSource::System => ERR_NO_CAPTURE.1,
+            state::RecordingSource::Microphone => ERR_NO_MICROPHONE,
+        };
+        events::stt_error(app, AppError::new(ERR_NO_CAPTURE.0, message));
         return;
     }
     let action = st.recorder.lock().unwrap().on(state::Event::PttPressed);
     if action != state::Action::StartCapture {
         return;
     }
+    *st.recording_source.lock().unwrap() = Some(source);
     let sink = start_streaming_transcription(app);
-    if let Some(c) = st.capture.lock().unwrap().as_mut() {
-        if let Err(e) = c.start(Some(sink)) {
-            cancel_stt_stream(app);
-            events::stt_error(app, AppError::from(&e));
-            st.recorder.lock().unwrap().on(state::Event::Cancel);
-            return;
-        }
+    let started = with_capture_mut(&st, source, |c| c.start(Some(sink)))
+        .unwrap_or_else(|| Err(capture::CaptureError::Audio(ERR_NO_AUDIO_BUFFER.to_string())));
+    if let Err(e) = started {
+        cancel_stt_stream(app);
+        events::stt_error(app, AppError::from(&e));
+        st.recorder.lock().unwrap().on(state::Event::Cancel);
+        *st.recording_source.lock().unwrap() = None;
+        return;
     }
     let gen = st.recording_gen.fetch_add(1, Ordering::SeqCst) + 1;
     hotkey::register_cancel(app, &hotkey::cancel_combo(app));
@@ -163,23 +195,48 @@ fn warm_up_llm_for_upcoming_request(app: &AppHandle) {
     tauri::async_runtime::spawn(async move { llm_client.warm_up().await });
 }
 
+fn with_capture_mut<T>(
+    st: &App,
+    source: state::RecordingSource,
+    work: impl FnOnce(&mut capture::SystemAudioCapture) -> T,
+) -> Option<T> {
+    match source {
+        state::RecordingSource::System => st.capture.lock().unwrap().as_mut().map(work),
+        state::RecordingSource::Microphone => {
+            st.microphone_capture.lock().unwrap().as_mut().map(work)
+        }
+    }
+}
+
+fn active_source(st: &App) -> Option<state::RecordingSource> {
+    *st.recording_source.lock().unwrap()
+}
+
 fn current_recording_secs(st: &App) -> f32 {
-    st.capture
-        .lock()
-        .unwrap()
-        .as_ref()
-        .map(|c| c.recording_secs())
+    active_source(st)
+        .and_then(|source| with_capture_mut(st, source, |c| c.recording_secs()))
         .unwrap_or(0.0)
 }
 
 fn stop_capture_discarding(st: &App) {
-    if let Some(c) = st.capture.lock().unwrap().as_mut() {
-        let _ = c.stop();
+    if let Some(source) = active_source(st) {
+        let _ = with_capture_mut(st, source, |c| c.stop());
     }
 }
 
-pub fn on_ptt_released(app: &AppHandle) {
+pub fn on_system_ptt_released(app: &AppHandle) {
+    on_ptt_released(app, state::RecordingSource::System);
+}
+
+pub fn on_microphone_ptt_released(app: &AppHandle) {
+    on_ptt_released(app, state::RecordingSource::Microphone);
+}
+
+fn on_ptt_released(app: &AppHandle, source: state::RecordingSource) {
     let st = app.state::<App>();
+    if active_source(&st) != Some(source) {
+        return;
+    }
     let secs = current_recording_secs(&st);
     let action = st
         .recorder
@@ -198,6 +255,7 @@ pub fn on_cancel(app: &AppHandle) {
         stop_capture_discarding(&st);
         hotkey::unregister_cancel(app, &hotkey::cancel_combo(app));
         events::state_changed(app, state::RecorderState::Idle);
+        *st.recording_source.lock().unwrap() = None;
     }
 }
 
@@ -207,6 +265,7 @@ fn finish_recording(app: &AppHandle, action: state::Action) {
             cancel_stt_stream(app);
             stop_capture_discarding(&app.state::<App>());
             events::state_changed(app, state::RecorderState::Idle);
+            *app.state::<App>().recording_source.lock().unwrap() = None;
         }
         state::Action::Transcribe => transcribe_recording(app),
         _ => {}
@@ -223,8 +282,12 @@ fn transcribe_recording(app: &AppHandle) {
         }
     };
     if audio::is_silence(&s16k) {
+        let message = match active_source(&app.state::<App>()) {
+            Some(state::RecordingSource::Microphone) => ERR_MICROPHONE_SILENCE,
+            _ => ERR_SILENCE,
+        };
         cancel_stt_stream(app);
-        return finish_transcription(app, Err(AppError::new(ErrorCode::Silence, ERR_SILENCE)));
+        return finish_transcription(app, Err(AppError::new(ErrorCode::Silence, message)));
     }
     *app.state::<App>().last_recording.lock().unwrap() = Some(s16k.clone());
     let app2 = app.clone();
@@ -233,13 +296,8 @@ fn transcribe_recording(app: &AppHandle) {
 
 fn stop_capture_for_transcription(app: &AppHandle) -> Result<Vec<f32>, AppError> {
     let t = std::time::Instant::now();
-    let stopped = app
-        .state::<App>()
-        .capture
-        .lock()
-        .unwrap()
-        .as_mut()
-        .map(|c| c.stop());
+    let st = app.state::<App>();
+    let stopped = active_source(&st).and_then(|source| with_capture_mut(&st, source, |c| c.stop()));
     let Some(stopped) = stopped else {
         return Err(AppError::new(ErrorCode::Internal, ERR_NO_AUDIO_BUFFER));
     };
@@ -309,6 +367,7 @@ fn finish_transcription(app: &AppHandle, result: Result<(), AppError>) {
     if let Err(err) = result {
         events::stt_error(app, err);
     }
+    *st.recording_source.lock().unwrap() = None;
     events::state_changed(app, state::RecorderState::Idle);
 }
 
@@ -359,4 +418,3 @@ pub async fn retry_transcription(app: AppHandle) {
 pub fn list_audio_output_devices() -> Vec<capture::OutputDeviceInfo> {
     capture::list_output_devices()
 }
-

@@ -109,7 +109,16 @@ type GlobalRegistrar = fn(&AppHandle, &str) -> Result<(), String>;
 type GlobalUnregistrar = fn(&AppHandle, &str);
 
 const GLOBAL_HOTKEYS: &[(&str, GlobalRegistrar, GlobalUnregistrar)] = &[
-    (hotkeys::ACTION_RECORD, hotkey::register_ptt, hotkey::unregister_ptt),
+    (
+        hotkeys::ACTION_RECORD,
+        hotkey::register_system_ptt,
+        hotkey::unregister_ptt,
+    ),
+    (
+        hotkeys::ACTION_RECORD_MICROPHONE,
+        hotkey::register_microphone_ptt,
+        hotkey::unregister_ptt,
+    ),
     (hotkeys::ACTION_TOGGLE_WINDOW, hotkey::register_toggle, hotkey::unregister_toggle),
     (hotkeys::ACTION_TELEPROMPTER, hotkey::register_teleprompter, hotkey::unregister_teleprompter),
     (hotkeys::ACTION_SCREENSHOT, hotkey::register_screenshot, hotkey::unregister_screenshot),

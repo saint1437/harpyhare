@@ -31,7 +31,7 @@ afterEach(() => {
 describe("usePttSuspend", () => {
   it("буквенный хоткей глушится при фокусе в поле и возвращается на blur", () => {
     renderHook(() => {
-      usePttSuspend("V");
+      usePttSuspend("V", "Ctrl+Q");
     });
     const ta = focusTextarea();
     expect(setPttSuspended).toHaveBeenCalledWith(true);
@@ -43,14 +43,14 @@ describe("usePttSuspend", () => {
     const ta = mountFocusedTextarea();
     expect(document.activeElement).toBe(ta);
     renderHook(() => {
-      usePttSuspend("V");
+      usePttSuspend("V", "Ctrl+Q");
     });
     expect(setPttSuspended).toHaveBeenCalledWith(true);
   });
 
   it("F9 не глушится: запись стартует и при фокусе в поле промпта", () => {
     renderHook(() => {
-      usePttSuspend("F9");
+      usePttSuspend("F9", "F10");
     });
     focusTextarea();
     expect(setPttSuspended).not.toHaveBeenCalled();
@@ -58,10 +58,18 @@ describe("usePttSuspend", () => {
 
   it("размонтирование с буквенным хоткеем снимает заглушку", () => {
     const { unmount } = renderHook(() => {
-      usePttSuspend("V");
+      usePttSuspend("V", "Ctrl+Q");
     });
     focusTextarea();
     unmount();
     expect(setPttSuspended).toHaveBeenLastCalledWith(false);
+  });
+
+  it("глушит оба PTT, если с вводом конфликтует хоткей микрофона", () => {
+    renderHook(() => {
+      usePttSuspend("F9", "Q");
+    });
+    focusTextarea();
+    expect(setPttSuspended).toHaveBeenCalledWith(true);
   });
 });

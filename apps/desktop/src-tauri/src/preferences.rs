@@ -116,14 +116,16 @@ pub fn set_stt_keyterms(app: AppHandle, keyterms: Vec<String>) {
 #[tauri::command]
 #[specta::specta]
 pub fn set_ptt_suspended(app: AppHandle, suspended: bool) {
-    let hk = crate::hotkeys::effective(
-        &app.state::<App>().settings.lock().unwrap().hotkeys,
-        crate::hotkeys::ACTION_RECORD,
-    );
+    let settings = app.state::<App>().settings.lock().unwrap().clone();
+    let system = crate::hotkeys::effective(&settings.hotkeys, crate::hotkeys::ACTION_RECORD);
+    let microphone =
+        crate::hotkeys::effective(&settings.hotkeys, crate::hotkeys::ACTION_RECORD_MICROPHONE);
     if suspended {
-        hotkey::unregister_ptt(&app, &hk);
+        hotkey::unregister_ptt(&app, &system);
+        hotkey::unregister_ptt(&app, &microphone);
     } else {
-        let _ = hotkey::register_ptt(&app, &hk);
+        let _ = hotkey::register_system_ptt(&app, &system);
+        let _ = hotkey::register_microphone_ptt(&app, &microphone);
     }
 }
 

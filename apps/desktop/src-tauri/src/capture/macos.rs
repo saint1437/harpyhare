@@ -19,15 +19,26 @@ fn from_os(err: os::Error) -> CaptureError {
     }
 }
 
-pub struct Source {
-    tap: ca::TapGuard,
-    device: ca::AggregateDevice,
+pub enum Source {
+    System {
+        tap: ca::TapGuard,
+        device: ca::AggregateDevice,
+    },
+    Microphone {
+        device: ca::Device,
+    },
 }
 
-pub struct Running {
-    _started: ca::hardware::StartedDevice<ca::AggregateDevice>,
-    _tap: ca::TapGuard,
-    _ctx: Box<CallbackCtx>,
+pub enum Running {
+    System {
+        _started: ca::hardware::StartedDevice<ca::AggregateDevice>,
+        _tap: ca::TapGuard,
+        _ctx: Box<CallbackCtx>,
+    },
+    Microphone {
+        _started: ca::hardware::StartedDevice<ca::Device>,
+        _ctx: Box<CallbackCtx>,
+    },
 }
 
 unsafe impl Send for Running {}
@@ -85,7 +96,7 @@ fn stream_spec(asbd: &cat::audio::StreamBasicDesc) -> Result<StreamSpec, Capture
     })
 }
 
-pub fn open(output_device_uid: Option<&str>) -> Result<(Source, StreamSpec), CaptureError> {
+pub fn open_system(output_device_uid: Option<&str>) -> Result<(Source, StreamSpec), CaptureError> {
     let tap_desc = ca::TapDesc::with_stereo_global_tap_excluding_processes(&ns::Array::new());
     let tap = tap_desc.create_process_tap().map_err(from_os)?;
     let tap_uid = tap.uid().map_err(from_os)?;
@@ -121,20 +132,39 @@ pub fn open(output_device_uid: Option<&str>) -> Result<(Source, StreamSpec), Cap
     );
     let device = ca::AggregateDevice::with_desc(&dict).map_err(from_os)?;
 
-    Ok((Source { tap, device }, spec))
+    Ok((Source::System { tap, device }, spec))
+}
+
+pub fn open_microphone() -> Result<(Source, StreamSpec), CaptureError> {
+    let device = ca::System::default_input_device().map_err(from_os)?;
+    let spec = stream_spec(&device.input_asbd().map_err(from_os)?)?;
+    Ok((Source::Microphone { device }, spec))
 }
 
 pub fn start(source: Source, mut ctx: Box<CallbackCtx>) -> Result<Running, CaptureError> {
-    let Source { tap, device } = source;
-    let proc_id = device
-        .create_io_proc_id(io_proc, Some(ctx.as_mut()))
-        .map_err(from_os)?;
-    let started = ca::device_start(device, Some(proc_id)).map_err(from_os)?;
-    Ok(Running {
-        _started: started,
-        _tap: tap,
-        _ctx: ctx,
-    })
+    match source {
+        Source::System { tap, device } => {
+            let proc_id = device
+                .create_io_proc_id(io_proc, Some(ctx.as_mut()))
+                .map_err(from_os)?;
+            let started = ca::device_start(device, Some(proc_id)).map_err(from_os)?;
+            Ok(Running::System {
+                _started: started,
+                _tap: tap,
+                _ctx: ctx,
+            })
+        }
+        Source::Microphone { device } => {
+            let proc_id = device
+                .create_io_proc_id(io_proc, Some(ctx.as_mut()))
+                .map_err(from_os)?;
+            let started = ca::device_start(device, Some(proc_id)).map_err(from_os)?;
+            Ok(Running::Microphone {
+                _started: started,
+                _ctx: ctx,
+            })
+        }
+    }
 }
 
 extern "C" fn io_proc(

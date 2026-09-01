@@ -92,6 +92,7 @@ fn windows_defaults_avoid_the_super_key() {
 #[test]
 fn effective_falls_back_to_default_and_prefers_last_binding() {
     assert_eq!(effective(&[], ACTION_RECORD), "Cmd+R");
+    assert_eq!(effective(&[], ACTION_RECORD_MICROPHONE), "Cmd+Q");
     assert_eq!(effective(&[binding(ACTION_RECORD, "Cmd+Shift+X")], ACTION_RECORD), "Cmd+Shift+X");
     let twice = vec![binding(ACTION_RECORD, "F8"), binding(ACTION_RECORD, "F7")];
     assert_eq!(effective(&twice, ACTION_RECORD), "F7");

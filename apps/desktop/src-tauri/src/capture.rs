@@ -117,7 +117,20 @@ pub fn watch_default_output_device(on_change: DeviceChangeHandler) {
 
 impl SystemAudioCapture {
     pub fn new(output_device_uid: Option<&str>, buffer_secs: u64) -> Result<Self, CaptureError> {
-        let (source, spec) = backend::open(output_device_uid)?;
+        let (source, spec) = backend::open_system(output_device_uid)?;
+        Self::from_source(source, spec, buffer_secs)
+    }
+
+    pub fn new_microphone() -> Result<Self, CaptureError> {
+        let (source, spec) = backend::open_microphone()?;
+        Self::from_source(source, spec, 0)
+    }
+
+    fn from_source(
+        source: backend::Source,
+        spec: StreamSpec,
+        buffer_secs: u64,
+    ) -> Result<Self, CaptureError> {
 
         let ring = HeapRb::<f32>::new(spec.sample_rate as usize * spec.channels * RING_SECONDS);
         let (prod, cons) = ring.split();

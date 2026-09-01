@@ -1,6 +1,12 @@
 pub const MIN_RECORDING_SECS: f32 = 0.3;
 pub const MAX_RECORDING_SECS: f32 = 600.0;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecordingSource {
+    System,
+    Microphone,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
 #[serde(rename_all = "lowercase")]
 pub enum RecorderState {

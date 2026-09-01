@@ -763,7 +763,10 @@ export default function App() {
   }, [doSend, notesModeRef]);
 
   useWindowControls(settings.hotkeys, sendFromHotkey, bumpOpacity, bumpWindowSize);
-  usePttSuspend(effectiveCombo(settings.hotkeys, "record"));
+  usePttSuspend(
+    effectiveCombo(settings.hotkeys, "record"),
+    effectiveCombo(settings.hotkeys, "record_microphone"),
+  );
   const connectivity = useConnectivity();
   const promptUnavailable = teleprompterOpen || connectivity.offline || miniMode || notesMode;
   const { ref: promptRef, focus: focusPrompt } = usePromptFocus(promptUnavailable);
