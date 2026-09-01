@@ -1,7 +1,7 @@
 import { MODEL_PROVIDERS } from "./models";
 import { STT_PROVIDERS, sttProviderKeyId } from "./stt-providers";
 
-export type ApiKeyId = "anthropic" | "groq" | "openai" | "xai" | "deepgram";
+export type ApiKeyId = "anthropic" | "groq" | "openai" | "xai" | "deepgram" | "xclis";
 
 export interface ApiKeyInfo {
   id: ApiKeyId;
@@ -41,6 +41,12 @@ const API_KEYS = [
     purpose: "распознавания речи в реальном времени",
     consoleUrl: "https://console.deepgram.com/",
   },
+  {
+    id: "xclis",
+    name: "Xclis",
+    purpose: "ответов через агрегатор Xclis",
+    consoleUrl: "https://jp.xclis.ai/",
+  },
 ] as const satisfies readonly ApiKeyInfo[];
 
 export const API_KEY_IDS: readonly ApiKeyId[] = API_KEYS.map((k) => k.id);
@@ -55,6 +61,7 @@ export interface ApiKeySettings {
   openai_api_key: string;
   xai_api_key: string;
   deepgram_api_key: string;
+  xclis_api_key: string;
   access_token: string;
   stt_provider: string;
 }

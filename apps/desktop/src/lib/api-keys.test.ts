@@ -19,12 +19,14 @@ const keys = (
   openai = "",
   xai = "",
   deepgram = "",
+  xclis = "",
 ) => ({
   anthropic_api_key: anthropic,
   groq_api_key: groq,
   openai_api_key: openai,
   xai_api_key: xai,
   deepgram_api_key: deepgram,
+  xclis_api_key: xclis,
   access_token: accessToken,
   stt_provider: sttProvider,
 });
@@ -91,12 +93,13 @@ describe("modelProvidersMissingKey", () => {
     expect(locked).toContain(PROVIDER_XAI);
   });
 
-  it("код доступа не оставляет запертым ни одного вендора ответов", () => {
+  it("код доступа оставляет запертыми ровно тех, кого relay не проксирует", () => {
     // Замок снимается по флагу proxied реестра, а не по списку id: вендор,
     // которого воркер не проксирует, обязан остаться запертым сам собой.
     const locked = modelProvidersMissingKey(keys("", "", "itk_token"));
     expect(locked).toEqual(MODEL_PROVIDERS.filter((p) => !p.proxied).map((p) => p.id));
-    expect(locked).toEqual([]);
+    // Сейчас такой вендор один — Xclis: у relay нет его роута.
+    expect(locked).toEqual(["xclis"]);
   });
 
   it("свой ключ xAI открывает Grok и при коде доступа", () => {
@@ -118,6 +121,7 @@ describe("код доступа и непроксируемые вендоры �
       openai_api_key: "",
       xai_api_key: "",
       deepgram_api_key: "",
+      xclis_api_key: "",
       access_token: "itk_code",
       stt_provider: "groq",
     };
@@ -135,6 +139,7 @@ describe("код доступа и непроксируемые вендоры �
       openai_api_key: "",
       xai_api_key: "xai-key",
       deepgram_api_key: "",
+      xclis_api_key: "",
       access_token: "",
       stt_provider: "xai",
     };
@@ -159,7 +164,7 @@ describe("visibleApiKeys", () => {
   it("под кодом остаются поля только тех вендоров, до которых relay не дотягивается", () => {
     // Deepgram — единственный такой вендор: у relay нет его роута, поэтому код
     // доступа его не открывает и поле ключа обязано остаться видимым.
-    expect(vendorsOutsideCode()).toEqual(["Deepgram · Nova-3"]);
-    expect(visibleApiKeys(keys("sk-ant", "gsk_y", "itk_token"))).toEqual(["deepgram"]);
+    expect(vendorsOutsideCode()).toEqual(["Xclis", "Deepgram · Nova-3"]);
+    expect(visibleApiKeys(keys("sk-ant", "gsk_y", "itk_token"))).toEqual(["deepgram", "xclis"]);
   });
 });

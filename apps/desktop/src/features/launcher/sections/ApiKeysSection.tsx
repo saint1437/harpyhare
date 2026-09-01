@@ -27,6 +27,7 @@ const KEY_PLACEHOLDERS: Record<ApiKeyId, string> = {
   openai: "sk-…",
   xai: "xai-…",
   deepgram: "…",
+  xclis: "sk-…",
 };
 
 const GROUP_TITLE = "Доступ к API";

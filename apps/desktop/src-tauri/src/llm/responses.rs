@@ -34,7 +34,9 @@ const CONTENT_OUTPUT_TEXT: &str = "output_text";
 fn efforts(spec: &LlmProviderSpec) -> (&'static str, &'static str) {
     match spec.wire {
         LlmWire::Responses { effort_off, effort_on, .. } => (effort_off, effort_on),
-        LlmWire::Anthropic { .. } => unreachable!("клиент Responses собран из чужого диалекта"),
+        LlmWire::Anthropic { .. } | LlmWire::Xclis { .. } => {
+            unreachable!("клиент Responses собран из чужого диалекта")
+        }
     }
 }
 

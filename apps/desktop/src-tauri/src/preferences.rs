@@ -13,6 +13,7 @@ const GROQ_API_KEY_ENV: &str = "GROQ_API_KEY";
 const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
 const XAI_API_KEY_ENV: &str = "XAI_API_KEY";
 const DEEPGRAM_API_KEY_ENV: &str = "DEEPGRAM_API_KEY";
+const XCLIS_API_KEY_ENV: &str = "XCLIS_API_KEY";
 
 pub fn load_dotenv_files() {
     let _ = dotenvy::dotenv();
@@ -33,6 +34,7 @@ pub fn load_settings_with_env_key_fallback(app: &AppHandle) -> settings::Setting
         std::env::var(OPENAI_API_KEY_ENV).ok(),
         std::env::var(XAI_API_KEY_ENV).ok(),
         std::env::var(DEEPGRAM_API_KEY_ENV).ok(),
+        std::env::var(XCLIS_API_KEY_ENV).ok(),
     );
     settings
 }

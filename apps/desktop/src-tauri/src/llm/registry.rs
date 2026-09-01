@@ -4,6 +4,10 @@ use super::{
     ModelInfo, PROVIDER_ANTHROPIC, PROVIDER_OPENAI, PROVIDER_XAI, UNKNOWN_MAX_INPUT_TOKENS,
 };
 
+/// Клиент Xclis: OpenAI-совместимый Chat Completions, свой SSE-разбор и
+/// собственная кодировка рассуждения суффиксом модели.
+pub mod xclis;
+
 /// A model the app can name before it holds any credential to verify it with.
 ///
 /// Deliberately not `ModelInfo`: that one is built from live API answers and
@@ -90,23 +94,59 @@ pub enum LlmWire {
         /// `reasoning.effort` meaning "thinking on".
         effort_on: &'static str,
     },
+    /// OpenAI-совместимый `POST /v1/chat/completions`, а НЕ Responses: диалект
+    /// другой, поэтому и вариант отдельный. Рассуждение здесь кодируется не
+    /// полем, а суффиксом `-thinking` у имени модели.
+    Xclis {
+        base_url: &'static str,
+        key_label: &'static str,
+    },
 }
 
 impl LlmWire {
     pub fn base_url(&self) -> &'static str {
         match self {
-            LlmWire::Anthropic { base_url, .. } | LlmWire::Responses { base_url, .. } => base_url,
+            LlmWire::Anthropic { base_url, .. }
+            | LlmWire::Responses { base_url, .. }
+            | LlmWire::Xclis { base_url, .. } => base_url,
         }
     }
 
     pub fn key_label(&self) -> &'static str {
         match self {
-            LlmWire::Anthropic { key_label, .. } | LlmWire::Responses { key_label, .. } => {
-                key_label
-            }
+            LlmWire::Anthropic { key_label, .. }
+            | LlmWire::Responses { key_label, .. }
+            | LlmWire::Xclis { key_label, .. } => key_label,
         }
     }
 }
+
+/// Модели Xclis имеют префикс внутри приложения, чтобы никогда не столкнуться
+/// с прямым id Anthropic или OpenAI: у вендора те же имена. Префикс снимается
+/// перед отправкой запроса, а живой `/v1/models` заменяет этот список.
+const XCLIS_MODELS: &[CatalogModel] = &[
+    CatalogModel {
+        id: "xclis/claude-sonnet-5",
+        display_name: "Claude Sonnet 5 · Xclis",
+        adaptive: true,
+        always_thinks: false,
+        code_exec: false,
+    },
+    CatalogModel {
+        id: "xclis/claude-opus-4-8",
+        display_name: "Claude Opus 4.8 · Xclis",
+        adaptive: true,
+        always_thinks: false,
+        code_exec: false,
+    },
+    CatalogModel {
+        id: "xclis/gpt-5.6-sol",
+        display_name: "GPT-5.6 Sol · Xclis",
+        adaptive: false,
+        always_thinks: false,
+        code_exec: false,
+    },
+];
 
 const CLAUDE_MODELS: &[CatalogModel] = &[
     CatalogModel {
@@ -254,6 +294,21 @@ pub const PROVIDERS: &[LlmProviderSpec] = &[
             // xAI refuses "none" outright; "minimal" is its floor.
             effort_off: "minimal",
             effort_on: "high",
+        },
+    },
+    // Агрегатор чужих моделей под своим ключом. `proxied: false` — у relay нет
+    // его роута, поэтому код доступа его не открывает.
+    LlmProviderSpec {
+        id: xclis::PROVIDER_XCLIS,
+        label: "Xclis",
+        key_id: "xclis",
+        families: &[],
+        catalog: XCLIS_MODELS,
+        default_model: "xclis/claude-sonnet-5",
+        proxied: false,
+        wire: LlmWire::Xclis {
+            base_url: "https://jp.xclis.ai",
+            key_label: "Xclis",
         },
     },
 ];

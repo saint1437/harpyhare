@@ -219,6 +219,16 @@ fn build_provider(
                 Arc::new(llm::responses::ResponsesClient::direct(spec, api_key))
             }
         },
+        // Строка Xclis несёт `proxied: false`, поэтому прокси-ветки здесь нет:
+        // `provider_access` до неё просто не доходит.
+        llm::registry::LlmWire::Xclis { .. } => match access {
+            ProviderAccess::Direct { api_key } => {
+                Arc::new(llm::registry::xclis::XclisClient::new(spec, api_key))
+            }
+            ProviderAccess::Proxied { .. } => {
+                unreachable!("Xclis не проксируется: у relay нет его роута")
+            }
+        },
     }
 }
 

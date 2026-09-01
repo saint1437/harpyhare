@@ -15,6 +15,7 @@ pub const API_KEY_GROQ: &str = "groq";
 pub const API_KEY_OPENAI: &str = "openai";
 pub const API_KEY_XAI: &str = "xai";
 pub const API_KEY_DEEPGRAM: &str = "deepgram";
+pub const API_KEY_XCLIS: &str = "xclis";
 
 /// The key a registry row asks for, or `""` when it names one that does not
 /// exist — which the pickers render as a permanent lock rather than a crash.
@@ -25,6 +26,7 @@ pub fn api_key_for<'a>(s: &'a Settings, key_id: &str) -> &'a str {
         API_KEY_OPENAI => &s.openai_api_key,
         API_KEY_XAI => &s.xai_api_key,
         API_KEY_DEEPGRAM => &s.deepgram_api_key,
+        API_KEY_XCLIS => &s.xclis_api_key,
         _ => "",
     }
 }
@@ -171,6 +173,7 @@ pub struct Settings {
     pub openai_api_key: String,
     pub xai_api_key: String,
     pub deepgram_api_key: String,
+    pub xclis_api_key: String,
     pub access_token: String,
     pub prompt_presets: Vec<PromptPreset>,
     pub hotkeys: Vec<crate::hotkeys::HotkeyBinding>,
@@ -209,6 +212,7 @@ impl Default for Settings {
             openai_api_key: String::new(),
             xai_api_key: String::new(),
             deepgram_api_key: String::new(),
+            xclis_api_key: String::new(),
             access_token: String::new(),
             prompt_presets: Vec::new(),
             hotkeys: Vec::new(),
@@ -287,6 +291,7 @@ impl Settings {
         openai: Option<String>,
         xai: Option<String>,
         deepgram: Option<String>,
+        xclis: Option<String>,
     ) {
         fn fill_if_empty(target: &mut String, candidate: Option<String>) {
             if !target.is_empty() {
@@ -305,6 +310,7 @@ impl Settings {
         // означало бы запереть их у того, кто ключ как раз положил.
         fill_if_empty(&mut self.xai_api_key, xai);
         fill_if_empty(&mut self.deepgram_api_key, deepgram);
+        fill_if_empty(&mut self.xclis_api_key, xclis);
         if !self.access_token.is_empty() {
             return;
         }
