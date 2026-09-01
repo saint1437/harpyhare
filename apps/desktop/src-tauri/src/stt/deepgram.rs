@@ -22,6 +22,7 @@ const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 const WARM_UP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 const CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 const KEY_LABEL: &str = "Deepgram";
+const KEYTERM_PARAM: &str = "keyterm";
 
 #[derive(Clone)]
 pub struct DeepgramStt {
@@ -57,38 +58,64 @@ impl DeepgramStt {
         if language.is_empty() { MULTI_LANGUAGE } else { language }
     }
 
-    fn rest_request(&self, wav: Vec<u8>) -> reqwest::RequestBuilder {
+    fn rest_request(&self, wav: Vec<u8>, keyterms: Keyterms<'_>) -> reqwest::RequestBuilder {
+        let mut query: Vec<(&str, &str)> = vec![
+            ("model", MODEL),
+            ("language", self.language_param()),
+            ("smart_format", "true"),
+        ];
+        query.extend(Self::keyterm_params(keyterms));
         self.client
             .post(format!("{}{}", self.base_url, LISTEN_PATH))
             .header("Authorization", format!("Token {}", self.api_key))
             .header(reqwest::header::CONTENT_TYPE, WAV_MIME)
-            .query(&[
-                ("model", MODEL),
-                ("language", self.language_param()),
-                ("smart_format", "true"),
-            ])
+            .query(&query)
             .body(wav)
             .timeout(REQUEST_TIMEOUT)
     }
 
-    fn websocket_url(&self) -> String {
+    /// Термины уходят повторяющимся `keyterm=`, как требует Nova-3. Резать
+    /// список здесь не надо: предел вендора уже применил `accepted()` реестра.
+    fn keyterm_params(keyterms: Keyterms<'_>) -> Vec<(&str, &str)> {
+        keyterms.iter().map(|term| (KEYTERM_PARAM, term.as_str())).collect()
+    }
+
+    /// Собираем через `Url`, а не форматированием: термины бывают многословными,
+    /// и Deepgram требует их процентного кодирования — ручная склейка порвала бы
+    /// запрос на первом же пробеле.
+    fn websocket_url(&self, keyterms: Keyterms<'_>) -> String {
         let base = self.base_url.trim_end_matches('/');
         let ws_base = base
             .strip_prefix("https://")
             .map(|rest| format!("wss://{rest}"))
             .or_else(|| base.strip_prefix("http://").map(|rest| format!("ws://{rest}")))
             .unwrap_or_else(|| base.to_string());
-        format!(
-            "{ws_base}{LISTEN_PATH}?model={MODEL}&language={}&encoding=linear16&sample_rate=16000&channels=1&smart_format=true&punctuate=true",
-            self.language_param()
-        )
+        let endpoint = format!("{ws_base}{LISTEN_PATH}");
+        let Ok(mut url) = reqwest::Url::parse(&endpoint) else {
+            return endpoint;
+        };
+        {
+            let mut query = url.query_pairs_mut();
+            query.append_pair("model", MODEL);
+            query.append_pair("language", self.language_param());
+            query.append_pair("encoding", "linear16");
+            query.append_pair("sample_rate", "16000");
+            query.append_pair("channels", "1");
+            query.append_pair("smart_format", "true");
+            query.append_pair("punctuate", "true");
+            for term in keyterms {
+                query.append_pair(KEYTERM_PARAM, term);
+            }
+        }
+        url.into()
     }
 
     fn websocket_request(
         &self,
+        keyterms: Keyterms<'_>,
     ) -> Result<tokio_tungstenite::tungstenite::http::Request<()>, SttError> {
         let mut request = self
-            .websocket_url()
+            .websocket_url(keyterms)
             .into_client_request()
             .map_err(|e| SttError::Other(format!("Deepgram WebSocket URL: {e}")))?;
         let auth = HeaderValue::from_bytes(format!("Token {}", self.api_key).as_bytes())
@@ -201,10 +228,10 @@ impl SttEngine for DeepgramStt {
     async fn transcribe_stream(
         &self,
         mut chunks: AudioChunkStream,
-        _keyterms: Keyterms<'_>,
+        keyterms: Keyterms<'_>,
         cancel: tokio_util::sync::CancellationToken,
     ) -> Result<String, SttError> {
-        let request = self.websocket_request()?;
+        let request = self.websocket_request(keyterms)?;
         let connect = tokio_tungstenite::connect_async(request);
         let (socket, _) = tokio::select! {
             result = connect => result.map_err(Self::map_ws_connect_error)?,
@@ -313,11 +340,11 @@ impl SttEngine for DeepgramStt {
     async fn transcribe(
         &self,
         samples: &[f32],
-        _keyterms: Keyterms<'_>,
+        keyterms: Keyterms<'_>,
     ) -> Result<String, SttError> {
         let wav = audio::encode_wav_16k_mono(samples).map_err(|e| SttError::Other(e.to_string()))?;
         let resp = self
-            .rest_request(wav)
+            .rest_request(wav, keyterms)
             .send()
             .await
             .map_err(|e| SttError::Network(e.to_string()))?;
@@ -338,11 +365,27 @@ mod tests {
     #[test]
     fn websocket_url_uses_eu_host_and_pcm_shape() {
         let stt = DeepgramStt::new("k".into());
-        let url = stt.websocket_url();
+        let url = stt.websocket_url(&[]);
         assert!(url.starts_with("wss://api.eu.deepgram.com/v1/listen?"));
         assert!(url.contains("model=nova-3"));
         assert!(url.contains("encoding=linear16"));
         assert!(url.contains("sample_rate=16000"));
+    }
+
+    /// Nova-3 принимает подсказки повторяющимся `keyterm=`; многословные термины
+    /// обязаны быть закодированы, иначе запрос рвётся на первом же пробеле.
+    #[test]
+    fn keyterms_go_into_the_stream_url_encoded() {
+        let stt = DeepgramStt::new("k".into());
+        let terms = vec!["gRPC".to_string(), "Kubernetes Operator".to_string()];
+        let url = stt.websocket_url(&terms);
+        assert!(url.contains("keyterm=gRPC"), "{url}");
+        assert!(url.contains("keyterm=Kubernetes+Operator"), "{url}");
+    }
+
+    #[test]
+    fn no_keyterms_means_no_parameter() {
+        assert!(!DeepgramStt::new("k".into()).websocket_url(&[]).contains("keyterm"));
     }
 
     #[test]
@@ -364,6 +407,6 @@ mod tests {
     #[test]
     fn test_base_url_switches_ws_scheme() {
         let stt = DeepgramStt::new("k".into()).with_base_url("http://127.0.0.1:1234".into());
-        assert!(stt.websocket_url().starts_with("ws://127.0.0.1:1234/v1/listen?"));
+        assert!(stt.websocket_url(&[]).starts_with("ws://127.0.0.1:1234/v1/listen?"));
     }
 }

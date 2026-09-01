@@ -46,7 +46,9 @@ pub struct SttProviderSpec {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SttKeyterms {
     Unsupported,
-    /// One form field repeated per term, capped by the vendor.
+    /// One field repeated per term, capped by the vendor. Where the repetition
+    /// lands is the transport's business: xAI repeats a multipart field,
+    /// Deepgram repeats a query parameter — the shape is the same either way.
     Repeated { field: &'static str, max: usize },
     /// Whisper-style biasing: all terms in one free-text field.
     Prompt { field: &'static str },
@@ -209,7 +211,11 @@ pub const PROVIDERS: &[SttProviderSpec] = &[
         key_id: "deepgram",
         proxied: false,
         supports_translate: false,
-        keyterms: SttKeyterms::Unsupported,
+        // Keyterm Prompting у Nova-3: повторяющийся `keyterm=` в query.
+        // Настоящий предел вендора — 500 ТОКЕНОВ на все термины разом, а не их
+        // число, посчитать его на клиенте нечем. Берём документированный потолок
+        // рекомендации (20–50 терминов): он заведомо внутри лимита.
+        keyterms: SttKeyterms::Repeated { field: "keyterm", max: 50 },
         key_label: "Deepgram",
         wire: SttWire::Deepgram {
             // Европейский хост выбран намеренно: у Deepgram он отдельный, и

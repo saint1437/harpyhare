@@ -457,3 +457,18 @@ async fn no_declared_terms_means_no_extra_fields_anywhere() {
         .with_base_url(server.uri());
     assert_eq!(stt.transcribe(&samples(), NO_KEYTERMS).await.unwrap(), "ок");
 }
+
+/// Настоящий предел Deepgram — 500 токенов на все термины разом, а не их число,
+/// посчитать его на клиенте нечем. Берём документированный потолок рекомендации
+/// вендора (20–50 терминов): он заведомо внутри лимита и режется тем же
+/// `accepted()`, что и у остальных вендоров.
+#[test]
+fn deepgram_caps_keyterms_like_every_other_vendor() {
+    let spec = registry::resolve(registry::PROVIDER_DEEPGRAM);
+    let registry::SttKeyterms::Repeated { field, max } = spec.keyterms else {
+        panic!("Deepgram принимает повторяющийся keyterm");
+    };
+    assert_eq!(field, "keyterm");
+    let many: Vec<String> = (0..max + 10).map(|i| format!("термин{i}")).collect();
+    assert_eq!(spec.keyterms.accepted(&many).len(), max);
+}
