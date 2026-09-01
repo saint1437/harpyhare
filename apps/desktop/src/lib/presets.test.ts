@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { mergePresets, presetText, type PromptPreset } from "./presets";
+import { extractKeyterms, stripKeywordBlocks } from "./keywords";
+import { mergePresets, OFFICIAL_PRESETS_FALLBACK, presetText, type PromptPreset } from "./presets";
 
 const presets: PromptPreset[] = [
   { id: "a", name: "A", text: "текст-A" },
@@ -40,5 +41,35 @@ describe("mergePresets", () => {
   });
   it("пустой официальный пул отдаёт личные как есть", () => {
     expect(mergePresets([], [preset("x")])).toEqual([preset("x")]);
+  });
+});
+
+describe("встроенные пресеты объявляют термины для распознавания", () => {
+  it("у каждого пресета есть непустой блок [keywords]", () => {
+    expect(OFFICIAL_PRESETS_FALLBACK.length).toBeGreaterThan(0);
+    for (const preset of OFFICIAL_PRESETS_FALLBACK) {
+      expect(extractKeyterms(preset.text).length, `пресет ${preset.id}`).toBeGreaterThan(0);
+    }
+  });
+
+  it("ни один пресет не выходит за лимит вендора в одиночку", () => {
+    // xAI отвечает ошибкой, а не обрезает, поэтому пресет, переваливший лимит
+    // САМ ПО СЕБЕ, ломал бы запись до того, как к нему добавят контекст чата.
+    for (const preset of OFFICIAL_PRESETS_FALLBACK) {
+      expect(extractKeyterms(preset.text).length, `пресет ${preset.id}`).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it("объявление вырезается из текста, который уходит в модель", () => {
+    for (const preset of OFFICIAL_PRESETS_FALLBACK) {
+      expect(stripKeywordBlocks(preset.text), `пресет ${preset.id}`).not.toContain("[keywords]");
+    }
+  });
+
+  it("термины не повторяются внутри одного пресета", () => {
+    for (const preset of OFFICIAL_PRESETS_FALLBACK) {
+      const terms = extractKeyterms(preset.text).map((t) => t.toLocaleLowerCase());
+      expect(new Set(terms).size, `пресет ${preset.id}`).toBe(terms.length);
+    }
   });
 });

@@ -18,7 +18,18 @@ export interface ContextLibrary {
 export const EMPTY_LIBRARY: ContextLibrary = { folders: [], docs: [] };
 
 export const DOC_TEXT_LIMIT_CHARS = 200_000;
-const ROOT_FOLDER_ID = "";
+export const ROOT_FOLDER_ID = "";
+
+const IMPORT_EXTENSIONS = ["md", "markdown", "txt", "pdf"] as const;
+const EXTENSION_DOT = ".";
+
+export const IMPORT_ACCEPT = IMPORT_EXTENSIONS.map((ext) => `${EXTENSION_DOT}${ext}`).join(",");
+
+const IMPORT_EXTENSION_SUFFIX = new RegExp(
+  `\\${EXTENSION_DOT}(${IMPORT_EXTENSIONS.join("|")})$`,
+  "i",
+);
+
 const UNNAMED_DOC = "Без имени";
 const UNNAMED_FOLDER = "Папка";
 const LIBRARY_CONTEXT_BLOCK_HEADER = "Справочный материал";
@@ -95,6 +106,10 @@ export function moveDoc(lib: ContextLibrary, id: string, folderId: string): Cont
   };
 }
 
+export function folderNameOf(lib: ContextLibrary, folderId: string): string | null {
+  return lib.folders.find((folder) => folder.id === folderId)?.name ?? null;
+}
+
 export function docsInFolder(lib: ContextLibrary, folderId: string): ContextDoc[] {
   return lib.docs.filter((d) => d.folderId === folderId);
 }
@@ -105,7 +120,7 @@ export function rootDocs(lib: ContextLibrary): ContextDoc[] {
 
 export function docNameFromFileName(fileName: string): string {
   const base = fileName.split("/").pop() ?? fileName;
-  const withoutExt = base.replace(/\.(md|markdown|txt|pdf)$/i, "");
+  const withoutExt = base.replace(IMPORT_EXTENSION_SUFFIX, "");
   return withoutExt.trim() || UNNAMED_DOC;
 }
 

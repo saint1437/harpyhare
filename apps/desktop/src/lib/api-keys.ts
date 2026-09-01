@@ -1,4 +1,7 @@
-export type ApiKeyId = "anthropic" | "xclis" | "groq" | "deepgram";
+import { MODEL_PROVIDERS } from "./models";
+import { STT_PROVIDERS, sttProviderKeyId } from "./stt-providers";
+
+export type ApiKeyId = "anthropic" | "groq" | "openai" | "xai";
 
 export interface ApiKeyInfo {
   id: ApiKeyId;
@@ -11,14 +14,8 @@ const API_KEYS = [
   {
     id: "anthropic",
     name: "Anthropic",
-    purpose: "ответов Claude через официальный API",
+    purpose: "ответов Claude",
     consoleUrl: "https://console.anthropic.com/settings/keys",
-  },
-  {
-    id: "xclis",
-    name: "Xclis",
-    purpose: "ответов Claude через альтернативный Anthropic-совместимый API",
-    consoleUrl: "https://xclis.ai/ref/MGJST",
   },
   {
     id: "groq",
@@ -27,10 +24,16 @@ const API_KEYS = [
     consoleUrl: "https://console.groq.com/keys",
   },
   {
-    id: "deepgram",
-    name: "Deepgram",
-    purpose: "распознавания речи через Nova-3",
-    consoleUrl: "https://console.deepgram.com/",
+    id: "openai",
+    name: "OpenAI",
+    purpose: "ответов GPT и распознавания речи через OpenAI",
+    consoleUrl: "https://platform.openai.com/api-keys",
+  },
+  {
+    id: "xai",
+    name: "xAI",
+    purpose: "ответов Grok",
+    consoleUrl: "https://console.x.ai/team/default/api-keys",
   },
 ] as const satisfies readonly ApiKeyInfo[];
 
@@ -42,42 +45,95 @@ export function apiKeyInfo(id: ApiKeyId): ApiKeyInfo {
 
 export interface ApiKeySettings {
   anthropic_api_key: string;
-  xclis_api_key: string;
   groq_api_key: string;
-  deepgram_api_key: string;
-  llm_provider: string;
-  stt_provider: string;
+  openai_api_key: string;
+  xai_api_key: string;
   access_token: string;
+  stt_provider: string;
 }
 
-function selectedClaudeKey(settings: ApiKeySettings): ApiKeyId {
-  return settings.llm_provider === "xclis" ? "xclis" : "anthropic";
+/** Подпись запертого вендора — одна на оба пикера. */
+export const MISSING_KEY_HINT = "нет ключа";
+
+const RELAY_VENDORS = [...MODEL_PROVIDERS, ...STT_PROVIDERS];
+
+export function hasAccessCode(settings: ApiKeySettings): boolean {
+  return settings.access_token.trim() !== "";
 }
 
-function selectedSttKey(settings: ApiKeySettings): ApiKeyId {
-  return settings.stt_provider === "deepgram" ? "deepgram" : "groq";
+/** Вендоры, до которых код доступа не дотягивается: у relay нет их роута. */
+export function vendorsOutsideCode(): readonly string[] {
+  return [...new Set(RELAY_VENDORS.filter((v) => !v.proxied).map((v) => v.label))];
 }
 
-export function missingApiKeys(settings: ApiKeySettings): ApiKeyInfo[] {
-  if (settings.access_token.trim() !== "") return [];
+/**
+ * Поля ключей, которые есть смысл показывать. Код доступа стоит вместо ключа
+ * каждого проксируемого вендора, поэтому под кодом остаются только ключи тех,
+ * кого relay не проксирует, — а когда таких нет, полей нет вовсе.
+ */
+export function visibleApiKeys(settings: ApiKeySettings): readonly ApiKeyId[] {
+  if (!hasAccessCode(settings)) return API_KEY_IDS;
+  const outside = new Set(RELAY_VENDORS.filter((v) => !v.proxied).map((v) => v.keyId));
+  return API_KEY_IDS.filter((id) => outside.has(id));
+}
 
-  const selectedClaude = selectedClaudeKey(settings);
-  const selectedStt = selectedSttKey(settings);
-  const missing: ApiKeyInfo[] = [];
+export function sttProvidersMissingKey(settings: ApiKeySettings): readonly string[] {
+  return STT_PROVIDERS.filter((p) => {
+    // Same rule as the answer vendors: a code covers only what the relay
+    // proxies, and Grok speech is not among its routes.
+    if (p.proxied && hasAccessCode(settings)) return false;
+    return settings[`${p.keyId}_api_key`].trim() === "";
+  }).map((p) => p.id);
+}
 
-  if (settings[`${selectedClaude}_api_key`].trim() === "") {
-    missing.push(apiKeyInfo(selectedClaude));
+/**
+ * Answer-model providers the app cannot reach right now. An access code covers
+ * every provider the relay proxies — Claude and GPT alike — so it unlocks both.
+ */
+export function modelProvidersMissingKey(settings: ApiKeySettings): readonly string[] {
+  return MODEL_PROVIDERS.filter((p) => {
+    // An access code covers only what the relay proxies. A vendor it does not
+    // (Grok) still needs the user's own key, and the picker keeps it locked.
+    if (p.proxied && hasAccessCode(settings)) return false;
+    return settings[`${p.keyId}_api_key`].trim() === "";
+  }).map((p) => p.id);
+}
+
+/** What still stands between the user and a working session. */
+export interface AccessGap {
+  kind: "answers" | "speech";
+  label: string;
+}
+
+/** Answer vendors reachable right now — with a key of their own or via a code. */
+export function availableAnswerProviders(settings: ApiKeySettings): readonly string[] {
+  const locked = modelProvidersMissingKey(settings);
+  return MODEL_PROVIDERS.filter((p) => !locked.includes(p.id)).map((p) => p.id);
+}
+
+/**
+ * The two things the app genuinely needs, and neither of them names a vendor.
+ *
+ * It used to demand an Anthropic key specifically, from back when Claude was
+ * the only way to get an answer. **Any one answer vendor is enough now** — the
+ * requirement is a working pair (something to answer with, something to hear
+ * with), not a particular company.
+ */
+export function accessGaps(settings: ApiKeySettings): AccessGap[] {
+  const gaps: AccessGap[] = [];
+  if (availableAnswerProviders(settings).length === 0) {
+    const names = MODEL_PROVIDERS.map((p) => p.label).join(", ");
+    gaps.push({
+      kind: "answers",
+      label: `Добавьте ключ любого провайдера ответов (${names}) или введите код доступа`,
+    });
   }
-  if (settings[`${selectedStt}_api_key`].trim() === "") {
-    missing.push(apiKeyInfo(selectedStt));
+  const speech = sttProviderKeyId(settings.stt_provider);
+  if (sttProvidersMissingKey(settings).includes(settings.stt_provider)) {
+    gaps.push({
+      kind: "speech",
+      label: `Добавьте ключ ${apiKeyInfo(speech).name} для распознавания речи или выберите другого провайдера`,
+    });
   }
-
-  return missing;
-}
-
-export function missingKeysNotice(missing: ApiKeyInfo[]): string {
-  if (missing.length === 0) return "";
-  const noun = missing.length === 1 ? "ключ" : "ключи";
-  const names = missing.map((k) => k.name).join(" и ");
-  return `Добавьте ${noun} ${names} для выбранных провайдеров или введите код доступа`;
+  return gaps;
 }

@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import {
   useCallback,
-  useEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -30,29 +29,21 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { ContextLibraryApi } from "@/hooks/useContextLibrary";
-import { readContextImportFile, readContextPdfBytes } from "@/ipc/commands";
-import { onFileDrop } from "@/ipc/events";
-import { arrayBufferToBase64 } from "@/lib/base64";
+import { useLibraryFileDrop } from "@/hooks/useLibraryFileDrop";
+import { useLibraryImport } from "@/hooks/useLibraryImport";
 import {
-  docNameFromFileName,
   docsInFolder,
-  isPdfFileName,
+  IMPORT_ACCEPT,
+  ROOT_FOLDER_ID,
   rootDocs,
   type ContextDoc,
 } from "@/lib/context-library";
-import { PLATFORM, type Platform } from "@/lib/platform";
+import { dropFolderProps, dropTargetAt } from "@/lib/library-drop";
+import { FILE_MANAGER_LABEL, PLATFORM } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 
-const ROOT_FOLDER_ID = "";
 const ROOT_SELECT_VALUE = "root";
-const DROP_FOLDER_ATTR = "data-drop-folder";
-const IMPORT_ACCEPT = ".md,.markdown,.txt,.pdf";
 const THOUSAND = 1000;
-
-const FILE_MANAGER_LABEL: Record<Platform, string> = {
-  macos: "Finder",
-  windows: "проводника",
-};
 
 interface DocDraft {
   id: string | null;
@@ -67,53 +58,17 @@ function formatChars(count: number): string {
   return `${thousands} тыс. симв.`;
 }
 
-function dropTargetAt(x: number, y: number): string | null {
-  const el = document.elementFromPoint(x, y);
-  const host = el?.closest(`[${DROP_FOLDER_ATTR}]`);
-  return host ? (host.getAttribute(DROP_FOLDER_ATTR) ?? ROOT_FOLDER_ID) : null;
-}
-
-function useNativeFileDrop(
-  api: ContextLibraryApi,
-  setDropTarget: (t: string | null) => void,
-  setImportError: (e: string | null) => void,
-): void {
-  useEffect(
-    () =>
-      onFileDrop((event) => {
-        if (event.type === "leave") {
-          setDropTarget(null);
-          return;
-        }
-        if (event.type === "over") {
-          setDropTarget(dropTargetAt(event.x, event.y));
-          return;
-        }
-        const target = dropTargetAt(event.x, event.y);
-        setDropTarget(null);
-        if (target === null) return;
-        setImportError(null);
-        for (const path of event.paths) {
-          void readContextImportFile(path)
-            .then((text) => {
-              api.addDoc({ name: docNameFromFileName(path), text, folderId: target });
-            })
-            .catch((e: unknown) => {
-              setImportError(String(e));
-            });
-        }
-      }),
-    [api, setDropTarget, setImportError],
-  );
-}
-
 const DOC_DRAG_THRESHOLD_PX = 5;
 
-function useDocDrag(
-  api: ContextLibraryApi,
-  setDropTarget: (t: string | null) => void,
-): { dragDocId: string | null; startDrag: (docId: string, x: number, y: number) => void } {
+interface DocDragApi {
+  dragDocId: string | null;
+  dragTargetId: string | null;
+  startDrag: (docId: string, x: number, y: number) => void;
+}
+
+function useDocDrag(moveDoc: ContextLibraryApi["moveDoc"]): DocDragApi {
   const [dragDocId, setDragDocId] = useState<string | null>(null);
+  const [dragTargetId, setDragTargetId] = useState<string | null>(null);
 
   const startDrag = useCallback(
     (docId: string, startX: number, startY: number) => {
@@ -125,51 +80,25 @@ function useDocDrag(
           active = true;
           setDragDocId(docId);
         }
-        setDropTarget(dropTargetAt(e.clientX, e.clientY));
+        setDragTargetId(dropTargetAt(e.clientX, e.clientY));
       };
       const onUp = (e: MouseEvent) => {
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
         if (active) {
           const target = dropTargetAt(e.clientX, e.clientY);
-          if (target !== null) api.moveDoc(docId, target);
+          if (target !== null) moveDoc(docId, target);
         }
         setDragDocId(null);
-        setDropTarget(null);
+        setDragTargetId(null);
       };
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     },
-    [api, setDropTarget],
+    [moveDoc],
   );
 
-  return { dragDocId, startDrag };
-}
-
-function importErrorText(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
-async function extractPickedFile(file: File): Promise<string> {
-  if (!isPdfFileName(file.name)) return file.text();
-  return readContextPdfBytes(arrayBufferToBase64(await file.arrayBuffer()));
-}
-
-async function importPickedFiles(
-  api: ContextLibraryApi,
-  files: FileList,
-  folderId: string,
-  setImportError: (e: string | null) => void,
-): Promise<void> {
-  setImportError(null);
-  for (const file of Array.from(files)) {
-    try {
-      const text = await extractPickedFile(file);
-      api.addDoc({ name: docNameFromFileName(file.name), text, folderId });
-    } catch (e: unknown) {
-      setImportError(importErrorText(e));
-    }
-  }
+  return { dragDocId, dragTargetId, startDrag };
 }
 
 function RowIconBadge({ children }: { children: ReactNode }) {
@@ -386,7 +315,7 @@ function EmptyDropZone({ onPick }: { onPick: () => void }) {
     <button
       type="button"
       onClick={onPick}
-      {...{ [DROP_FOLDER_ATTR]: ROOT_FOLDER_ID }}
+      {...dropFolderProps(ROOT_FOLDER_ID)}
       className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-7 text-center transition-colors outline-none hover:border-foreground/30 hover:bg-surface focus-visible:ring-2 focus-visible:ring-ring/60"
     >
       <span className="grid size-9 place-items-center rounded-lg bg-surface ring-1 ring-border ring-inset">
@@ -412,12 +341,12 @@ function librarySummary(docCount: number, folderCount: number): string {
 export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
   const { library } = api;
   const [docDraft, setDocDraft] = useState<DocDraft | null>(null);
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const [importError, setImportError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useNativeFileDrop(api, setDropTarget, setImportError);
-  const { dragDocId, startDrag } = useDocDrag(api, setDropTarget);
+  const { error: importError, importPaths, importFiles } = useLibraryImport(api.addDoc);
+  const fileDropTarget = useLibraryFileDrop(importPaths);
+  const { dragDocId, dragTargetId, startDrag } = useDocDrag(api.moveDoc);
+  const dropTarget = fileDropTarget ?? dragTargetId;
 
   const saveDocDraft = () => {
     if (!docDraft) return;
@@ -432,8 +361,7 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
 
   const onPickFiles = (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files && files.length > 0)
-      void importPickedFiles(api, files, ROOT_FOLDER_ID, setImportError);
+    if (files && files.length > 0) importFiles(files, ROOT_FOLDER_ID);
     e.target.value = "";
   };
 
@@ -512,7 +440,7 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
       ) : (
         <>
           <div
-            {...{ [DROP_FOLDER_ATTR]: ROOT_FOLDER_ID }}
+            {...dropFolderProps(ROOT_FOLDER_ID)}
             className={cn(
               "flex flex-col gap-0.5 rounded-lg p-1 transition-colors",
               dropTarget === ROOT_FOLDER_ID && "bg-primary/5 ring-1 ring-primary/40",
@@ -552,7 +480,7 @@ export function ContextLibraryPanel({ api }: { api: ContextLibraryApi }) {
           {folderBlocks.map(({ folder, docs }) => (
             <div
               key={folder.id}
-              {...{ [DROP_FOLDER_ATTR]: folder.id }}
+              {...dropFolderProps(folder.id)}
               className={cn(
                 "flex flex-col gap-0.5 rounded-lg bg-card p-1.5 shadow-raise ring-1 ring-border transition-colors ring-inset",
                 dropTarget === folder.id && "bg-primary/5 ring-primary/40",

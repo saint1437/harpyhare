@@ -8,10 +8,28 @@ const TMP_FILE_EXTENSION: &str = "tmp";
 pub const THEME_GRAY: &str = "gray";
 pub const THEME_BLACK: &str = "black";
 
-pub const LLM_PROVIDER_ANTHROPIC: &str = "anthropic";
-pub const LLM_PROVIDER_XCLIS: &str = "xclis";
-pub const STT_PROVIDER_GROQ: &str = "groq";
-pub const STT_PROVIDER_DEEPGRAM: &str = "deepgram";
+/// Ids of the API-key fields below, as the LLM registry and the frontend name
+/// them. `api_key_for` is the only place the two vocabularies meet.
+pub const API_KEY_ANTHROPIC: &str = "anthropic";
+pub const API_KEY_GROQ: &str = "groq";
+pub const API_KEY_OPENAI: &str = "openai";
+pub const API_KEY_XAI: &str = "xai";
+
+/// The key a registry row asks for, or `""` when it names one that does not
+/// exist — which the pickers render as a permanent lock rather than a crash.
+pub fn api_key_for<'a>(s: &'a Settings, key_id: &str) -> &'a str {
+    match key_id {
+        API_KEY_ANTHROPIC => &s.anthropic_api_key,
+        API_KEY_GROQ => &s.groq_api_key,
+        API_KEY_OPENAI => &s.openai_api_key,
+        API_KEY_XAI => &s.xai_api_key,
+        _ => "",
+    }
+}
+
+/// Re-exported from the STT registry, which owns the list. Kept as names so
+/// call sites read as intent rather than as string literals.
+pub use crate::stt::registry::{PROVIDER_GROQ as STT_PROVIDER_GROQ, PROVIDER_OPENAI as STT_PROVIDER_OPENAI};
 
 pub const QUICK_ACTION_LIMIT: usize = 9;
 
@@ -72,6 +90,7 @@ impl SettingsLimits {
 
 pub mod defaults {
     pub const STT_LANGUAGE: &str = "ru";
+
     pub const THEME: &str = super::THEME_GRAY;
 }
 
@@ -146,11 +165,9 @@ fn seeded_quick_actions() -> Vec<QuickAction> {
 #[serde(default)]
 pub struct Settings {
     pub anthropic_api_key: String,
-    pub xclis_api_key: String,
     pub groq_api_key: String,
-    pub deepgram_api_key: String,
-    pub llm_provider: String,
-    pub stt_provider: String,
+    pub openai_api_key: String,
+    pub xai_api_key: String,
     pub access_token: String,
     pub prompt_presets: Vec<PromptPreset>,
     pub hotkeys: Vec<crate::hotkeys::HotkeyBinding>,
@@ -162,6 +179,7 @@ pub struct Settings {
     pub skipped_version: String,
     pub stt_language: String,
     pub stt_translate: bool,
+    pub stt_provider: String,
     pub screen_share_visible: bool,
     pub teleprompter_speed: f64,
     pub teleprompter_font_size: f64,
@@ -184,11 +202,9 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             anthropic_api_key: String::new(),
-            xclis_api_key: String::new(),
             groq_api_key: String::new(),
-            deepgram_api_key: String::new(),
-            llm_provider: LLM_PROVIDER_ANTHROPIC.into(),
-            stt_provider: STT_PROVIDER_GROQ.into(),
+            openai_api_key: String::new(),
+            xai_api_key: String::new(),
             access_token: String::new(),
             prompt_presets: Vec::new(),
             hotkeys: Vec::new(),
@@ -200,6 +216,7 @@ impl Default for Settings {
             skipped_version: String::new(),
             stt_language: defaults::STT_LANGUAGE.into(),
             stt_translate: false,
+            stt_provider: crate::stt::registry::default_spec().id.into(),
             screen_share_visible: false,
             teleprompter_speed: limits::teleprompter::SPEED.default,
             teleprompter_font_size: limits::teleprompter::FONT_SIZE.default,
@@ -236,12 +253,9 @@ impl Settings {
         if self.theme != THEME_GRAY && self.theme != THEME_BLACK {
             self.theme = defaults::THEME.into();
         }
-        if self.llm_provider != LLM_PROVIDER_ANTHROPIC && self.llm_provider != LLM_PROVIDER_XCLIS {
-            self.llm_provider = LLM_PROVIDER_ANTHROPIC.into();
-        }
-        if self.stt_provider != STT_PROVIDER_GROQ && self.stt_provider != STT_PROVIDER_DEEPGRAM {
-            self.stt_provider = STT_PROVIDER_GROQ.into();
-        }
+        // The registry owns "unknown resolves to the default"; clamping here by
+        // hand would be a second, silently divergent copy of that rule.
+        self.stt_provider = crate::stt::registry::resolve(&self.stt_provider).id.into();
         self.quick_actions.truncate(QUICK_ACTION_LIMIT);
         crate::hotkeys::normalize(&mut self.hotkeys);
     }
@@ -252,15 +266,8 @@ impl Settings {
                 let mut value: serde_json::Value = serde_json::from_str(&raw)
                     .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
                 crate::hotkeys::migrate_legacy_fields(&mut value);
-                let had_llm_provider = value.get("llm_provider").is_some();
-                let mut loaded = serde_json::from_value::<Settings>(value)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-                // Before provider selection existed, a non-empty Xclis key implicitly selected Xclis.
-                // Preserve that behaviour for existing installations during migration.
-                if !had_llm_provider && !loaded.xclis_api_key.trim().is_empty() {
-                    loaded.llm_provider = LLM_PROVIDER_XCLIS.into();
-                }
-                loaded
+                serde_json::from_value::<Settings>(value)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Settings::default(),
             Err(e) => return Err(e),
@@ -269,7 +276,13 @@ impl Settings {
         Ok(settings)
     }
 
-    pub fn apply_key_fallback(&mut self, anthropic: Option<String>, groq: Option<String>) {
+    pub fn apply_key_fallback(
+        &mut self,
+        anthropic: Option<String>,
+        groq: Option<String>,
+        openai: Option<String>,
+        xai: Option<String>,
+    ) {
         if !self.access_token.is_empty() {
             return;
         }
@@ -286,6 +299,8 @@ impl Settings {
         }
         fill_if_empty(&mut self.anthropic_api_key, anthropic);
         fill_if_empty(&mut self.groq_api_key, groq);
+        fill_if_empty(&mut self.openai_api_key, openai);
+        fill_if_empty(&mut self.xai_api_key, xai);
     }
 
     pub fn save(&self, path: &Path) -> std::io::Result<()> {

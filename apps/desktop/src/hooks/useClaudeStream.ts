@@ -4,6 +4,7 @@ import { onEvent } from "@/ipc/events";
 import type { ChatMessageDto } from "@/ipc/types";
 import type { RequestOptions } from "@/lib/chats";
 import { internalError, type AppError } from "@/lib/errors";
+import { notifyAppError } from "@/lib/notify";
 import { advanceReveal, sliceRevealed } from "@/lib/stream-reveal";
 
 export interface ClaudeStreams {
@@ -23,6 +24,7 @@ export interface ClaudeStreams {
 
 export function useClaudeStream(
   onComplete: (chatId: string, finalText: string) => void,
+  onUsage: (chatId: string, inputTokens: number) => void,
 ): ClaudeStreams {
   const [partial, setPartial] = useState<Record<string, string>>({});
   const [streaming, setStreaming] = useState<Record<string, boolean>>({});
@@ -32,12 +34,20 @@ export function useClaudeStream(
   const buffers = useRef<Map<string, string>>(new Map());
   const revealed = useRef<Map<string, number>>(new Map());
   const active = useRef<Set<string>>(new Set());
+  const streamIds = useRef<Map<string, string>>(new Map());
   const raf = useRef(0);
   const running = useRef(false);
   const lastFrameTs = useRef(0);
 
+  const isCurrentStream = useCallback(
+    (chatId: string, streamId: string) => streamIds.current.get(chatId) === streamId,
+    [],
+  );
+
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
+  const onUsageRef = useRef(onUsage);
+  onUsageRef.current = onUsage;
 
   const frame = useCallback<FrameRequestCallback>((frameTs) => {
     if (active.current.size === 0) {
@@ -96,18 +106,25 @@ export function useClaudeStream(
   );
 
   useEffect(() => {
-    const offDelta = onEvent("llm-delta", ({ chatId, delta }) => {
-      if (!active.current.has(chatId)) return;
+    const ids = streamIds.current;
+    const offDelta = onEvent("llm-delta", ({ chatId, streamId, delta }) => {
+      if (!isCurrentStream(chatId, streamId)) return;
       buffers.current.set(chatId, (buffers.current.get(chatId) ?? "") + delta);
       ensureRevealLoop();
     });
-    const offDone = onEvent("llm-done", ({ chatId }) => {
-      if (!active.current.has(chatId)) return;
+    const offDone = onEvent("llm-done", ({ chatId, streamId }) => {
+      if (!isCurrentStream(chatId, streamId)) return;
+      ids.delete(chatId);
       active.current.delete(chatId);
       commitBufferAndFinish(chatId, true);
     });
-    const offError = onEvent("llm-error", ({ chatId, code, message }) => {
-      if (!active.current.has(chatId)) return;
+    const offUsage = onEvent("llm-usage", ({ chatId, streamId, inputTokens }) => {
+      if (!isCurrentStream(chatId, streamId)) return;
+      onUsageRef.current(chatId, inputTokens);
+    });
+    const offError = onEvent("llm-error", ({ chatId, streamId, code, message }) => {
+      if (!isCurrentStream(chatId, streamId)) return;
+      ids.delete(chatId);
       active.current.delete(chatId);
       commitBufferAndFinish(chatId, false);
       setError((e) => ({ ...e, [chatId]: { code, message } }));
@@ -115,15 +132,18 @@ export function useClaudeStream(
     return () => {
       offDelta();
       offDone();
+      offUsage();
       offError();
       cancelAnimationFrame(raf.current);
       running.current = false;
       lastFrameTs.current = 0;
+      ids.clear();
     };
-  }, [ensureRevealLoop, commitBufferAndFinish]);
+  }, [ensureRevealLoop, commitBufferAndFinish, isCurrentStream]);
 
   const beginStream = useCallback(
-    (chatId: string) => {
+    (chatId: string, streamId: string) => {
+      streamIds.current.set(chatId, streamId);
       buffers.current.set(chatId, "");
       revealed.current.set(chatId, 0);
       active.current.add(chatId);
@@ -138,10 +158,12 @@ export function useClaudeStream(
 
   const failStream = useCallback(
     (chatId: string, message: AppError) => {
+      streamIds.current.delete(chatId);
       active.current.delete(chatId);
       dropPartial(chatId);
       setStreaming((s) => ({ ...s, [chatId]: false }));
       setError((err) => ({ ...err, [chatId]: message }));
+      notifyAppError(message);
     },
     [dropPartial],
   );
@@ -154,9 +176,10 @@ export function useClaudeStream(
       model: string,
       options: RequestOptions,
     ) => {
-      beginStream(chatId);
+      const streamId = crypto.randomUUID();
+      beginStream(chatId, streamId);
       try {
-        await sendToClaude(messages, chatId, system, model, options);
+        await sendToClaude(messages, chatId, streamId, system, model, options);
       } catch (e) {
         failStream(chatId, internalError(String(e)));
       }
@@ -166,8 +189,11 @@ export function useClaudeStream(
 
   const stop = useCallback(
     (chatId: string) => {
+      const streamId = streamIds.current.get(chatId);
+      if (streamId === undefined) return;
+      streamIds.current.delete(chatId);
       active.current.delete(chatId);
-      void cancelStream(chatId);
+      void cancelStream(chatId, streamId);
       commitBufferAndFinish(chatId, false);
     },
     [commitBufferAndFinish],

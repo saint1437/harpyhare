@@ -1,5 +1,5 @@
 import { HOTKEY_ACTIONS, type HotkeyKind } from "@/ipc/bindings";
-import { API_KEY_IDS, apiKeyInfo } from "@/lib/api-keys";
+import { apiKeyInfo, type ApiKeyId } from "@/lib/api-keys";
 import { hotkeyAction, type HotkeyActionId } from "@/lib/hotkeys";
 import { PLATFORM, type Platform } from "@/lib/platform";
 import { PERMISSION_ROWS } from "./permission-rows";
@@ -19,6 +19,7 @@ export interface SearchSources {
   presets: { id: string; name: string }[];
   quickActions: { id: string; title: string }[];
   contextDocs: { id: string; name: string }[];
+  apiKeys: readonly ApiKeyId[];
 }
 
 interface SettingsRow {
@@ -79,8 +80,13 @@ const SETTINGS_ROWS = [
     tab: "speech",
   },
   {
+    title: "Провайдер распознавания",
+    hint: "OpenAI точнее удерживает английские термины в русской речи.",
+    tab: "speech",
+  },
+  {
     title: "Язык распознавания",
-    hint: "Whisper распознаёт точнее, когда язык задан явно.",
+    hint: "Распознавание точнее, когда язык задан явно.",
     tab: "speech",
   },
   {
@@ -211,8 +217,8 @@ function contextDocHits(contextDocs: SearchSources["contextDocs"]): SearchHit[] 
     }));
 }
 
-function apiKeyRows(): SettingsRow[] {
-  return API_KEY_IDS.map((id): SettingsRow => {
+function apiKeyRows(apiKeys: SearchSources["apiKeys"]): SettingsRow[] {
+  return apiKeys.map((id): SettingsRow => {
     const info = apiKeyInfo(id);
     return { title: `Ключ ${info.name}`, hint: `Нужен для ${info.purpose}.`, tab: "access" };
   });
@@ -234,8 +240,8 @@ function quickActionComboRow(): SettingsRow {
   };
 }
 
-function settingsRowHits(): SearchHit[] {
-  return [...SETTINGS_ROWS, quickActionComboRow(), ...apiKeyRows(), ...windowStepRows()].map(
+function settingsRowHits(apiKeys: SearchSources["apiKeys"]): SearchHit[] {
+  return [...SETTINGS_ROWS, quickActionComboRow(), ...apiKeyRows(apiKeys), ...windowStepRows()].map(
     (row) => ({
       id: hitId(SETTING_HIT, [row.tab, row.title].join(HIT_ID_SEPARATOR)),
       title: row.title,
@@ -279,7 +285,7 @@ function launcherIndex(sources: SearchSources, platform: Platform): SearchHit[] 
     ...screenHits(platform),
     ...tabHits(),
     ...hotkeyHits(),
-    ...settingsRowHits(),
+    ...settingsRowHits(sources.apiKeys),
     ...permissionHits(platform),
     ...presetHits(sources.presets),
     ...quickActionHits(sources.quickActions),

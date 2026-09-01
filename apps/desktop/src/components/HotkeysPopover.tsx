@@ -23,7 +23,10 @@ import { cn } from "@/lib/utils";
 
 export interface HotkeysPopoverProps {
   hotkeys: HotkeyBinding[];
+  triggerClass?: string;
 }
+
+const POPOVER_COLLISION_PADDING_PX = 8;
 
 const COMBO_ICONS: Record<ComboIconName, LucideIcon> = {
   cmd: Command,
@@ -57,16 +60,21 @@ function ComboChip({ combo }: { combo: string }) {
   );
 }
 
-export function HotkeysPopover({ hotkeys }: HotkeysPopoverProps) {
+export function HotkeysPopover({ hotkeys, triggerClass }: HotkeysPopoverProps) {
   const groups = hotkeyGroups(hotkeys);
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <IconButton title="Горячие клавиши">
+        <IconButton title="" aria-label="Горячие клавиши" className={triggerClass}>
           <Keyboard />
         </IconButton>
       </PopoverTrigger>
-      <PopoverContent side="bottom" align="end" className="max-h-[70vh] w-80 overflow-y-auto p-3">
+      <PopoverContent
+        side="left"
+        align="start"
+        collisionPadding={POPOVER_COLLISION_PADDING_PX}
+        className="max-h-(--radix-popover-content-available-height) w-80 max-w-(--radix-popover-content-available-width) overflow-y-auto p-3"
+      >
         <div className="grid grid-cols-[max-content_1fr] items-center gap-x-2.5 gap-y-1">
           {groups.map((group, index) => (
             <Fragment key={group.title}>

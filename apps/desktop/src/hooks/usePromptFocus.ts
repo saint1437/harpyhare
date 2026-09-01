@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, type RefObject } from "react";
 import { useLatestRef } from "@/hooks/useLatestRef";
 import { onEvent } from "@/ipc/events";
 
-export function usePromptFocus(suspended: boolean): RefObject<HTMLTextAreaElement | null> {
+export interface PromptFocusApi {
+  ref: RefObject<HTMLTextAreaElement | null>;
+  focus: () => void;
+}
+
+export function usePromptFocus(suspended: boolean): PromptFocusApi {
   const ref = useRef<HTMLTextAreaElement>(null);
   const suspendedRef = useLatestRef(suspended);
 
@@ -21,5 +26,5 @@ export function usePromptFocus(suspended: boolean): RefObject<HTMLTextAreaElemen
 
   useEffect(() => onEvent("focus-prompt", focus), [focus]);
 
-  return ref;
+  return { ref, focus };
 }

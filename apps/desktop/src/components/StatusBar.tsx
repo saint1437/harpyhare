@@ -1,12 +1,10 @@
-import { ArrowDownCircle, Minus, Square } from "lucide-react";
 import type { ReactNode } from "react";
-import { IconButton } from "@/components/IconButton";
-import { Button } from "@/components/ui/button";
+import { StatusOrb } from "@/components/StatusOrb";
+import { ORB_STATE_IDLE, type OrbState } from "@/components/ui/thinking-orbs";
 import { useWindowDrag } from "@/hooks/useWindowDrag";
 import type { RecorderState } from "@/ipc/types";
-import { formatCombo } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
-import { EqBars, type EqBarsProps } from "./EqBars";
+import { ToolbarDock, type ToolbarDockItem } from "./ToolbarDock";
 
 export interface ContextUsage {
   usedTokens: number;
@@ -15,14 +13,10 @@ export interface ContextUsage {
 
 export interface StatusBarProps {
   state: RecorderState;
-  error: string | null;
-  toggleHotkey: string;
+  modeSwitch: ReactNode;
   tabs: ReactNode;
-  actions: ReactNode;
+  dockItems: ToolbarDockItem[];
   contextUsage: ContextUsage | null;
-  update: { version: string; busy: boolean; onOpen: () => void } | null;
-  onStop: () => void;
-  onCollapse: () => void;
 }
 
 const CONTEXT_USAGE_WARN_PERCENT = 80;
@@ -51,68 +45,25 @@ function ContextUsageGauge({ usage }: { usage: ContextUsage }) {
   );
 }
 
-function indicatorProps(state: RecorderState, showError: boolean): EqBarsProps {
-  if (state === "recording") return { animated: true, barClass: "bg-recording" };
-  if (state === "transcribing") return { animated: true, barClass: "bg-primary" };
-  return { animated: false, barClass: showError ? "bg-destructive" : "bg-muted-foreground/50" };
+function recorderOrb(state: RecorderState): OrbState {
+  if (state === "recording") return "listening";
+  if (state === "transcribing") return "working";
+  return ORB_STATE_IDLE;
 }
 
-export function StatusBar({
-  state,
-  error,
-  toggleHotkey,
-  tabs,
-  actions,
-  contextUsage,
-  update,
-  onStop,
-  onCollapse,
-}: StatusBarProps) {
-  const showError = error !== null && state === "idle";
+export function StatusBar({ state, modeSwitch, tabs, dockItems, contextUsage }: StatusBarProps) {
   const onDragMouseDown = useWindowDrag();
+  const orb = recorderOrb(state);
 
   return (
     <header className="flex min-h-7 items-center gap-2" onMouseDown={onDragMouseDown}>
-      <IconButton
-        title={`Свернуть в мини-режим — вернуть: ${formatCombo(toggleHotkey)}`}
-        aria-label="Свернуть в мини-режим"
-        onClick={onCollapse}
-      >
-        <Minus />
-      </IconButton>
-      <EqBars {...indicatorProps(state, showError)} />
+      <StatusOrb state={orb} />
       {tabs}
-      <span
-        title={showError ? error : undefined}
-        className="min-w-0 flex-1 truncate text-caption text-destructive"
-      >
-        {showError ? error : ""}
-      </span>
-      <div className="flex shrink-0 items-center gap-0.5">
+      <span className="min-w-0 flex-1" />
+      <div className="flex shrink-0 items-center gap-1.5">
         {contextUsage && <ContextUsageGauge usage={contextUsage} />}
-        {actions}
-        {update && <UpdateBadge update={update} />}
-        <IconButton title="Стоп — вернуться в лаунчер" onClick={onStop}>
-          <Square />
-        </IconButton>
+        <ToolbarDock items={dockItems} leading={modeSwitch} />
       </div>
     </header>
-  );
-}
-
-function UpdateBadge({ update }: { update: NonNullable<StatusBarProps["update"]> }) {
-  const availableTitle = `Доступна версия ${update.version}`;
-  return (
-    <Button
-      variant="ghost"
-      size="compact"
-      onClick={update.onOpen}
-      aria-label={availableTitle}
-      title={update.busy ? `Обновление до ${update.version}…` : availableTitle}
-      className="font-mono text-muted-foreground tabular-nums"
-    >
-      <ArrowDownCircle className={cn("text-primary", update.busy && "animate-pulse")} />
-      {update.version}
-    </Button>
   );
 }

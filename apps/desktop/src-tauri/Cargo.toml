@@ -1,6 +1,6 @@
 [package]
 name = "harpyhare"
-version = "0.13.0"
+version = "0.14.0"
 description = "Системный звук → STT → Claude (push-to-talk ассистент для macOS и Windows)"
 authors = ["mark"]
 edition = "2021"
@@ -8,7 +8,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary to make the lib name unique and wouldn't conflict with the bin name.
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "harpyhare_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -30,8 +31,7 @@ rubato = "3.0.0"
 futures-util = "0.3.32"
 tokio = { version = "1.52.3", features = ["full"] }
 tokio-util = "0.7.18"
-tokio-tungstenite = { version = "0.28", features = ["rustls-tls-native-roots"] }
-reqwest = { version = "0.13.4", features = ["json", "multipart", "stream", "query"] }
+reqwest = { version = "0.13.4", features = ["json", "multipart", "stream"] }
 async-trait = "0.1.89"
 dotenvy = "0.15.7"
 ringbuf = "0.4.8"
@@ -78,3 +78,4 @@ wiremock = "0.6.5"
 lto = "thin"
 codegen-units = 1
 strip = true
+

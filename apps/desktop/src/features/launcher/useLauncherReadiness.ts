@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { usePermissions, type PermissionsApi } from "@/hooks/usePermissions";
 import type { Settings } from "@/ipc/types";
-import { missingApiKeys, missingKeysNotice, type ApiKeyInfo } from "@/lib/api-keys";
+import { accessGaps, type AccessGap } from "@/lib/api-keys";
 import type { ScreenId } from "./screens";
 import type { SettingsTabId } from "./settings-tabs";
 
@@ -11,7 +11,8 @@ export interface LauncherBlocker {
   tab?: SettingsTabId;
 }
 
-const KEYS_TAB: SettingsTabId = "access";
+/** Ключи и выбор провайдера речи живут на одной вкладке, поэтому пробел любого рода ведёт сюда. */
+const ACCESS_TAB: SettingsTabId = "access";
 
 const AUDIO_BLOCKER: LauncherBlocker = {
   label: "Нет доступа к записи системного звука",
@@ -19,7 +20,7 @@ const AUDIO_BLOCKER: LauncherBlocker = {
 };
 
 export interface LauncherReadiness {
-  missingKeys: ApiKeyInfo[];
+  gaps: AccessGap[];
   permissions: PermissionsApi;
   blockers: LauncherBlocker[];
   checking: boolean;
@@ -27,24 +28,25 @@ export interface LauncherReadiness {
 }
 
 export function useLauncherReadiness(settings: Settings): LauncherReadiness {
-  const missingKeys = useMemo(() => missingApiKeys(settings), [settings]);
+  const gaps = useMemo(() => accessGaps(settings), [settings]);
   const permissions = usePermissions();
   const checking = !permissions.loaded;
 
   const blockers = useMemo(() => {
-    const list: LauncherBlocker[] = [];
-    if (missingKeys.length > 0) {
-      list.push({ label: missingKeysNotice(missingKeys), screen: "settings", tab: KEYS_TAB });
-    }
+    const list: LauncherBlocker[] = gaps.map((gap) => ({
+      label: gap.label,
+      screen: "settings",
+      tab: ACCESS_TAB,
+    }));
     if (!checking && !permissions.audioOk) list.push(AUDIO_BLOCKER);
     return list;
-  }, [missingKeys, checking, permissions.audioOk]);
+  }, [gaps, checking, permissions.audioOk]);
 
   return {
-    missingKeys,
+    gaps,
     permissions,
     blockers,
     checking,
-    ready: missingKeys.length === 0 && permissions.audioOk,
+    ready: gaps.length === 0 && permissions.audioOk,
   };
 }

@@ -228,34 +228,35 @@ export function SettingSlider({
   min,
   max,
   step,
-  displayScale = 1,
-  readout,
   ariaLabel,
+  readout,
   disabled,
+  displayScale = 1,
   onChange,
 }: {
   value: number;
   min: number;
   max: number;
   step: number;
-  displayScale?: number;
-  readout: string;
   ariaLabel: string;
+  readout: string;
   disabled?: boolean;
+  displayScale?: number;
   onChange: (value: number) => void;
 }) {
   return (
-    <div className="flex w-full min-w-0 items-center gap-2">
+    <div className="flex w-full items-center gap-2.5">
       <Slider
-        value={[value]}
+        className="min-w-0 flex-1"
         min={min}
         max={max}
         step={step}
+        value={[value]}
         disabled={disabled}
         aria-label={ariaLabel}
-        onValueChange={(values) => {
-          const next = values[0];
-          if (next !== undefined) onChange(next);
+        onValueChange={([next]) => {
+          if (next === undefined) return;
+          onChange(next);
         }}
       />
       <SliderReadout

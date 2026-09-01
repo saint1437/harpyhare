@@ -4,6 +4,7 @@ import { SETTINGS_LIMITS } from "@/ipc/bindings";
 import { listAudioOutputDevices } from "@/ipc/commands";
 import type { AudioOutputDevice } from "@/ipc/types";
 import { queryKeys } from "@/lib/query-client";
+import { STT_PROVIDERS, sttProviderSupportsTranslate } from "@/lib/stt-providers";
 import type { SectionProps } from "../contract";
 import { SettingGroup, SettingRow, SettingSelect, SettingSlider, SettingSwitch } from "../fields";
 
@@ -64,29 +65,44 @@ function CaptureDeviceRow({ draft, set }: SectionProps) {
 }
 
 export function SttSection({ draft, set }: SectionProps) {
-  const deepgram = draft.stt_provider === "deepgram";
-  const engineName = deepgram ? "Deepgram Nova-3" : "Groq Whisper";
-
+  const translateAvailable = sttProviderSupportsTranslate(draft.stt_provider);
+  const translatingNow = draft.stt_translate && translateAvailable;
   return (
     <SettingGroup
       title="Распознавание речи"
-      description={`Сейчас используется ${engineName}. Провайдер переключается во вкладке «Доступ».`}
+      description="Что именно слушает приложение и на каком языке расшифровывает."
     >
       <CaptureDeviceRow draft={draft} set={set} />
       <SettingRow
+        label="Провайдер распознавания"
+        hint="OpenAI точнее удерживает английские термины в русской речи."
+      >
+        <SettingSelect
+          ariaLabel="Провайдер распознавания"
+          value={draft.stt_provider}
+          onValueChange={(v) => {
+            set("stt_provider", v);
+          }}
+        >
+          {STT_PROVIDERS.map((p) => (
+            <SelectItem key={p.id} value={p.id}>
+              {p.label}
+            </SelectItem>
+          ))}
+        </SettingSelect>
+      </SettingRow>
+      <SettingRow
         label="Язык распознавания"
         hint={
-          draft.stt_translate
+          translatingNow
             ? "При переводе язык определяется автоматически."
-            : deepgram
-              ? "Nova-3 работает точнее, когда язык задан явно; автоопределение тоже поддерживается."
-              : "Whisper распознаёт точнее, когда язык задан явно."
+            : "Распознавание точнее, когда язык задан явно."
         }
       >
         <SettingSelect
           ariaLabel="Язык распознавания"
           value={draft.stt_language === "" ? STT_LANGUAGE_AUTO : draft.stt_language}
-          disabled={draft.stt_translate}
+          disabled={translatingNow}
           onValueChange={(v) => {
             set("stt_language", v === STT_LANGUAGE_AUTO ? "" : v);
           }}
@@ -101,15 +117,15 @@ export function SttSection({ draft, set }: SectionProps) {
       <SettingRow
         label="Перевод на английский"
         hint={
-          deepgram
-            ? "В этой интеграции перевод оставлен за оригинальным Groq Whisper; для Deepgram доступна транскрипция Nova-3."
-            : "Речь на любом языке приходит в чат по-английски."
+          translateAvailable
+            ? "Речь на любом языке приходит в чат по-английски."
+            : "Выбранный провайдер не умеет переводить — выбери другого."
         }
       >
         <SettingSwitch
           ariaLabel="Перевод на английский"
-          checked={draft.stt_translate}
-          disabled={deepgram}
+          checked={draft.stt_translate && translateAvailable}
+          disabled={!translateAvailable}
           onCheckedChange={(v) => {
             set("stt_translate", v);
           }}

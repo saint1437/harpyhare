@@ -35,6 +35,7 @@ fn thinking_value_semantics() {
     assert_eq!(thinking_value(None, "claude-fable-5", true), None);
     assert_eq!(thinking_value(None, "claude-fable-5", false), None);
     let info = ModelInfo {
+        provider: PROVIDER_ANTHROPIC.into(),
         id: "claude-newmodel-9".into(),
         display_name: "New".into(),
         adaptive: false,
@@ -205,6 +206,7 @@ fn web_search_value_semantics() {
         }))
     );
     let info = ModelInfo {
+        provider: PROVIDER_ANTHROPIC.into(),
         id: "claude-newmodel-9".into(),
         display_name: "New".into(),
         adaptive: true,
@@ -253,7 +255,7 @@ const SSE_FIXTURE: &str = "event: message_start\ndata: {\"type\":\"message_start
 
 #[test]
 fn sse_parser_extracts_text_deltas_and_done() {
-    let mut p = SseParser::new();
+    let mut p = SseParser::anthropic();
     let out = p.feed(SSE_FIXTURE);
     let texts: Vec<_> = out
         .iter()
@@ -263,12 +265,12 @@ fn sse_parser_extracts_text_deltas_and_done() {
         })
         .collect();
     assert_eq!(texts, vec!["При", "вет!"]);
-    assert!(matches!(out.last(), Some(SseOut::Done)));
+    assert!(matches!(out.last(), Some(SseOut::Done(_))));
 }
 
 #[test]
 fn sse_parser_handles_chunk_split_mid_event() {
-    let mut p = SseParser::new();
+    let mut p = SseParser::anthropic();
     let (a, b) = SSE_FIXTURE.split_at(95);
     let mut out = p.feed(a);
     out.extend(p.feed(b));
@@ -284,7 +286,7 @@ fn sse_parser_handles_chunk_split_mid_event() {
 
 #[test]
 fn sse_parser_surfaces_api_error_event() {
-    let mut p = SseParser::new();
+    let mut p = SseParser::anthropic();
     let out = p.feed("event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n");
     assert!(matches!(&out[0], SseOut::ApiError(m) if m.contains("Overloaded")));
 }
@@ -300,14 +302,14 @@ fn empty_text_with_images_has_no_text_block() {
 
 #[test]
 fn sse_message_start_usage_summed_with_cache() {
-    let mut p = SseParser::new();
+    let mut p = SseParser::anthropic();
     let block = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":100,\"cache_read_input_tokens\":2000,\"cache_creation_input_tokens\":30}}}\n\n";
     assert_eq!(p.feed(block), vec![SseOut::InputTokens(2130)]);
 }
 
 #[test]
 fn sse_message_start_without_usage_ignored() {
-    let mut p = SseParser::new();
+    let mut p = SseParser::anthropic();
     let block = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\"}}\n\n";
     assert_eq!(p.feed(block), vec![]);
 }
@@ -318,17 +320,28 @@ fn feed_bytes_handles_utf8_split_across_chunks() {
     let bytes = raw.as_bytes();
     let cut = raw.find("Привет").unwrap() + 3;
     assert!(std::str::from_utf8(&bytes[..cut]).is_err(), "разрез должен попадать в середину символа");
-    let mut p = SseParser::new();
+    let mut p = SseParser::anthropic();
     let mut out = p.feed_bytes(&bytes[..cut]);
     out.extend(p.feed_bytes(&bytes[cut..]));
     assert_eq!(out, vec![SseOut::TextDelta("Привет".to_string())]);
 }
 
 #[test]
+fn feed_bytes_recovers_from_a_genuinely_invalid_byte() {
+    let raw = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n";
+    let mut p = SseParser::anthropic();
+    // Битый байт посреди потока не должен оседать в хвосте навсегда: до фикса
+    // парсер после него не отдавал ни одной дельты и стрим выглядел обрывом сети.
+    assert!(p.feed_bytes(&[0xFF]).is_empty());
+    let out = p.feed_bytes(raw.as_bytes());
+    assert_eq!(out, vec![SseOut::TextDelta("hi".to_string())]);
+}
+
+#[test]
 fn sse_parser_handles_chunk_split_mid_data_json() {
     let raw = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n";
     let mid = raw.find("text_delta").unwrap() + 5;
-    let mut p = SseParser::new();
+    let mut p = SseParser::anthropic();
     let mut out = p.feed(&raw[..mid]);
     out.extend(p.feed(&raw[mid..]));
     assert_eq!(out, vec![SseOut::TextDelta("hi".to_string())]);
@@ -471,7 +484,7 @@ async fn stream_maps_401() {
         )
         .await
         .unwrap_err();
-    assert!(matches!(err, LlmError::BadApiKey));
+    assert!(matches!(err, LlmError::BadApiKey(_)));
 }
 
 #[tokio::test]
@@ -564,4 +577,28 @@ async fn stream_cancellation_stops_early() {
         .await
         .unwrap_err();
     assert!(matches!(err, LlmError::Cancelled));
+}
+
+#[tokio::test]
+async fn reachable_treats_any_http_status_as_online() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    let client = AnthropicClient::new("k".into()).with_base_url(server.uri());
+    assert!(client.reachable().await);
+}
+
+#[tokio::test]
+async fn reachable_is_false_when_the_host_refuses() {
+    let addr = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    let client = AnthropicClient::new("k".into()).with_base_url(format!("http://{addr}"));
+    assert!(!client.reachable().await);
 }

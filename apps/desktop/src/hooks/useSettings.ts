@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+} from "react";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import { useSettingsStore } from "@/hooks/useSettingsStore";
 import { setSettings as ipcSet } from "@/ipc/commands";
 import type { Settings } from "@/ipc/types";
@@ -6,8 +14,7 @@ import { applyChatFontSize, applyOpacity, applyTheme, stepOpacity } from "@/lib/
 import { clampWindowSize, stepWindowSize, type WindowDimension } from "@/lib/window-size";
 
 const OPACITY_STEP = 0.1;
-const OPACITY_PERSIST_DEBOUNCE_MS = 400;
-const WINDOW_SIZE_PERSIST_DEBOUNCE_MS = 400;
+const SETTINGS_PERSIST_DEBOUNCE_MS = 400;
 
 export interface SettingsApi {
   settings: Settings;
@@ -16,6 +23,7 @@ export interface SettingsApi {
   bumpOpacity: (dir: 1 | -1) => void;
   bumpWindowSize: (dim: WindowDimension, dir: 1 | -1) => void;
   applyNativeWindowSize: (width: number, height: number) => void;
+  flush: () => Promise<void>;
 }
 
 function applyVisualSettings(settings: Settings): void {
@@ -24,43 +32,72 @@ function applyVisualSettings(settings: Settings): void {
   applyTheme(document.documentElement, settings.theme);
 }
 
-function useBumpOpacity(setSettings: Dispatch<SetStateAction<Settings>>): (dir: 1 | -1) => void {
+type SettingsPatch = Partial<Settings>;
+
+function useDebouncedSettingsPersist(latest: RefObject<Settings>): {
+  schedule: (patch: SettingsPatch) => void;
+  takePending: () => SettingsPatch | null;
+  flush: () => Promise<void>;
+} {
   const persistTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(
-    () => () => {
+  const pending = useRef<SettingsPatch | null>(null);
+
+  const takePending = useCallback((): SettingsPatch | null => {
+    clearTimeout(persistTimer.current);
+    persistTimer.current = undefined;
+    const patch = pending.current;
+    pending.current = null;
+    return patch;
+  }, []);
+
+  const flush = useCallback((): Promise<void> => {
+    const patch = takePending();
+    if (patch === null) return Promise.resolve();
+    return ipcSet({ ...latest.current, ...patch }).then(() => undefined);
+  }, [takePending, latest]);
+
+  const schedule = useCallback(
+    (patch: SettingsPatch) => {
+      pending.current = { ...pending.current, ...patch };
       clearTimeout(persistTimer.current);
+      persistTimer.current = setTimeout(() => {
+        void flush();
+      }, SETTINGS_PERSIST_DEBOUNCE_MS);
     },
-    [],
+    [flush],
   );
 
+  useEffect(
+    () => () => {
+      void flush();
+    },
+    [flush],
+  );
+
+  return { schedule, takePending, flush };
+}
+
+function useBumpOpacity(
+  setSettings: Dispatch<SetStateAction<Settings>>,
+  schedulePersist: (patch: Partial<Settings>) => void,
+): (dir: 1 | -1) => void {
   return useCallback(
     (dir: 1 | -1) => {
       setSettings((prev) => {
         const next = stepOpacity(prev.window_opacity, dir, OPACITY_STEP);
         applyOpacity(document.documentElement, next);
-        const updated = { ...prev, window_opacity: next };
-        clearTimeout(persistTimer.current);
-        persistTimer.current = setTimeout(() => {
-          void ipcSet(updated);
-        }, OPACITY_PERSIST_DEBOUNCE_MS);
-        return updated;
+        schedulePersist({ window_opacity: next });
+        return { ...prev, window_opacity: next };
       });
     },
-    [setSettings],
+    [setSettings, schedulePersist],
   );
 }
 
 function useBumpWindowSize(
   setSettings: Dispatch<SetStateAction<Settings>>,
+  schedulePersist: (patch: Partial<Settings>) => void,
 ): (dim: WindowDimension, dir: 1 | -1) => void {
-  const persistTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(
-    () => () => {
-      clearTimeout(persistTimer.current);
-    },
-    [],
-  );
-
   return useCallback(
     (dim, dir) => {
       setSettings((prev) => {
@@ -70,29 +107,18 @@ function useBumpWindowSize(
           dir,
           prev.resize_step,
         );
-        const updated = { ...prev, window_width: next.width, window_height: next.height };
-        clearTimeout(persistTimer.current);
-        persistTimer.current = setTimeout(() => {
-          void ipcSet(updated);
-        }, WINDOW_SIZE_PERSIST_DEBOUNCE_MS);
-        return updated;
+        schedulePersist({ window_width: next.width, window_height: next.height });
+        return { ...prev, window_width: next.width, window_height: next.height };
       });
     },
-    [setSettings],
+    [setSettings, schedulePersist],
   );
 }
 
 function useApplyNativeWindowSize(
   setSettings: Dispatch<SetStateAction<Settings>>,
+  schedulePersist: (patch: Partial<Settings>) => void,
 ): (width: number, height: number) => void {
-  const persistTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(
-    () => () => {
-      clearTimeout(persistTimer.current);
-    },
-    [],
-  );
-
   return useCallback(
     (width, height) => {
       setSettings((prev) => {
@@ -101,24 +127,35 @@ function useApplyNativeWindowSize(
           height: Math.round(height),
         });
         if (next.width === prev.window_width && next.height === prev.window_height) return prev;
-        const updated = { ...prev, window_width: next.width, window_height: next.height };
-        clearTimeout(persistTimer.current);
-        persistTimer.current = setTimeout(() => {
-          void ipcSet(updated);
-        }, WINDOW_SIZE_PERSIST_DEBOUNCE_MS);
-        return updated;
+        schedulePersist({ window_width: next.width, window_height: next.height });
+        return { ...prev, window_width: next.width, window_height: next.height };
       });
     },
-    [setSettings],
+    [setSettings, schedulePersist],
   );
 }
 
 export function useSettings(): SettingsApi {
-  const { settings, setSettings, loading, save } = useSettingsStore(applyVisualSettings);
+  const {
+    settings,
+    setSettings,
+    loading,
+    save: persistNow,
+  } = useSettingsStore(applyVisualSettings);
+  const latestSettings = useLatestRef(settings);
+  const { schedule, takePending, flush } = useDebouncedSettingsPersist(latestSettings);
 
-  const bumpOpacity = useBumpOpacity(setSettings);
-  const bumpWindowSize = useBumpWindowSize(setSettings);
-  const applyNativeWindowSize = useApplyNativeWindowSize(setSettings);
+  const save = useCallback(
+    async (next: Settings): Promise<string | null> => {
+      const queued = takePending();
+      return persistNow(queued === null ? next : { ...next, ...queued });
+    },
+    [takePending, persistNow],
+  );
 
-  return { settings, loading, save, bumpOpacity, bumpWindowSize, applyNativeWindowSize };
+  const bumpOpacity = useBumpOpacity(setSettings, schedule);
+  const bumpWindowSize = useBumpWindowSize(setSettings, schedule);
+  const applyNativeWindowSize = useApplyNativeWindowSize(setSettings, schedule);
+
+  return { settings, loading, save, bumpOpacity, bumpWindowSize, applyNativeWindowSize, flush };
 }

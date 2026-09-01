@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { StatusOrb } from "@/components/StatusOrb";
 
 const SECOND_MS = 1000;
 const SECONDS_PER_MINUTE = 60;
@@ -33,6 +34,7 @@ export function ThinkingIndicator({ startedAt }: { startedAt: number }) {
 
   return (
     <div className="flex animate-in items-baseline gap-2 duration-200 fade-in motion-reduce:animate-none">
+      <StatusOrb state="solving" />
       <span className="thinking-shimmer text-body font-medium" aria-live="polite">
         Думает…
       </span>

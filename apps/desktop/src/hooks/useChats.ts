@@ -29,6 +29,7 @@ import {
   type ImagePayload,
 } from "@/lib/composer";
 import { DEFAULT_MODEL } from "@/lib/models";
+import { useLatestRef } from "./useLatestRef";
 
 const SAVE_DEBOUNCE_MS = 500;
 const DOWNSCALE_JPEG_QUALITY = 0.85;
@@ -132,12 +133,13 @@ function useInitialChatsLoad(
   setChats: Dispatch<SetStateAction<Chat[]>>,
   setActiveId: Dispatch<SetStateAction<string>>,
   loaded: RefObject<boolean>,
+  makeChat: (index: number, id?: string) => Chat,
 ): void {
   useEffect(() => {
     let live = true;
     void loadChats().then((json) => {
       if (!live) return;
-      const initial = deserializeChats(json) ?? [createChat(1)];
+      const initial = deserializeChats(json) ?? [makeChat(1)];
       const first = initial[0];
       if (!first) return;
       setChats(initial);
@@ -147,21 +149,44 @@ function useInitialChatsLoad(
     return () => {
       live = false;
     };
-  }, [setChats, setActiveId, loaded]);
+  }, [setChats, setActiveId, loaded, makeChat]);
 }
 
-function useDebouncedChatsSave(chats: Chat[], loaded: RefObject<boolean>): void {
+function useDebouncedChatsSave(chats: Chat[], loaded: RefObject<boolean>): () => Promise<void> {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const pending = useRef(false);
+  const chatsRef = useRef(chats);
+  chatsRef.current = chats;
+
+  const flush = useCallback((): Promise<void> => {
+    if (!loaded.current || !pending.current) return Promise.resolve();
+    pending.current = false;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = undefined;
+    return saveChats(serializeChats(chatsRef.current)).then(() => undefined);
+  }, [loaded]);
+
   useEffect(() => {
     if (!loaded.current) return;
+    pending.current = true;
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
+      pending.current = false;
       void saveChats(serializeChats(chats));
     }, SAVE_DEBOUNCE_MS);
     return () => {
       clearTimeout(saveTimer.current);
     };
   }, [chats, loaded]);
+
+  useEffect(
+    () => () => {
+      void flush();
+    },
+    [flush],
+  );
+
+  return flush;
 }
 
 function chatWithUserMessage(
@@ -204,15 +229,32 @@ export interface ChatsApi {
   removeMessage: (id: string, index: number) => void;
   truncateMessages: (id: string, count: number) => void;
   clearMessages: (id: string) => void;
+  flush: () => Promise<void>;
 }
 
-export function useChats(): ChatsApi {
+/**
+ * `defaultModel` is a getter, not a value: it is read at the moment a chat is
+ * created, so a key added mid-session immediately changes what the next chat
+ * opens on. Passing the value instead would freeze the first render's answer.
+ */
+/** A chat opens on a model the user can actually call — see `defaultModelFor`. */
+function withDefaultModel(chat: Chat, defaultModel?: () => string): Chat {
+  const model = defaultModel?.();
+  return model === undefined || model === "" ? chat : { ...chat, model };
+}
+
+export function useChats(defaultModel?: () => string): ChatsApi {
+  const newChatModel = useLatestRef(defaultModel);
+  const makeChat = useCallback(
+    (index: number, id?: string) => withDefaultModel(createChat(index, id), newChatModel.current),
+    [newChatModel],
+  );
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeId, setActiveId] = useState<string>("");
   const loaded = useRef(false);
 
-  useInitialChatsLoad(setChats, setActiveId, loaded);
-  useDebouncedChatsSave(chats, loaded);
+  useInitialChatsLoad(setChats, setActiveId, loaded, makeChat);
+  const flush = useDebouncedChatsSave(chats, loaded);
 
   const effectiveActiveId = activeId || (chats[0]?.id ?? "");
   useRememberActiveChat(effectiveActiveId, loaded);
@@ -225,10 +267,10 @@ export function useChats(): ChatsApi {
     if (chats.length >= CHAT_LIMIT) return;
     const id = crypto.randomUUID();
     setChats((prev) =>
-      prev.length >= CHAT_LIMIT ? prev : [...prev, createChat(prev.length + 1, id)],
+      prev.length >= CHAT_LIMIT ? prev : [...prev, makeChat(prev.length + 1, id)],
     );
     setActiveId(id);
-  }, [chats.length]);
+  }, [chats.length, makeChat]);
 
   const duplicateChat = useCallback(
     (sourceId: string) => {
@@ -398,5 +440,6 @@ export function useChats(): ChatsApi {
     removeMessage,
     truncateMessages,
     clearMessages,
+    flush,
   };
 }

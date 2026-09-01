@@ -1,6 +1,9 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FALLBACK_MODELS, type ModelInfo } from "@/lib/models";
+import { FALLBACK_MODELS, PROVIDER_ANTHROPIC, type ModelInfo } from "@/lib/models";
+
+/** Every vendor the backend did not report is appended locked, whoever they are. */
+const LOCKED_OTHERS = FALLBACK_MODELS.filter((m) => m.provider !== PROVIDER_ANTHROPIC);
 import { createQueryWrapper } from "@/test/query-wrapper";
 
 const listModels = vi.fn<() => Promise<ModelInfo[]>>();
@@ -15,9 +18,10 @@ afterEach(() => {
 });
 
 describe("useModels", () => {
-  it("до ответа — фолбэк, после — курированный список из API", async () => {
+  it("до ответа — фолбэк, после — курированный список из API плюс запертые вендоры", async () => {
     const sonnet: ModelInfo = {
       id: "claude-sonnet-5",
+      provider: PROVIDER_ANTHROPIC,
       displayName: "Claude Sonnet 5",
       adaptive: true,
       alwaysThinks: false,
@@ -26,6 +30,7 @@ describe("useModels", () => {
     };
     const fable: ModelInfo = {
       id: "claude-fable-5",
+      provider: PROVIDER_ANTHROPIC,
       displayName: "Claude Fable 5",
       adaptive: true,
       alwaysThinks: true,
@@ -36,7 +41,7 @@ describe("useModels", () => {
     const { result } = renderHook(() => useModels(), { wrapper: createQueryWrapper() });
     expect(result.current).toBe(FALLBACK_MODELS);
     await waitFor(() => {
-      expect(result.current).toEqual([sonnet]);
+      expect(result.current).toEqual([sonnet, ...LOCKED_OTHERS]);
     });
   });
 

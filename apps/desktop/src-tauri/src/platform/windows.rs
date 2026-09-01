@@ -2,10 +2,10 @@ use std::sync::OnceLock;
 
 use tauri::AppHandle;
 use windows::core::{w, PCWSTR};
-use windows::Win32::Foundation::{HINSTANCE, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Dwm::{
-    DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
-    DWM_WINDOW_CORNER_PREFERENCE,
+    DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_WINDOW_CORNER_PREFERENCE,
+    DWMWCP_ROUND, DWMWINDOWATTRIBUTE,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, VIRTUAL_KEY, VK_CONTROL, VK_DOWN, VK_LEFT, VK_LWIN, VK_MENU, VK_RIGHT,
@@ -33,6 +33,17 @@ pub fn disable_cursor_autohide_on_typing() {}
 
 pub fn merge_titlebar_into_content(_app: &AppHandle) {}
 
+fn set_dwm_attribute<T>(hwnd: HWND, attribute: DWMWINDOWATTRIBUTE, value: &T) {
+    let _ = unsafe {
+        DwmSetWindowAttribute(
+            hwnd,
+            attribute,
+            std::ptr::from_ref(value).cast(),
+            std::mem::size_of::<T>() as u32,
+        )
+    };
+}
+
 pub fn clip_native_window_corners(app: &AppHandle) {
     let Some(w) = main_window(app) else {
         return;
@@ -40,15 +51,8 @@ pub fn clip_native_window_corners(app: &AppHandle) {
     let Ok(hwnd) = w.hwnd() else {
         return;
     };
-    let preference = DWMWCP_ROUND;
-    let _ = unsafe {
-        DwmSetWindowAttribute(
-            hwnd,
-            DWMWA_WINDOW_CORNER_PREFERENCE,
-            std::ptr::from_ref(&preference).cast(),
-            std::mem::size_of::<DWM_WINDOW_CORNER_PREFERENCE>() as u32,
-        )
-    };
+    set_dwm_attribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &DWMWCP_ROUND);
+    set_dwm_attribute(hwnd, DWMWA_BORDER_COLOR, &DWMWA_COLOR_NONE);
 }
 
 fn key_pressed(key: VIRTUAL_KEY) -> bool {

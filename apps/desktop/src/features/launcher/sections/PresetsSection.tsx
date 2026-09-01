@@ -9,6 +9,13 @@ import type { PromptPreset } from "@/lib/presets";
 import { cn } from "@/lib/utils";
 import { SettingGroup } from "../fields";
 
+/**
+ * The only place the syntax is taught, so it names the payoff rather than the
+ * mechanism: a user who does not know why terms help will not write them.
+ */
+const KEYWORDS_HINT =
+  "Строка [keywords]: [golang, gRPC, Kubernetes] подсказывает распознаванию речи термины этой темы — их перестанет коверкать. В сам промпт она не попадает.";
+
 const PRESET_TEXT_ROWS = 6;
 const UNNAMED_PRESET_LABEL = "Без имени";
 const PRESET_COPY_SUFFIX = " (копия)";
@@ -136,6 +143,7 @@ function PresetEditor({
         }}
         className="max-h-64 overflow-y-auto"
       />
+      <p className="text-hint text-muted-foreground">{KEYWORDS_HINT}</p>
     </div>
   );
 }

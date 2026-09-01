@@ -22,6 +22,7 @@ const EVENT_OFFICIAL_PRESETS_UPDATED: &str = "official-presets-updated";
 const EVENT_SCREENSHOT_READY: &str = "screenshot-ready";
 const EVENT_SCREENSHOT_ERROR: &str = "screenshot-error";
 const EVENT_FOCUS_PROMPT: &str = "focus-prompt";
+const EVENT_DUPLICATE_CHAT: &str = "duplicate-chat";
 
 #[derive(Clone, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -34,6 +35,7 @@ pub struct ScreenshotReady {
 #[serde(rename_all = "camelCase")]
 pub struct LlmDelta {
     pub chat_id: String,
+    pub stream_id: String,
     pub delta: String,
 }
 
@@ -41,12 +43,14 @@ pub struct LlmDelta {
 #[serde(rename_all = "camelCase")]
 pub struct LlmDone {
     pub chat_id: String,
+    pub stream_id: String,
 }
 
 #[derive(Clone, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmUsage {
     pub chat_id: String,
+    pub stream_id: String,
     pub input_tokens: u32,
 }
 
@@ -54,6 +58,7 @@ pub struct LlmUsage {
 #[serde(rename_all = "camelCase")]
 pub struct LlmErrorEvent {
     pub chat_id: String,
+    pub stream_id: String,
     pub code: ErrorCode,
     pub message: String,
 }
@@ -98,36 +103,39 @@ pub fn stt_error(app: &AppHandle, error: AppError) {
     let _ = app.emit(EVENT_STT_ERROR, error);
 }
 
-pub fn llm_delta(app: &AppHandle, chat_id: &str, delta: String) {
+pub fn llm_delta(app: &AppHandle, chat_id: &str, stream_id: &str, delta: String) {
     let _ = app.emit(
         EVENT_LLM_DELTA,
         LlmDelta {
             chat_id: chat_id.to_string(),
+            stream_id: stream_id.to_string(),
             delta,
         },
     );
 }
 
-pub fn llm_done(app: &AppHandle, chat_id: String) {
-    let _ = app.emit(EVENT_LLM_DONE, LlmDone { chat_id });
+pub fn llm_done(app: &AppHandle, chat_id: String, stream_id: String) {
+    let _ = app.emit(EVENT_LLM_DONE, LlmDone { chat_id, stream_id });
 }
 
-pub fn llm_error(app: &AppHandle, chat_id: String, error: AppError) {
+pub fn llm_error(app: &AppHandle, chat_id: String, stream_id: String, error: AppError) {
     let _ = app.emit(
         EVENT_LLM_ERROR,
         LlmErrorEvent {
             chat_id,
+            stream_id,
             code: error.code,
             message: error.message,
         },
     );
 }
 
-pub fn llm_usage(app: &AppHandle, chat_id: &str, input_tokens: u32) {
+pub fn llm_usage(app: &AppHandle, chat_id: &str, stream_id: &str, input_tokens: u32) {
     let _ = app.emit(
         EVENT_LLM_USAGE,
         LlmUsage {
             chat_id: chat_id.to_string(),
+            stream_id: stream_id.to_string(),
             input_tokens,
         },
     );
@@ -151,6 +159,10 @@ pub fn toggle_mini(app: &AppHandle) {
 
 pub fn focus_prompt(app: &AppHandle) {
     let _ = app.emit(EVENT_FOCUS_PROMPT, ());
+}
+
+pub fn duplicate_chat(app: &AppHandle) {
+    let _ = app.emit(EVENT_DUPLICATE_CHAT, ());
 }
 
 pub fn resize_key(app: &AppHandle, dx: i32, dy: i32) {

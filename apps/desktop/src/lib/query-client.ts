@@ -19,7 +19,7 @@ export function createQueryClient(): QueryClient {
 }
 
 export const queryKeys = {
-  models: (provider: string) => ["models", provider] as const,
+  models: ["models"] as const,
   officialPresets: ["official-presets"] as const,
   audioDevices: ["audio-devices"] as const,
   countTokens: (model: string, options: RequestOptions, system: string, messagesKey: string) =>

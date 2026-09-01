@@ -1,0 +1,161 @@
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { PROVIDER_ANTHROPIC, PROVIDER_OPENAI, type ModelInfo } from "@/lib/models";
+import { STT_PROVIDER_GROQ, STT_PROVIDER_OPENAI } from "@/lib/stt-providers";
+import { ModelCommandMenu } from "./ModelCommandMenu";
+
+class ResizeObserverStub {
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
+}
+
+beforeAll(() => {
+  Element.prototype.scrollIntoView = vi.fn();
+  globalThis.ResizeObserver = ResizeObserverStub;
+});
+
+afterEach(() => {
+  cleanup();
+});
+
+const models: ModelInfo[] = [
+  {
+    id: "claude-opus-5",
+    displayName: "Claude Opus 5",
+    provider: PROVIDER_ANTHROPIC,
+    adaptive: true,
+    alwaysThinks: false,
+    codeExec: true,
+    maxInputTokens: 500000,
+  },
+  {
+    id: "claude-haiku-4-5",
+    displayName: "Claude Haiku 4.5",
+    provider: PROVIDER_ANTHROPIC,
+    adaptive: false,
+    alwaysThinks: false,
+    codeExec: false,
+    maxInputTokens: 200000,
+  },
+];
+
+const renderMenu = (overrides: Partial<Parameters<typeof ModelCommandMenu>[0]> = {}) => {
+  const props = {
+    open: true,
+    onOpenChange: vi.fn(),
+    sttProvider: STT_PROVIDER_GROQ,
+    providersMissingKey: [] as readonly string[],
+    onSwitchSttProvider: vi.fn(),
+    models,
+    modelProvidersMissingKey: [] as readonly string[],
+    activeModelId: "claude-haiku-4-5",
+    onSelectModel: vi.fn(),
+    ...overrides,
+  };
+  render(<ModelCommandMenu {...props} />);
+  return props;
+};
+
+describe("ModelCommandMenu", () => {
+  it("показывает обе группы и все варианты", () => {
+    renderMenu();
+    expect(screen.getByText("Голосовая модель")).toBeTruthy();
+    expect(screen.getByText("Модель ответа")).toBeTruthy();
+    expect(screen.getByText("Groq · Whisper")).toBeTruthy();
+    expect(screen.getByText("OpenAI · gpt-4o mini")).toBeTruthy();
+    expect(screen.getByText("Opus 5")).toBeTruthy();
+    expect(screen.getByText("Haiku 4.5")).toBeTruthy();
+  });
+
+  it("выбор голосовой модели переключает провайдер и закрывает меню", () => {
+    const props = renderMenu();
+    fireEvent.click(screen.getByText("OpenAI · gpt-4o mini"));
+    expect(props.onSwitchSttProvider).toHaveBeenCalledWith(STT_PROVIDER_OPENAI);
+    expect(props.onOpenChange).toHaveBeenCalledWith(false);
+    expect(props.onSelectModel).not.toHaveBeenCalled();
+  });
+
+  it("доступная модель идёт без замка", () => {
+    renderMenu();
+    const item = screen.getByText("Opus 5").closest("[data-slot=command-item]");
+    expect(item?.querySelector("svg.lucide-lock")).toBeNull();
+  });
+
+  it("выбор модели ответа отдаёт id и закрывает меню", () => {
+    const props = renderMenu();
+    fireEvent.click(screen.getByText("Opus 5"));
+    expect(props.onSelectModel).toHaveBeenCalledWith("claude-opus-5");
+    expect(props.onOpenChange).toHaveBeenCalledWith(false);
+    expect(props.onSwitchSttProvider).not.toHaveBeenCalled();
+  });
+
+  it("модель чата вне каталога всё равно попадает в список", () => {
+    renderMenu({ activeModelId: "claude-sonnet-4" });
+    expect(screen.getByText("claude-sonnet-4")).toBeTruthy();
+  });
+
+  it("модели двух провайдеров идут отдельными группами с именем вендора", () => {
+    renderMenu({
+      models: [
+        ...models,
+        {
+          id: "gpt-5.6-terra",
+          displayName: "GPT-5.6 Terra",
+          provider: PROVIDER_OPENAI,
+          adaptive: true,
+          alwaysThinks: false,
+          codeExec: true,
+          maxInputTokens: 0,
+        },
+      ],
+    });
+    expect(screen.getByText("Модель ответа · Claude")).toBeTruthy();
+    expect(screen.getByText("Модель ответа · OpenAI")).toBeTruthy();
+    expect(screen.queryByText("Модель ответа")).toBeNull();
+    expect(screen.getByText("GPT-5.6 Terra")).toBeTruthy();
+  });
+
+  it("без ключа модели вендора видны, но с подсказкой и не выбираются", () => {
+    const props = renderMenu({
+      models: [
+        ...models,
+        {
+          id: "gpt-5.6-terra",
+          displayName: "GPT-5.6 Terra",
+          provider: PROVIDER_OPENAI,
+          adaptive: true,
+          alwaysThinks: false,
+          codeExec: true,
+          maxInputTokens: 0,
+        },
+      ],
+      modelProvidersMissingKey: [PROVIDER_OPENAI],
+    });
+    const item = screen.getByText("GPT-5.6 Terra").closest("[data-slot=command-item]");
+    expect(item?.getAttribute("data-disabled")).toBe("true");
+    expect(item?.querySelector("svg.lucide-lock")).toBeTruthy();
+    expect(screen.getAllByText("нет ключа").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText("GPT-5.6 Terra"));
+    expect(props.onSelectModel).not.toHaveBeenCalled();
+  });
+
+  it("выбор модели OpenAI отдаёт её id", () => {
+    const props = renderMenu({
+      models: [
+        {
+          id: "gpt-5.6-terra",
+          displayName: "GPT-5.6 Terra",
+          provider: PROVIDER_OPENAI,
+          adaptive: true,
+          alwaysThinks: false,
+          codeExec: true,
+          maxInputTokens: 0,
+        },
+      ],
+      activeModelId: "gpt-5.6-terra",
+    });
+    fireEvent.click(screen.getByText("GPT-5.6 Terra"));
+    expect(props.onSelectModel).toHaveBeenCalledWith("gpt-5.6-terra");
+  });
+});

@@ -1,7 +1,6 @@
 import { Copy, MessagesSquare, RotateCw, Trash2 } from "lucide-react";
 import {
   isValidElement,
-  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -10,13 +9,12 @@ import {
   useState,
 } from "react";
 import type { ReactNode, RefObject } from "react";
-import Markdown, { type Components } from "react-markdown";
-import rehypeHighlight from "rehype-highlight";
-import remarkGfm from "remark-gfm";
+import { type Components } from "react-markdown";
 import { HtmlBlockChip } from "@/components/HtmlBlockChip";
 import { IconButton } from "@/components/IconButton";
+import { markdownComponents, PROSE_MARKDOWN_CLASS } from "@/components/markdown-config";
+import { MarkdownChunk } from "@/components/MarkdownChunk";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
-import { openExternal } from "@/ipc/commands";
 import type { ChatMessage } from "@/lib/chats";
 import { imageDataUrl, type ImagePayload } from "@/lib/composer";
 import { matchesModifier, parseModifier } from "@/lib/hotkey-modifier";
@@ -41,54 +39,13 @@ export interface AnswerPanelProps {
 const FALLBACK_SCROLL_STEP_PX = 120;
 
 const NEAR_BOTTOM_PX = 40;
-const EXTERNAL_HTTP_URL = /^https?:\/\//;
 const HTML_LANGUAGE_CLASS = "language-html";
-const PLAIN_TEXT_LANGUAGES = ["html"];
-const AUTODETECT_LANGUAGE_SUBSET = [
-  "javascript",
-  "typescript",
-  "python",
-  "json",
-  "bash",
-  "css",
-  "xml",
-  "sql",
-  "yaml",
-  "rust",
-  "go",
-  "java",
-];
-const ASSISTANT_PROSE_CLASS =
-  "prose-answer min-w-0 break-words text-chat leading-relaxed text-foreground/90";
+const ASSISTANT_PROSE_CLASS = PROSE_MARKDOWN_CLASS;
 
 const FLOATING_CHIP_CLASS = "border bg-popover/95 shadow-pop backdrop-blur-sm";
 const MESSAGE_IMAGE_ALT = "Картинка в сообщении";
 const COPY_MESSAGE_TITLE = "Копировать сообщение";
 const ASSISTANT_ACTIONS_GUTTER_CLASS = "pr-13.5";
-
-const REHYPE_PLUGINS: NonNullable<Parameters<typeof Markdown>[0]["rehypePlugins"]> = [
-  [
-    rehypeHighlight,
-    { detect: true, plainText: PLAIN_TEXT_LANGUAGES, subset: AUTODETECT_LANGUAGE_SUBSET },
-  ],
-];
-
-function ExternalLinkAnchor({ href, children }: { href?: string; children?: ReactNode }) {
-  return (
-    <a
-      href={href}
-      onClick={(e) => {
-        e.preventDefault();
-        if (href && EXTERNAL_HTTP_URL.test(href)) void openExternal(href);
-      }}
-      className="text-foreground underline decoration-foreground/40 underline-offset-2 hover:decoration-foreground"
-    >
-      {children}
-    </a>
-  );
-}
-
-const markdownComponents = { a: ExternalLinkAnchor };
 
 function hasHtmlLanguageToken(className: string) {
   return className.split(/\s+/).some((token) => token.toLowerCase() === HTML_LANGUAGE_CLASS);
@@ -113,20 +70,6 @@ function makePre(onTogglePreview: (code: string) => void) {
     return <pre>{children}</pre>;
   };
 }
-
-const MarkdownChunk = memo(function MarkdownChunk({
-  text,
-  components,
-}: {
-  text: string;
-  components: Components;
-}) {
-  return (
-    <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={REHYPE_PLUGINS} components={components}>
-      {text}
-    </Markdown>
-  );
-});
 
 function MessageActionButton({
   title,
@@ -434,7 +377,7 @@ export function AnswerPanel({
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          className="flex min-h-0 w-full flex-col gap-2.5 overflow-y-auto pr-4"
+          className="flex min-h-0 w-full flex-col gap-2.5 overflow-y-auto pr-1.5"
         >
           {empty ? (
             <EmptyState />

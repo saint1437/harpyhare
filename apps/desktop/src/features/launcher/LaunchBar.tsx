@@ -1,7 +1,8 @@
 import { ChevronRight, Play } from "lucide-react";
 import type { ReactNode } from "react";
-import { EqBars } from "@/components/EqBars";
+import { StatusOrb } from "@/components/StatusOrb";
 import { Button } from "@/components/ui/button";
+import { ORB_STATE_IDLE } from "@/components/ui/thinking-orbs";
 import { useWindowDrag } from "@/hooks/useWindowDrag";
 import { BRAND_NAME } from "@/lib/brand";
 import { PLATFORM } from "@/lib/platform";
@@ -49,13 +50,13 @@ function StatusLine({
       <Button
         variant="ghost"
         size="compact"
-        className="min-w-0 gap-2 text-muted-foreground"
+        className="max-w-full min-w-0 gap-2 overflow-hidden text-muted-foreground"
         onClick={() => {
           onGoToBlocker(blocker);
         }}
       >
         {dot}
-        <span className="truncate" title={text}>
+        <span className="min-w-0 truncate" title={text}>
           {text}
         </span>
         <ChevronRight className="size-3 shrink-0 text-muted-foreground/70" aria-hidden />
@@ -64,9 +65,9 @@ function StatusLine({
   }
 
   return (
-    <span className="inline-flex h-6.5 min-w-0 items-center gap-2 px-2 text-caption text-muted-foreground">
+    <span className="inline-flex h-6.5 max-w-full min-w-0 items-center gap-2 overflow-hidden px-2 text-caption text-muted-foreground">
       {dot}
-      <span className="truncate" title={text}>
+      <span className="min-w-0 truncate" title={text}>
         {text}
       </span>
     </span>
@@ -95,7 +96,7 @@ export function LaunchBar({
       className={cn("flex h-9 shrink-0 items-center gap-3", MACOS_TRAFFIC_LIGHTS_CLASS)}
     >
       <div className="flex shrink-0 items-center gap-2">
-        <EqBars animated={launching} barClass="bg-primary" />
+        <StatusOrb state={launching ? "connecting" : ORB_STATE_IDLE} />
         <h1 className="font-mono text-hint font-semibold tracking-wider text-foreground/55 uppercase">
           {BRAND_NAME}
         </h1>
@@ -103,8 +104,8 @@ export function LaunchBar({
 
       <div className="max-w-96 min-w-0 flex-1">{search}</div>
 
-      <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1.5">
-        <div className="max-w-80 min-w-0">
+      <div className="ml-auto flex min-w-0 items-center gap-1.5">
+        <div className="max-w-80 min-w-0 overflow-hidden">
           <StatusLine
             readiness={readiness}
             launching={launching}
@@ -114,7 +115,7 @@ export function LaunchBar({
         </div>
         <Button
           size="compact"
-          className="gap-1.5"
+          className="shrink-0 gap-1.5"
           disabled={launching || readiness.checking || !readiness.ready}
           onClick={onLaunch}
         >

@@ -1,37 +1,129 @@
+import { Check, Lock } from "lucide-react";
 import { AccessCodeForm } from "@/components/AccessCodeForm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SelectItem } from "@/components/ui/select";
 import { openExternal } from "@/ipc/commands";
-import type { LlmProvider, SttProvider } from "@/ipc/types";
-import { apiKeyInfo, type ApiKeyId } from "@/lib/api-keys";
+import {
+  apiKeyInfo,
+  hasAccessCode,
+  modelProvidersMissingKey,
+  sttProvidersMissingKey,
+  vendorsOutsideCode,
+  visibleApiKeys,
+  type ApiKeyId,
+} from "@/lib/api-keys";
+import { MODEL_PROVIDERS } from "@/lib/models";
+import { STT_PROVIDERS } from "@/lib/stt-providers";
 import type { SectionProps } from "../contract";
-import { SettingBlock, SettingGroup, SettingRow, SettingSelect } from "../fields";
+import { SettingBlock, SettingGroup, SettingRow } from "../fields";
 
 type ApiKeysSectionProps = SectionProps & {
   onRedeem: (code: string) => Promise<string | null>;
 };
 
-const KEY_FIELDS: { id: ApiKeyId; placeholder: string }[] = [
-  { id: "anthropic", placeholder: "sk-ant-…" },
-  { id: "xclis", placeholder: "sk-…" },
-  { id: "groq", placeholder: "gsk_…" },
-  { id: "deepgram", placeholder: "Deepgram API key" },
-];
+const KEY_PLACEHOLDERS: Record<ApiKeyId, string> = {
+  anthropic: "sk-ant-…",
+  groq: "gsk_…",
+  openai: "sk-…",
+  xai: "xai-…",
+};
 
-function isActiveKey(id: ApiKeyId, llmProvider: LlmProvider, sttProvider: SttProvider): boolean {
-  if (id === "anthropic" || id === "xclis") return id === llmProvider;
-  return id === sttProvider;
+const GROUP_TITLE = "Доступ к API";
+const KEYS_DESCRIPTION =
+  "Нужен ОДИН ключ для ответов и один для распознавания речи — или код доступа вместо обоих.";
+const CODE_DESCRIPTION = "Код доступа работает вместо ключей API — вводить их не нужно.";
+const CODE_PARTIAL_DESCRIPTION =
+  "Код доступа работает вместо ключей API — свой ключ нужен только для";
+
+function groupDescription(outside: readonly string[], code: boolean): string {
+  if (!code) return KEYS_DESCRIPTION;
+  return outside.length === 0
+    ? CODE_DESCRIPTION
+    : `${CODE_PARTIAL_DESCRIPTION} ${outside.join(", ")}.`;
+}
+
+function codeRowHint(outside: readonly string[]): string {
+  return outside.length === 0
+    ? "Отвязка вернёт запросы на ваши ключи API."
+    : `Покрывает всё, кроме ${outside.join(", ")} — для них нужен свой ключ ниже.`;
+}
+
+function VendorState({ ready, label }: { ready: boolean; label: string }) {
+  const Icon = ready ? Check : Lock;
+  return (
+    <span className="flex items-center gap-1.5 text-hint text-muted-foreground">
+      <Icon className="size-3" aria-hidden />
+      {label}
+    </span>
+  );
+}
+
+/**
+ * Which vendors the current keys reach. The point of the screen is no longer
+ * "fill both fields" but "any one of these answers, any one of those hears" —
+ * so the state of each vendor is shown rather than left to be inferred from
+ * whether a field looks filled.
+ */
+function VendorSummary({ draft }: Pick<SectionProps, "draft">) {
+  const answersLocked = modelProvidersMissingKey(draft);
+  const speechLocked = sttProvidersMissingKey(draft);
+  return (
+    <>
+      <SettingRow label="Отвечают" hint="Достаточно любого одного — модель выбирается в чате.">
+        <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+          {MODEL_PROVIDERS.map((p) => (
+            <VendorState key={p.id} ready={!answersLocked.includes(p.id)} label={p.label} />
+          ))}
+        </span>
+      </SettingRow>
+      <SettingRow label="Распознают речь" hint="Активен тот, что выбран на этой же вкладке.">
+        <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+          {STT_PROVIDERS.map((p) => (
+            <VendorState key={p.id} ready={!speechLocked.includes(p.id)} label={p.label} />
+          ))}
+        </span>
+      </SettingRow>
+    </>
+  );
+}
+
+function KeyField({ id, draft, set }: { id: ApiKeyId } & SectionProps) {
+  const info = apiKeyInfo(id);
+  return (
+    <SettingBlock label={`Ключ ${info.name}`} hint={`Нужен для ${info.purpose}.`}>
+      <div className="flex items-center gap-2">
+        <Input
+          type="password"
+          autoComplete="off"
+          aria-label={`Ключ ${info.name}`}
+          placeholder={KEY_PLACEHOLDERS[id]}
+          value={draft[`${id}_api_key`]}
+          onChange={(e) => {
+            set(`${id}_api_key`, e.target.value);
+          }}
+        />
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            void openExternal(info.consoleUrl);
+          }}
+        >
+          Где взять
+        </Button>
+      </div>
+    </SettingBlock>
+  );
 }
 
 export function ApiKeysSection({ draft, set, onRedeem }: ApiKeysSectionProps) {
-  if (draft.access_token.trim() !== "") {
-    return (
-      <SettingGroup
-        title="Доступ к API"
-        description="Запросы идут через общий доступ по коду, свои ключи и выбранные провайдеры не используются."
-      >
-        <SettingRow label="Код доступа активен" hint="Отвязка вернёт запросы на ваши API-ключи.">
+  const code = hasAccessCode(draft);
+  const outside = vendorsOutsideCode();
+
+  return (
+    <SettingGroup title={GROUP_TITLE} description={groupDescription(outside, code)}>
+      {code ? (
+        <SettingRow label="Код доступа активен" hint={codeRowHint(outside)}>
           <Button
             variant="ghost"
             size="sm"
@@ -42,92 +134,15 @@ export function ApiKeysSection({ draft, set, onRedeem }: ApiKeysSectionProps) {
             Отвязать
           </Button>
         </SettingRow>
-      </SettingGroup>
-    );
-  }
-
-  return (
-    <>
-      <SettingGroup
-        title="Провайдеры"
-        description="Оригинальные сервисы сохранены, альтернативные можно включать независимо друг от друга."
-      >
-        <SettingRow label="Claude" hint="Текст, контекст и скриншоты отправляются выбранному API.">
-          <SettingSelect
-            ariaLabel="Провайдер Claude API"
-            value={draft.llm_provider}
-            onValueChange={(v) => {
-              set("llm_provider", v as LlmProvider);
-            }}
-          >
-            <SelectItem value="anthropic">Anthropic · официальный</SelectItem>
-            <SelectItem value="xclis">Xclis · альтернативный</SelectItem>
-          </SettingSelect>
-        </SettingRow>
-
-        <SettingRow
-          label="Распознавание речи"
-          hint="Системный звук распознаётся выбранным STT-сервисом."
-        >
-          <SettingSelect
-            ariaLabel="Провайдер распознавания речи"
-            value={draft.stt_provider}
-            onValueChange={(v) => {
-              const provider = v as SttProvider;
-              set("stt_provider", provider);
-              if (provider === "deepgram" && draft.stt_translate) {
-                set("stt_translate", false);
-              }
-            }}
-          >
-            <SelectItem value="groq">Groq · Whisper</SelectItem>
-            <SelectItem value="deepgram">Deepgram · Nova-3</SelectItem>
-          </SettingSelect>
-        </SettingRow>
-      </SettingGroup>
-
-      <SettingGroup
-        title="Ключи API"
-        description="Ключи сохраняются отдельно: активный используется сейчас, остальные остаются запасными."
-      >
-        <SettingBlock label="Код доступа" hint="Быстрый путь: собственные API-ключи не нужны.">
+      ) : (
+        <SettingBlock label="Код доступа" hint="Быстрый путь: заводить ключи не нужно.">
           <AccessCodeForm onRedeem={onRedeem} />
         </SettingBlock>
-
-        {KEY_FIELDS.map(({ id, placeholder }) => {
-          const info = apiKeyInfo(id);
-          const active = isActiveKey(id, draft.llm_provider, draft.stt_provider);
-          return (
-            <SettingBlock
-              key={id}
-              label={`Ключ ${info.name}`}
-              hint={`${active ? "Используется сейчас. " : "Сохранён как запасной. "}${info.purpose}.`}
-            >
-              <div className="flex items-center gap-2">
-                <Input
-                  type="password"
-                  autoComplete="off"
-                  aria-label={`Ключ ${info.name}`}
-                  placeholder={placeholder}
-                  value={draft[`${id}_api_key`]}
-                  onChange={(e) => {
-                    set(`${id}_api_key`, e.target.value);
-                  }}
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    void openExternal(info.consoleUrl);
-                  }}
-                >
-                  Где взять
-                </Button>
-              </div>
-            </SettingBlock>
-          );
-        })}
-      </SettingGroup>
-    </>
+      )}
+      <VendorSummary draft={draft} />
+      {visibleApiKeys(draft).map((id) => (
+        <KeyField key={id} id={id} draft={draft} set={set} />
+      ))}
+    </SettingGroup>
   );
 }

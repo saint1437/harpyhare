@@ -76,6 +76,7 @@ export function onEvent<K extends keyof EventMap>(
   let live = true;
   let off: Unlisten = noopUnlisten;
   void listen<EventMap[K]>(name, (e) => {
+    if (!live) return;
     handler(e.payload);
   }).then((unlisten) => {
     if (live) off = unlisten;

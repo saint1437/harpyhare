@@ -6,17 +6,18 @@ export const en: Dictionary = {
   meta: {
     title: "harpyhare — hears the question, shows the answer",
     description:
-      "A macOS and Windows app: hold a key and harpyhare captures system audio, transcribes it with Whisper and streams Claude's answer in a floating window. The window stays out of screen shares.",
+      "A macOS and Windows app: hold a key and harpyhare captures system audio, transcribes it and streams the answer from the model you picked in a floating window. The window stays out of screen shares.",
     ogTitle: "harpyhare — hears the question, shows the answer",
     ogDescription:
-      "System audio capture, instant transcription and Claude's answer in a window that floats above everything else. Builds for macOS and Windows.",
+      "System audio capture, instant transcription and an answer from Claude, GPT or Grok in a window that floats above everything else. Builds for macOS and Windows.",
     keywords: [
       "system audio capture",
       "speech to text",
       "meeting assistant",
       "interview assistant",
-      "Whisper",
       "Claude",
+      "GPT",
+      "Grok",
       "invisible during screen sharing",
       "teleprompter",
       "macOS",
@@ -37,7 +38,7 @@ export const en: Dictionary = {
     badge: "A quiet assistant · macOS + Windows",
     titleSolid: ["Hears", "the question."],
     titleOutline: ["Shows", "the answer."],
-    lead: "Hold a key — harpyhare records system audio, transcribes the speech and streams Claude's answer above every other window. A couple of seconds — and the answer is on a screen only you can see.",
+    lead: "Hold a key — harpyhare records system audio, transcribes the speech and streams the answer above every other window. A couple of seconds — and the answer is on a screen only you can see.",
     allVersions: "All versions",
   },
   download: {
@@ -70,7 +71,7 @@ export const en: Dictionary = {
       {
         number: "03",
         title: "Read the answer",
-        text: "Claude streams into the floating window. Ask a follow-up — the conversation keeps its context.",
+        text: "The answer streams into the floating window. Ask a follow-up — the conversation keeps its context.",
       },
     ],
   },
@@ -111,11 +112,11 @@ export const en: Dictionary = {
       },
       {
         title: "Transcription on the fly",
-        text: "Whisper turns speech into text in a fraction of a second — in English, Russian and dozens of other languages. A separate mode translates everything into English right away.",
+        text: "Speech becomes text in a fraction of a second — in English, Russian and dozens of other languages. Pick your transcription provider: Groq, OpenAI or Grok.",
       },
       {
-        title: "Answers from Claude",
-        text: "Anthropic models stream straight into the window. Chat history, screenshots and syntax highlighting all live in one place.",
+        title: "Claude, GPT and Grok — your pick",
+        text: "Switch models right inside the chat; every chat keeps its own. One provider key is enough — the app is tied to nobody. Chat history, screenshots and syntax highlighting all live in one place.",
       },
       {
         title: "Invisible to the other side",
@@ -127,7 +128,7 @@ export const en: Dictionary = {
       },
       {
         title: "Your keys, your data",
-        text: "It talks to the Groq and Anthropic APIs with your own keys — no third-party servers, accounts or subscriptions.",
+        text: "It talks to the provider APIs with your own keys — no third-party servers, accounts or subscriptions.",
       },
     ],
   },
@@ -147,12 +148,12 @@ export const en: Dictionary = {
       {
         question: "What does it cost and do I need my own API keys?",
         answer:
-          "The app is free. You need a Groq key (speech recognition) and an Anthropic key (Claude answers) — you pay the providers directly at their rates, with nobody in between. As an alternative there are one-time access codes: requests then go through a proxy and no keys of your own are required.",
+          "The app is free. You need two keys: one for answers — Anthropic, OpenAI or xAI, whichever you prefer — and one for speech recognition. You pay the providers directly at their rates, with nobody in between. As an alternative there are one-time access codes: requests then go through a proxy and no keys of your own are required.",
       },
       {
         question: "Which languages does the transcription understand?",
         answer:
-          "Groq's Whisper large-v3-turbo handles English, Russian and dozens of other languages; you can pin the language or leave auto-detection on. A separate toggle turns on translation mode, which converts speech in any language straight into English text.",
+          "English, Russian and dozens of other languages; you can pin the language or leave auto-detection on. The transcription provider is switchable in settings: Groq (Whisper), OpenAI or Grok. Groq and OpenAI also offer a translation mode, which converts speech in any language straight into English text.",
       },
       {
         question: "What are the system requirements?",
@@ -162,14 +163,14 @@ export const en: Dictionary = {
       {
         question: "Where do my conversations go?",
         answer:
-          "Audio goes to Groq for transcription and the text goes to Anthropic for the answer. The app runs no servers of its own and needs no account. Chat history, settings and reference material stay on your disk in the app's own folder.",
+          "Audio goes to whichever transcription provider you chose, and the text to whichever model you chose. The app runs no servers of its own and needs no account. Chat history, settings and reference material stay on your disk in the app's own folder.",
       },
     ],
   },
   cta: {
     titlePlain: "Try it on your next ",
     titleOutline: "call",
-    text: "The app is free — all you need are your own Groq and Anthropic API keys, or an access code.",
+    text: "The app is free — all you need are your own API keys, or an access code.",
   },
   footer: {
     github: "GitHub",

@@ -57,7 +57,10 @@ fn main() {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(DOTENV_RELATIVE_PATH),
     );
     let key = std::env::var(GROQ_KEY_ENV).expect("GROQ_API_KEY в .env");
-    let stt = harpyhare_lib::stt::GroqStt::new(key);
+    let stt = harpyhare_lib::stt::SttHttpClient::for_provider(
+        harpyhare_lib::stt::registry::PROVIDER_GROQ,
+        key,
+    );
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async move {
@@ -67,7 +70,7 @@ fn main() {
 
         let t = std::time::Instant::now();
         let res = stt
-            .transcribe_stream(body, tokio_util::sync::CancellationToken::new())
+            .transcribe_stream(body, &[], tokio_util::sync::CancellationToken::new())
             .await;
         println!("итог за {:?}: {:?}", t.elapsed(), res);
     });

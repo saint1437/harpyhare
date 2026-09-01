@@ -16,16 +16,11 @@ export interface QuickAction {
   prompt: string;
 }
 
-export type LlmProvider = "anthropic" | "xclis";
-export type SttProvider = "groq" | "deepgram";
-
 export interface Settings {
   anthropic_api_key: string;
-  xclis_api_key: string;
   groq_api_key: string;
-  deepgram_api_key: string;
-  llm_provider: LlmProvider;
-  stt_provider: SttProvider;
+  openai_api_key: string;
+  xai_api_key: string;
   access_token: string;
   prompt_presets: PromptPreset[];
   hotkeys: HotkeyBinding[];
@@ -37,6 +32,7 @@ export interface Settings {
   skipped_version: string;
   stt_language: string;
   stt_translate: boolean;
+  stt_provider: string;
   screen_share_visible: boolean;
   teleprompter_speed: number;
   teleprompter_font_size: number;
@@ -57,10 +53,6 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   ...SETTINGS_DEFAULTS,
-  xclis_api_key: "",
-  deepgram_api_key: "",
-  llm_provider: "anthropic",
-  stt_provider: "groq",
   prompt_presets: [...SETTINGS_DEFAULTS.prompt_presets],
   hotkeys: [...SETTINGS_DEFAULTS.hotkeys],
   quick_actions: [...SETTINGS_DEFAULTS.quick_actions],
@@ -94,10 +86,10 @@ export interface EventMap {
   "state-changed": RecorderState;
   "transcript-ready": string;
   "stt-error": AppError;
-  "llm-delta": { chatId: string; delta: string };
-  "llm-done": { chatId: string };
-  "llm-error": AppError & { chatId: string };
-  "llm-usage": { chatId: string; inputTokens: number };
+  "llm-delta": { chatId: string; streamId: string; delta: string };
+  "llm-done": { chatId: string; streamId: string };
+  "llm-error": AppError & { chatId: string; streamId: string };
+  "llm-usage": { chatId: string; streamId: string; inputTokens: number };
   "update-available": UpdateInfo;
   "update-progress": UpdateProgress;
   "update-done": { version: string };
@@ -108,4 +100,5 @@ export interface EventMap {
   "screenshot-ready": { mediaType: string; dataBase64: string };
   "screenshot-error": AppError;
   "focus-prompt": null;
+  "duplicate-chat": null;
 }
