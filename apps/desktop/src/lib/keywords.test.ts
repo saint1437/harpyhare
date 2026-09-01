@@ -79,3 +79,26 @@ describe("chatKeyterms", () => {
     expect(chatKeyterms(["обычный препромпт", ""])).toEqual([]);
   });
 });
+
+describe("мусорный ввод", () => {
+  it("вложенные скобки не рвут список и не оставляют хвост в промпте", () => {
+    const text = "[keywords]: [Go, slice, []byte]";
+    expect(extractKeyterms(text)).toEqual(["Go", "slice", "[]byte"]);
+    expect(stripKeywordBlocks(text)).toBe("");
+  });
+
+  it("незакрытая скобка стоит терминов, но не съедает остальной промпт", () => {
+    const text = "Правила.\n[keywords]: [golang, gRPC\nОтвечай кратко.";
+    expect(extractKeyterms(text)).toEqual(["golang", "gRPC"]);
+    expect(stripKeywordBlocks(text)).toBe("Правила.\n\nОтвечай кратко.");
+  });
+
+  it("русский маркер работает так же, как английский", () => {
+    expect(extractKeyterms("[ключевые слова]: [Go, Rust]")).toEqual(["Go", "Rust"]);
+  });
+
+  it("пустой список не даёт терминов и всё равно вырезается", () => {
+    expect(extractKeyterms("текст [keywords]: [] хвост")).toEqual([]);
+    expect(stripKeywordBlocks("текст [keywords]: [] хвост")).toBe("текст  хвост");
+  });
+});

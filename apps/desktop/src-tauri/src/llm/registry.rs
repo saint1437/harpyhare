@@ -236,10 +236,10 @@ pub const PROVIDERS: &[LlmProviderSpec] = &[
         },
     },
     // Grok speaks the Responses dialect verbatim, so it needs no module and no
-    // arm in `build_provider` — this row is the whole integration. It is not
-    // proxied: the relay has no xAI route and no xAI secret, so under an access
-    // code the picker shows these models locked rather than offering something
-    // that would 404.
+    // arm in `build_provider` — this row is the whole integration. The relay
+    // proxies it too: it shares `/v1/responses` with OpenAI there and the two
+    // are told apart by the requested model, so an access code covers Grok
+    // without the app knowing anything beyond its swapped base URL.
     LlmProviderSpec {
         id: PROVIDER_XAI,
         label: "Grok",
@@ -247,7 +247,7 @@ pub const PROVIDERS: &[LlmProviderSpec] = &[
         families: &[],
         catalog: GROK_MODELS,
         default_model: "grok-4.3",
-        proxied: false,
+        proxied: true,
         wire: LlmWire::Responses {
             base_url: "https://api.x.ai",
             key_label: "xAI",

@@ -24,6 +24,7 @@ export interface ClaudeStreams {
 
 export function useClaudeStream(
   onComplete: (chatId: string, finalText: string) => void,
+  onUsage: (chatId: string, inputTokens: number) => void,
 ): ClaudeStreams {
   const [partial, setPartial] = useState<Record<string, string>>({});
   const [streaming, setStreaming] = useState<Record<string, boolean>>({});
@@ -45,6 +46,8 @@ export function useClaudeStream(
 
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
+  const onUsageRef = useRef(onUsage);
+  onUsageRef.current = onUsage;
 
   const frame = useCallback<FrameRequestCallback>((frameTs) => {
     if (active.current.size === 0) {
@@ -115,6 +118,10 @@ export function useClaudeStream(
       active.current.delete(chatId);
       commitBufferAndFinish(chatId, true);
     });
+    const offUsage = onEvent("llm-usage", ({ chatId, streamId, inputTokens }) => {
+      if (!isCurrentStream(chatId, streamId)) return;
+      onUsageRef.current(chatId, inputTokens);
+    });
     const offError = onEvent("llm-error", ({ chatId, streamId, code, message }) => {
       if (!isCurrentStream(chatId, streamId)) return;
       ids.delete(chatId);
@@ -125,6 +132,7 @@ export function useClaudeStream(
     return () => {
       offDelta();
       offDone();
+      offUsage();
       offError();
       cancelAnimationFrame(raf.current);
       running.current = false;

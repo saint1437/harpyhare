@@ -327,6 +327,17 @@ fn feed_bytes_handles_utf8_split_across_chunks() {
 }
 
 #[test]
+fn feed_bytes_recovers_from_a_genuinely_invalid_byte() {
+    let raw = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n";
+    let mut p = SseParser::anthropic();
+    // Битый байт посреди потока не должен оседать в хвосте навсегда: до фикса
+    // парсер после него не отдавал ни одной дельты и стрим выглядел обрывом сети.
+    assert!(p.feed_bytes(&[0xFF]).is_empty());
+    let out = p.feed_bytes(raw.as_bytes());
+    assert_eq!(out, vec![SseOut::TextDelta("hi".to_string())]);
+}
+
+#[test]
 fn sse_parser_handles_chunk_split_mid_data_json() {
     let raw = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n";
     let mid = raw.find("text_delta").unwrap() + 5;

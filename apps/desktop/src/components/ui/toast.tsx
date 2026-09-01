@@ -1,10 +1,14 @@
 import { AlertCircle, AlertTriangle, CheckCircle, Info, X } from "lucide-react";
-import type { ComponentType } from "react";
+import type { ComponentType, CSSProperties } from "react";
 import { Toaster as SonnerToaster } from "sonner";
 import { cn } from "@/lib/utils";
 import "sonner/dist/styles.css";
 
 export const TOAST_DURATION_MS = 1500;
+/** Ошибку надо успеть прочитать: заголовок, текст и кнопка закрытия. */
+export const ERROR_TOAST_DURATION_MS = 6000;
+/** Ширина контейнера sonner по умолчанию 356px — карточка уезжала влево. */
+const TOAST_WIDTH = "20rem";
 
 export type ToastVariant = "default" | "success" | "error" | "warning";
 
@@ -89,6 +93,7 @@ export function Toaster() {
       visibleToasts={VISIBLE_TOASTS}
       offset={TOAST_OFFSET_PX}
       gap={TOAST_GAP_PX}
+      style={{ "--width": TOAST_WIDTH } as CSSProperties}
       toastOptions={{ unstyled: true }}
     />
   );

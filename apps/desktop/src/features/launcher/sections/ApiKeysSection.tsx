@@ -5,8 +5,11 @@ import { Input } from "@/components/ui/input";
 import { openExternal } from "@/ipc/commands";
 import {
   apiKeyInfo,
+  hasAccessCode,
   modelProvidersMissingKey,
   sttProvidersMissingKey,
+  vendorsOutsideCode,
+  visibleApiKeys,
   type ApiKeyId,
 } from "@/lib/api-keys";
 import { MODEL_PROVIDERS } from "@/lib/models";
@@ -26,8 +29,24 @@ const KEY_PLACEHOLDERS: Record<ApiKeyId, string> = {
 };
 
 const GROUP_TITLE = "Доступ к API";
-const GROUP_DESCRIPTION =
+const KEYS_DESCRIPTION =
   "Нужен ОДИН ключ для ответов и один для распознавания речи — или код доступа вместо обоих.";
+const CODE_DESCRIPTION = "Код доступа работает вместо ключей API — вводить их не нужно.";
+const CODE_PARTIAL_DESCRIPTION =
+  "Код доступа работает вместо ключей API — свой ключ нужен только для";
+
+function groupDescription(outside: readonly string[], code: boolean): string {
+  if (!code) return KEYS_DESCRIPTION;
+  return outside.length === 0
+    ? CODE_DESCRIPTION
+    : `${CODE_PARTIAL_DESCRIPTION} ${outside.join(", ")}.`;
+}
+
+function codeRowHint(outside: readonly string[]): string {
+  return outside.length === 0
+    ? "Отвязка вернёт запросы на ваши ключи API."
+    : `Покрывает всё, кроме ${outside.join(", ")} — для них нужен свой ключ ниже.`;
+}
 
 function VendorState({ ready, label }: { ready: boolean; label: string }) {
   const Icon = ready ? Check : Lock;
@@ -98,23 +117,13 @@ function KeyField({ id, draft, set }: { id: ApiKeyId } & SectionProps) {
 }
 
 export function ApiKeysSection({ draft, set, onRedeem }: ApiKeysSectionProps) {
-  const hasCode = draft.access_token.trim() !== "";
-  // Vendors the relay does not proxy stay reachable only through a personal
-  // key, so the fields are worth showing even under a code — that is the whole
-  // point of not being tied to one vendor.
-  const unproxiedNames = MODEL_PROVIDERS.filter((p) => !p.proxied).map((p) => p.label);
+  const code = hasAccessCode(draft);
+  const outside = vendorsOutsideCode();
 
   return (
-    <SettingGroup title={GROUP_TITLE} description={GROUP_DESCRIPTION}>
-      {hasCode ? (
-        <SettingRow
-          label="Код доступа активен"
-          hint={
-            unproxiedNames.length > 0
-              ? `Покрывает всё, кроме ${unproxiedNames.join(", ")} — для них нужен свой ключ ниже.`
-              : "Отвязка вернёт запросы на ваши ключи API."
-          }
-        >
+    <SettingGroup title={GROUP_TITLE} description={groupDescription(outside, code)}>
+      {code ? (
+        <SettingRow label="Код доступа активен" hint={codeRowHint(outside)}>
           <Button
             variant="ghost"
             size="sm"
@@ -131,7 +140,7 @@ export function ApiKeysSection({ draft, set, onRedeem }: ApiKeysSectionProps) {
         </SettingBlock>
       )}
       <VendorSummary draft={draft} />
-      {(Object.keys(KEY_PLACEHOLDERS) as ApiKeyId[]).map((id) => (
+      {visibleApiKeys(draft).map((id) => (
         <KeyField key={id} id={id} draft={draft} set={set} />
       ))}
     </SettingGroup>

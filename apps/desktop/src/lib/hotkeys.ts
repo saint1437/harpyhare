@@ -171,16 +171,26 @@ const PASTE_MODIFIER: Record<Platform, string> = {
 };
 const SEND_KEY = "Enter";
 const PASTE_KEY = "V";
+const ESCAPE_KEY = "Escape";
+const ARROW_UP_KEY = "ArrowUp";
+const ARROW_DOWN_KEY = "ArrowDown";
 const FIELD_HINTS_GROUP = hotkeyAction("send").group;
+const NOTES_HINTS_GROUP = hotkeyAction("toggle_mode").group;
 
 function fieldHints(platform: Platform): Record<string, HotkeyHint[]> {
   const paste = [PASTE_MODIFIER[platform], PASTE_KEY].join(COMBO_SEPARATOR);
   const newline = ["Shift", SEND_KEY].join(COMBO_SEPARATOR);
+  const upDown = [ARROW_UP_KEY, ARROW_DOWN_KEY].map((key) => formatCombo(key, platform)).join("");
   return {
     [FIELD_HINTS_GROUP]: [
       { combo: formatCombo(SEND_KEY, platform), label: "отправить из поля ввода" },
       { combo: formatCombo(newline, platform), label: "перенос строки" },
       { combo: formatCombo(paste, platform), label: "вставить скриншот" },
+    ],
+    [NOTES_HINTS_GROUP]: [
+      { combo: upDown, label: "по подсказкам поиска" },
+      { combo: formatCombo(SEND_KEY, platform), label: "открыть заметку" },
+      { combo: formatCombo(ESCAPE_KEY, platform), label: "шаг назад, до выхода в чат" },
     ],
   };
 }

@@ -139,8 +139,7 @@ fn reregister_changed_hotkeys(
 fn rebuild_changed_api_clients(st: &App, old: &settings::Settings, new: &settings::Settings) {
     let access_token_changed = old.access_token != new.access_token;
     if access_token_changed
-        || old.groq_api_key != new.groq_api_key
-        || old.openai_api_key != new.openai_api_key
+        || stt_credentials_changed(old, new)
         || old.stt_provider != new.stt_provider
         || old.stt_language != new.stt_language
         || old.stt_translate != new.stt_translate
@@ -159,6 +158,13 @@ fn rebuild_changed_api_clients(st: &App, old: &settings::Settings, new: &setting
 /// without anyone remembering to extend this condition.
 fn llm_credentials_changed(old: &settings::Settings, new: &settings::Settings) -> bool {
     crate::llm::registry::PROVIDERS.iter().any(|spec| {
+        settings::api_key_for(old, spec.key_id) != settings::api_key_for(new, spec.key_id)
+    })
+}
+
+/// The speech half of the same rule — see `llm_credentials_changed`.
+fn stt_credentials_changed(old: &settings::Settings, new: &settings::Settings) -> bool {
+    crate::stt::registry::PROVIDERS.iter().any(|spec| {
         settings::api_key_for(old, spec.key_id) != settings::api_key_for(new, spec.key_id)
     })
 }
@@ -187,3 +193,5 @@ fn apply_buffer_settings_change(
     }
 }
 
+#[cfg(test)]
+mod tests;

@@ -35,6 +35,9 @@ function emptyImage(): Promise<HTMLImageElement> {
       resolve(image);
     });
     image.addEventListener("error", () => {
+      // Промис не кэшируем при отказе: иначе одна неудачная загрузка гасит
+      // рамку до перезапуска окна.
+      emptyImagePromise = null;
       reject(new Error("liquid-metal empty pixel"));
     });
     image.src = emptyPixel;
@@ -105,8 +108,14 @@ export function LiquidMetalBorder({ active }: { active: boolean }) {
     };
   }, [show]);
 
+  // Пересоздавать контекст на каждый кадр ресайза нельзя: ShaderMount держит
+  // свой ResizeObserver и меняет размер канваса сам, а его dispose() не зовёт
+  // loseContext(), поэтому брошенные WebGL-контексты копятся до GC — при
+  // исчерпании лимита WebKit гасит старейший и рамка молча пропадает.
+  const mounted = box.width > 0;
+
   useEffect(() => {
-    if (!show || box.width === 0) return;
+    if (!show || !mounted) return;
     const host = hostRef.current;
     if (!host) return;
     let disposed = false;
@@ -147,7 +156,7 @@ export function LiquidMetalBorder({ active }: { active: boolean }) {
       disposed = true;
       mount?.dispose();
     };
-  }, [show, box.width, box.height]);
+  }, [show, mounted]);
 
   if (!show) return null;
   const maskImage = box.width > 0 ? ringMaskImage(box.width, box.height, box.radius) : undefined;

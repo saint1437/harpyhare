@@ -14,6 +14,11 @@ pub struct SttProviderSpec {
     #[serde(skip)]
     #[specta(skip)]
     pub keyterms: SttKeyterms,
+    /// Whether an access code reaches this vendor. The relay proxies only the
+    /// vendors it has a route and a secret for, so a vendor it does not
+    /// (xAI: `POST /v1/stt` is not in its routing table) still needs the
+    /// user's own key — offering it under a code would 404 on every recording.
+    pub proxied: bool,
     /// Whether the vendor can return English for speech in another language.
     /// Exported because the launcher greys its «Перевод на английский» toggle
     /// out for a vendor that cannot: silently transcribing instead of
@@ -122,6 +127,7 @@ pub const PROVIDERS: &[SttProviderSpec] = &[
         id: PROVIDER_GROQ,
         label: "Groq · Whisper",
         key_id: "groq",
+        proxied: true,
         supports_translate: true,
         keyterms: SttKeyterms::Prompt { field: "prompt" },
         key_label: "Groq",
@@ -143,6 +149,7 @@ pub const PROVIDERS: &[SttProviderSpec] = &[
         id: PROVIDER_OPENAI,
         label: "OpenAI · gpt-4o mini",
         key_id: "openai",
+        proxied: true,
         supports_translate: true,
         // Accepts `prompt` and measurably ignores it — see CLAUDE.md. The
         // keyword-capable sibling is `gpt-transcribe`, which this row
@@ -167,6 +174,7 @@ pub const PROVIDERS: &[SttProviderSpec] = &[
         id: PROVIDER_XAI,
         label: "Grok · Speech-to-Text",
         key_id: "xai",
+        proxied: true,
         supports_translate: false,
         // Hard error above 100, verified — not a silent truncation.
         keyterms: SttKeyterms::Repeated { field: "keyterm", max: 100 },

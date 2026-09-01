@@ -3,7 +3,7 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    api_error_message, build_http_client, build_probe_http_client, pump_sse_stream,
+    build_http_client, build_probe_http_client, pump_sse_stream,
     require_ok_status, LlmError, LlmStreamSink, SseParser, DEFAULT_READ_TIMEOUT, WARM_UP_TIMEOUT,
 };
 
@@ -110,10 +110,7 @@ impl LlmHttp {
     /// `path` carries its own query string when the vendor needs one.
     pub async fn get_json(&self, path: &str, timeout: Duration) -> Result<Value, LlmError> {
         let resp = self.send(self.client.get(self.url(path)).timeout(timeout)).await?;
-        let code = resp.status().as_u16();
-        if code != 200 {
-            return Err(LlmError::Api(api_error_message(resp, code).await));
-        }
+        let resp = require_ok_status(resp, self.key_label, self.proxy).await?;
         Self::json_of(resp).await
     }
 

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useOfficialPresets } from "@/hooks/useOfficialPresets";
 import type { Settings } from "@/ipc/types";
+import { visibleApiKeys } from "@/lib/api-keys";
 import { mergePresets } from "@/lib/presets";
 import { normalizeDraft } from "@/lib/settings-draft";
 import { ContextLibraryPanel } from "./ContextLibraryPanel";
@@ -56,8 +57,9 @@ export function LauncherPanel({
       })),
       quickActions: draft.quick_actions.map((a) => ({ id: a.id, title: a.title })),
       contextDocs: contextLibrary.library.docs.map((d) => ({ id: d.id, name: d.name })),
+      apiKeys: visibleApiKeys(draft),
     }),
-    [official, draft.prompt_presets, draft.quick_actions, contextLibrary.library.docs],
+    [official, draft, contextLibrary.library.docs],
   );
 
   const sidebarNotices = useMemo<SidebarNotice[]>(

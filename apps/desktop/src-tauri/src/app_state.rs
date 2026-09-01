@@ -126,7 +126,7 @@ pub struct SttClientPlan {
 /// exactly one STT vendor is active, the one the setting names.
 pub fn stt_client_plan(s: &settings::Settings) -> SttClientPlan {
     let spec = stt::registry::resolve(&s.stt_provider);
-    if s.access_token.is_empty() {
+    if s.access_token.is_empty() || !spec.proxied {
         return SttClientPlan {
             provider_id: spec.id,
             api_key: settings::api_key_for(s, spec.key_id).to_string(),

@@ -14,6 +14,7 @@ pub const ACTION_OPACITY: &str = "opacity";
 pub const ACTION_SCROLL_CHAT: &str = "scroll_chat";
 pub const ACTION_DUPLICATE_CHAT: &str = "duplicate_chat";
 pub const ACTION_MODEL_MENU: &str = "model_menu";
+pub const ACTION_TOGGLE_MODE: &str = "toggle_mode";
 pub const ACTION_TELEPROMPTER: &str = "teleprompter";
 pub const ACTION_TELEPROMPTER_CLOSE: &str = "teleprompter_close";
 pub const ACTION_TELEPROMPTER_PAUSE: &str = "teleprompter_pause";
@@ -292,6 +293,15 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
         default_combo: primary_combo!("T"),
+    },
+    HotkeyAction {
+        id: ACTION_TOGGLE_MODE,
+        group: "Заметки",
+        label: "Режим заметок",
+        hint: "Переключает окно между чатом и заметками.",
+        kind: HotkeyKind::Combo,
+        scope: HotkeyScope::Hud,
+        default_combo: primary_combo!(shift_token!(), "L"),
     },
     HotkeyAction {
         id: ACTION_TELEPROMPTER_CLOSE,

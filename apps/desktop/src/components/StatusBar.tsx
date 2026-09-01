@@ -13,6 +13,7 @@ export interface ContextUsage {
 
 export interface StatusBarProps {
   state: RecorderState;
+  modeSwitch: ReactNode;
   tabs: ReactNode;
   dockItems: ToolbarDockItem[];
   contextUsage: ContextUsage | null;
@@ -50,7 +51,7 @@ function recorderOrb(state: RecorderState): OrbState {
   return ORB_STATE_IDLE;
 }
 
-export function StatusBar({ state, tabs, dockItems, contextUsage }: StatusBarProps) {
+export function StatusBar({ state, modeSwitch, tabs, dockItems, contextUsage }: StatusBarProps) {
   const onDragMouseDown = useWindowDrag();
   const orb = recorderOrb(state);
 
@@ -61,7 +62,7 @@ export function StatusBar({ state, tabs, dockItems, contextUsage }: StatusBarPro
       <span className="min-w-0 flex-1" />
       <div className="flex shrink-0 items-center gap-1.5">
         {contextUsage && <ContextUsageGauge usage={contextUsage} />}
-        <ToolbarDock items={dockItems} />
+        <ToolbarDock items={dockItems} leading={modeSwitch} />
       </div>
     </header>
   );

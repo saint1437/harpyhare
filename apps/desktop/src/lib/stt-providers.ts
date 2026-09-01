@@ -9,6 +9,8 @@ export interface SttProviderOption {
   id: string;
   label: string;
   keyId: ApiKeyId;
+  /** Whether an access code reaches this vendor — the relay proxies only some. */
+  proxied: boolean;
   /** Whether the vendor can return English for speech in another language. */
   supportsTranslate: boolean;
 }
@@ -30,6 +32,7 @@ export const STT_PROVIDERS: readonly SttProviderOption[] = GENERATED_STT_PROVIDE
   id: p.id,
   label: p.label,
   keyId: p.keyId,
+  proxied: p.proxied,
   supportsTranslate: p.supportsTranslate,
 }));
 

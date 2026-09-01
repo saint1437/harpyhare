@@ -10,8 +10,17 @@
  * opt-in — there is no setting, and that is deliberate.
  */
 
-/** `[keywords]` / `[КЛЮЧЕВЫЕ СЛОВА]`, optional colon, then a bracketed list. */
-const KEYWORDS_BLOCK = /\[\s*keywords\s*\]\s*:?\s*\[([^\]]*)\]/gi;
+/**
+ * `[keywords]` / `[ключевые слова]`, optional colon, then a bracketed list.
+ *
+ * Two alternatives on purpose. The first accepts one level of nesting, so a
+ * Go term like `[]byte` neither truncates the list nor leaks its tail into the
+ * prompt. The second is the typo case — a list nobody closed — and it stops at
+ * the end of the line rather than swallowing the rest of the document: a
+ * missing bracket must cost the terms, not the prompt around them.
+ */
+const KEYWORDS_BLOCK =
+  /\[\s*(?:keywords|ключевые\s+слова)\s*\]\s*:?\s*(?:\[((?:[^[\]]|\[[^[\]]*\])*)\]|\[([^[\]\n]*))/gi;
 
 const TERM_SEPARATORS = /[,;\n]/;
 /** Long enough to be a term, short enough not to be a smuggled sentence. */
@@ -35,7 +44,7 @@ function isUsableTerm(term: string): boolean {
 export function extractKeyterms(text: string): string[] {
   const found: string[] = [];
   for (const match of text.matchAll(KEYWORDS_BLOCK)) {
-    const list = match[1] ?? "";
+    const list = match[1] ?? match[2] ?? "";
     for (const raw of list.split(TERM_SEPARATORS)) {
       const term = cleanTerm(raw);
       if (isUsableTerm(term)) found.push(term);
@@ -55,6 +64,7 @@ export function stripKeywordBlocks(text: string): string {
   return text
     .replace(KEYWORDS_BLOCK, "")
     .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 

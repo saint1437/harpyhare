@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { accessGaps, availableAnswerProviders, modelProvidersMissingKey } from "./api-keys";
-import { PROVIDER_ANTHROPIC, PROVIDER_OPENAI, PROVIDER_XAI } from "./models";
-import { STT_PROVIDER_GROQ, STT_PROVIDER_OPENAI } from "./stt-providers";
+import {
+  accessGaps,
+  API_KEY_IDS,
+  availableAnswerProviders,
+  modelProvidersMissingKey,
+  sttProvidersMissingKey,
+  vendorsOutsideCode,
+  visibleApiKeys,
+} from "./api-keys";
+import { MODEL_PROVIDERS, PROVIDER_ANTHROPIC, PROVIDER_OPENAI, PROVIDER_XAI } from "./models";
+import { STT_PROVIDER_GROQ, STT_PROVIDER_OPENAI, STT_PROVIDERS } from "./stt-providers";
 
 const keys = (
   anthropic: string,
@@ -65,11 +73,11 @@ describe("availableAnswerProviders", () => {
     expect(availableAnswerProviders(xaiOnly)).toEqual([PROVIDER_XAI]);
   });
 
-  it("код доступа открывает проксируемых, но не Grok", () => {
+  it("код доступа открывает всех вендоров ответов — relay проксирует каждого", () => {
     const available = availableAnswerProviders(keys("", "", "itk_token"));
     expect(available).toContain(PROVIDER_ANTHROPIC);
     expect(available).toContain(PROVIDER_OPENAI);
-    expect(available).not.toContain(PROVIDER_XAI);
+    expect(available).toContain(PROVIDER_XAI);
   });
 });
 
@@ -81,13 +89,12 @@ describe("modelProvidersMissingKey", () => {
     expect(locked).toContain(PROVIDER_XAI);
   });
 
-  it("код доступа открывает только тех, кого проксирует relay", () => {
-    // У Grok нет роута в воркере, поэтому код доступа его НЕ открывает —
-    // иначе пикер предлагал бы модель, которая ответит 404.
+  it("код доступа не оставляет запертым ни одного вендора ответов", () => {
+    // Замок снимается по флагу proxied реестра, а не по списку id: вендор,
+    // которого воркер не проксирует, обязан остаться запертым сам собой.
     const locked = modelProvidersMissingKey(keys("", "", "itk_token"));
-    expect(locked).not.toContain(PROVIDER_ANTHROPIC);
-    expect(locked).not.toContain(PROVIDER_OPENAI);
-    expect(locked).toContain(PROVIDER_XAI);
+    expect(locked).toEqual(MODEL_PROVIDERS.filter((p) => !p.proxied).map((p) => p.id));
+    expect(locked).toEqual([]);
   });
 
   it("свой ключ xAI открывает Grok и при коде доступа", () => {
@@ -98,5 +105,55 @@ describe("modelProvidersMissingKey", () => {
   it("свой ключ открывает вендора без кода доступа", () => {
     const withXai = keys("", "", "", STT_PROVIDER_GROQ, "", "xai-key");
     expect(modelProvidersMissingKey(withXai)).not.toContain(PROVIDER_XAI);
+  });
+});
+
+describe("код доступа и непроксируемые вендоры речи", () => {
+  it("код доступа открывает только тех, кого проксирует relay", () => {
+    const settings = {
+      anthropic_api_key: "",
+      groq_api_key: "",
+      openai_api_key: "",
+      xai_api_key: "",
+      access_token: "itk_code",
+      stt_provider: "groq",
+    };
+    const locked = sttProvidersMissingKey(settings);
+    const proxied = STT_PROVIDERS.filter((p) => p.proxied).map((p) => p.id);
+    const direct = STT_PROVIDERS.filter((p) => !p.proxied).map((p) => p.id);
+    expect(proxied.every((id) => !locked.includes(id))).toBe(true);
+    expect(direct.every((id) => locked.includes(id))).toBe(true);
+  });
+
+  it("непроксируемый вендор открывается своим ключом даже без кода", () => {
+    const settings = {
+      anthropic_api_key: "",
+      groq_api_key: "",
+      openai_api_key: "",
+      xai_api_key: "xai-key",
+      access_token: "",
+      stt_provider: "xai",
+    };
+    expect(sttProvidersMissingKey(settings)).not.toContain("xai");
+  });
+});
+
+describe("visibleApiKeys", () => {
+  it("без кода доступа показываются все поля ключей", () => {
+    expect(visibleApiKeys(keys("", ""))).toEqual(API_KEY_IDS);
+  });
+
+  it("код доступа оставляет поля только тех вендоров, кого relay не проксирует", () => {
+    const outside = new Set(
+      [...MODEL_PROVIDERS, ...STT_PROVIDERS].filter((v) => !v.proxied).map((v) => v.keyId),
+    );
+    expect(visibleApiKeys(keys("", "", "itk_token"))).toEqual(
+      API_KEY_IDS.filter((id) => outside.has(id)),
+    );
+  });
+
+  it("пока relay проксирует всех, под кодом полей ключей нет вовсе", () => {
+    expect(vendorsOutsideCode()).toEqual([]);
+    expect(visibleApiKeys(keys("sk-ant", "gsk_y", "itk_token"))).toEqual([]);
   });
 });

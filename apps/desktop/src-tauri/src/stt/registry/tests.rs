@@ -137,6 +137,7 @@ fn a_row_needs_nothing_but_data_to_be_well_formed() {
         id: "elevenlabs",
         label: "ElevenLabs · Scribe v2",
         key_id: "elevenlabs",
+        proxied: false,
         supports_translate: true,
         keyterms: SttKeyterms::Prompt { field: "prompt" },
         key_label: "ElevenLabs",

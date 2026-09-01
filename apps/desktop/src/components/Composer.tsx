@@ -40,6 +40,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { QuickAction } from "@/ipc/types";
+import { MISSING_KEY_HINT } from "@/lib/api-keys";
 import type { Chat, ChatPatch } from "@/lib/chats";
 import { extractImageItems } from "@/lib/composer";
 import type { Attachment } from "@/lib/composer";
@@ -87,7 +88,6 @@ const SELECT_CONTENT_POSITION = "popper";
 const NO_PRESET_VALUE = "none";
 const THINKING_PARAM_LABEL = "Thinking";
 const WEB_SEARCH_PARAM_LABEL = "Веб-поиск";
-const MISSING_KEY_HINT = "нет ключа";
 
 function pasteHasImages(items: DataTransferItemList) {
   return extractImageItems(items).length > 0;

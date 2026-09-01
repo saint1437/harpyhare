@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { API_KEY_IDS } from "@/lib/api-keys";
 import { searchLauncher, type SearchHit, type SearchSources } from "./search";
 
 const SOURCES: SearchSources = {
   presets: [{ id: "preset-1", name: "Мой пресет" }],
   quickActions: [{ id: "quick-1", title: "Короче" }],
   contextDocs: [{ id: "doc-1", name: "Резюме" }],
+  apiKeys: API_KEY_IDS,
 };
 
 function titles(hits: SearchHit[]): string[] {
@@ -107,6 +109,14 @@ describe("searchLauncher", () => {
     const ids = searchLauncher("прозрачность", SOURCES).map((hit) => hit.id);
     expect(ids).not.toContain("hotkey:opacity");
     expect(ids).toContain("setting:appearance:Прозрачность окна");
+  });
+
+  it("поля ключей индексируются ровно те, что показаны на вкладке", () => {
+    expect(searchLauncher("Ключ Anthropic", SOURCES).map((hit) => hit.title)).toContain(
+      "Ключ Anthropic",
+    );
+    const underCode: SearchSources = { ...SOURCES, apiKeys: [] };
+    expect(searchLauncher("Ключ Anthropic", underCode)).toEqual([]);
   });
 
   it("идентификаторы в выдаче уникальны", () => {

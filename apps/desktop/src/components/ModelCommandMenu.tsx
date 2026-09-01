@@ -7,6 +7,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { MISSING_KEY_HINT } from "@/lib/api-keys";
 import {
   modelGroups,
   modelLabel,
@@ -24,7 +25,6 @@ const EMPTY_TEXT = "Ничего не найдено.";
 const VOICE_GROUP_HEADING = "Голосовая модель";
 const ANSWER_GROUP_HEADING = "Модель ответа";
 const PROVIDER_HEADING_SEPARATOR = " · ";
-const MISSING_KEY_HINT = "нет ключа";
 
 function answerGroupHeading(group: ModelGroup, groupCount: number): string {
   if (groupCount < 2) return ANSWER_GROUP_HEADING;

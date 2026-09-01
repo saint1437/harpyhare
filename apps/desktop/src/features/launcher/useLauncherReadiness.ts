@@ -11,9 +11,8 @@ export interface LauncherBlocker {
   tab?: SettingsTabId;
 }
 
-const KEYS_TAB: SettingsTabId = "access";
-/** A missing speech key is fixed either here or by switching provider — both live on this tab. */
-const SPEECH_TAB: SettingsTabId = "access";
+/** Ключи и выбор провайдера речи живут на одной вкладке, поэтому пробел любого рода ведёт сюда. */
+const ACCESS_TAB: SettingsTabId = "access";
 
 const AUDIO_BLOCKER: LauncherBlocker = {
   label: "Нет доступа к записи системного звука",
@@ -37,7 +36,7 @@ export function useLauncherReadiness(settings: Settings): LauncherReadiness {
     const list: LauncherBlocker[] = gaps.map((gap) => ({
       label: gap.label,
       screen: "settings",
-      tab: gap.kind === "speech" ? SPEECH_TAB : KEYS_TAB,
+      tab: ACCESS_TAB,
     }));
     if (!checking && !permissions.audioOk) list.push(AUDIO_BLOCKER);
     return list;

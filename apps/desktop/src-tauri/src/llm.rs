@@ -603,6 +603,11 @@ impl SseParser {
     }
 
     pub fn feed_bytes(&mut self, chunk: &[u8]) -> Vec<SseOut> {
+        if self.tail.is_empty() {
+            if let Ok(s) = std::str::from_utf8(chunk) {
+                return self.feed(s);
+            }
+        }
         let data = if self.tail.is_empty() {
             chunk.to_vec()
         } else {
@@ -614,9 +619,16 @@ impl SseParser {
             Ok(s) => self.feed(s),
             Err(e) => {
                 let valid = e.valid_up_to();
-                self.tail = data[valid..].to_vec();
                 let s = std::str::from_utf8(&data[..valid]).expect("проверено valid_up_to");
-                self.feed(s)
+                let out = self.feed(s);
+                // error_len() == None — символ разорван границей чанка, ждём хвост.
+                // Some(n) — байты битые: пропускаем их, иначе они остаются в tail
+                // навсегда, поток встаёт молча и выглядит как обрыв сети.
+                self.tail = match e.error_len() {
+                    None => data[valid..].to_vec(),
+                    Some(bad) => data[valid + bad..].to_vec(),
+                };
+                out
             }
         }
     }

@@ -52,9 +52,38 @@ export interface ApiKeySettings {
   stt_provider: string;
 }
 
+/** Подпись запертого вендора — одна на оба пикера. */
+export const MISSING_KEY_HINT = "нет ключа";
+
+const RELAY_VENDORS = [...MODEL_PROVIDERS, ...STT_PROVIDERS];
+
+export function hasAccessCode(settings: ApiKeySettings): boolean {
+  return settings.access_token.trim() !== "";
+}
+
+/** Вендоры, до которых код доступа не дотягивается: у relay нет их роута. */
+export function vendorsOutsideCode(): readonly string[] {
+  return [...new Set(RELAY_VENDORS.filter((v) => !v.proxied).map((v) => v.label))];
+}
+
+/**
+ * Поля ключей, которые есть смысл показывать. Код доступа стоит вместо ключа
+ * каждого проксируемого вендора, поэтому под кодом остаются только ключи тех,
+ * кого relay не проксирует, — а когда таких нет, полей нет вовсе.
+ */
+export function visibleApiKeys(settings: ApiKeySettings): readonly ApiKeyId[] {
+  if (!hasAccessCode(settings)) return API_KEY_IDS;
+  const outside = new Set(RELAY_VENDORS.filter((v) => !v.proxied).map((v) => v.keyId));
+  return API_KEY_IDS.filter((id) => outside.has(id));
+}
+
 export function sttProvidersMissingKey(settings: ApiKeySettings): readonly string[] {
-  if (settings.access_token.trim() !== "") return [];
-  return STT_PROVIDERS.filter((p) => settings[`${p.keyId}_api_key`].trim() === "").map((p) => p.id);
+  return STT_PROVIDERS.filter((p) => {
+    // Same rule as the answer vendors: a code covers only what the relay
+    // proxies, and Grok speech is not among its routes.
+    if (p.proxied && hasAccessCode(settings)) return false;
+    return settings[`${p.keyId}_api_key`].trim() === "";
+  }).map((p) => p.id);
 }
 
 /**
@@ -65,7 +94,7 @@ export function modelProvidersMissingKey(settings: ApiKeySettings): readonly str
   return MODEL_PROVIDERS.filter((p) => {
     // An access code covers only what the relay proxies. A vendor it does not
     // (Grok) still needs the user's own key, and the picker keeps it locked.
-    if (p.proxied && settings.access_token.trim() !== "") return false;
+    if (p.proxied && hasAccessCode(settings)) return false;
     return settings[`${p.keyId}_api_key`].trim() === "";
   }).map((p) => p.id);
 }

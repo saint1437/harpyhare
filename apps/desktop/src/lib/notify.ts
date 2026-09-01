@@ -1,6 +1,11 @@
 import { createElement } from "react";
 import { toast as sonnerToast } from "sonner";
-import { ToastCard, TOAST_DURATION_MS, type ToastVariant } from "@/components/ui/toast";
+import {
+  ERROR_TOAST_DURATION_MS,
+  ToastCard,
+  TOAST_DURATION_MS,
+  type ToastVariant,
+} from "@/components/ui/toast";
 import type { AppError, ErrorCode } from "@/lib/errors";
 
 export { TOAST_DURATION_MS };
@@ -42,7 +47,14 @@ export function notify(input: NotifyInput): void {
           sonnerToast.dismiss(id);
         },
       }),
-    { duration: input.durationMs ?? TOAST_DURATION_MS },
+    {
+      // Один id на одинаковые сообщения: три чата стримят параллельно, и на
+      // невалидном ключе они дают три копии подряд. Sonner при повторе того же
+      // id обновляет карточку и перезапускает таймер вместо новой очереди.
+      id: `${variant}|${input.title ?? ""}|${input.message}`,
+      duration:
+        input.durationMs ?? (variant === "error" ? ERROR_TOAST_DURATION_MS : TOAST_DURATION_MS),
+    },
   );
 }
 
