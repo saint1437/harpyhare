@@ -668,6 +668,7 @@ export default function App() {
     loading: settingsLoading,
     save,
     bumpOpacity,
+    bumpChatFontSize,
     bumpWindowSize,
     applyNativeWindowSize,
     flush: flushSettings,
@@ -811,7 +812,13 @@ export default function App() {
     doSend();
   }, [doSend, hotkeySuppressed]);
 
-  useWindowControls(settings.hotkeys, sendFromHotkey, bumpOpacity, bumpWindowSize);
+  useWindowControls(
+    settings.hotkeys,
+    sendFromHotkey,
+    bumpOpacity,
+    bumpChatFontSize,
+    bumpWindowSize,
+  );
   usePttSuspend(effectiveCombo(settings.hotkeys, "record"));
   const { ref: promptRef, focus: focusPrompt } = usePromptFocus(promptUnavailable);
 

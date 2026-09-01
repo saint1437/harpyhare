@@ -68,11 +68,13 @@ const KEY_SYMBOLS: Record<string, string> = {
 const HINT_SEPARATOR = " ";
 const ARROWS_HINT = "←→↑↓";
 const PLUS_MINUS_HINT = "+ −";
+const BRACKETS_HINT = "[ ]";
 const DIGITS_HINT = `1…${QUICK_ACTION_LIMIT}`;
 
 const KIND_HINTS: Partial<Record<HotkeyAction["kind"], string>> = {
   modifier_arrows: ARROWS_HINT,
   modifier_plus_minus: PLUS_MINUS_HINT,
+  modifier_brackets: BRACKETS_HINT,
   modifier_digits: DIGITS_HINT,
 };
 

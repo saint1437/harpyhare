@@ -10,7 +10,14 @@ import { useLatestRef } from "@/hooks/useLatestRef";
 import { useSettingsStore } from "@/hooks/useSettingsStore";
 import { setSettings as ipcSet } from "@/ipc/commands";
 import type { Settings } from "@/ipc/types";
-import { applyChatFontSize, applyOpacity, applyTheme, stepOpacity } from "@/lib/window-controls";
+import {
+  applyChatFontSize,
+  applyOpacity,
+  CHAT_FONT_SIZE_HOTKEY_STEP_PX,
+  applyTheme,
+  stepChatFontSize,
+  stepOpacity,
+} from "@/lib/window-controls";
 import { clampWindowSize, stepWindowSize, type WindowDimension } from "@/lib/window-size";
 
 const OPACITY_STEP = 0.1;
@@ -21,6 +28,7 @@ export interface SettingsApi {
   loading: boolean;
   save: (next: Settings) => Promise<string | null>;
   bumpOpacity: (dir: 1 | -1) => void;
+  bumpChatFontSize: (dir: 1 | -1) => void;
   bumpWindowSize: (dim: WindowDimension, dir: 1 | -1) => void;
   applyNativeWindowSize: (width: number, height: number) => void;
   flush: () => Promise<void>;
@@ -94,6 +102,23 @@ function useBumpOpacity(
   );
 }
 
+function useBumpChatFontSize(
+  setSettings: Dispatch<SetStateAction<Settings>>,
+  schedulePersist: (patch: Partial<Settings>) => void,
+): (dir: 1 | -1) => void {
+  return useCallback(
+    (dir: 1 | -1) => {
+      setSettings((prev) => {
+        const next = stepChatFontSize(prev.chat_font_size, dir, CHAT_FONT_SIZE_HOTKEY_STEP_PX);
+        applyChatFontSize(document.documentElement, next);
+        schedulePersist({ chat_font_size: next });
+        return { ...prev, chat_font_size: next };
+      });
+    },
+    [setSettings, schedulePersist],
+  );
+}
+
 function useBumpWindowSize(
   setSettings: Dispatch<SetStateAction<Settings>>,
   schedulePersist: (patch: Partial<Settings>) => void,
@@ -154,8 +179,18 @@ export function useSettings(): SettingsApi {
   );
 
   const bumpOpacity = useBumpOpacity(setSettings, schedule);
+  const bumpChatFontSize = useBumpChatFontSize(setSettings, schedule);
   const bumpWindowSize = useBumpWindowSize(setSettings, schedule);
   const applyNativeWindowSize = useApplyNativeWindowSize(setSettings, schedule);
 
-  return { settings, loading, save, bumpOpacity, bumpWindowSize, applyNativeWindowSize, flush };
+  return {
+    settings,
+    loading,
+    save,
+    bumpOpacity,
+    bumpChatFontSize,
+    bumpWindowSize,
+    applyNativeWindowSize,
+    flush,
+  };
 }

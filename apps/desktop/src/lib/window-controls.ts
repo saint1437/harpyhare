@@ -35,6 +35,13 @@ export function applyChatFontSize(root: HTMLElement, px: number): void {
   root.style.setProperty(CHAT_FONT_SIZE_CSS_VAR, `${String(clamped)}px`);
 }
 
+/** Шаг слайдера в лаунчере мельче: там подбирают точно, хоткеем — на ходу. */
+export const CHAT_FONT_SIZE_HOTKEY_STEP_PX = 1;
+
+export function stepChatFontSize(current: number, dir: 1 | -1, step: number): number {
+  return clamp(current + dir * step, CHAT_FONT_SIZE_MIN_PX, CHAT_FONT_SIZE_MAX_PX);
+}
+
 const THEME_DATA_ATTR = "data-theme";
 export const THEME_GRAY = "gray";
 export const THEME_BLACK = "black";

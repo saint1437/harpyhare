@@ -12,6 +12,7 @@ pub const ACTION_MOVE_WINDOW: &str = "move_window";
 pub const ACTION_RESIZE_WINDOW: &str = "resize_window";
 pub const ACTION_OPACITY: &str = "opacity";
 pub const ACTION_SCROLL_CHAT: &str = "scroll_chat";
+pub const ACTION_CHAT_FONT_SIZE: &str = "chat_font_size";
 pub const ACTION_DUPLICATE_CHAT: &str = "duplicate_chat";
 pub const ACTION_MODEL_MENU: &str = "model_menu";
 pub const ACTION_TOGGLE_MODE: &str = "toggle_mode";
@@ -124,6 +125,7 @@ pub const MODIFIER_COMBOS: PlatformModifierCombos = PlatformModifierCombos {
 };
 const ARROW_KEYS: &[&str] = &["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
 const PLUS_MINUS_KEYS: &[&str] = &["Minus", "Equal"];
+const BRACKET_KEYS: &[&str] = &["BracketLeft", "BracketRight"];
 const FIRST_DIGIT_KEY: usize = 1;
 pub const COMBO_SEPARATOR: char = separator_token!().as_bytes()[0] as char;
 
@@ -134,6 +136,7 @@ pub enum HotkeyKind {
     ModifierArrows,
     ModifierPlusMinus,
     ModifierDigits,
+    ModifierBrackets,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, specta::Type)]
@@ -257,6 +260,15 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         kind: HotkeyKind::ModifierPlusMinus,
         scope: HotkeyScope::Hud,
         default_combo: primary_combo!(shift_token!()),
+    },
+    HotkeyAction {
+        id: ACTION_CHAT_FONT_SIZE,
+        group: "Чат",
+        label: "Размер шрифта",
+        hint: "Модификатор с квадратными скобками.",
+        kind: HotkeyKind::ModifierBrackets,
+        scope: HotkeyScope::Hud,
+        default_combo: primary_combo!(),
     },
     HotkeyAction {
         id: ACTION_SCROLL_CHAT,
@@ -392,6 +404,23 @@ fn is_plus_minus(key: &str) -> bool {
     PLUS_MINUS_KEYS.iter().any(|k| k.eq_ignore_ascii_case(key))
 }
 
+fn is_bracket(key: &str) -> bool {
+    BRACKET_KEYS.iter().any(|k| k.eq_ignore_ascii_case(key))
+}
+
+/// Какие клавиши занимает вид хоткея. `None` у полного сочетания: оно занимает
+/// ровно одну клавишу, а не семейство. Матч исчерпывающий намеренно — новый
+/// вид обязан объявить своё семейство здесь, иначе крейт не соберётся.
+fn family_keys(kind: HotkeyKind) -> Option<fn(&str) -> bool> {
+    match kind {
+        HotkeyKind::Combo => None,
+        HotkeyKind::ModifierArrows => Some(is_arrow),
+        HotkeyKind::ModifierPlusMinus => Some(is_plus_minus),
+        HotkeyKind::ModifierDigits => Some(is_digit),
+        HotkeyKind::ModifierBrackets => Some(is_bracket),
+    }
+}
+
 fn is_digit(key: &str) -> bool {
     canonical_key(key)
         .parse::<usize>()
@@ -415,35 +444,14 @@ fn key_spaces_overlap(a: &HotkeyAction, combo_a: &str, b: &HotkeyAction, combo_b
     }
     let (mods_a, key_a) = split_combo(combo_a);
     let (mods_b, key_b) = split_combo(combo_b);
-    match (a.kind, b.kind) {
-        (HotkeyKind::Combo, HotkeyKind::Combo) => mods_a == mods_b && keys_equal(&key_a, &key_b),
-        (HotkeyKind::ModifierArrows, HotkeyKind::ModifierArrows)
-        | (HotkeyKind::ModifierPlusMinus, HotkeyKind::ModifierPlusMinus)
-        | (HotkeyKind::ModifierDigits, HotkeyKind::ModifierDigits) => mods_a == mods_b,
-        (HotkeyKind::ModifierArrows, HotkeyKind::ModifierPlusMinus)
-        | (HotkeyKind::ModifierPlusMinus, HotkeyKind::ModifierArrows)
-        | (HotkeyKind::ModifierArrows, HotkeyKind::ModifierDigits)
-        | (HotkeyKind::ModifierDigits, HotkeyKind::ModifierArrows)
-        | (HotkeyKind::ModifierPlusMinus, HotkeyKind::ModifierDigits)
-        | (HotkeyKind::ModifierDigits, HotkeyKind::ModifierPlusMinus) => false,
-        (HotkeyKind::Combo, HotkeyKind::ModifierArrows) => {
-            mods_a == mods_b && key_a.as_deref().is_some_and(is_arrow)
-        }
-        (HotkeyKind::ModifierArrows, HotkeyKind::Combo) => {
-            mods_a == mods_b && key_b.as_deref().is_some_and(is_arrow)
-        }
-        (HotkeyKind::Combo, HotkeyKind::ModifierPlusMinus) => {
-            mods_a == mods_b && key_a.as_deref().is_some_and(is_plus_minus)
-        }
-        (HotkeyKind::ModifierPlusMinus, HotkeyKind::Combo) => {
-            mods_a == mods_b && key_b.as_deref().is_some_and(is_plus_minus)
-        }
-        (HotkeyKind::Combo, HotkeyKind::ModifierDigits) => {
-            mods_a == mods_b && key_a.as_deref().is_some_and(is_digit)
-        }
-        (HotkeyKind::ModifierDigits, HotkeyKind::Combo) => {
-            mods_a == mods_b && key_b.as_deref().is_some_and(is_digit)
-        }
+    match (family_keys(a.kind), family_keys(b.kind)) {
+        // Два полных сочетания: совпали модификаторы и клавиша.
+        (None, None) => mods_a == mods_b && keys_equal(&key_a, &key_b),
+        // Два семейства: одинаковые — по модификатору, разные не пересекаются.
+        (Some(_), Some(_)) => a.kind == b.kind && mods_a == mods_b,
+        // Сочетание против семейства: модификатор совпал и клавиша попала в семейство.
+        (None, Some(family)) => mods_a == mods_b && key_a.as_deref().is_some_and(family),
+        (Some(family), None) => mods_a == mods_b && key_b.as_deref().is_some_and(family),
     }
 }
 

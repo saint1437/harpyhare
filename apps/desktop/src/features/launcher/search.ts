@@ -51,10 +51,14 @@ const TAB_BY_HOTKEY_KIND: Record<HotkeyKind, SettingsTabId> = {
   combo: "hotkeys",
   modifier_arrows: "window",
   modifier_plus_minus: "window",
+  modifier_brackets: "appearance",
   modifier_digits: "quick-actions",
 };
 
-const HOTKEYS_WITHOUT_SETTINGS_ROW: ReadonlySet<HotkeyActionId> = new Set(["opacity"]);
+const HOTKEYS_WITHOUT_SETTINGS_ROW: ReadonlySet<HotkeyActionId> = new Set([
+  "opacity",
+  "chat_font_size",
+]);
 
 const STEP_TITLE_SUFFIX = ": шаг";
 

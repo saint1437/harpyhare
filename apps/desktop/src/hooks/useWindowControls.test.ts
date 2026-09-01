@@ -27,7 +27,7 @@ const PRIMARY_MODIFIER: Record<Platform, KeyboardEventInit> = {
 };
 
 function platformBindings(platform: Platform): HotkeyBinding[] {
-  return (["opacity", "send"] as const).map((action) => ({
+  return (["opacity", "send", "chat_font_size"] as const).map((action) => ({
     action,
     combo: defaultCombo(action, platform),
   }));
@@ -42,11 +42,12 @@ function renderControls(
   onResizeKey = vi.fn(),
   onOpacityStep = vi.fn(),
   onSend = vi.fn(),
+  onChatFontStep = vi.fn(),
 ) {
   renderHook(() => {
-    useWindowControls(bindings, onSend, onOpacityStep, onResizeKey);
+    useWindowControls(bindings, onSend, onOpacityStep, onChatFontStep, onResizeKey);
   });
-  return { onResizeKey, onOpacityStep, onSend };
+  return { onResizeKey, onOpacityStep, onSend, onChatFontStep };
 }
 
 describe.each(PLATFORMS)("useWindowControls — прозрачность (%s)", (platform) => {
@@ -98,5 +99,27 @@ describe("useWindowControls — размер окна", () => {
     const payload: EventMap["resize-key"] = { dim: "height", dir: -1 };
     listeners.get("resize-key")?.(payload);
     expect(onResizeKey).toHaveBeenCalledWith("height", -1);
+  });
+});
+
+describe.each(PLATFORMS)("useWindowControls — размер шрифта чата (%s)", (platform) => {
+  const modifier = PRIMARY_MODIFIER[platform];
+
+  it("модификатор с BracketRight увеличивает шрифт", () => {
+    const { onChatFontStep } = renderControls(platformBindings(platform));
+    keydown({ ...modifier, code: "BracketRight" });
+    expect(onChatFontStep).toHaveBeenCalledWith(1);
+  });
+
+  it("модификатор с BracketLeft уменьшает шрифт", () => {
+    const { onChatFontStep } = renderControls(platformBindings(platform));
+    keydown({ ...modifier, code: "BracketLeft" });
+    expect(onChatFontStep).toHaveBeenCalledWith(-1);
+  });
+
+  it("скобка без модификатора шрифт не трогает", () => {
+    const { onChatFontStep } = renderControls(platformBindings(platform));
+    keydown({ code: "BracketRight" });
+    expect(onChatFontStep).not.toHaveBeenCalled();
   });
 });

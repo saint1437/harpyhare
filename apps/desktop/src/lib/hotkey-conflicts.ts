@@ -14,6 +14,7 @@ import { isQuickActionDigit } from "./quick-actions";
 
 const ARROW_KEYS = ["ARROWLEFT", "ARROWRIGHT", "ARROWUP", "ARROWDOWN"];
 const PLUS_MINUS_KEYS = ["MINUS", "EQUAL"];
+const BRACKET_KEYS = ["BRACKETLEFT", "BRACKETRIGHT"];
 
 function sameModifiers(a: string, b: string): boolean {
   return sortedModifiers(a).join() === sortedModifiers(b).join();
@@ -29,6 +30,7 @@ function fallsIntoFamily(combo: string, family: HotkeyAction["kind"]): boolean {
   if (key === null) return false;
   if (family === "modifier_arrows") return ARROW_KEYS.includes(key);
   if (family === "modifier_plus_minus") return PLUS_MINUS_KEYS.includes(key);
+  if (family === "modifier_brackets") return BRACKET_KEYS.includes(key);
   if (family === "modifier_digits") return isQuickActionDigit(key);
   return false;
 }

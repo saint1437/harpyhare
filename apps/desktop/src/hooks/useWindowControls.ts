@@ -9,13 +9,20 @@ import { type WindowDimension } from "@/lib/window-size";
 const KEYDOWN_EVENT = "keydown";
 const OPACITY_UP_CODE = "Equal";
 const OPACITY_DOWN_CODE = "Minus";
+const FONT_UP_CODE = "BracketRight";
+const FONT_DOWN_CODE = "BracketLeft";
 
 type ResizeKeyHandler = (dim: WindowDimension, dir: 1 | -1) => void;
 
-function opacityStepFromEvent(e: KeyboardEvent, expected: ModifierState | null): 1 | -1 | null {
+function familyStepFromEvent(
+  e: KeyboardEvent,
+  expected: ModifierState | null,
+  upCode: string,
+  downCode: string,
+): 1 | -1 | null {
   if (expected === null || !matchesModifier(e, expected)) return null;
-  if (e.code === OPACITY_UP_CODE) return 1;
-  if (e.code === OPACITY_DOWN_CODE) return -1;
+  if (e.code === upCode) return 1;
+  if (e.code === downCode) return -1;
   return null;
 }
 
@@ -23,6 +30,7 @@ export function useWindowControls(
   hotkeys: HotkeyBinding[],
   onSend: () => void,
   onOpacityStep: (dir: 1 | -1) => void,
+  onChatFontStep: (dir: 1 | -1) => void,
   onResizeKey: ResizeKeyHandler,
 ): void {
   useEffect(
@@ -34,16 +42,24 @@ export function useWindowControls(
   );
 
   const opacityModifier = effectiveCombo(hotkeys, "opacity");
+  const chatFontModifier = effectiveCombo(hotkeys, "chat_font_size");
   const sendCombo = effectiveCombo(hotkeys, "send");
   const opacityState = useMemo(() => parseFamilyModifier(opacityModifier), [opacityModifier]);
+  const chatFontState = useMemo(() => parseFamilyModifier(chatFontModifier), [chatFontModifier]);
   const preparedSend = useMemo(() => prepareCombo(sendCombo), [sendCombo]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const opacityDir = opacityStepFromEvent(e, opacityState);
+      const opacityDir = familyStepFromEvent(e, opacityState, OPACITY_UP_CODE, OPACITY_DOWN_CODE);
       if (opacityDir !== null) {
         e.preventDefault();
         onOpacityStep(opacityDir);
+        return;
+      }
+      const fontDir = familyStepFromEvent(e, chatFontState, FONT_UP_CODE, FONT_DOWN_CODE);
+      if (fontDir !== null) {
+        e.preventDefault();
+        onChatFontStep(fontDir);
         return;
       }
       if (matchesPrepared(e, preparedSend)) {
@@ -55,5 +71,5 @@ export function useWindowControls(
     return () => {
       document.removeEventListener(KEYDOWN_EVENT, onKey);
     };
-  }, [onSend, onOpacityStep, opacityState, preparedSend]);
+  }, [onSend, onOpacityStep, onChatFontStep, opacityState, chatFontState, preparedSend]);
 }
