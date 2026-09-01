@@ -1,6 +1,7 @@
 use futures_util::StreamExt;
 use reqwest::header::{ACCEPT, CONTENT_TYPE};
 use serde_json::{json, Value};
+use std::collections::HashSet;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -26,6 +27,8 @@ const HTTP2_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(30);
 const SHORT_TIMEOUT: Duration = Duration::from_secs(15);
 const ERROR_BODY_CHARS: usize = 500;
 const THINKING_SUFFIX: &str = "-thinking";
+/// Текст, которым Xclis отказывается обслуживать объявленную им же модель.
+const MODEL_REJECTED_MARKER: &str = "not supported by any configured account";
 const EVENT_STREAM_MIME: &str = "text/event-stream";
 const TRUNCATED_STREAM_ERROR: &str = "Xclis оборвал поток до завершения ответа";
 
@@ -142,6 +145,10 @@ pub struct XclisClient {
     base_url: String,
     client: reqwest::Client,
     catalog: ModelCatalog,
+    /// Модели, которые вендор перечислил в `/v1/models`, но обслуживать
+    /// отказался. Заполняется проверкой при получении каталога и пополняется,
+    /// если модель отвалилась уже в бою.
+    rejected: Arc<Mutex<HashSet<String>>>,
 }
 
 impl XclisClient {
@@ -162,6 +169,7 @@ impl XclisClient {
             base_url: spec.wire.base_url().trim_end_matches('/').to_string(),
             client,
             catalog: Arc::new(Mutex::new(Vec::new())),
+            rejected: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
@@ -293,6 +301,78 @@ impl XclisClient {
             code @ (429 | 500..=599) => Err(LlmError::Retryable(code)),
             code => Err(LlmError::Api(Self::api_error(resp, code).await)),
         }
+    }
+
+    /// **Каталог Xclis не сходится с реальностью, и это проверено живьём:** из
+    /// четырнадцати объявленных группе моделей четыре отвечали 404 «not
+    /// supported by any configured account in this group», включая единственную
+    /// суффиксную `-thinking`. Показывать их в пикере значит предлагать выбор,
+    /// который заведомо упадёт на отправке.
+    ///
+    /// Проверка бесплатная: шлюз сверяет модель с аккаунтом РАНЬШЕ, чем
+    /// валидирует тело запроса, поэтому пустой `messages: []` у живой модели
+    /// даёт 400 «all messages have empty content», а у чужой — тот самый 404.
+    /// Ни одного сгенерированного токена. Проверки идут параллельно: каталог
+    /// приходит целиком, и ждать их по очереди незачем.
+    async fn only_served(&self, models: Vec<ModelInfo>) -> Vec<ModelInfo> {
+        let verdicts = futures_util::future::join_all(
+            models.iter().map(|m| self.model_is_served(Self::upstream_id(&m.id))),
+        )
+        .await;
+        let mut rejected = self.rejected.lock().unwrap();
+        models
+            .into_iter()
+            .zip(verdicts)
+            .filter_map(|(model, served)| {
+                if served {
+                    return Some(model);
+                }
+                rejected.insert(Self::upstream_id(&model.id).to_string());
+                None
+            })
+            .collect()
+    }
+
+    /// Обслуживает ли группа эту модель. **Сетевой сбой считается «да»**: иначе
+    /// один таймаут вычистил бы пикер целиком, а это хуже лишней строки в нём.
+    async fn model_is_served(&self, model: &str) -> bool {
+        let resp = self
+            .client
+            .post(format!("{}{}", self.base_url, CHAT_COMPLETIONS_PATH))
+            .bearer_auth(&self.api_key)
+            .json(&json!({"model": model, "messages": []}))
+            .timeout(SHORT_TIMEOUT)
+            .send()
+            .await;
+        let Ok(resp) = resp else { return true };
+        if resp.status().as_u16() != 404 {
+            return true;
+        }
+        !resp.text().await.unwrap_or_default().contains(MODEL_REJECTED_MARKER)
+    }
+
+    /// Отказ обслужить модель. Вендор отвечает на это то `model_not_found`, то
+    /// `server_error` — оба раза с 404 и одним и тем же текстом, поэтому
+    /// опознаём по тексту, а не по типу ошибки.
+    fn is_model_rejection(message: &str) -> bool {
+        message.contains(MODEL_REJECTED_MARKER)
+    }
+
+    fn remember_rejected(&self, model: &str) {
+        self.rejected.lock().unwrap().insert(model.to_string());
+        let app_id = format!("{MODEL_PREFIX}{model}");
+        self.catalog.lock().unwrap().retain(|m| m.id != app_id);
+    }
+
+    /// Ошибка запроса с побочным эффектом: отказ по модели запоминается, чтобы
+    /// пикер перестал её предлагать.
+    fn note_model_rejection<T>(&self, model: &str, result: Result<T, LlmError>) -> Result<T, LlmError> {
+        if let Err(LlmError::Api(message)) = &result {
+            if Self::is_model_rejection(message) {
+                self.remember_rejected(model);
+            }
+        }
+        result
     }
 
     async fn api_error(resp: reqwest::Response, code: u16) -> String {
@@ -466,6 +546,7 @@ impl LlmProvider for XclisClient {
         cancel: CancellationToken,
         sink: &mut dyn LlmStreamSink,
     ) -> Result<(), LlmError> {
+        let model = self.selected_model(&request.model, request.options.thinking);
         let body = self.chat_body(&request)?;
         let send = self
             .client
@@ -478,7 +559,7 @@ impl LlmProvider for XclisClient {
             result = send => result.map_err(Self::network_error)?,
             _ = cancel.cancelled() => return Err(LlmError::Cancelled),
         };
-        let resp = Self::checked_response(resp).await?;
+        let resp = self.note_model_rejection(&model, Self::checked_response(resp).await)?;
         if Self::response_is_sse(&resp) {
             Self::consume_sse_response(resp, &cancel, sink).await
         } else {
@@ -497,7 +578,10 @@ impl LlmProvider for XclisClient {
             .send()
             .await
             .map_err(Self::network_error)?;
-        let resp = Self::checked_response(resp).await?;
+        let resp = self.note_model_rejection(
+            &self.selected_model(&request.model, request.options.thinking),
+            Self::checked_response(resp).await,
+        )?;
         let value: Value = resp.json().await.map_err(Self::network_error)?;
         value["input_tokens"]
             .as_u64()
@@ -517,7 +601,7 @@ impl LlmProvider for XclisClient {
             .map_err(Self::network_error)?;
         let resp = Self::checked_response(resp).await?;
         let value: Value = resp.json().await.map_err(Self::network_error)?;
-        let models = Self::parse_models(&value);
+        let models = self.only_served(Self::parse_models(&value)).await;
         if !models.is_empty() {
             *self.catalog.lock().unwrap() = models.clone();
         }
@@ -550,6 +634,25 @@ impl LlmProvider for XclisClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_client(base_url: &str) -> XclisClient {
+        let spec = crate::llm::registry::spec(PROVIDER_XCLIS).expect("Xclis provider");
+        let mut client = XclisClient::new(spec, "key".into());
+        client.base_url = base_url.trim_end_matches('/').to_string();
+        client
+    }
+
+    /// Сопоставляет тело пробы по имени модели: обе пробы уходят на один путь.
+    struct BodyModelIs(&'static str);
+
+    impl wiremock::Match for BodyModelIs {
+        fn matches(&self, request: &wiremock::Request) -> bool {
+            serde_json::from_slice::<Value>(&request.body)
+                .ok()
+                .and_then(|v| v["model"].as_str().map(str::to_string))
+                .is_some_and(|model| model == self.0)
+        }
+    }
 
     #[test]
     fn model_ids_are_namespaced_and_thinking_variants_are_hidden() {
@@ -597,6 +700,46 @@ mod tests {
             "claude-opus-4-6-thinking"
         );
         assert_eq!(client.selected_model("xclis/claude-sonnet-5", true), "claude-sonnet-5");
+    }
+
+    /// Каталог вендора перечисляет модели, которых группа не обслуживает —
+    /// проверено живьём. Отсев идёт бесплатной пробой: шлюз сверяет модель с
+    /// аккаунтом раньше, чем валидирует тело, поэтому пустой `messages: []`
+    /// у чужой модели даёт 404 с этим текстом, а у своей — 400 про пустое тело.
+    #[tokio::test]
+    async fn advertised_but_unserved_models_are_dropped_from_the_catalog() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path(CHAT_COMPLETIONS_PATH))
+            .and(BodyModelIs("dead"))
+            .respond_with(wiremock::ResponseTemplate::new(404).set_body_string(
+                r#"{"error":{"message":"Model \"dead\" is not supported by any configured account in this group"}}"#,
+            ))
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path(CHAT_COMPLETIONS_PATH))
+            .respond_with(wiremock::ResponseTemplate::new(400).set_body_string(
+                r#"{"error":{"message":"messages: all messages have empty content"}}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+        let advertised = XclisClient::parse_models(&json!({
+            "data": [{"id": "alive"}, {"id": "dead"}]
+        }));
+        let served = client.only_served(advertised).await;
+        assert_eq!(served.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["xclis/alive"]);
+    }
+
+    /// Сетевой сбой не должен вычищать пикер: одна недоступность сервера хуже
+    /// лишней строки в списке.
+    #[tokio::test]
+    async fn unreachable_vendor_keeps_the_advertised_models() {
+        let client = test_client("http://127.0.0.1:1");
+        let advertised = XclisClient::parse_models(&json!({"data": [{"id": "alive"}]}));
+        assert_eq!(client.only_served(advertised).await.len(), 1);
     }
 
     #[test]
