@@ -99,6 +99,9 @@ const leaveSaveErrorText = (err: unknown) =>
 const COPY_IMAGE_ERROR_TEXT = "Не удалось скопировать картинку в буфер обмена";
 const CHAT_LIMIT_NOTICE = `Открыто предельное число чатов (${String(CHAT_LIMIT)}) — закройте лишний`;
 const RETRY_ANSWER_LABEL = "Повторить запрос — ответ не пришёл";
+const UNDO_LABEL = "Вернуть";
+const CHAT_CLOSED_NOTICE = "Чат закрыт вместе с перепиской";
+const HISTORY_CLEARED_NOTICE = "История чата очищена";
 const RETRY_TRANSCRIPTION_LABEL = "Повторить распознавание";
 
 function lastUserMessageIndex(messages: ChatMessage[]): number {
@@ -457,6 +460,7 @@ interface AppHeaderProps {
   chats: ChatsApi;
   stream: ClaudeStreams;
   unread: Record<string, boolean>;
+  onRemoveChat: (id: string) => void;
   mode: AppModeId;
   canCopy: boolean;
   canTeleprompt: boolean;
@@ -481,6 +485,7 @@ function AppHeader({
   chats,
   stream,
   unread,
+  onRemoveChat,
   mode,
   canCopy,
   canTeleprompt,
@@ -574,10 +579,7 @@ function AppHeader({
           streaming={stream.streaming}
           unread={unread}
           onSelect={chats.selectChat}
-          onRemove={(id) => {
-            stream.stop(id);
-            chats.removeChat(id);
-          }}
+          onRemove={onRemoveChat}
           onNew={onNewChat}
           onDuplicate={onDuplicateChat}
           duplicateCombo={effectiveCombo(hotkeys, "duplicate_chat")}
@@ -594,6 +596,7 @@ interface AppComposerProps {
   presets: PromptPreset[];
   library: ContextLibrary;
   onCaptureRegion: () => void;
+  onClearHistory: () => void;
   streaming: boolean;
   showRetry: boolean;
   retryLabel: string;
@@ -614,6 +617,7 @@ function AppComposer({
   presets,
   library,
   onCaptureRegion,
+  onClearHistory,
   streaming,
   showRetry,
   retryLabel,
@@ -637,9 +641,7 @@ function AppComposer({
       onPaste={(items) => void chats.addDraftAttachments(activeId, items)}
       onSend={onSend}
       onStop={onStop}
-      onClearHistory={() => {
-        chats.clearMessages(activeId);
-      }}
+      onClearHistory={onClearHistory}
       onRetry={onRetry}
       onRestoreFocus={onRestoreFocus}
       streaming={streaming}
@@ -1037,6 +1039,43 @@ export default function App() {
     saveSettingsReportingError({ ...settingsRef.current, skipped_version: skipped });
   };
 
+  const removeChatWithUndo = useCallback(
+    (id: string) => {
+      const api = chatsRef.current;
+      const index = api.chats.findIndex((c) => c.id === id);
+      const removed = api.chats[index];
+      streamRef.current.stop(id);
+      api.removeChat(id);
+      if (!removed) return;
+      notify({
+        message: CHAT_CLOSED_NOTICE,
+        action: {
+          label: UNDO_LABEL,
+          run: () => {
+            chatsRef.current.restoreChat(removed, index);
+          },
+        },
+      });
+    },
+    [chatsRef, streamRef],
+  );
+
+  const clearHistoryWithUndo = useCallback(() => {
+    const api = chatsRef.current;
+    const { id, messages } = api.active;
+    if (messages.length === 0) return;
+    api.clearMessages(id);
+    notify({
+      message: HISTORY_CLEARED_NOTICE,
+      action: {
+        label: UNDO_LABEL,
+        run: () => {
+          chatsRef.current.restoreMessages(id, messages);
+        },
+      },
+    });
+  }, [chatsRef]);
+
   const removeMessage = useCallback(
     (index: number) => {
       chatsRef.current.removeMessage(chatsRef.current.activeId, index);
@@ -1086,6 +1125,7 @@ export default function App() {
           chats={chats}
           stream={stream}
           unread={unreadChats}
+          onRemoveChat={removeChatWithUndo}
           mode={mode}
           canCopy={canCopy}
           canTeleprompt={canTeleprompt}
@@ -1145,6 +1185,7 @@ export default function App() {
               presets={presets}
               library={contextLibrary.library}
               onCaptureRegion={screenshot.capture}
+              onClearHistory={clearHistoryWithUndo}
               streaming={activeStreaming}
               showRetry={answerRetry !== null || showRetry}
               retryLabel={answerRetry !== null ? RETRY_ANSWER_LABEL : RETRY_TRANSCRIPTION_LABEL}

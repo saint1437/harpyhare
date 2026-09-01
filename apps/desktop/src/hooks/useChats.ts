@@ -16,6 +16,7 @@ import {
   deserializeChats,
   serializeChats,
   type Chat,
+  type ChatMessage,
   type ChatPatch,
 } from "@/lib/chats";
 import {
@@ -239,6 +240,8 @@ export interface ChatsApi {
   removeMessage: (id: string, index: number) => void;
   truncateMessages: (id: string, count: number) => void;
   clearMessages: (id: string) => void;
+  restoreMessages: (id: string, messages: ChatMessage[]) => void;
+  restoreChat: (chat: Chat, index: number) => void;
   flush: () => Promise<void>;
 }
 
@@ -443,6 +446,23 @@ export function useChats(defaultModel?: () => string): ChatsApi {
 
   const active = chats.find((c) => c.id === effectiveActiveId) ?? chats[0] ?? EMPTY_CHAT;
 
+  const restoreMessages = useCallback(
+    (id: string, messages: ChatMessage[]) => {
+      patch(id, (c) => ({ ...c, messages }));
+    },
+    [patch],
+  );
+
+  const restoreChat = useCallback((chat: Chat, index: number) => {
+    setChats((prev) => {
+      if (prev.length >= CHAT_LIMIT || prev.some((c) => c.id === chat.id)) return prev;
+      const next = [...prev];
+      next.splice(Math.min(index, next.length), 0, chat);
+      return next;
+    });
+    setActiveId(chat.id);
+  }, []);
+
   return {
     chats,
     activeId: effectiveActiveId,
@@ -461,6 +481,8 @@ export function useChats(defaultModel?: () => string): ChatsApi {
     removeMessage,
     truncateMessages,
     clearMessages,
+    restoreMessages,
+    restoreChat,
     flush,
   };
 }

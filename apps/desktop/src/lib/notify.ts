@@ -4,6 +4,7 @@ import {
   ERROR_TOAST_DURATION_MS,
   ToastCard,
   TOAST_DURATION_MS,
+  type ToastAction,
   type ToastVariant,
 } from "@/components/ui/toast";
 import type { AppError, ErrorCode } from "@/lib/errors";
@@ -27,6 +28,7 @@ interface NotifyInput {
   message: string;
   variant?: ToastVariant;
   durationMs?: number;
+  action?: ToastAction;
 }
 
 export function errorToastContent(error: AppError): { title: string; message: string } | null {
@@ -43,6 +45,7 @@ export function notify(input: NotifyInput): void {
         title: input.title,
         message: input.message,
         variant,
+        action: input.action,
         onDismiss: () => {
           sonnerToast.dismiss(id);
         },

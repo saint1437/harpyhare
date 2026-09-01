@@ -45,15 +45,22 @@ const VARIANT_ICONS: Record<ToastVariant, ComponentType<{ className?: string }>>
   warning: AlertTriangle,
 };
 
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
 export function ToastCard({
   title,
   message,
   variant,
+  action,
   onDismiss,
 }: {
   title?: string;
   message: string;
   variant: ToastVariant;
+  action?: ToastAction;
   onDismiss: () => void;
 }) {
   const Icon = VARIANT_ICONS[variant];
@@ -71,6 +78,18 @@ export function ToastCard({
           <p className={cn("text-caption font-medium", VARIANT_TITLE[variant])}>{title}</p>
         )}
         <p className="text-caption text-muted-foreground">{message}</p>
+        {action && (
+          <button
+            type="button"
+            onClick={() => {
+              action.run();
+              onDismiss();
+            }}
+            className="rounded-sm text-caption font-medium text-foreground underline-offset-2 transition-colors outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/60"
+          >
+            {action.label}
+          </button>
+        )}
       </div>
       <button
         type="button"
