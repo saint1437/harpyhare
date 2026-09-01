@@ -90,7 +90,6 @@ fn setup_app(handle: &AppHandle) {
     platform::install_move_keys_monitor(handle.clone());
     platform::disable_cursor_autohide_on_typing();
     update::spawn_auto_check(handle.clone());
-    remote_presets::spawn_refresh(handle.clone());
 }
 
 fn spawn_startup_warm_up_and_model_fetch(

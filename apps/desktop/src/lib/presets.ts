@@ -1,4 +1,5 @@
 import pool from "../../../../config/presets.json";
+import { withBaseSystemPrompt } from "./system-prompt";
 
 export interface PromptPreset {
   id: string;
@@ -12,8 +13,14 @@ export function isPresetFilled(preset: PromptPreset): boolean {
   return preset.name.trim() !== "" || preset.text.trim() !== "";
 }
 
+/**
+ * Returns the source that goes into the chat system prompt, not the raw text
+ * shown in the preset editor. The stable base rules are always present; the
+ * selected preset remains the optional mode-specific section.
+ */
 export function presetText(presets: PromptPreset[], presetId: string): string {
-  return presets.find((p) => p.id === presetId)?.text ?? "";
+  const raw = presets.find((p) => p.id === presetId)?.text ?? "";
+  return withBaseSystemPrompt(raw);
 }
 
 export function mergePresets(official: PromptPreset[], user: PromptPreset[]): PromptPreset[] {

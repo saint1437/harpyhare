@@ -1,7 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { probeConnectivity } from "@/ipc/commands";
-
-const PROBE_INTERVAL_MS = 4000;
+import { useCallback, useEffect, useState } from "react";
 
 export interface Connectivity {
   offline: boolean;
@@ -11,35 +8,24 @@ export interface Connectivity {
 
 export function useConnectivity(): Connectivity {
   const [offline, setOffline] = useState(() => !navigator.onLine);
-  const probeGen = useRef(0);
 
-  const check = useCallback(async () => {
-    const gen = ++probeGen.current;
-    try {
-      const reachable = await probeConnectivity();
-      if (gen !== probeGen.current) return;
-      setOffline(!reachable);
-    } catch {
-      if (gen !== probeGen.current) return;
-      setOffline(true);
-    }
+  // A vendor being unreachable is not the same thing as the computer being
+  // offline. In particular, VPN/routing policy can affect one API while the
+  // rest of the internet keeps working. Service errors stay on the request.
+  const reportNetworkError = useCallback(() => {
+    return;
   }, []);
 
   const retry = useCallback(() => {
-    void check();
-  }, [check]);
-
-  const reportNetworkError = useCallback(() => {
-    setOffline(true);
-    void check();
-  }, [check]);
+    setOffline(!navigator.onLine);
+  }, []);
 
   useEffect(() => {
-    void check();
-    const onOnline = () => void check();
+    const onOnline = () => {
+      setOffline(false);
+    };
     const onOffline = () => {
       setOffline(true);
-      void check();
     };
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
@@ -47,16 +33,7 @@ export function useConnectivity(): Connectivity {
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
-  }, [check]);
-
-  useEffect(() => {
-    if (!offline) return;
-    void check();
-    const timer = setInterval(() => void check(), PROBE_INTERVAL_MS);
-    return () => {
-      clearInterval(timer);
-    };
-  }, [offline, check]);
+  }, []);
 
   return { offline, reportNetworkError, retry };
 }
