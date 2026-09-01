@@ -34,6 +34,7 @@
 
   --surface: oklch(1 0 0 / 6%);
   --surface-active: oklch(1 0 0 / 11%);
+  --window-edge: oklch(1 0 0 / 24%);
   --code-surface: oklch(0.12 0.006 285);
 }
 
@@ -47,6 +48,7 @@
   --accent: oklch(0.25 0.02 18);
   --border: oklch(1 0 0 / 9%);
   --input: oklch(1 0 0 / 11%);
+  --window-edge: oklch(1 0 0 / 26%);
 }
 
 @theme inline {
@@ -164,6 +166,12 @@ body.launcher {
     var(--background) calc(var(--app-opacity) * 100%),
     transparent
   );
+  /* Край окна рисуем сами: нативной рамки нет (frameless + transparent), а
+     фон уходит в прозрачность, поэтому без этой линии развёрнутое окно
+     растворяется в том, что под ним. Тон плотнее --border намеренно — та
+     хайрлайн рассчитана на непрозрачные поверхности вроде пилюли мини-режима,
+     здесь же линия ложится на полупрозрачный фон и на чужой контент за ним. */
+  box-shadow: inset 0 0 0 1px var(--window-edge);
 }
 
 .liquid-metal-frame {
