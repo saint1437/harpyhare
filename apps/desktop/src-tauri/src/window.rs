@@ -338,14 +338,20 @@ pub fn set_window_size(app: AppHandle, width: f64, height: f64) {
 }
 
 fn anchored_target_x(w: &WebviewWindow, from_x: i32, width: f64, scale: f64) -> i32 {
-    let target_phys_w = (width * scale).round() as u32;
+    let target_inner_phys_w = (width * scale).round() as u32;
+    let target_outer_phys_w = match (w.inner_size(), w.outer_size()) {
+        (Ok(inner), Ok(outer)) => {
+            window_geom::target_outer_width(target_inner_phys_w, inner.width, outer.width)
+        }
+        _ => target_inner_phys_w,
+    };
     let (mon_x, mon_w) = w
         .current_monitor()
         .ok()
         .flatten()
         .map(|m| (m.position().x, m.size().width))
-        .unwrap_or((from_x, target_phys_w));
-    window_geom::clamp_window_x(from_x, target_phys_w, mon_x, mon_w)
+        .unwrap_or((from_x, target_outer_phys_w));
+    window_geom::clamp_window_x(from_x, target_outer_phys_w, mon_x, mon_w)
 }
 
 fn ease_out_cubic(t: f64) -> f64 {
