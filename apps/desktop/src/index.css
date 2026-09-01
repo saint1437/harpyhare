@@ -242,8 +242,8 @@ svg.lucide {
 .prose-answer code {
   padding: 1.5px 5px;
   border-radius: var(--radius-sm);
-  background: color-mix(in oklch, var(--primary) 14%, transparent);
-  color: oklch(0.8 0.09 18);
+  background: color-mix(in oklch, var(--primary) 16%, transparent);
+  color: var(--foreground);
   font-family: var(--font-mono);
   font-size: 0.89em;
 }
@@ -259,6 +259,23 @@ svg.lucide {
   padding: 0;
   background: none;
   color: oklch(0.85 0.01 285);
+}
+/* Глобальные 4px хороши для вертикали, но горизонтальную полосу кода
+   ими не ухватить — цвет и радиус берутся из общего правила. */
+.prose-answer pre::-webkit-scrollbar {
+  height: 8px;
+}
+
+/* Рамку, фон и радиус несёт контейнер блока — у вложенного pre они лишние. */
+.prose-answer .code-block pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.prose-answer .code-block[data-wrap="true"] pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .prose-answer .hljs-comment,

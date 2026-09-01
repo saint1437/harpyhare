@@ -11,6 +11,7 @@ import {
 } from "react";
 import type { ReactNode, RefObject } from "react";
 import { type Components } from "react-markdown";
+import { CodeBlock } from "@/components/CodeBlock";
 import { ComboChip } from "@/components/ComboChip";
 import { HtmlBlockChip } from "@/components/HtmlBlockChip";
 import { IconButton } from "@/components/IconButton";
@@ -18,10 +19,16 @@ import { markdownComponents, PROSE_MARKDOWN_CLASS } from "@/components/markdown-
 import { MarkdownChunk } from "@/components/MarkdownChunk";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import type { ChatMessage } from "@/lib/chats";
+import { languageFromClassName } from "@/lib/code-block";
 import { imageDataUrl, type ImagePayload } from "@/lib/composer";
 import { matchesModifier, parseFamilyModifier } from "@/lib/hotkey-modifier";
 import { isMessageCopyable } from "@/lib/message-clipboard";
-import { openFenceBody, splitOpenFence, splitStableTail } from "@/lib/stream-markdown";
+import {
+  openFenceBody,
+  openFenceLanguage,
+  splitOpenFence,
+  splitStableTail,
+} from "@/lib/stream-markdown";
 import { cn } from "@/lib/utils";
 
 export interface AnswerPanelProps {
@@ -55,6 +62,18 @@ function hasHtmlLanguageToken(className: string) {
   return className.split(/\s+/).some((token) => token.toLowerCase() === HTML_LANGUAGE_CLASS);
 }
 
+/**
+ * Сырой текст блока нужен и счётчику строк, и кнопке копирования, а после
+ * подсветки children код-элемента — дерево span'ов, а не строка.
+ */
+function reactChildrenText(node: ReactNode): string {
+  if (typeof node === "string") return node;
+  if (typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(reactChildrenText).join("");
+  if (isValidElement<{ children?: ReactNode }>(node)) return reactChildrenText(node.props.children);
+  return "";
+}
+
 function makePre(onTogglePreview: (code: string) => void) {
   return function PreBlock({ children }: { children?: ReactNode }) {
     const code = isValidElement<{ className?: string; children?: ReactNode }>(children)
@@ -71,7 +90,15 @@ function makePre(onTogglePreview: (code: string) => void) {
         />
       );
     }
-    return <pre>{children}</pre>;
+    if (!code) return <pre>{children}</pre>;
+    return (
+      <CodeBlock
+        language={languageFromClassName(code.props.className)}
+        code={reactChildrenText(code.props.children)}
+      >
+        {children}
+      </CodeBlock>
+    );
   };
 }
 
@@ -201,9 +228,9 @@ function OpenFenceBlock({ fenced }: { fenced: string }) {
   const body = openFenceBody(fenced);
   if (body === "") return null;
   return (
-    <pre>
+    <CodeBlock language={openFenceLanguage(fenced)} code={body}>
       <code>{body}</code>
-    </pre>
+    </CodeBlock>
   );
 }
 

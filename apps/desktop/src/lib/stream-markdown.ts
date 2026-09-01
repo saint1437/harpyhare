@@ -20,6 +20,13 @@ export function splitOpenFence(tail: string): [before: string, fenced: string] |
   return [tail.slice(0, opener.index), tail.slice(opener.index)];
 }
 
+const OPEN_FENCE_INFO = /^\s{0,3}(?:```|~~~)\s*([^\s`]*)/;
+
+export function openFenceLanguage(fenced: string): string | null {
+  const info = OPEN_FENCE_INFO.exec(fenced)?.[1] ?? "";
+  return info === "" ? null : info.toLowerCase();
+}
+
 export function openFenceBody(fenced: string): string {
   const lineEnd = fenced.indexOf("\n");
   return lineEnd < 0 ? "" : fenced.slice(lineEnd + 1);
