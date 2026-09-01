@@ -1,11 +1,10 @@
-//! Speech-to-text: one HTTP client for every vendor.
-//!
-//! Adding a vendor is a row in `registry` and nothing else — the client reads
-//! those fields instead of branching. See «Как добавить нового STT-вендора» in
-//! `apps/desktop/CLAUDE.md`.
+//! Speech-to-text: a shared multipart client plus vendor-specific transports.
 
 use crate::audio;
 
+/// Deepgram uses raw-WAV REST plus a real-time WebSocket, so it has its own
+/// transport while still implementing the same `SttEngine` port.
+pub mod deepgram;
 /// The one table a vendor is declared in; its picker half is exported to the
 /// frontend, its transport half deliberately is not.
 pub mod registry;
@@ -53,10 +52,6 @@ impl crate::error::CodedError for SttError {
 pub type AudioChunkStream =
     std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<Vec<u8>, std::io::Error>> + Send>>;
 
-/// Terms the chat declared through `[keywords]: [...]`, passed per request
-/// rather than baked into the client: they change with the active chat, and
-/// rebuilding the client on every switch would throw away its warm connection
-/// pool — the thing that keeps "released the key → text" fast.
 pub type Keyterms<'a> = &'a [String];
 
 #[async_trait::async_trait]
@@ -75,8 +70,6 @@ pub trait SttEngine: Send + Sync {
     async fn warm_up(&self);
 }
 
-/// One client for every vendor: they all speak the same multipart dialect, and
-/// what separates them is a row in `registry`, not a branch in here.
 #[derive(Clone)]
 pub struct SttHttpClient {
     spec: &'static registry::SttProviderSpec,
@@ -89,7 +82,7 @@ pub struct SttHttpClient {
     proxy: bool,
 }
 
-fn warm_pooled_client() -> reqwest::Client {
+pub(crate) fn warm_pooled_client() -> reqwest::Client {
     reqwest::Client::builder()
         .user_agent(crate::llm::APP_USER_AGENT)
         .connect_timeout(CONNECT_TIMEOUT)
@@ -102,14 +95,15 @@ fn warm_pooled_client() -> reqwest::Client {
 }
 
 impl SttHttpClient {
-    /// The only constructor. An id the registry does not know resolves to the
-    /// default vendor rather than failing — the same rule `Settings::clamp`
-    /// applies to the stored value.
     pub fn for_provider(provider_id: &str, api_key: String) -> Self {
         Self::over(registry::resolve(provider_id), api_key)
     }
 
     fn over(spec: &'static registry::SttProviderSpec, api_key: String) -> Self {
+        assert!(
+            !matches!(spec.wire, registry::SttWire::Deepgram { .. }),
+            "Deepgram has a dedicated transport"
+        );
         Self {
             spec,
             api_key,
@@ -134,13 +128,10 @@ impl SttHttpClient {
         self.language = language;
         self
     }
-    /// Stored as asked; `translate()` is what the request actually uses.
     pub fn with_translate(mut self, translate: bool) -> Self {
         self.translate = translate;
         self
     }
-
-    /// Translation only where the vendor offers it — see `registry`.
     fn translate(&self) -> bool {
         registry::effective_translate(self.spec, self.translate)
     }
@@ -148,20 +139,11 @@ impl SttHttpClient {
         self.proxy = proxy;
         self
     }
-}
 
-impl SttHttpClient {
-    /// No language field when translating (the model decides) or when the user
-    /// asked for autodetect.
     fn language_field(&self) -> Option<String> {
-        if self.translate() || self.language.is_empty() {
-            None
-        } else {
-            Some(self.language.clone())
-        }
+        if self.translate() || self.language.is_empty() { None } else { Some(self.language.clone()) }
     }
 
-    /// Adds whatever terms this vendor accepts, in the shape it accepts them.
     fn with_keyterms(
         &self,
         form: reqwest::multipart::Form,
@@ -180,10 +162,19 @@ impl SttHttpClient {
         }
     }
 
-    fn form_with(&self, part: reqwest::multipart::Part, keyterms: Keyterms<'_>) -> reqwest::multipart::Form {
+    fn form_with(
+        &self,
+        part: reqwest::multipart::Part,
+        keyterms: Keyterms<'_>,
+    ) -> reqwest::multipart::Form {
         let file = part.file_name(WAV_FILE_NAME);
         match self.spec.wire {
-            registry::SttWire::OpenAiMultipart { transcribe_model, translate_model, temperature, .. } => {
+            registry::SttWire::OpenAiMultipart {
+                transcribe_model,
+                translate_model,
+                temperature,
+                ..
+            } => {
                 let model = if self.translate() { translate_model } else { transcribe_model };
                 let mut form = reqwest::multipart::Form::new()
                     .part("file", file)
@@ -198,17 +189,15 @@ impl SttHttpClient {
                 };
                 self.with_keyterms(form, keyterms)
             }
-            // The audio part goes LAST here: xAI rejects a body that leads with
-            // it. There is no model to pick and no translations endpoint.
             registry::SttWire::Xai { .. } => {
                 let form = reqwest::multipart::Form::new();
                 let form = match self.language_field() {
                     Some(language) => form.text("language", language),
                     None => form,
                 };
-                // The audio part must stay last, so keyterms go in before it.
                 self.with_keyterms(form, keyterms).part("file", file)
             }
+            registry::SttWire::Deepgram { .. } => unreachable!("dedicated Deepgram transport"),
         }
     }
 

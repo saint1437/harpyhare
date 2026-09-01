@@ -38,6 +38,10 @@ const PREVIEW_URI_SCHEME: &str = "preview";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // tokio-tungstenite uses rustls for Deepgram WebSocket streaming. Installing
+    // the provider explicitly avoids rustls 0.23's ambiguous-provider panic.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let specta_builder = bindings::builder();
     tauri::Builder::default()
         .device_event_filter(tauri::DeviceEventFilter::Always)

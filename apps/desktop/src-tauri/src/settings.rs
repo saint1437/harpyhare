@@ -8,28 +8,27 @@ const TMP_FILE_EXTENSION: &str = "tmp";
 pub const THEME_GRAY: &str = "gray";
 pub const THEME_BLACK: &str = "black";
 
-/// Ids of the API-key fields below, as the LLM registry and the frontend name
-/// them. `api_key_for` is the only place the two vocabularies meet.
 pub const API_KEY_ANTHROPIC: &str = "anthropic";
 pub const API_KEY_GROQ: &str = "groq";
 pub const API_KEY_OPENAI: &str = "openai";
 pub const API_KEY_XAI: &str = "xai";
+pub const API_KEY_DEEPGRAM: &str = "deepgram";
 
-/// The key a registry row asks for, or `""` when it names one that does not
-/// exist — which the pickers render as a permanent lock rather than a crash.
 pub fn api_key_for<'a>(s: &'a Settings, key_id: &str) -> &'a str {
     match key_id {
         API_KEY_ANTHROPIC => &s.anthropic_api_key,
         API_KEY_GROQ => &s.groq_api_key,
         API_KEY_OPENAI => &s.openai_api_key,
         API_KEY_XAI => &s.xai_api_key,
+        API_KEY_DEEPGRAM => &s.deepgram_api_key,
         _ => "",
     }
 }
 
-/// Re-exported from the STT registry, which owns the list. Kept as names so
-/// call sites read as intent rather than as string literals.
-pub use crate::stt::registry::{PROVIDER_GROQ as STT_PROVIDER_GROQ, PROVIDER_OPENAI as STT_PROVIDER_OPENAI};
+pub use crate::stt::registry::{
+    PROVIDER_DEEPGRAM as STT_PROVIDER_DEEPGRAM, PROVIDER_GROQ as STT_PROVIDER_GROQ,
+    PROVIDER_OPENAI as STT_PROVIDER_OPENAI,
+};
 
 pub const QUICK_ACTION_LIMIT: usize = 9;
 
@@ -42,11 +41,7 @@ pub struct Bounds<T> {
 
 impl Bounds<f64> {
     pub fn clamp(&self, value: f64) -> f64 {
-        if value.is_finite() {
-            value.clamp(self.min, self.max)
-        } else {
-            self.default
-        }
+        if value.is_finite() { value.clamp(self.min, self.max) } else { self.default }
     }
 }
 
@@ -90,7 +85,6 @@ impl SettingsLimits {
 
 pub mod defaults {
     pub const STT_LANGUAGE: &str = "ru";
-
     pub const THEME: &str = super::THEME_GRAY;
 }
 
@@ -153,11 +147,7 @@ const QUICK_ACTION_SEEDS: &[QuickActionSeed] = &[
 fn seeded_quick_actions() -> Vec<QuickAction> {
     QUICK_ACTION_SEEDS
         .iter()
-        .map(|seed| QuickAction {
-            id: seed.id.into(),
-            title: seed.title.into(),
-            prompt: seed.prompt.into(),
-        })
+        .map(|seed| QuickAction { id: seed.id.into(), title: seed.title.into(), prompt: seed.prompt.into() })
         .collect()
 }
 
@@ -168,6 +158,7 @@ pub struct Settings {
     pub groq_api_key: String,
     pub openai_api_key: String,
     pub xai_api_key: String,
+    pub deepgram_api_key: String,
     pub access_token: String,
     pub prompt_presets: Vec<PromptPreset>,
     pub hotkeys: Vec<crate::hotkeys::HotkeyBinding>,
@@ -205,6 +196,7 @@ impl Default for Settings {
             groq_api_key: String::new(),
             openai_api_key: String::new(),
             xai_api_key: String::new(),
+            deepgram_api_key: String::new(),
             access_token: String::new(),
             prompt_presets: Vec::new(),
             hotkeys: Vec::new(),
@@ -247,14 +239,11 @@ impl Settings {
         self.chat_font_size = limits::chat::FONT_SIZE.clamp(self.chat_font_size);
         self.scroll_step = limits::chat::SCROLL_STEP.clamp(self.scroll_step);
         self.teleprompter_speed = limits::teleprompter::SPEED.clamp(self.teleprompter_speed);
-        self.teleprompter_font_size =
-            limits::teleprompter::FONT_SIZE.clamp(self.teleprompter_font_size);
+        self.teleprompter_font_size = limits::teleprompter::FONT_SIZE.clamp(self.teleprompter_font_size);
         self.buffer_seconds = limits::capture::BUFFER_SECONDS.clamp(self.buffer_seconds);
         if self.theme != THEME_GRAY && self.theme != THEME_BLACK {
             self.theme = defaults::THEME.into();
         }
-        // The registry owns "unknown resolves to the default"; clamping here by
-        // hand would be a second, silently divergent copy of that rule.
         self.stt_provider = crate::stt::registry::resolve(&self.stt_provider).id.into();
         self.quick_actions.truncate(QUICK_ACTION_LIMIT);
         crate::hotkeys::normalize(&mut self.hotkeys);

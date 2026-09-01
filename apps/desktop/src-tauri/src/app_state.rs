@@ -16,7 +16,6 @@ const CONTEXT_LIBRARY_FILE_NAME: &str = "context-library.json";
 pub struct App {
     pub settings: Mutex<settings::Settings>,
     pub official_presets: Mutex<Vec<settings::PromptPreset>>,
-    /// Version of the pool above — the refresh loop refuses to go below it.
     pub official_presets_version: Mutex<u32>,
     pub recorder: Mutex<state::RecorderState>,
     pub capture: Mutex<Option<capture::SystemAudioCapture>>,
@@ -31,12 +30,6 @@ pub struct App {
     pub window_mini: AtomicBool,
     pub capture_rebuild_pending: AtomicBool,
     pub http_pool_stale: AtomicBool,
-    /// Terms the active chat declared via `[keywords]: [...]`.
-    ///
-    /// Runtime state, NOT a setting: it is derived from the prompt the user is
-    /// already writing and follows the active chat. `Settings.stt_keywords`
-    /// does not exist on purpose — a hand-kept dictionary was rejected, and
-    /// this must not become one through the back door.
     pub stt_keyterms: Mutex<Vec<String>>,
     pub preview_html: Mutex<String>,
     pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
@@ -111,19 +104,13 @@ pub fn build_capture(settings: &settings::Settings) -> Option<capture::SystemAud
     }
 }
 
-/// What reaching the chosen STT vendor takes right now.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SttClientPlan {
-    /// The vendor `Settings.stt_provider` names, already resolved — an unknown
-    /// value has become the default here, not somewhere downstream.
     pub provider_id: &'static str,
     pub api_key: String,
     pub proxy_base_url: Option<String>,
 }
 
-/// Same rule as the answer vendors: an access code reaches the relay, a
-/// personal key reaches the vendor. Unlike the answer side there is no router —
-/// exactly one STT vendor is active, the one the setting names.
 pub fn stt_client_plan(s: &settings::Settings) -> SttClientPlan {
     let spec = stt::registry::resolve(&s.stt_provider);
     if s.access_token.is_empty() || !spec.proxied {
@@ -142,6 +129,13 @@ pub fn stt_client_plan(s: &settings::Settings) -> SttClientPlan {
 
 pub fn build_stt_client(s: &settings::Settings) -> Arc<dyn stt::SttEngine> {
     let plan = stt_client_plan(s);
+    let spec = stt::registry::resolve(plan.provider_id);
+    if matches!(spec.wire, stt::registry::SttWire::Deepgram { .. }) {
+        return Arc::new(
+            stt::deepgram::DeepgramStt::new(plan.api_key).with_language(s.stt_language.clone()),
+        );
+    }
+
     let client = stt::SttHttpClient::for_provider(plan.provider_id, plan.api_key);
     let client = match plan.proxy_base_url {
         Some(url) => client.with_base_url(url).with_proxy(true),
@@ -154,17 +148,11 @@ pub fn build_stt_client(s: &settings::Settings) -> Arc<dyn stt::SttEngine> {
     )
 }
 
-/// How a vendor is reached right now: the relay under an access code, the
-/// user's own key otherwise, or not at all.
 pub enum ProviderAccess {
     Proxied { access_token: String, base_url: String },
     Direct { api_key: String },
 }
 
-/// Resolves a registry row against the current settings. The rule is the same
-/// for every vendor, which is why it lives here and not in each client: an
-/// access code reaches whatever the relay proxies, and a personal key reaches
-/// its own vendor directly.
 pub fn provider_access(
     spec: &llm::registry::LlmProviderSpec,
     s: &settings::Settings,
@@ -182,12 +170,6 @@ pub fn provider_access(
     Some(ProviderAccess::Direct { api_key: api_key.to_string() })
 }
 
-/// Builds the client for a registry row.
-///
-/// Dispatch is on the **dialect**, not on the vendor: a vendor that speaks a
-/// protocol the app already knows needs no arm here and no module — only its
-/// row. A genuinely new protocol adds a variant to `LlmWire`, a module beside
-/// `llm/responses.rs`, and one arm below.
 fn build_provider(
     spec: &'static llm::registry::LlmProviderSpec,
     access: ProviderAccess,
@@ -214,10 +196,6 @@ fn build_provider(
     }
 }
 
-/// **The default provider is always present, reachable or not.** It carries the
-/// default model and every unclaimed model id, so a router without it would
-/// have nowhere to send them; an unusable client fails with a real API error,
-/// which is far better than a request that silently goes nowhere.
 pub fn build_llm_client(
     s: &settings::Settings,
     catalog: llm::ModelCatalog,
@@ -236,7 +214,6 @@ pub fn build_llm_client(
     }
     Arc::new(llm::router::ProviderRouter::new(providers, catalog))
 }
-
 
 pub fn note_connectivity_probe(app: &AppHandle, reachable: bool) {
     let st = app.state::<App>();
