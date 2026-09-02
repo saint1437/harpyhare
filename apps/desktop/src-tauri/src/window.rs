@@ -46,9 +46,7 @@ pub fn apply_content_protection_all(app: &AppHandle, settings: &settings::Settin
         apply_content_protection(&w, settings);
     }
     if main_window(app).is_some() {
-        if let Err(e) =
-            platform::configure_overlay_stealth(app, !settings.screen_share_visible)
-        {
+        if let Err(e) = platform::configure_overlay_stealth(app, !settings.screen_share_visible) {
             eprintln!("не удалось обновить stealth-защиту HUD: {e}");
         }
     }
