@@ -152,6 +152,16 @@ pub fn merge_titlebar_into_content(app: &AppHandle) {
     backend::merge_titlebar_into_content(app);
 }
 
+#[cfg(target_os = "windows")]
+pub fn configure_overlay_stealth(app: &AppHandle, protect_content: bool) -> Result<(), String> {
+    windows::configure_overlay_stealth(app, protect_content)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn configure_overlay_stealth(_app: &AppHandle, _protect_content: bool) -> Result<(), String> {
+    Ok(())
+}
+
 pub fn install_move_keys_monitor(app: AppHandle) {
     backend::install_move_keys_monitor(app);
 }
