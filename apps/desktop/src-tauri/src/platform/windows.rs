@@ -4,8 +4,8 @@ use tauri::AppHandle;
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Dwm::{
-    DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_WINDOW_CORNER_PREFERENCE,
-    DWMWCP_ROUND, DWMWINDOWATTRIBUTE,
+    DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_DISALLOW_PEEK,
+    DWMWA_EXCLUDED_FROM_PEEK, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DWMWINDOWATTRIBUTE,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, VIRTUAL_KEY, VK_CONTROL, VK_DOWN, VK_LEFT, VK_LWIN, VK_MENU, VK_RIGHT,
@@ -14,8 +14,11 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetAncestor, GetForegroundWindow, SetWindowsHookExW, GA_ROOTOWNER, HC_ACTION,
-    KBDLLHOOKSTRUCT, SW_SHOWNORMAL, WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
+    CallNextHookEx, GetAncestor, GetForegroundWindow, GetWindowDisplayAffinity, GetWindowLongPtrW,
+    SetWindowDisplayAffinity, SetWindowLongPtrW, SetWindowPos, SetWindowsHookExW, GA_ROOTOWNER,
+    GWL_EXSTYLE, HC_ACTION, KBDLLHOOKSTRUCT, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
+    SWP_NOSIZE, SWP_NOZORDER, SW_SHOWNORMAL, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
+    WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
 };
 
 use super::{handle_arrow_key, ModifierMask};
@@ -32,6 +35,64 @@ static HOOK_APP: OnceLock<AppHandle> = OnceLock::new();
 pub fn disable_cursor_autohide_on_typing() {}
 
 pub fn merge_titlebar_into_content(_app: &AppHandle) {}
+
+fn stealth_extended_style(current: isize) -> isize {
+    (current | WS_EX_TOOLWINDOW.0 as isize) & !(WS_EX_APPWINDOW.0 as isize)
+}
+
+/// Removes the HUD from normal Windows shell surfaces and verifies the native
+/// capture-affinity flag. The window stays focusable: WS_EX_NOACTIVATE is
+/// intentionally not used because the prompt must still accept keyboard input.
+pub fn configure_overlay_stealth(app: &AppHandle, protect_content: bool) -> Result<(), String> {
+    let w = main_window(app).ok_or_else(|| "окно HUD не найдено".to_string())?;
+    w.set_skip_taskbar(true).map_err(|e| e.to_string())?;
+    let hwnd = w.hwnd().map_err(|e| e.to_string())?;
+
+    let current_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
+    let desired_style = stealth_extended_style(current_style);
+    if desired_style != current_style {
+        unsafe {
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, desired_style);
+            SetWindowPos(
+                hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+            )
+        }
+        .map_err(|e| e.to_string())?;
+    }
+
+    let applied_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
+    if applied_style & WS_EX_TOOLWINDOW.0 as isize == 0
+        || applied_style & WS_EX_APPWINDOW.0 as isize != 0
+    {
+        return Err("Windows не применил stealth-стили HUD".into());
+    }
+
+    let enabled = 1u32;
+    set_dwm_attribute(hwnd, DWMWA_DISALLOW_PEEK, &enabled);
+    set_dwm_attribute(hwnd, DWMWA_EXCLUDED_FROM_PEEK, &enabled);
+
+    let desired_affinity = if protect_content {
+        WDA_EXCLUDEFROMCAPTURE
+    } else {
+        WDA_NONE
+    };
+    unsafe { SetWindowDisplayAffinity(hwnd, desired_affinity) }.map_err(|e| e.to_string())?;
+    let mut applied_affinity = 0u32;
+    unsafe { GetWindowDisplayAffinity(hwnd, &mut applied_affinity) }.map_err(|e| e.to_string())?;
+    if applied_affinity != desired_affinity.0 {
+        return Err(format!(
+            "Windows применил display affinity {applied_affinity:#x} вместо {:#x}",
+            desired_affinity.0
+        ));
+    }
+    Ok(())
+}
 
 fn set_dwm_attribute<T>(hwnd: HWND, attribute: DWMWINDOWATTRIBUTE, value: &T) {
     let _ = unsafe {
