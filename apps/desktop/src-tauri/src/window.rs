@@ -45,6 +45,11 @@ pub fn apply_content_protection_all(app: &AppHandle, settings: &settings::Settin
     for (_, w) in app.webview_windows() {
         apply_content_protection(&w, settings);
     }
+    if main_window(app).is_some() {
+        if let Err(e) = platform::configure_overlay_stealth(app, !settings.screen_share_visible) {
+            eprintln!("не удалось обновить stealth-защиту HUD: {e}");
+        }
+    }
 }
 
 pub fn create_launcher_window(app: &AppHandle, settings: &settings::Settings) -> Result<(), String> {
@@ -80,12 +85,12 @@ fn create_main_window(app: &AppHandle, settings: &settings::Settings) -> Result<
     if main_window(app).is_some() {
         return Ok(());
     }
-    tauri::WebviewWindowBuilder::new(
+    let w = tauri::WebviewWindowBuilder::new(
         app,
         MAIN_WINDOW_LABEL,
         tauri::WebviewUrl::App(MAIN_WINDOW_URL.into()),
     )
-    .title(window_title(app))
+    .title("")
     .inner_size(settings.window_width, settings.window_height)
     .min_inner_size(
         settings::limits::window::WIDTH.min,
@@ -95,13 +100,21 @@ fn create_main_window(app: &AppHandle, settings: &settings::Settings) -> Result<
     .decorations(false)
     .always_on_top(true)
     .visible_on_all_workspaces(true)
+    .skip_taskbar(true)
+    .visible(false)
     .shadow(false)
     .content_protected(!settings.screen_share_visible)
     .center()
     .build()
     .map_err(|e| e.to_string())?;
     app.state::<App>().window_mini.store(false, Ordering::SeqCst);
+    if let Err(e) = platform::configure_overlay_stealth(app, !settings.screen_share_visible) {
+        let _ = w.destroy();
+        return Err(format!("не удалось включить stealth-режим HUD: {e}"));
+    }
     platform::clip_native_window_corners(app);
+    let _ = w.show();
+    let _ = w.set_focus();
     Ok(())
 }
 
