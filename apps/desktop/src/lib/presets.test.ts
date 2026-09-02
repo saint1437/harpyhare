@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { extractKeyterms, stripKeywordBlocks } from "./keywords";
+import { BASE_SYSTEM_PROMPT } from "./system-prompt";
 import { mergePresets, OFFICIAL_PRESETS_FALLBACK, presetText, type PromptPreset } from "./presets";
 
 const presets: PromptPreset[] = [
@@ -10,14 +11,18 @@ const presets: PromptPreset[] = [
 const preset = (id: string, name = id): PromptPreset => ({ id, name, text: id });
 
 describe("presetText", () => {
-  it("возвращает текст пресета по id", () => {
-    expect(presetText(presets, "b")).toBe("текст-B");
+  it("добавляет базовые правила и текст пресета по id", () => {
+    const text = presetText(presets, "b");
+    expect(text).toContain(BASE_SYSTEM_PROMPT);
+    expect(text).toContain("--- РЕЖИМ РАБОТЫ ---\nтекст-B");
   });
-  it("неизвестный id → пустая строка", () => {
-    expect(presetText(presets, "zzz")).toBe("");
+  it("неизвестный id → только базовые правила", () => {
+    const text = presetText(presets, "zzz");
+    expect(text).toContain(BASE_SYSTEM_PROMPT);
+    expect(text).not.toContain("РЕЖИМ РАБОТЫ");
   });
-  it("пустой presetId → пустая строка", () => {
-    expect(presetText(presets, "")).toBe("");
+  it("пустой presetId → только базовые правила", () => {
+    expect(presetText(presets, "")).toContain(BASE_SYSTEM_PROMPT);
   });
 });
 
@@ -53,8 +58,6 @@ describe("встроенные пресеты объявляют термины 
   });
 
   it("ни один пресет не выходит за лимит вендора в одиночку", () => {
-    // xAI отвечает ошибкой, а не обрезает, поэтому пресет, переваливший лимит
-    // САМ ПО СЕБЕ, ломал бы запись до того, как к нему добавят контекст чата.
     for (const preset of OFFICIAL_PRESETS_FALLBACK) {
       expect(extractKeyterms(preset.text).length, `пресет ${preset.id}`).toBeLessThanOrEqual(100);
     }

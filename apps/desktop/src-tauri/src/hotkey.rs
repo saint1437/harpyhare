@@ -17,14 +17,39 @@ fn defer(app: &AppHandle, work: fn(&AppHandle)) {
     tauri::async_runtime::spawn(async move { work(&app) });
 }
 
-pub fn register_ptt(app: &AppHandle, hotkey: &str) -> Result<(), String> {
+type PttHandler = fn(&AppHandle);
+
+fn register_ptt(
+    app: &AppHandle,
+    hotkey: &str,
+    pressed: PttHandler,
+    released: PttHandler,
+) -> Result<(), String> {
     let shortcut = parse_hotkey(hotkey).ok_or_else(|| unparseable_hotkey_error(hotkey))?;
     app.global_shortcut()
-        .on_shortcut(shortcut, |app, _shortcut, event| match event.state {
-            ShortcutState::Pressed => defer(app, recording::on_ptt_pressed),
-            ShortcutState::Released => defer(app, recording::on_ptt_released),
+        .on_shortcut(shortcut, move |app, _shortcut, event| match event.state {
+            ShortcutState::Pressed => defer(app, pressed),
+            ShortcutState::Released => defer(app, released),
         })
         .map_err(|e| e.to_string())
+}
+
+pub fn register_system_ptt(app: &AppHandle, hotkey: &str) -> Result<(), String> {
+    register_ptt(
+        app,
+        hotkey,
+        recording::on_system_ptt_pressed,
+        recording::on_system_ptt_released,
+    )
+}
+
+pub fn register_microphone_ptt(app: &AppHandle, hotkey: &str) -> Result<(), String> {
+    register_ptt(
+        app,
+        hotkey,
+        recording::on_microphone_ptt_pressed,
+        recording::on_microphone_ptt_released,
+    )
 }
 
 pub fn unregister_ptt(app: &AppHandle, hotkey: &str) {

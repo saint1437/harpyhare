@@ -45,6 +45,11 @@ pub fn apply_content_protection_all(app: &AppHandle, settings: &settings::Settin
     for (_, w) in app.webview_windows() {
         apply_content_protection(&w, settings);
     }
+    if main_window(app).is_some() {
+        if let Err(e) = platform::configure_overlay_stealth(app, !settings.screen_share_visible) {
+            eprintln!("не удалось обновить stealth-защиту HUD: {e}");
+        }
+    }
 }
 
 pub fn create_launcher_window(app: &AppHandle, settings: &settings::Settings) -> Result<(), String> {
@@ -80,12 +85,12 @@ fn create_main_window(app: &AppHandle, settings: &settings::Settings) -> Result<
     if main_window(app).is_some() {
         return Ok(());
     }
-    tauri::WebviewWindowBuilder::new(
+    let w = tauri::WebviewWindowBuilder::new(
         app,
         MAIN_WINDOW_LABEL,
         tauri::WebviewUrl::App(MAIN_WINDOW_URL.into()),
     )
-    .title(window_title(app))
+    .title("")
     .inner_size(settings.window_width, settings.window_height)
     .min_inner_size(
         settings::limits::window::WIDTH.min,
@@ -95,13 +100,21 @@ fn create_main_window(app: &AppHandle, settings: &settings::Settings) -> Result<
     .decorations(false)
     .always_on_top(true)
     .visible_on_all_workspaces(true)
+    .skip_taskbar(true)
+    .visible(false)
     .shadow(false)
     .content_protected(!settings.screen_share_visible)
     .center()
     .build()
     .map_err(|e| e.to_string())?;
     app.state::<App>().window_mini.store(false, Ordering::SeqCst);
+    if let Err(e) = platform::configure_overlay_stealth(app, !settings.screen_share_visible) {
+        let _ = w.destroy();
+        return Err(format!("не удалось включить stealth-режим HUD: {e}"));
+    }
     platform::clip_native_window_corners(app);
+    let _ = w.show();
+    let _ = w.set_focus();
     Ok(())
 }
 
@@ -109,7 +122,16 @@ type GlobalRegistrar = fn(&AppHandle, &str) -> Result<(), String>;
 type GlobalUnregistrar = fn(&AppHandle, &str);
 
 const GLOBAL_HOTKEYS: &[(&str, GlobalRegistrar, GlobalUnregistrar)] = &[
-    (hotkeys::ACTION_RECORD, hotkey::register_ptt, hotkey::unregister_ptt),
+    (
+        hotkeys::ACTION_RECORD,
+        hotkey::register_system_ptt,
+        hotkey::unregister_ptt,
+    ),
+    (
+        hotkeys::ACTION_RECORD_MICROPHONE,
+        hotkey::register_microphone_ptt,
+        hotkey::unregister_ptt,
+    ),
     (hotkeys::ACTION_TOGGLE_WINDOW, hotkey::register_toggle, hotkey::unregister_toggle),
     (hotkeys::ACTION_TELEPROMPTER, hotkey::register_teleprompter, hotkey::unregister_teleprompter),
     (hotkeys::ACTION_SCREENSHOT, hotkey::register_screenshot, hotkey::unregister_screenshot),
@@ -332,14 +354,20 @@ fn clamped_to_work_area(w: &WebviewWindow, scale: f64, width: f64, height: f64) 
 }
 
 fn anchored_target_x(w: &WebviewWindow, from_x: i32, width: f64, scale: f64) -> i32 {
-    let target_phys_w = (width * scale).round() as u32;
+    let target_inner_phys_w = (width * scale).round() as u32;
+    let target_outer_phys_w = match (w.inner_size(), w.outer_size()) {
+        (Ok(inner), Ok(outer)) => {
+            window_geom::target_outer_width(target_inner_phys_w, inner.width, outer.width)
+        }
+        _ => target_inner_phys_w,
+    };
     let (mon_x, mon_w) = w
         .current_monitor()
         .ok()
         .flatten()
         .map(|m| (m.position().x, m.size().width))
-        .unwrap_or((from_x, target_phys_w));
-    window_geom::clamp_window_x(from_x, target_phys_w, mon_x, mon_w)
+        .unwrap_or((from_x, target_outer_phys_w));
+    window_geom::clamp_window_x(from_x, target_outer_phys_w, mon_x, mon_w)
 }
 
 fn ease_out_cubic(t: f64) -> f64 {

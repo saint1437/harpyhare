@@ -20,6 +20,8 @@ pub struct App {
     pub official_presets_version: Mutex<u32>,
     pub recorder: Mutex<state::RecorderState>,
     pub capture: Mutex<Option<capture::SystemAudioCapture>>,
+    pub microphone_capture: Mutex<Option<capture::SystemAudioCapture>>,
+    pub recording_source: Mutex<Option<state::RecordingSource>>,
     pub last_recording: Mutex<Option<Vec<f32>>>,
     pub llm_cancel: Mutex<HashMap<String, ActiveLlmStream>>,
     pub stt: Mutex<Arc<dyn stt::SttEngine>>,
@@ -106,6 +108,16 @@ pub fn build_capture(settings: &settings::Settings) -> Option<capture::SystemAud
         }
         Err(e) => {
             eprintln!("захват системного звука недоступен: {e}");
+            None
+        }
+    }
+}
+
+pub fn build_microphone_capture() -> Option<capture::SystemAudioCapture> {
+    match capture::SystemAudioCapture::new_microphone() {
+        Ok(c) => Some(c),
+        Err(e) => {
+            eprintln!("захват микрофона недоступен: {e}");
             None
         }
     }
@@ -293,6 +305,8 @@ pub fn build_app_state(
         official_presets: Mutex::new(official_presets.presets),
         recorder: Mutex::new(state::RecorderState::Idle),
         capture: Mutex::new(capture),
+        microphone_capture: Mutex::new(None),
+        recording_source: Mutex::new(None),
         last_recording: Mutex::new(None),
         llm_cancel: Mutex::new(HashMap::new()),
         stt: Mutex::new(stt),

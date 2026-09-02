@@ -39,21 +39,11 @@ fn cache_path(app: &AppHandle) -> PathBuf {
     crate::app_state::app_data_file(app, CACHE_FILE_NAME)
 }
 
-/// The newer of the cached pool and the compiled-in one.
-///
-/// Cache-first would pin a user to whatever the blob served last, so a build
-/// shipping newer presets would show the old ones until the blob caught up —
-/// exactly the state a not-yet-published edit leaves you in. Comparing versions
-/// makes a fresh build win on its own.
-pub fn load_initial(app: &AppHandle) -> PresetPool {
-    let cached = std::fs::read_to_string(cache_path(app))
-        .ok()
-        .and_then(|raw| PresetPool::parse(&raw));
-    let bundled = PresetPool::bundled();
-    match cached {
-        Some(cached) if cached.version > bundled.version => cached,
-        _ => bundled,
-    }
+/// Our build deliberately starts from the presets shipped with the binary.
+/// A stale remote cache must not silently replace local prompt changes before
+/// the user even opens the app. Network refresh is also not started in lib.rs.
+pub fn load_initial(_app: &AppHandle) -> PresetPool {
+    PresetPool::bundled()
 }
 
 pub fn spawn_refresh(app: AppHandle) {
@@ -84,13 +74,6 @@ async fn fetch_raw() -> reqwest::Result<String> {
         .await
 }
 
-/// Applies a fetched pool unless it would move the user backwards.
-///
-/// **The pool never goes down a version.** Without this the refresh loop
-/// overwrites a newer local pool with whatever the blob still serves, so an
-/// edit to `config/presets.json` could not be tried out before publishing, and
-/// a botched publish of an older file would reach every user within half an
-/// hour. Rolling back on purpose means publishing with a bumped version.
 fn apply(app: &AppHandle, pool: PresetPool) {
     let st = app.state::<crate::app_state::App>();
     {

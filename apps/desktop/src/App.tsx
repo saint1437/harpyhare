@@ -723,8 +723,6 @@ export default function App() {
     resizeGuardUntilRef,
     applyNativeWindowSize,
   );
-  const chatColumnWidth = settings.window_width - SHELL_PADDING_PX * 2;
-
   const officialPresets = useOfficialPresets();
   const presets = useMemo(
     () => mergePresets(officialPresets, settings.prompt_presets),
@@ -819,7 +817,10 @@ export default function App() {
     bumpChatFontSize,
     bumpWindowSize,
   );
-  usePttSuspend(effectiveCombo(settings.hotkeys, "record"));
+  usePttSuspend(
+    effectiveCombo(settings.hotkeys, "record"),
+    effectiveCombo(settings.hotkeys, "record_microphone"),
+  );
   const { ref: promptRef, focus: focusPrompt } = usePromptFocus(promptUnavailable);
 
   const focusFrameRef = useRef(0);
@@ -1128,7 +1129,7 @@ export default function App() {
       onMouseDown={onShellDragStart}
     >
       <LiquidMetalBorder active={activityFrame} />
-      <div className="flex shrink-0 flex-col gap-2.5" style={{ width: chatColumnWidth }}>
+      <div className="flex min-w-0 flex-1 flex-col gap-2.5">
         <AppHeader
           state={state}
           hotkeys={settings.hotkeys}

@@ -78,6 +78,8 @@ describe("defaultCombo", () => {
   it("PTT и суфлёр — на основном модификаторе платформы", () => {
     expect(defaultCombo("record", "macos")).toBe("Cmd+R");
     expect(defaultCombo("record", "windows")).toBe("Ctrl+R");
+    expect(defaultCombo("record_microphone", "macos")).toBe("Cmd+Q");
+    expect(defaultCombo("record_microphone", "windows")).toBe("Ctrl+Q");
     expect(defaultCombo("teleprompter", "macos")).toBe("Cmd+T");
     expect(defaultCombo("teleprompter", "windows")).toBe("Ctrl+T");
   });
@@ -109,6 +111,7 @@ describe("hotkeyGroups на macOS", () => {
       .flatMap((g) => g.hints)
       .map((h) => h.combo);
     expect(combos).toContain("⌘R");
+    expect(combos).toContain("⌘Q");
     expect(combos).toContain("⌘⇧H");
     expect(combos).toContain("⌘ ←→↑↓");
     expect(combos).toContain("⌘⇧ + −");
@@ -132,6 +135,7 @@ describe("hotkeyGroups на Windows", () => {
       .flatMap((g) => g.hints)
       .map((h) => h.combo);
     expect(combos).toContain("Ctrl+R");
+    expect(combos).toContain("Ctrl+Q");
     expect(combos).toContain("Ctrl+Shift+H");
     expect(combos).toContain("Ctrl ←→↑↓");
     expect(combos).toContain("Ctrl+Shift + −");
