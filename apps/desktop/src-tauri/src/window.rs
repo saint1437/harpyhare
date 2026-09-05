@@ -144,16 +144,18 @@ const GLOBAL_HOTKEYS: &[(&str, GlobalRegistrar, GlobalUnregistrar)] = &[
     ),
 ];
 
-pub fn register_main_window_hotkeys(app: &AppHandle, s: &settings::Settings) {
+pub fn register_main_window_hotkeys(app: &AppHandle, s: &settings::Settings) -> Result<(), String> {
     for (action, register, _) in GLOBAL_HOTKEYS {
         let combo = hotkeys::effective(&s.hotkeys, action);
         if combo.is_empty() {
             continue;
         }
         if let Err(e) = register(app, &combo) {
-            eprintln!("не удалось зарегистрировать хоткей {action} ({combo:?}): {e}");
+            unregister_main_window_hotkeys_for(app, s);
+            return Err(format!("не удалось зарегистрировать хоткей {action} ({combo:?}): {e}"));
         }
     }
+    Ok(())
 }
 
 pub fn unregister_main_window_hotkeys_for(app: &AppHandle, s: &settings::Settings) {
@@ -202,13 +204,7 @@ pub fn on_duplicate_chat(app: &AppHandle) {
 }
 
 pub fn on_panic(app: &AppHandle) {
-    let is_mini = app.state::<App>().window_mini.load(Ordering::SeqCst);
-    if is_mini {
-        let settings = current_settings(app);
-        expand_main_window(app.clone(), settings.window_width, settings.window_height);
-    } else {
-        collapse_main_window(app.clone());
-    }
+    on_toggle_mini(app);
 }
 
 pub fn on_toggle_teleprompter(app: &AppHandle) {
@@ -231,7 +227,12 @@ where
 fn swap_to_main_window(app: &AppHandle) -> Result<(), String> {
     let settings = current_settings(app);
     create_main_window(app, &settings)?;
-    register_main_window_hotkeys(app, &settings);
+    if let Err(error) = register_main_window_hotkeys(app, &settings) {
+        if let Some(w) = main_window(app) {
+            let _ = w.destroy();
+        }
+        return Err(error);
+    }
     if let Some(w) = launcher_window(app) {
         let _ = w.destroy();
     }

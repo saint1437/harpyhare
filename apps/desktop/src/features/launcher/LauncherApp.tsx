@@ -54,6 +54,7 @@ export function LauncherApp() {
     void (async () => {
       try {
         if (await persist(next)) {
+          await contextLibrary.flush();
           await launchMainWindow();
           return;
         }

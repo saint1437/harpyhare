@@ -61,10 +61,15 @@ pub fn set_settings(
     let st = app.state::<App>();
     let old = st.settings.lock().unwrap().clone();
     let capture_device_changed = old.capture_device_uid != new_settings.capture_device_uid;
-    new_settings
-        .save(&settings_path(&app))
-        .map_err(|e| e.to_string())?;
+    let hotkeys_changed = old.hotkeys != new_settings.hotkeys;
     reregister_changed_hotkeys(&app, &old, &new_settings)?;
+    if let Err(error) = new_settings.save(&settings_path(&app)) {
+        if hotkeys_changed {
+            crate::window::unregister_main_window_hotkeys_for(&app, &new_settings);
+            let _ = crate::window::register_main_window_hotkeys(&app, &old);
+        }
+        return Err(error.to_string());
+    }
     rebuild_changed_api_clients(&st, &old, &new_settings);
     apply_screen_share_visibility_change(&app, &old, &new_settings);
     apply_buffer_settings_change(&app, &old, &new_settings);
@@ -137,7 +142,10 @@ fn reregister_changed_hotkeys(
     }
     if old.hotkeys != new.hotkeys {
         crate::window::unregister_main_window_hotkeys_for(app, old);
-        crate::window::register_main_window_hotkeys(app, new);
+        if let Err(error) = crate::window::register_main_window_hotkeys(app, new) {
+            let _ = crate::window::register_main_window_hotkeys(app, old);
+            return Err(error);
+        }
     }
     Ok(())
 }

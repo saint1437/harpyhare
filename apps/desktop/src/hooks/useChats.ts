@@ -32,10 +32,10 @@ import {
 } from "@/lib/composer";
 import { DEFAULT_MODEL } from "@/lib/models";
 import { notify } from "@/lib/notify";
-import { CHATS_SUBJECT, onSaveError } from "@/lib/persist-errors";
+import { CHATS_SUBJECT } from "@/lib/persist-errors";
+import { useDebouncedSave } from "./useDebouncedSave";
 import { useLatestRef } from "./useLatestRef";
 
-const SAVE_DEBOUNCE_MS = 500;
 const DOWNSCALE_JPEG_QUALITY = 0.85;
 const DOWNSCALE_MEDIA_TYPE = "image/jpeg";
 const MIN_CANVAS_SIDE_PX = 1;
@@ -163,41 +163,8 @@ function useInitialChatsLoad(
   }, [setChats, setActiveId, loaded, makeChat]);
 }
 
-function useDebouncedChatsSave(chats: Chat[], loaded: RefObject<boolean>): () => Promise<void> {
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const pending = useRef(false);
-  const chatsRef = useRef(chats);
-  chatsRef.current = chats;
-
-  const flush = useCallback((): Promise<void> => {
-    if (!loaded.current || !pending.current) return Promise.resolve();
-    pending.current = false;
-    clearTimeout(saveTimer.current);
-    saveTimer.current = undefined;
-    return saveChats(serializeChats(chatsRef.current)).then(() => undefined);
-  }, [loaded]);
-
-  useEffect(() => {
-    if (!loaded.current) return;
-    pending.current = true;
-    clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      pending.current = false;
-      void saveChats(serializeChats(chats)).catch(onSaveError(CHATS_SUBJECT));
-    }, SAVE_DEBOUNCE_MS);
-    return () => {
-      clearTimeout(saveTimer.current);
-    };
-  }, [chats, loaded]);
-
-  useEffect(
-    () => () => {
-      void flush();
-    },
-    [flush],
-  );
-
-  return flush;
+function persistChats(chats: Chat[]) {
+  return saveChats(serializeChats(chats));
 }
 
 function chatWithUserMessage(
@@ -267,7 +234,7 @@ export function useChats(defaultModel?: () => string): ChatsApi {
   const loaded = useRef(false);
 
   useInitialChatsLoad(setChats, setActiveId, loaded, makeChat);
-  const flush = useDebouncedChatsSave(chats, loaded);
+  const flush = useDebouncedSave(chats, loaded, persistChats, CHATS_SUBJECT);
 
   const effectiveActiveId = activeId || (chats[0]?.id ?? "");
   useRememberActiveChat(effectiveActiveId, loaded);
