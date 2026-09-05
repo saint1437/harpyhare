@@ -133,6 +133,7 @@ const GLOBAL_HOTKEYS: &[(&str, GlobalRegistrar, GlobalUnregistrar)] = &[
         hotkey::unregister_ptt,
     ),
     (hotkeys::ACTION_TOGGLE_WINDOW, hotkey::register_toggle, hotkey::unregister_toggle),
+    (hotkeys::ACTION_PANIC, hotkey::register_panic, hotkey::unregister_panic),
     (hotkeys::ACTION_TELEPROMPTER, hotkey::register_teleprompter, hotkey::unregister_teleprompter),
     (hotkeys::ACTION_SCREENSHOT, hotkey::register_screenshot, hotkey::unregister_screenshot),
     (hotkeys::ACTION_FOCUS_PROMPT, hotkey::register_focus_prompt, hotkey::unregister_focus_prompt),
@@ -198,6 +199,16 @@ pub fn on_duplicate_chat(app: &AppHandle) {
     }
     show_and_focus_prompt(app);
     crate::events::duplicate_chat(app);
+}
+
+pub fn on_panic(app: &AppHandle) {
+    let is_mini = app.state::<App>().window_mini.load(Ordering::SeqCst);
+    if is_mini {
+        let settings = current_settings(app);
+        expand_main_window(app.clone(), settings.window_width, settings.window_height);
+    } else {
+        collapse_main_window(app.clone());
+    }
 }
 
 pub fn on_toggle_teleprompter(app: &AppHandle) {
@@ -271,7 +282,41 @@ pub fn collapse_main_window(app: AppHandle) {
         MINI_WINDOW_HEIGHT_LOGICAL_PX,
     )));
     let _ = w.set_resizable(false);
-    set_window_size(app, MINI_WINDOW_WIDTH_LOGICAL_PX, MINI_WINDOW_HEIGHT_LOGICAL_PX);
+    
+    // Вычисляем позицию для правого верхнего угла
+    let scale = w.scale_factor().unwrap_or(1.0);
+    let target_width = MINI_WINDOW_WIDTH_LOGICAL_PX * scale;
+    
+    if let Ok(Some(monitor)) = w.current_monitor() {
+        let work_area = monitor.work_area();
+        let padding = 10.0; // Отступ от края экрана
+        
+        // Правый верхний угол: x = правый край - ширина окна - padding, y = верх + padding
+        let target_x = (work_area.position.x + work_area.size.width as i32) as f64 - target_width - padding;
+        let target_y = work_area.position.y as f64 + padding;
+        
+        // Анимируем изменение размера и позиции
+        let from_pos = w.outer_position().unwrap_or(tauri::PhysicalPosition::new(0, 0));
+        let from_size = w.inner_size().unwrap_or(tauri::PhysicalSize::new(
+            (MINI_WINDOW_WIDTH_LOGICAL_PX * scale) as u32,
+            (MINI_WINDOW_HEIGHT_LOGICAL_PX * scale) as u32,
+        ));
+        
+        let my_gen = app.state::<App>().resize_gen.fetch_add(1, Ordering::SeqCst) + 1;
+        let tween = ResizeTween {
+            from_width: from_size.width as f64 / scale,
+            to_width: MINI_WINDOW_WIDTH_LOGICAL_PX,
+            from_height: from_size.height as f64 / scale,
+            to_height: MINI_WINDOW_HEIGHT_LOGICAL_PX,
+            from_x: from_pos.x,
+            to_x: target_x as i32,
+            y: target_y as i32,
+        };
+        std::thread::spawn(move || run_resize_tween(app, w, tween, my_gen));
+    } else {
+        // Fallback без анимации
+        set_window_size(app, MINI_WINDOW_WIDTH_LOGICAL_PX, MINI_WINDOW_HEIGHT_LOGICAL_PX);
+    }
 }
 
 #[tauri::command]

@@ -9,6 +9,7 @@ pub const ACTION_SCREENSHOT: &str = "screenshot";
 pub const ACTION_QUICK_ACTION: &str = "quick_action";
 pub const ACTION_FOCUS_PROMPT: &str = "focus_prompt";
 pub const ACTION_TOGGLE_WINDOW: &str = "toggle_window";
+pub const ACTION_PANIC: &str = "panic";
 pub const ACTION_MOVE_WINDOW: &str = "move_window";
 pub const ACTION_RESIZE_WINDOW: &str = "resize_window";
 pub const ACTION_OPACITY: &str = "opacity";
@@ -243,6 +244,15 @@ pub const HOTKEY_ACTIONS: &[HotkeyAction] = &[
         kind: HotkeyKind::Combo,
         scope: HotkeyScope::Global,
         default_combo: primary_combo!(shift_token!(), "H"),
+    },
+    HotkeyAction {
+        id: ACTION_PANIC,
+        group: "Окно",
+        label: "Клавиша паники",
+        hint: "Мгновенно сворачивает окно в mini-режим. Повторное нажатие — разворачивает обратно.",
+        kind: HotkeyKind::Combo,
+        scope: HotkeyScope::Global,
+        default_combo: PlatformCombo::shared("F12"),
     },
     HotkeyAction {
         id: ACTION_MOVE_WINDOW,
