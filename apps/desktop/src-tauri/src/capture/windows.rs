@@ -3,11 +3,12 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use windows::core::PCWSTR;
+use windows::core::{Interface, PCWSTR};
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Foundation::{E_ACCESSDENIED, RPC_E_CHANGED_MODE};
 use windows::Win32::Media::Audio::{
-    eCapture, eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDevice, IMMDeviceEnumerator,
+    eCapture, eConsole, eRender, EDataFlow, IAudioCaptureClient, IAudioClient, IMMDevice,
+    IMMDeviceEnumerator, IMMEndpoint,
     MMDeviceEnumerator, AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED,
     AUDCLNT_STREAMFLAGS_LOOPBACK, DEVICE_STATE_ACTIVE, WAVEFORMATEX, WAVEFORMATEXTENSIBLE,
 };
@@ -18,7 +19,7 @@ use windows::Win32::System::Com::{
     COINIT_MULTITHREADED, STGM_READ,
 };
 
-use super::{CallbackCtx, CaptureError, DeviceChangeHandler, OutputDeviceInfo, StreamSpec};
+use super::{AudioDeviceInfo, CallbackCtx, CaptureError, DeviceChangeHandler, StreamSpec};
 
 const CAPTURE_THREAD_NAME: &str = "wasapi-loopback";
 const DEVICE_WATCH_THREAD_NAME: &str = "wasapi-device-watch";
@@ -94,18 +95,18 @@ fn device_name(device: &IMMDevice) -> Result<String, CaptureError> {
     }
 }
 
-fn collect_output_devices() -> Result<Vec<OutputDeviceInfo>, CaptureError> {
+fn collect_devices(flow: EDataFlow) -> Result<Vec<AudioDeviceInfo>, CaptureError> {
     let _com = ComGuard::enter()?;
     let devices = unsafe {
         enumerator()?
-            .EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+            .EnumAudioEndpoints(flow, DEVICE_STATE_ACTIVE)
             .map_err(backend_error)?
     };
     let count = unsafe { devices.GetCount().map_err(backend_error)? };
     let mut out = Vec::with_capacity(count as usize);
     for index in 0..count {
         let device = unsafe { devices.Item(index).map_err(backend_error)? };
-        out.push(OutputDeviceInfo {
+        out.push(AudioDeviceInfo {
             uid: device_id(&device)?,
             name: device_name(&device)?,
         });
@@ -113,11 +114,19 @@ fn collect_output_devices() -> Result<Vec<OutputDeviceInfo>, CaptureError> {
     Ok(out)
 }
 
-pub fn list_output_devices() -> Vec<OutputDeviceInfo> {
-    match collect_output_devices() {
+pub fn list_output_devices() -> Vec<AudioDeviceInfo> {
+    list_devices(eRender)
+}
+
+pub fn list_input_devices() -> Vec<AudioDeviceInfo> {
+    list_devices(eCapture)
+}
+
+fn list_devices(flow: EDataFlow) -> Vec<AudioDeviceInfo> {
+    match collect_devices(flow) {
         Ok(devices) => devices,
         Err(e) => {
-            eprintln!("список устройств вывода недоступен: {e}");
+            eprintln!("список аудиоустройств недоступен: {e}");
             Vec::new()
         }
     }
@@ -286,11 +295,21 @@ pub fn open_system(output_device_uid: Option<&str>) -> Result<(Source, StreamSpe
     Ok((source, format.spec()))
 }
 
-pub fn open_microphone() -> Result<(Source, StreamSpec), CaptureError> {
+pub fn open_microphone(input_device_uid: Option<&str>) -> Result<(Source, StreamSpec), CaptureError> {
     let _com = ComGuard::enter()?;
     let enumerator = enumerator()?;
-    let device = unsafe { enumerator.GetDefaultAudioEndpoint(eCapture, eConsole) }
-        .map_err(backend_error)?;
+    // Never silently replace an explicitly selected microphone with another one.
+    let device = match input_device_uid {
+        Some(uid) => device_by_id(&enumerator, uid)?,
+        None => unsafe { enumerator.GetDefaultAudioEndpoint(eCapture, eConsole) }
+            .map_err(backend_error)?,
+    };
+    let endpoint: IMMEndpoint = device.cast().map_err(backend_error)?;
+    if unsafe { endpoint.GetDataFlow() }.map_err(backend_error)? != eCapture
+        || unsafe { device.GetState() }.map_err(backend_error)? != DEVICE_STATE_ACTIVE
+    {
+        return Err(CaptureError::Backend("Выбранный микрофон недоступен".into()));
+    }
     let source = Source {
         device_id: device_id(&device)?,
         loopback: false,

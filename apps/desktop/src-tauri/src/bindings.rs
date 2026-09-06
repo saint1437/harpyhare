@@ -32,6 +32,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             storage::read_context_pdf_bytes,
             recording::retry_transcription,
             recording::list_audio_output_devices,
+            recording::list_audio_input_devices,
             preferences::get_settings,
             preferences::set_settings,
             preferences::get_official_presets,

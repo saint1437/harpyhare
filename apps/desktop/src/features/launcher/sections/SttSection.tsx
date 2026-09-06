@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { SelectItem } from "@/components/ui/select";
 import { SETTINGS_LIMITS } from "@/ipc/bindings";
-import { listAudioOutputDevices } from "@/ipc/commands";
-import type { AudioOutputDevice } from "@/ipc/types";
+import { listAudioInputDevices, listAudioOutputDevices } from "@/ipc/commands";
+import type { AudioDevice } from "@/ipc/types";
 import { queryKeys } from "@/lib/query-client";
 import { STT_PROVIDERS, sttProviderSupportsTranslate } from "@/lib/stt-providers";
 import type { SectionProps } from "../contract";
@@ -26,34 +26,47 @@ const BUFFER_SECONDS_STEP = 1;
 
 const AUDIO_DEVICES_STALE_MS = 30 * 1000;
 
-function useAudioOutputDevices(): AudioOutputDevice[] {
-  const { data } = useQuery({
-    queryKey: queryKeys.audioDevices,
-    queryFn: listAudioOutputDevices,
-    staleTime: AUDIO_DEVICES_STALE_MS,
-  });
-  return data ?? [];
-}
-
-function withSavedDevice(devices: AudioOutputDevice[], savedUid: string): AudioOutputDevice[] {
+function withSavedDevice(devices: AudioDevice[], savedUid: string): AudioDevice[] {
   if (savedUid === "" || devices.some((d) => d.uid === savedUid)) return devices;
   return [...devices, { uid: savedUid, name: CAPTURE_DEVICE_MISSING_LABEL }];
 }
 
-function CaptureDeviceRow({ draft, set }: SectionProps) {
-  const devices = withSavedDevice(useAudioOutputDevices(), draft.capture_device_uid);
+function CaptureDeviceRow({
+  draft,
+  set,
+  microphone = false,
+}: SectionProps & { microphone?: boolean }) {
+  const field = microphone ? "microphone_device_uid" : "capture_device_uid";
+  const label = microphone ? "Микрофон для захвата" : "Устройство захвата";
+  const { data, isError } = useQuery({
+    queryKey: microphone ? queryKeys.audioInputDevices : queryKeys.audioDevices,
+    queryFn: microphone ? listAudioInputDevices : listAudioOutputDevices,
+    staleTime: AUDIO_DEVICES_STALE_MS,
+    refetchOnWindowFocus: true,
+  });
+  const devices = withSavedDevice(data ?? [], draft[field]);
+  const hint = microphone
+    ? "Запись хоткеем «Записать микрофон». Выбор применяется к следующей записи."
+    : "Звук снимается с того выхода, который слышите вы.";
   return (
-    <SettingRow label="Устройство захвата" hint="Звук снимается с того выхода, который слышите вы.">
+    <SettingRow
+      label={label}
+      hint={
+        isError
+          ? "Не удалось загрузить устройства. Проверьте подключение и откройте настройки снова."
+          : hint
+      }
+    >
       <SettingSelect
-        ariaLabel="Устройство захвата"
-        value={
-          draft.capture_device_uid === "" ? CAPTURE_DEVICE_SYSTEM_DEFAULT : draft.capture_device_uid
-        }
+        ariaLabel={label}
+        value={draft[field] === "" ? CAPTURE_DEVICE_SYSTEM_DEFAULT : draft[field]}
         onValueChange={(v) => {
-          set("capture_device_uid", v === CAPTURE_DEVICE_SYSTEM_DEFAULT ? "" : v);
+          set(field, v === CAPTURE_DEVICE_SYSTEM_DEFAULT ? "" : v);
         }}
       >
-        <SelectItem value={CAPTURE_DEVICE_SYSTEM_DEFAULT}>Системный вывод</SelectItem>
+        <SelectItem value={CAPTURE_DEVICE_SYSTEM_DEFAULT}>
+          {microphone ? "Микрофон по умолчанию" : "Системный вывод"}
+        </SelectItem>
         {devices.map((d) => (
           <SelectItem key={d.uid} value={d.uid}>
             {d.name}
@@ -73,6 +86,7 @@ export function SttSection({ draft, set }: SectionProps) {
       description="Что именно слушает приложение и на каком языке расшифровывает."
     >
       <CaptureDeviceRow draft={draft} set={set} />
+      <CaptureDeviceRow draft={draft} set={set} microphone />
       <SettingRow
         label="Провайдер распознавания"
         hint="OpenAI точнее удерживает английские термины в русской речи."
@@ -131,7 +145,10 @@ export function SttSection({ draft, set }: SectionProps) {
           }}
         />
       </SettingRow>
-      <SettingRow label="Фоновый буфер" hint="Подхватывает сказанное за секунды до нажатия записи.">
+      <SettingRow
+        label="Фоновый буфер"
+        hint="Только системный звук: подхватывает сказанное до нажатия записи."
+      >
         <SettingSwitch
           ariaLabel="Фоновый буфер"
           checked={draft.buffer_enabled}

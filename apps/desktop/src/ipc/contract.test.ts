@@ -10,7 +10,7 @@ import type { PromptPreset } from "@/lib/presets";
 import type * as Rust from "./bindings";
 import type {
   HotkeyBinding,
-  AudioOutputDevice,
+  AudioDevice,
   EventMap,
   QuickAction,
   RecorderState,
@@ -34,7 +34,7 @@ type SameShape<Ours, Generated> = [Ours] extends [Generated]
 
 const contract = {
   Settings: true satisfies SameShape<Settings, Rust.Settings>,
-  OutputDeviceInfo: true satisfies SameShape<AudioOutputDevice, Rust.OutputDeviceInfo>,
+  AudioDeviceInfo: true satisfies SameShape<AudioDevice, Rust.AudioDeviceInfo>,
   UpdateInfo: true satisfies SameShape<UpdateInfo, Rust.UpdateInfo>,
   RecorderState: true satisfies SameShape<RecorderState, Rust.RecorderState>,
   PromptPreset: true satisfies SameShape<PromptPreset, Rust.PromptPreset>,

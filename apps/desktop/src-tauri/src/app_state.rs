@@ -113,8 +113,10 @@ pub fn build_capture(settings: &settings::Settings) -> Option<capture::SystemAud
     }
 }
 
-pub fn build_microphone_capture() -> Option<capture::SystemAudioCapture> {
-    match capture::SystemAudioCapture::new_microphone() {
+pub fn build_microphone_capture(settings: &settings::Settings) -> Option<capture::SystemAudioCapture> {
+    let uid = (!settings.microphone_device_uid.is_empty())
+        .then_some(settings.microphone_device_uid.as_str());
+    match capture::SystemAudioCapture::new_microphone(uid) {
         Ok(c) => Some(c),
         Err(e) => {
             eprintln!("захват микрофона недоступен: {e}");
