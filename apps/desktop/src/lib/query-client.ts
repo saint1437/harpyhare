@@ -22,6 +22,7 @@ export const queryKeys = {
   models: ["models"] as const,
   officialPresets: ["official-presets"] as const,
   audioDevices: ["audio-devices"] as const,
+  audioInputDevices: ["audio-input-devices"] as const,
   countTokens: (
     chatId: string,
     model: string,

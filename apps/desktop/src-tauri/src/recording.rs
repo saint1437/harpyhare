@@ -88,7 +88,7 @@ fn ensure_microphone_capture(app: &AppHandle) -> bool {
     if st.microphone_capture.lock().unwrap().is_some() {
         return true;
     }
-    let capture = build_microphone_capture();
+    let capture = build_microphone_capture(&current_settings(app));
     let built = capture.is_some();
     *st.microphone_capture.lock().unwrap() = capture;
     built
@@ -114,6 +114,12 @@ pub fn on_microphone_ptt_pressed(app: &AppHandle) {
 
 fn on_ptt_pressed(app: &AppHandle, source: state::RecordingSource) {
     let st = app.state::<App>();
+    // Reserve the session before opening either device. A second hotkey must
+    // not open a microphone (or rebuild the system capture) during another session.
+    let action = st.recorder.lock().unwrap().on(state::Event::PttPressed);
+    if action != state::Action::StartCapture {
+        return;
+    }
     if source == state::RecordingSource::System
         && st.capture_rebuild_pending.swap(false, Ordering::SeqCst)
     {
@@ -124,6 +130,7 @@ fn on_ptt_pressed(app: &AppHandle, source: state::RecordingSource) {
         state::RecordingSource::Microphone => ensure_microphone_capture(app),
     };
     if !available {
+        st.recorder.lock().unwrap().on(state::Event::Cancel);
         let message = match source {
             state::RecordingSource::System => ERR_NO_CAPTURE.1,
             state::RecordingSource::Microphone => ERR_NO_MICROPHONE,
@@ -131,15 +138,12 @@ fn on_ptt_pressed(app: &AppHandle, source: state::RecordingSource) {
         events::stt_error(app, AppError::new(ERR_NO_CAPTURE.0, message));
         return;
     }
-    let action = st.recorder.lock().unwrap().on(state::Event::PttPressed);
-    if action != state::Action::StartCapture {
-        return;
-    }
     *st.recording_source.lock().unwrap() = Some(source);
     let sink = start_streaming_transcription(app);
     let started = with_capture_mut(&st, source, |c| c.start(Some(sink)))
         .unwrap_or_else(|| Err(capture::CaptureError::Audio(ERR_NO_AUDIO_BUFFER.to_string())));
     if let Err(e) = started {
+        st.microphone_capture.lock().unwrap().take();
         cancel_stt_stream(app);
         events::stt_error(app, AppError::from(&e));
         st.recorder.lock().unwrap().on(state::Event::Cancel);
@@ -220,7 +224,21 @@ fn current_recording_secs(st: &App) -> f32 {
 
 fn stop_capture_discarding(st: &App) {
     if let Some(source) = active_source(st) {
-        let _ = with_capture_mut(st, source, |c| c.stop());
+        let _ = stop_capture(st, source);
+    }
+}
+
+fn stop_capture(
+    st: &App,
+    source: state::RecordingSource,
+) -> Option<Result<Vec<f32>, capture::CaptureError>> {
+    match source {
+        state::RecordingSource::System => with_capture_mut(st, source, |c| c.stop()),
+        // Release the native stream on stop, discard and error. The next PTT
+        // resolves the saved UID (or the current default) anew, without preroll.
+        state::RecordingSource::Microphone => {
+            st.microphone_capture.lock().unwrap().take().map(|mut c| c.stop())
+        }
     }
 }
 
@@ -297,7 +315,7 @@ fn transcribe_recording(app: &AppHandle) {
 fn stop_capture_for_transcription(app: &AppHandle) -> Result<Vec<f32>, AppError> {
     let t = std::time::Instant::now();
     let st = app.state::<App>();
-    let stopped = active_source(&st).and_then(|source| with_capture_mut(&st, source, |c| c.stop()));
+    let stopped = active_source(&st).and_then(|source| stop_capture(&st, source));
     let Some(stopped) = stopped else {
         return Err(AppError::new(ErrorCode::Internal, ERR_NO_AUDIO_BUFFER));
     };
@@ -415,6 +433,12 @@ pub async fn retry_transcription(app: AppHandle) {
 
 #[tauri::command]
 #[specta::specta]
-pub fn list_audio_output_devices() -> Vec<capture::OutputDeviceInfo> {
+pub fn list_audio_output_devices() -> Vec<capture::AudioDeviceInfo> {
     capture::list_output_devices()
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_audio_input_devices() -> Vec<capture::AudioDeviceInfo> {
+    capture::list_input_devices()
 }

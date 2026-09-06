@@ -4,7 +4,7 @@ use cidre::{
     ns, os,
 };
 
-use super::{CallbackCtx, CaptureError, DeviceChangeHandler, OutputDeviceInfo, StreamSpec};
+use super::{AudioDeviceInfo, CallbackCtx, CaptureError, DeviceChangeHandler, StreamSpec};
 
 const OS_STATUS_ILLEGAL_OPERATION: i32 = i32::from_be_bytes(*b"!hog");
 const SAMPLE_BYTES: usize = std::mem::size_of::<f32>();
@@ -47,15 +47,27 @@ fn device_has_output(device: &ca::Device) -> bool {
     device.output_asbd().is_ok()
 }
 
-pub fn list_output_devices() -> Vec<OutputDeviceInfo> {
+fn device_has_input(device: &ca::Device) -> bool {
+    device.input_asbd().is_ok_and(|asbd| asbd.channels_per_frame > 0)
+}
+
+pub fn list_output_devices() -> Vec<AudioDeviceInfo> {
+    list_devices(device_has_output)
+}
+
+pub fn list_input_devices() -> Vec<AudioDeviceInfo> {
+    list_devices(device_has_input)
+}
+
+fn list_devices(has_stream: fn(&ca::Device) -> bool) -> Vec<AudioDeviceInfo> {
     let Ok(devices) = ca::System::devices() else {
         return Vec::new();
     };
     devices
         .iter()
-        .filter(|d| device_has_output(d))
+        .filter(|d| has_stream(d))
         .filter_map(|d| {
-            Some(OutputDeviceInfo {
+            Some(AudioDeviceInfo {
                 uid: d.uid().ok()?.to_string(),
                 name: d.name().ok()?.to_string(),
             })
@@ -135,8 +147,15 @@ pub fn open_system(output_device_uid: Option<&str>) -> Result<(Source, StreamSpe
     Ok((Source::System { tap, device }, spec))
 }
 
-pub fn open_microphone() -> Result<(Source, StreamSpec), CaptureError> {
-    let device = ca::System::default_input_device().map_err(from_os)?;
+pub fn open_microphone(input_device_uid: Option<&str>) -> Result<(Source, StreamSpec), CaptureError> {
+    let device = match input_device_uid {
+        Some(uid) => ca::System::devices()
+            .map_err(from_os)?
+            .into_iter()
+            .find(|d| device_has_input(d) && d.uid().is_ok_and(|u| u.to_string() == uid))
+            .ok_or_else(|| CaptureError::Backend("Выбранный микрофон недоступен".into()))?,
+        None => ca::System::default_input_device().map_err(from_os)?,
+    };
     let spec = stream_spec(&device.input_asbd().map_err(from_os)?)?;
     Ok((Source::Microphone { device }, spec))
 }

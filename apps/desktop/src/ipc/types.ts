@@ -45,6 +45,7 @@ export interface Settings {
   window_height: number;
   resize_step: number;
   capture_device_uid: string;
+  microphone_device_uid: string;
   theme: string;
   scroll_step: number;
   buffer_enabled: boolean;
@@ -60,7 +61,7 @@ export const DEFAULT_SETTINGS: Settings = {
   quick_actions: [...SETTINGS_DEFAULTS.quick_actions],
 };
 
-export interface AudioOutputDevice {
+export interface AudioDevice {
   uid: string;
   name: string;
 }

@@ -20,8 +20,36 @@ fn defaults_match_spec() {
     assert_eq!(s.window_height, 680.0);
     assert_eq!(s.resize_step, 20);
     assert_eq!(s.capture_device_uid, "");
+    assert_eq!(s.microphone_device_uid, "");
     assert!(s.buffer_enabled);
     assert_eq!(s.buffer_seconds, 4);
+}
+
+#[test]
+fn microphone_selection_survives_save_and_reset_without_changing_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    let mut s = Settings {
+        capture_device_uid: "speakers-uid".into(),
+        microphone_device_uid: "usb-microphone-uid".into(),
+        ..Default::default()
+    };
+    s.save(&path).unwrap();
+    let loaded = Settings::load(&path).unwrap();
+    assert_eq!(loaded.capture_device_uid, "speakers-uid");
+    assert_eq!(loaded.microphone_device_uid, "usb-microphone-uid");
+    s.microphone_device_uid.clear();
+    s.save(&path).unwrap();
+    let loaded = Settings::load(&path).unwrap();
+    assert_eq!(loaded.microphone_device_uid, "");
+    assert_eq!(loaded.capture_device_uid, "speakers-uid");
+}
+
+#[test]
+fn old_settings_default_to_system_microphone() {
+    let s: Settings = serde_json::from_str(r#"{"capture_device_uid":"speakers-uid"}"#).unwrap();
+    assert_eq!(s.microphone_device_uid, "");
+    assert_eq!(s.capture_device_uid, "speakers-uid");
 }
 
 #[test]

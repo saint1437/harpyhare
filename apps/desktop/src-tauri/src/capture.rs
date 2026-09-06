@@ -62,6 +62,7 @@ enum Session {
 }
 
 struct Shared {
+    shutdown: AtomicBool,
     recording: AtomicBool,
     buffering: AtomicBool,
     stop_requested: AtomicBool,
@@ -102,13 +103,17 @@ pub struct SystemAudioCapture {
 }
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
-pub struct OutputDeviceInfo {
+pub struct AudioDeviceInfo {
     pub uid: String,
     pub name: String,
 }
 
-pub fn list_output_devices() -> Vec<OutputDeviceInfo> {
+pub fn list_output_devices() -> Vec<AudioDeviceInfo> {
     backend::list_output_devices()
+}
+
+pub fn list_input_devices() -> Vec<AudioDeviceInfo> {
+    backend::list_input_devices()
 }
 
 pub fn watch_default_output_device(on_change: DeviceChangeHandler) {
@@ -121,8 +126,8 @@ impl SystemAudioCapture {
         Self::from_source(source, spec, buffer_secs)
     }
 
-    pub fn new_microphone() -> Result<Self, CaptureError> {
-        let (source, spec) = backend::open_microphone()?;
+    pub fn new_microphone(input_device_uid: Option<&str>) -> Result<Self, CaptureError> {
+        let (source, spec) = backend::open_microphone(input_device_uid)?;
         Self::from_source(source, spec, 0)
     }
 
@@ -135,6 +140,7 @@ impl SystemAudioCapture {
         let ring = HeapRb::<f32>::new(spec.sample_rate as usize * spec.channels * RING_SECONDS);
         let (prod, cons) = ring.split();
         let shared = Arc::new(Shared {
+            shutdown: AtomicBool::new(false),
             recording: AtomicBool::new(false),
             buffering: AtomicBool::new(false),
             stop_requested: AtomicBool::new(false),
@@ -151,6 +157,8 @@ impl SystemAudioCapture {
             prod,
         });
 
+        // Start the backend first: a failed open must not leave an idle consumer behind.
+        let running = backend::start(source, ctx)?;
         {
             let shared = Arc::clone(&shared);
             std::thread::Builder::new()
@@ -158,8 +166,6 @@ impl SystemAudioCapture {
                 .spawn(move || consumer_main(&shared, cons))
                 .map_err(|e| CaptureError::Audio(e.to_string()))?;
         }
-
-        let running = backend::start(source, ctx)?;
 
         Ok(Self {
             shared,
@@ -225,6 +231,16 @@ impl SystemAudioCapture {
     }
 }
 
+impl Drop for SystemAudioCapture {
+    fn drop(&mut self) {
+        let _session = self.shared.session.lock().unwrap();
+        self.shared.shutdown.store(true, Ordering::Release);
+        self.shared.stop_requested.store(true, Ordering::Release);
+        self.shared.buffering.store(false, Ordering::Release);
+        self.shared.cv.notify_all();
+    }
+}
+
 struct Scratch {
     raw: Vec<f32>,
     mono: Vec<f32>,
@@ -242,6 +258,7 @@ impl Scratch {
 }
 
 enum ConsumerWork {
+    Shutdown,
     Session(Option<ChunkSink>),
     Buffering,
 }
@@ -249,6 +266,9 @@ enum ConsumerWork {
 fn wait_for_work(shared: &Shared) -> ConsumerWork {
     let mut s = shared.session.lock().unwrap();
     loop {
+        if shared.shutdown.load(Ordering::Acquire) {
+            return ConsumerWork::Shutdown;
+        }
         if let Session::Start(sink) = &mut *s {
             let sink = sink.take();
             *s = Session::Running;
@@ -265,6 +285,7 @@ fn consumer_main(shared: &Shared, mut ring: HeapCons<f32>) {
     let mut scratch = Scratch::new();
     loop {
         match wait_for_work(shared) {
+            ConsumerWork::Shutdown => return,
             ConsumerWork::Session(sink) => run_ptt_session(shared, &mut ring, &mut scratch, sink),
             ConsumerWork::Buffering => run_buffering(shared, &mut ring, &mut scratch),
         }
@@ -469,3 +490,6 @@ fn run_buffering(shared: &Shared, ring: &mut HeapCons<f32>, scratch: &mut Scratc
         std::thread::sleep(CONSUMER_IDLE_SLEEP);
     }
 }
+
+#[cfg(test)]
+mod tests;
