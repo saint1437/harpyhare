@@ -47,6 +47,10 @@ pub fn apply_content_protection_all(app: &AppHandle, settings: &settings::Settin
     for (_, w) in app.webview_windows() {
         apply_content_protection(&w, settings);
     }
+    if let Err(error) = platform::apply_hud_capture_protection(app, !settings.screen_share_visible)
+    {
+        eprintln!("не удалось обновить native-защиту HUD: {error}");
+    }
 }
 
 pub fn create_launcher_window(
@@ -112,6 +116,11 @@ fn create_main_window(app: &AppHandle, settings: &settings::Settings) -> Result<
         .window_mini
         .store(false, Ordering::SeqCst);
     platform::hide_from_window_switcher(app);
+    if let Err(error) = platform::apply_hud_capture_protection(app, !settings.screen_share_visible)
+    {
+        let _ = w.destroy();
+        return Err(format!("не удалось включить native-защиту HUD: {error}"));
+    }
     platform::clip_native_window_corners(app);
     let _ = w.show();
     let _ = w.set_focus();

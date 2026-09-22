@@ -4,8 +4,8 @@ use tauri::AppHandle;
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Dwm::{
-    DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_WINDOW_CORNER_PREFERENCE,
-    DWMWCP_ROUND, DWMWINDOWATTRIBUTE,
+    DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_DISALLOW_PEEK,
+    DWMWA_EXCLUDED_FROM_PEEK, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DWMWINDOWATTRIBUTE,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -16,11 +16,12 @@ use windows::Win32::UI::Shell::{
     DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass, ShellExecuteW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetAncestor, GetForegroundWindow, GetWindowLongPtrW, SetWindowLongPtrW,
-    SetWindowPos, SetWindowsHookExW, GA_ROOTOWNER, GWL_EXSTYLE, HC_ACTION, KBDLLHOOKSTRUCT,
-    STYLESTRUCT, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
-    SW_SHOWNORMAL, WH_KEYBOARD_LL, WM_KEYDOWN, WM_NCDESTROY, WM_STYLECHANGING, WM_SYSKEYDOWN,
-    WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+    CallNextHookEx, GetAncestor, GetForegroundWindow, GetWindowDisplayAffinity, GetWindowLongPtrW,
+    SetWindowDisplayAffinity, SetWindowLongPtrW, SetWindowPos, SetWindowsHookExW, GA_ROOTOWNER,
+    GWL_EXSTYLE, HC_ACTION, KBDLLHOOKSTRUCT, STYLESTRUCT, SWP_FRAMECHANGED, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_SHOWNORMAL, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
+    WH_KEYBOARD_LL, WM_KEYDOWN, WM_NCDESTROY, WM_STYLECHANGING, WM_SYSKEYDOWN, WS_EX_APPWINDOW,
+    WS_EX_TOOLWINDOW,
 };
 
 use super::{handle_arrow_key, ModifierMask};
@@ -128,6 +129,40 @@ pub fn hide_from_window_switcher(app: &AppHandle) {
             SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
         );
     }
+}
+
+/// Applies the native Windows protections that are not covered by Tauri's
+/// cross-platform `content_protected` flag. The window-switcher protection is
+/// deliberately kept in `hide_from_window_switcher`: tao can rewrite styles
+/// while the HUD changes size, whereas DWM Peek and display affinity are
+/// independent attributes that can be updated here when the user changes the
+/// screen-sharing setting.
+pub fn apply_hud_capture_protection(app: &AppHandle, protect_content: bool) -> Result<(), String> {
+    let Some(w) = main_window(app) else {
+        return Ok(());
+    };
+    let hwnd = w.hwnd().map_err(|e| e.to_string())?;
+
+    let enabled = 1u32;
+    set_dwm_attribute(hwnd, DWMWA_DISALLOW_PEEK, &enabled);
+    set_dwm_attribute(hwnd, DWMWA_EXCLUDED_FROM_PEEK, &enabled);
+
+    let desired_affinity = if protect_content {
+        WDA_EXCLUDEFROMCAPTURE
+    } else {
+        WDA_NONE
+    };
+    unsafe { SetWindowDisplayAffinity(hwnd, desired_affinity) }.map_err(|e| e.to_string())?;
+
+    let mut applied_affinity = 0u32;
+    unsafe { GetWindowDisplayAffinity(hwnd, &mut applied_affinity) }.map_err(|e| e.to_string())?;
+    if applied_affinity != desired_affinity.0 {
+        return Err(format!(
+            "Windows применил display affinity {applied_affinity:#x} вместо {:#x}",
+            desired_affinity.0
+        ));
+    }
+    Ok(())
 }
 
 pub fn clip_native_window_corners(app: &AppHandle) {

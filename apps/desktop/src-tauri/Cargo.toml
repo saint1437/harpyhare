@@ -1,7 +1,7 @@
 [package]
 name = "harpyhare"
 version = "0.18.0"
-description = "Системный звук → STT → Claude (push-to-talk ассистент для macOS и Windows)"
+description = "Системный звук → STT → LLM (голосовой AI-ассистент для macOS и Windows)"
 authors = ["mark"]
 edition = "2021"
 

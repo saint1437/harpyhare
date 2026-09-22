@@ -157,6 +157,10 @@ pub fn hide_from_window_switcher(app: &AppHandle) {
     backend::hide_from_window_switcher(app);
 }
 
+pub fn apply_hud_capture_protection(app: &AppHandle, protect_content: bool) -> Result<(), String> {
+    backend::apply_hud_capture_protection(app, protect_content)
+}
+
 pub fn merge_titlebar_into_content(app: &AppHandle) {
     backend::merge_titlebar_into_content(app);
 }

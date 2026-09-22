@@ -47,6 +47,15 @@ const TITLE_VISIBILITY_HIDDEN: isize = 1;
 /// would need an app-level activation policy — out of scope for the HUD.
 pub fn hide_from_window_switcher(_app: &AppHandle) {}
 
+/// macOS uses Tauri's `content_protected` implementation for this setting;
+/// the Windows DWM-specific HUD protection has no equivalent helper here.
+pub fn apply_hud_capture_protection(
+    _app: &AppHandle,
+    _protect_content: bool,
+) -> Result<(), String> {
+    Ok(())
+}
+
 pub fn merge_titlebar_into_content(app: &AppHandle) {
     use objc2::{msg_send, runtime::AnyObject};
     let Some(w) = launcher_window(app) else {

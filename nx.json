@@ -10,9 +10,18 @@
       "cache": true,
       "outputs": ["{projectRoot}/dist"]
     },
-    "lint": { "cache": true },
-    "typecheck": { "cache": true },
-    "test": { "cache": true },
-    "knip": { "cache": true }
-  }
+    "lint": {
+      "cache": true
+    },
+    "typecheck": {
+      "cache": true
+    },
+    "test": {
+      "cache": true
+    },
+    "knip": {
+      "cache": true
+    }
+  },
+  "analytics": true
 }
