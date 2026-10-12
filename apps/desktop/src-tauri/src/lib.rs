@@ -11,6 +11,7 @@ pub mod diagnostics;
 pub mod error;
 pub mod events;
 pub mod global_shortcuts;
+pub mod health;
 pub mod hotkeys;
 pub mod llm;
 pub mod net;

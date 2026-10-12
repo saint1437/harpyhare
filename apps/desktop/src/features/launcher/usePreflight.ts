@@ -24,7 +24,6 @@ function configuration(settings: Settings, model: string): string {
     settings.groq_api_key,
     settings.deepgram_api_key,
     settings.openrouter_api_key,
-    settings.xclis_api_key,
   ]);
 }
 

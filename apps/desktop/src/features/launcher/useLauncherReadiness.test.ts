@@ -26,6 +26,7 @@ it.each([
       useLauncherReadiness({
         ...DEFAULT_SETTINGS,
         access_token: "test-access",
+        deepgram_api_key: "test-deepgram",
         capture_system_audio: system,
         capture_microphone: microphone,
       }),

@@ -1,6 +1,6 @@
 //! OpenAI-compatible Chat Completions — a dialect, not a vendor.
 //!
-//! Xclis and OpenRouter both speak it, and what they share lives here: the
+//! OpenRouter speaks it, and the shared transport lives here: the
 //! message shape (a leading `system` turn, text and `image_url` blocks), the
 //! chunk parser (`[DONE]`, `choices[0].delta.content`, errors inside a 200
 //! stream) and ONE finish-reason policy. A vendor module keeps only its own
@@ -9,7 +9,10 @@
 
 use serde_json::{json, Value};
 
-use super::{ChatMessage, LlmError, LlmRequest, SseOut, UNKNOWN_API_ERROR};
+use super::{ChatMessage, LlmRequest, SseOut, UNKNOWN_API_ERROR};
+
+#[cfg(test)]
+use super::LlmError;
 
 const DONE_SENTINEL: &str = "[DONE]";
 const ERROR_BODY_CHARS: usize = 500;
@@ -106,6 +109,7 @@ pub(crate) fn finish_out(choice: &Value, label: &str) -> Option<SseOut> {
 
 /// The same verdict for a completion that arrived as plain JSON instead of a
 /// stream (a gateway may ignore `stream: true`).
+#[cfg(test)]
 pub(crate) fn finish_error(choice: &Value, label: &str) -> Result<(), LlmError> {
     match finish_out(choice, label) {
         Some(SseOut::Incomplete(reason)) => Err(LlmError::Incomplete(reason)),

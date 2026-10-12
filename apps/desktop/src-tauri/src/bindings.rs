@@ -22,6 +22,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         .commands(collect_commands![
             crate::diagnostics::get_diagnostics,
             crate::diagnostics::clear_diagnostics,
+            crate::health::check_startup_health,
             crate::preflight::run_preflight,
             crate::preflight::cancel_preflight,
             chat::send_to_claude,

@@ -71,9 +71,7 @@ fn catalog_models_are_tagged_with_their_provider() {
     }
 }
 
-/// Вендор с динамическим каталогом (Xclis) офлайн не обещает ничего и потому
-/// не называет дефолта: пустой каталог обязан идти в паре с пустым дефолтом,
-/// иначе новый чат открылся бы на модели, которой у провайдера нет.
+/// A provider with a dynamic catalogue must not promise an offline default.
 #[test]
 fn every_provider_defaults_to_a_model_it_actually_offers() {
     for p in PROVIDERS {
@@ -123,10 +121,13 @@ fn lookup_finds_declared_providers_and_nothing_else() {
 }
 
 #[test]
-fn anthropic_catalog_matches_what_the_llm_port_hands_out_as_fallback() {
+fn fallback_catalog_matches_every_registry_row() {
     assert_eq!(
         super::super::fallback_models(),
-        catalog_models(PROVIDER_ANTHROPIC)
+        PROVIDERS
+            .iter()
+            .flat_map(|p| p.models())
+            .collect::<Vec<_>>()
     );
 }
 
@@ -199,40 +200,4 @@ fn a_row_needs_nothing_but_data_to_be_well_formed() {
         .families
         .iter()
         .all(|f| GEMINI.catalog.iter().any(|m| m.id.contains(f))));
-}
-
-/// Состав моделей Xclis задаётся группой аккаунта на его стороне и меняется без
-/// нашего участия — проверено двумя ключами с непересекающимися каталогами.
-/// Любая вписанная сюда модель была бы обещанием, которое вендор не давал.
-#[test]
-fn xclis_promises_nothing_offline() {
-    let xclis = PROVIDERS
-        .iter()
-        .find(|p| p.id == xclis::PROVIDER_XCLIS)
-        .expect("строка Xclis в реестре");
-    assert!(
-        xclis.catalog.is_empty(),
-        "каталог Xclis известен только из живого /v1/models"
-    );
-    assert!(
-        xclis.default_model.is_empty(),
-        "дефолт Xclis тоже приходит из живого каталога"
-    );
-}
-
-/// У relay нет роута под Chat Completions Xclis, а у самого диалекта — прокси-
-/// режима: `build_provider` при `proxied: true` пропустил бы вендора у каждого
-/// держателя кода доступа. Перевернуть флаг можно только вместе с диалектом.
-#[test]
-fn the_xclis_dialect_cannot_be_proxied() {
-    for p in PROVIDERS
-        .iter()
-        .filter(|p| matches!(p.wire, LlmWire::Xclis { .. }))
-    {
-        assert!(
-            !p.proxied,
-            "{}: диалект Xclis не умеет ходить через relay",
-            p.id
-        );
-    }
 }

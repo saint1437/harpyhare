@@ -15,7 +15,7 @@ export interface ModelInfo {
 export const DEFAULT_MODEL: string = GENERATED_DEFAULT_MODEL;
 
 /** Aggregators have no offline catalogue; their live lists get a dedicated picker page. */
-export const DYNAMIC_MODEL_PROVIDERS = LLM_PROVIDERS.filter((p) => p.catalog.length === 0);
+export const DYNAMIC_MODEL_PROVIDERS = LLM_PROVIDERS.filter((p) => p.id === "openrouter");
 
 export interface ModelProvider {
   id: string;
@@ -29,13 +29,13 @@ export interface ModelProvider {
 }
 
 /**
- * Derived from the generated registry — never hand-written.
+ * Derived from the generated registry вЂ” never hand-written.
  *
  * A vendor added to `llm/registry.rs` shows up in every picker, with its group
- * heading, its offline catalogue and its «нет ключа» lock, without a line of
+ * heading, its offline catalogue and its В«РЅРµС‚ РєР»СЋС‡Р°В» lock, without a line of
  * TypeScript. The annotation is load-bearing: specta prints the constant `as
  * const`, so `keyId` arrives as a literal type and assigning it to `ApiKeyId`
- * is checked by `tsc` — a row naming a key the app has no field for fails the
+ * is checked by `tsc` вЂ” a row naming a key the app has no field for fails the
  * build here, at the vendor that introduced it.
  */
 export const MODEL_PROVIDERS: readonly ModelProvider[] = LLM_PROVIDERS.map((p) => ({
@@ -64,7 +64,7 @@ export const FALLBACK_MODELS: ModelInfo[] = LLM_PROVIDERS.flatMap((p) =>
 );
 
 /**
- * Models of a provider the backend did not report — it has no credential, so
+ * Models of a provider the backend did not report вЂ” it has no credential, so
  * `list_models` never saw it. They stay in the list on purpose, locked, so the
  * picker answers "can this app talk to that vendor at all?" instead of staying
  * silent.
@@ -129,9 +129,8 @@ export function modelGroups(
 
 const BRAND_PREFIX = /^Claude\s+/i;
 const MODEL_ID_PREFIX = /^claude-/;
-/** `claude-haiku-4-5` и датированный `claude-haiku-4-5-20251001` — обе формы дают «Haiku 4.5». */
-const MODEL_ID_VERSION_SUFFIX = /-(\d+)-(\d+)(?:-\d{8})?$/;
-const VERSION_LABEL = " $1.$2";
+/** `claude-haiku-4-5` Рё РґР°С‚РёСЂРѕРІР°РЅРЅС‹Р№ `claude-haiku-4-5-20251001` вЂ” РѕР±Рµ С„РѕСЂРјС‹ РґР°СЋС‚ В«Haiku 4.5В». */
+const MODEL_ID_VERSION_SUFFIX = /-(\d+)(?:-(\d+)|\.(\d+))(?:-\d{8})?$/;
 
 function capitalizeFirst(s: string): string {
   return s.replace(/^./, (c) => c.toUpperCase());
@@ -139,7 +138,13 @@ function capitalizeFirst(s: string): string {
 
 function labelFromModelId(id: string): string {
   return capitalizeFirst(
-    id.replace(MODEL_ID_PREFIX, "").replace(MODEL_ID_VERSION_SUFFIX, VERSION_LABEL),
+    id
+      .replace(MODEL_ID_PREFIX, "")
+      .replace(
+        MODEL_ID_VERSION_SUFFIX,
+        (_, major: string, minor: string, dottedMinor: string) =>
+          ` ${major}.${dottedMinor || minor}`,
+      ),
   );
 }
 
@@ -150,10 +155,13 @@ export function modelLabel(m: Pick<ModelInfo, "id" | "displayName">): string {
 }
 
 function unlistedModel(id: string): ModelInfo {
+  const provider = id.startsWith("openrouter/")
+    ? "openrouter"
+    : (DYNAMIC_MODEL_PROVIDERS.find((p) => id.startsWith(`${p.id}/`))?.id ?? "");
   return {
     id,
     displayName: id,
-    provider: DYNAMIC_MODEL_PROVIDERS.find((p) => id.startsWith(`${p.id}/`))?.id ?? "",
+    provider,
     adaptive: true,
     alwaysThinks: false,
     codeExec: true,
@@ -163,7 +171,9 @@ function unlistedModel(id: string): ModelInfo {
 /** Show the upstream id under aggregator model names without changing the saved id. */
 export function modelIdHint(model: Pick<ModelInfo, "id" | "provider">): string | undefined {
   const prefix = `${model.provider}/`;
-  return DYNAMIC_MODEL_PROVIDERS.some((p) => p.id === model.provider) && model.id.startsWith(prefix)
+  return (model.provider === "openrouter" ||
+    DYNAMIC_MODEL_PROVIDERS.some((p) => p.id === model.provider)) &&
+    model.id.startsWith(prefix)
     ? model.id.slice(prefix.length)
     : undefined;
 }
@@ -183,7 +193,7 @@ export function thinkingLocked(models: ModelInfo[], currentId: string): boolean 
  *
  * New chats used to open on `DEFAULT_MODEL` unconditionally, which was fine
  * while Claude was the only vendor. With a key for one vendor and not another,
- * that default is a model the account cannot reach — the chat looks ready and
+ * that default is a model the account cannot reach вЂ” the chat looks ready and
  * fails on send. Picks the first catalogue model of the first unlocked vendor,
  * in registry order, and only falls back to `DEFAULT_MODEL` when nothing is
  * unlocked (there is no better answer then, and the picker shows why).
@@ -192,10 +202,10 @@ export function defaultModelFor(
   lockedProviderIds: readonly string[],
   models: ModelInfo[] = [],
 ): string {
-  // Вендор с динамическим каталогом (агрегатор) офлайн не называет дефолта: его
-  // список моделей привязан к ключу и приходит только из живого API. Пока он не
-  // пришёл, открывать на нём чат не на чем — берём следующего, у кого есть что
-  // предложить, иначе чат открылся бы с пустым id модели и падал на отправке.
+  // Р’РµРЅРґРѕСЂ СЃ РґРёРЅР°РјРёС‡РµСЃРєРёРј РєР°С‚Р°Р»РѕРіРѕРј (Р°РіСЂРµРіР°С‚РѕСЂ) РѕС„Р»Р°Р№РЅ РЅРµ РЅР°Р·С‹РІР°РµС‚ РґРµС„РѕР»С‚Р°: РµРіРѕ
+  // СЃРїРёСЃРѕРє РјРѕРґРµР»РµР№ РїСЂРёРІСЏР·Р°РЅ Рє РєР»СЋС‡Сѓ Рё РїСЂРёС…РѕРґРёС‚ С‚РѕР»СЊРєРѕ РёР· Р¶РёРІРѕРіРѕ API. РџРѕРєР° РѕРЅ РЅРµ
+  // РїСЂРёС€С‘Р», РѕС‚РєСЂС‹РІР°С‚СЊ РЅР° РЅС‘Рј С‡Р°С‚ РЅРµ РЅР° С‡РµРј вЂ” Р±РµСЂС‘Рј СЃР»РµРґСѓСЋС‰РµРіРѕ, Сѓ РєРѕРіРѕ РµСЃС‚СЊ С‡С‚Рѕ
+  // РїСЂРµРґР»РѕР¶РёС‚СЊ, РёРЅР°С‡Рµ С‡Р°С‚ РѕС‚РєСЂС‹Р»СЃСЏ Р±С‹ СЃ РїСѓСЃС‚С‹Рј id РјРѕРґРµР»Рё Рё РїР°РґР°Р» РЅР° РѕС‚РїСЂР°РІРєРµ.
   const usable = MODEL_PROVIDERS.find(
     (p) => !lockedProviderIds.includes(p.id) && p.defaultModel !== "",
   );

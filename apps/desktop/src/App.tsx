@@ -39,6 +39,7 @@ import { useRecorder } from "@/hooks/useRecorder";
 import { useRegionScreenshot } from "@/hooks/useRegionScreenshot";
 import { useSendPipeline } from "@/hooks/useSendPipeline";
 import { useSettings } from "@/hooks/useSettings";
+import { useStartupHealth } from "@/hooks/useStartupHealth";
 import { useSttFeedback } from "@/hooks/useSttFeedback";
 import { useSttModels } from "@/hooks/useSttModels";
 import { useTeleprompterSession } from "@/hooks/useTeleprompterSession";
@@ -105,6 +106,7 @@ export default function App() {
   const chats = useChats(newChatModel);
   const chatsRef = useLatestRef(chats);
   const updater = useUpdater();
+  const startupHealth = useStartupHealth(settings, chats.active.model, !settingsLoading);
 
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const sttCatalog = useSttModels(modelMenuOpen);
@@ -442,6 +444,7 @@ export default function App() {
           onStop={leaveToLauncher}
           onCollapse={collapse}
           onOpenUpdate={update.openUpdate}
+          health={startupHealth}
         />
 
         {notesMode ? (

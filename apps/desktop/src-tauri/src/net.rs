@@ -4,7 +4,7 @@
 //! own copy of the same timeouts and keep-alive settings — and each copy was a
 //! place for the two to drift apart. Everything vendor-neutral about a pooled
 //! client lives here; a module adds only what is its own (the LLM read timeout,
-//! the Xclis proxy policy) on top of the builder.
+//! vendor-specific proxy policy) on top of the builder.
 
 use std::time::Duration;
 

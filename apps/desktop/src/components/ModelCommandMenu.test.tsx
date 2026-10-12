@@ -2,12 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { t } from "@/i18n";
 import type { ModelInfo } from "@/lib/models";
-import {
-  PROVIDER_ANTHROPIC,
-  PROVIDER_OPENAI,
-  STT_PROVIDER_GROQ,
-  STT_PROVIDER_OPENAI,
-} from "@/test/providers";
+import { PROVIDER_ANTHROPIC, PROVIDER_OPENAI, STT_PROVIDER_GROQ } from "@/test/providers";
 import { ModelCommandMenu } from "./ModelCommandMenu";
 
 afterEach(() => {
@@ -16,16 +11,16 @@ afterEach(() => {
 
 const models: ModelInfo[] = [
   {
-    id: "claude-opus-5",
-    displayName: "Claude Opus 5",
+    id: "openrouter/anthropic/claude-opus-5.5",
+    displayName: "Claude Opus 5.5",
     provider: PROVIDER_ANTHROPIC,
     adaptive: true,
     alwaysThinks: false,
     codeExec: true,
   },
   {
-    id: "claude-haiku-4-5",
-    displayName: "Claude Haiku 4.5",
+    id: "claude-haiku-5.5",
+    displayName: "Claude Haiku 5.5",
     provider: PROVIDER_ANTHROPIC,
     adaptive: false,
     alwaysThinks: false,
@@ -76,18 +71,7 @@ describe("ModelCommandMenu", () => {
     codeExec: false,
   };
 
-  const textProviders = [
-    { label: "OpenRouter", model: openrouterModel },
-    {
-      label: "Xclis",
-      model: {
-        ...openrouterModel,
-        id: "xclis/gpt-5.6-terra",
-        displayName: "GPT-5.6 Terra",
-        provider: "xclis",
-      },
-    },
-  ];
+  const textProviders = [{ label: "OpenRouter", model: openrouterModel }];
 
   it.each(textProviders)(
     "$label keeps its models in a compact page and selects their namespaced id",
@@ -126,7 +110,7 @@ describe("ModelCommandMenu", () => {
       const props = renderMenu({ models: [...models, ...textProviders.map((p) => p.model)] });
       fireEvent.change(screen.getByRole("combobox"), { target: { value: textModel.id } });
       await waitFor(() => {
-        expect(screen.queryByText("Opus 5")).toBeNull();
+        expect(screen.queryByText("Opus 5.5")).toBeNull();
       });
       fireEvent.click(screen.getByText(textModel.displayName));
       expect(props.onSelectModel).toHaveBeenCalledWith(textModel.id);
@@ -168,7 +152,7 @@ describe("ModelCommandMenu", () => {
     );
     expect(props.onSwitchSttProvider).not.toHaveBeenCalled();
     expect(props.onOpenChange).not.toHaveBeenCalled();
-    expect(screen.queryByText("Opus 5")).toBeNull();
+    expect(screen.queryByText("Opus 5.5")).toBeNull();
     fireEvent.click(screen.getByText("Mistral: Voxtral Mini Transcribe"));
     expect(props.onSelectSttModel).toHaveBeenCalledWith("mistralai/voxtral-mini-transcribe");
     expect(props.onOpenChange).toHaveBeenCalledWith(false);
@@ -178,7 +162,7 @@ describe("ModelCommandMenu", () => {
     const props = renderMenu();
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "mistralai/voxtral" } });
     await waitFor(() => {
-      expect(screen.queryByText("Opus 5")).toBeNull();
+      expect(screen.queryByText("Opus 5.5")).toBeNull();
     });
     fireEvent.click(screen.getByText("Mistral: Voxtral Mini Transcribe"));
     expect(props.onSelectSttModel).toHaveBeenCalledWith("mistralai/voxtral-mini-transcribe");
@@ -196,7 +180,7 @@ describe("ModelCommandMenu", () => {
     fireEvent.click(item);
     expect(props.onSelectSttModel).not.toHaveBeenCalled();
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "Backspace" });
-    expect(screen.getByText("Opus 5")).toBeTruthy();
+    expect(screen.getByText("Opus 5.5")).toBeTruthy();
   });
 
   it("supports keyboard selection inside the catalog", async () => {
@@ -220,28 +204,28 @@ describe("ModelCommandMenu", () => {
     expect(screen.getByText("Модель ответа · Claude")).toBeTruthy();
     expect(screen.getByText("Groq · Whisper")).toBeTruthy();
     expect(screen.getByText("OpenAI · gpt-4o mini")).toBeTruthy();
-    expect(screen.getByText("Opus 5")).toBeTruthy();
-    expect(screen.getByText("Haiku 4.5")).toBeTruthy();
+    expect(screen.getByText("Opus 5.5")).toBeTruthy();
+    expect(screen.getByText("Haiku 5.5")).toBeTruthy();
   });
 
   it("выбор голосовой модели переключает провайдер и закрывает меню", () => {
     const props = renderMenu();
     fireEvent.click(screen.getByText("OpenAI · gpt-4o mini"));
-    expect(props.onSwitchSttProvider).toHaveBeenCalledWith(STT_PROVIDER_OPENAI);
+    expect(props.onSwitchSttProvider).toHaveBeenCalledWith("openai");
     expect(props.onOpenChange).toHaveBeenCalledWith(false);
     expect(props.onSelectModel).not.toHaveBeenCalled();
   });
 
   it("доступная модель идёт без замка", () => {
     renderMenu();
-    const item = screen.getByText("Opus 5").closest("[data-slot=command-item]");
+    const item = screen.getByText("Opus 5.5").closest("[data-slot=command-item]");
     expect(item?.querySelector("svg.lucide-lock")).toBeNull();
   });
 
   it("выбор модели ответа отдаёт id и закрывает меню", () => {
     const props = renderMenu();
-    fireEvent.click(screen.getByText("Opus 5"));
-    expect(props.onSelectModel).toHaveBeenCalledWith("claude-opus-5");
+    fireEvent.click(screen.getByText("Opus 5.5"));
+    expect(props.onSelectModel).toHaveBeenCalledWith("openrouter/anthropic/claude-opus-5.5");
     expect(props.onOpenChange).toHaveBeenCalledWith(false);
     expect(props.onSwitchSttProvider).not.toHaveBeenCalled();
   });
@@ -319,17 +303,17 @@ describe("ModelCommandMenu пока каталог не пришёл", () => {
     // Вшитый список не знает моделей вендора с динамическим каталогом, поэтому
     // выбранная модель попала бы в «Другие» и прыгнула бы в свою группу, когда
     // приедет живой список. Пока данные предварительные — группы не строим.
-    renderMenu({ modelsPending: true, activeModelId: "xclis/claude-sonnet-5" });
+    renderMenu({ modelsPending: true, activeModelId: "openrouter/anthropic/claude-sonnet-5.5" });
     // Неизвестная выбранная модель не выдумывает себе группу «Другие»…
     expect(screen.queryByText("Другие")).toBeNull();
-    expect(screen.getByText("xclis/claude-sonnet-5")).toBeTruthy();
+    expect(screen.getByText("openrouter/anthropic/claude-sonnet-5.5")).toBeTruthy();
     expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
   });
 
   it("уже известные модели остаются доступными, пока каталог грузится", () => {
     // Прятать их ради ещё не пришедшего динамического каталога значит
     // заблокировать заведомо рабочий выбор — ровно это и было регрессией.
-    renderMenu({ modelsPending: true, activeModelId: "xclis/claude-sonnet-5" });
+    renderMenu({ modelsPending: true, activeModelId: "openrouter/anthropic/claude-sonnet-5.5" });
     const known = screen.getByText(/Haiku/).closest("[data-slot='command-item']");
     expect(known?.getAttribute("data-disabled")).not.toBe("true");
   });

@@ -16,6 +16,7 @@ export const {
   getDiagnostics,
   clearDiagnostics,
   cancelStream,
+  checkStartupHealth,
   captureRegionScreenshot,
   collapseMainWindow,
   copyImageToClipboard,

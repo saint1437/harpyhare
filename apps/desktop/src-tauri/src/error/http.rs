@@ -118,7 +118,7 @@ pub fn classify(status: u16, body: &Value, proxy: bool) -> ErrorCode {
 pub struct HttpFailure {
     pub status: u16,
     pub code: ErrorCode,
-    // Internal provider compatibility only (e.g. Xclis catalogue rejections).
+    // Internal provider compatibility only.
     // DiagnosticRecord has no field accepting this untrusted text.
     pub message: String,
 }

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ChatTabs } from "@/components/ChatTabs";
 import { HotkeysPopover } from "@/components/HotkeysPopover";
 import { ModeSwitch } from "@/components/ModeSwitch";
+import { StartupHealthIndicator } from "@/components/StartupHealthIndicator";
 import { StatusBar } from "@/components/StatusBar";
 import { DOCK_BUTTON_CLASS, type ToolbarDockItem } from "@/components/ToolbarDock";
 import { DiagnosticsButton } from "@/features/diagnostics/DiagnosticsPanel";
@@ -42,6 +43,11 @@ export interface AppHeaderProps {
   onStop: () => void;
   onCollapse: () => void;
   onOpenUpdate: () => void;
+  health: {
+    report: import("@/ipc/bindings").StartupHealthReport | null;
+    checking: boolean;
+    retry: () => void;
+  };
 }
 
 /**
@@ -72,6 +78,7 @@ export const AppHeader = memo(function AppHeader({
   onStop,
   onCollapse,
   onOpenUpdate,
+  health,
 }: AppHeaderProps) {
   const { t } = useTranslation();
   const dockItems = useMemo<ToolbarDockItem[]>(
@@ -159,6 +166,7 @@ export const AppHeader = memo(function AppHeader({
     <StatusBar
       state={recorderState}
       dockItems={dockItems}
+      leading={<StartupHealthIndicator {...health} onRetry={health.retry} />}
       modeSwitch={
         <ModeSwitch
           mode={mode}

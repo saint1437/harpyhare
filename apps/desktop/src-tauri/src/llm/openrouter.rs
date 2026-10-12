@@ -24,6 +24,11 @@ const MODEL_PREFIX: &str = "openrouter/";
 const MODELS_PATH: &str = "/v1/models?output_modalities=text";
 const CHAT_PATH: &str = "/v1/chat/completions";
 const MAX_OUTPUT_TOKENS: u32 = 8192;
+const CURATED_MODEL_IDS: [&str; 3] = [
+    "anthropic/claude-haiku-5.5",
+    "anthropic/claude-sonnet-5.5",
+    "anthropic/claude-opus-5.5",
+];
 
 #[derive(Clone)]
 struct CatalogEntry {
@@ -243,12 +248,20 @@ impl LlmProvider for OpenRouterClient {
         let data = value["data"]
             .as_array()
             .ok_or_else(|| LlmError::Api("OpenRouter: invalid model catalogue".into()))?;
-        let mut entries: Vec<_> = data.iter().filter_map(catalog_entry).collect();
+        let mut entries: Vec<_> = data
+            .iter()
+            .filter(|value| {
+                value["id"]
+                    .as_str()
+                    .is_some_and(|id| CURATED_MODEL_IDS.contains(&id))
+            })
+            .filter_map(catalog_entry)
+            .collect();
         entries.sort_by(|a, b| a.info.id.cmp(&b.info.id));
         entries.dedup_by(|a, b| a.info.id == b.info.id);
         if entries.is_empty() {
             return Err(LlmError::Api(
-                "OpenRouter: no text models in catalogue".into(),
+                "OpenRouter: curated Claude models are unavailable".into(),
             ));
         }
         let models = entries.iter().map(|m| m.info.clone()).collect();

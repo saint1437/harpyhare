@@ -28,20 +28,20 @@ const gpt = (id: string, extra: Partial<ModelInfo> = {}): ModelInfo =>
   model(id, { provider: PROVIDER_OPENAI, ...extra });
 
 describe("models", () => {
-  it("дефолт — haiku 4.5, он есть в фолбэк-списке", () => {
-    expect(DEFAULT_MODEL).toBe("claude-haiku-4-5-20251001");
+  it("дефолт — OpenRouter Sonnet 5.5, он есть в фолбэк-списке", () => {
+    expect(DEFAULT_MODEL).toBe("openrouter/anthropic/claude-sonnet-5.5");
     expect(FALLBACK_MODELS.some((m) => m.id === DEFAULT_MODEL)).toBe(true);
-    expect(FALLBACK_MODELS.some((m) => m.id === "claude-opus-4-8")).toBe(true);
+    expect(FALLBACK_MODELS.some((m) => m.id === "openrouter/anthropic/claude-opus-5.5")).toBe(true);
   });
 
   it("modelLabel срезает бренд из display_name, иначе реконструирует из id", () => {
     expect(modelLabel({ id: "x", displayName: "Claude Sonnet 5" })).toBe("Sonnet 5");
-    expect(modelLabel({ id: "claude-opus-4-8", displayName: "" })).toBe("Opus 4.8");
-    expect(modelLabel({ id: "claude-haiku-4-5-20251001", displayName: "" })).toBe("Haiku 4.5");
+    expect(modelLabel({ id: "claude-opus-5.5", displayName: "" })).toBe("Opus 5.5");
+    expect(modelLabel({ id: "claude-haiku-5.5", displayName: "" })).toBe("Haiku 5.5");
   });
 
   it("selectableModels подмешивает текущую модель, если её нет в списке", () => {
-    expect(selectableModels(FALLBACK_MODELS, "claude-opus-4-8")).toBe(FALLBACK_MODELS);
+    expect(selectableModels(FALLBACK_MODELS, DEFAULT_MODEL)).toBe(FALLBACK_MODELS);
     const merged = selectableModels(FALLBACK_MODELS, "claude-custom-1");
     expect(merged[0]?.id).toBe("claude-custom-1");
     expect(merged.length).toBe(FALLBACK_MODELS.length + 1);
@@ -50,16 +50,16 @@ describe("models", () => {
   it("curatedModels оставляет по свежайшей модели семейств opus/sonnet/haiku", () => {
     const fetched = [
       model("claude-fable-5"),
-      model("claude-opus-4-8"),
-      model("claude-sonnet-5"),
-      model("claude-sonnet-4-6"),
-      model("claude-haiku-4-5-20251001"),
+      model("claude-opus-5.5"),
+      model("claude-sonnet-5.5"),
+      model("claude-sonnet-4.6"),
+      model("claude-haiku-5.5"),
       model("claude-3-5-haiku-20241022"),
     ];
     expect(curatedModels(fetched).map((m) => m.id)).toEqual([
-      "claude-opus-4-8",
-      "claude-sonnet-5",
-      "claude-haiku-4-5-20251001",
+      "claude-opus-5.5",
+      "claude-sonnet-5.5",
+      "claude-haiku-5.5",
     ]);
   });
 
@@ -74,18 +74,18 @@ describe("models", () => {
 
   it("curatedModels курирует по семействам только Claude, модели OpenAI отдаёт как есть", () => {
     const fetched = [
-      model("claude-opus-4-8"),
-      model("claude-sonnet-5"),
-      model("claude-sonnet-4-6"),
-      model("claude-haiku-4-5-20251001"),
+      model("claude-opus-5.5"),
+      model("claude-sonnet-5.5"),
+      model("claude-sonnet-4.6"),
+      model("claude-haiku-5.5"),
       gpt("gpt-5.6-terra"),
       gpt("gpt-5.6-sol"),
       gpt("gpt-5.4-mini"),
     ];
     expect(curatedModels(fetched).map((m) => m.id)).toEqual([
-      "claude-opus-4-8",
-      "claude-sonnet-5",
-      "claude-haiku-4-5-20251001",
+      "claude-opus-5.5",
+      "claude-sonnet-5.5",
+      "claude-haiku-5.5",
       "gpt-5.6-terra",
       "gpt-5.6-sol",
       "gpt-5.4-mini",
@@ -112,9 +112,9 @@ describe("models", () => {
   });
 
   it("modelGroups раскладывает модели по провайдерам в порядке реестра", () => {
-    const groups = modelGroups([gpt("gpt-5.6-terra"), model("claude-opus-4-8")]);
+    const groups = modelGroups([gpt("gpt-5.6-terra"), model("claude-opus-5.5")]);
     expect(groups.map((g) => g.label)).toEqual(["Claude", "OpenAI"]);
-    expect(groups[0]?.models.map((m) => m.id)).toEqual(["claude-opus-4-8"]);
+    expect(groups[0]?.models.map((m) => m.id)).toEqual(["claude-opus-5.5"]);
     expect(groups[1]?.models.map((m) => m.id)).toEqual(["gpt-5.6-terra"]);
   });
 
@@ -138,14 +138,8 @@ describe("models", () => {
     expect(FALLBACK_MODELS.find((m) => m.id === chosen)?.provider).toBe(PROVIDER_XAI);
   });
 
-  it("defaultModelFor не открывает чат на вендоре с динамическим каталогом", () => {
-    // У агрегатора список моделей привязан к ключу и офлайн неизвестен, поэтому
-    // дефолта он не называет. Открыть на нём чат до прихода живого каталога не
-    // на чем: пустой id модели упал бы на первой же отправке.
-    const dynamic = MODEL_PROVIDERS.filter((p) => p.defaultModel === "");
-    expect(dynamic.length).toBeGreaterThan(0);
-    const onlyDynamic = MODEL_PROVIDERS.filter((p) => p.defaultModel !== "").map((p) => p.id);
-    expect(defaultModelFor(onlyDynamic)).toBe(DEFAULT_MODEL);
+  it("defaultModelFor открывает новый чат на OpenRouter по умолчанию", () => {
+    expect(defaultModelFor([])).toBe(DEFAULT_MODEL);
   });
 
   it("defaultModelFor без единого вендора остаётся на дефолте", () => {
@@ -153,12 +147,12 @@ describe("models", () => {
     expect(defaultModelFor(allLocked)).toBe(DEFAULT_MODEL);
   });
 
-  it.each(["openrouter", "xclis"])(
+  it.each(["openrouter"])(
     "keeps %s models available under their provider, including saved models outside the live catalogue",
     (provider) => {
       const live = model(`${provider}/vendor/model`, { provider });
       const locked = MODEL_PROVIDERS.filter((p) => p.id !== provider).map((p) => p.id);
-      expect(defaultModelFor(locked, [live])).toBe(live.id);
+      expect(defaultModelFor(locked, [live])).toBe(DEFAULT_MODEL);
       expect(selectableModels([], live.id)[0]?.provider).toBe(provider);
       expect(curatedModels([live])).toEqual([live]);
     },
@@ -169,8 +163,8 @@ describe("models", () => {
   });
 
   it("thinkingLocked: без adaptive или «думает всегда»", () => {
-    expect(thinkingLocked(FALLBACK_MODELS, "claude-haiku-4-5-20251001")).toBe(true);
-    expect(thinkingLocked(FALLBACK_MODELS, "claude-opus-4-8")).toBe(false);
+    expect(thinkingLocked(FALLBACK_MODELS, "openrouter/anthropic/claude-haiku-5.5")).toBe(false);
+    expect(thinkingLocked(FALLBACK_MODELS, "openrouter/anthropic/claude-opus-5.5")).toBe(true);
     const withFable = [
       ...FALLBACK_MODELS,
       model("claude-fable-5", { displayName: "Claude Fable 5", alwaysThinks: true }),

@@ -345,7 +345,7 @@ describe("useChats", () => {
 
   it.each([
     { field: "presetId", initial: "", next: "mypreset" },
-    { field: "model", initial: "claude-haiku-4-5-20251001", next: "claude-opus-4-8" },
+    { field: "model", initial: "openrouter/anthropic/claude-sonnet-5.5", next: "claude-opus-4-8" },
     { field: "thinkingEnabled", initial: false, next: true },
     { field: "webSearch", initial: false, next: true },
     { field: "context", initial: "", next: "резюме кандидата" },

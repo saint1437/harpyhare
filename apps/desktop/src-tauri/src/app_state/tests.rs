@@ -8,6 +8,7 @@ fn settings_with(provider: &str, access_token: &str) -> settings::Settings {
     settings::Settings {
         stt_provider: provider.into(),
         access_token: access_token.into(),
+        deepgram_api_key: "deepgram-key".into(),
         groq_api_key: GROQ_KEY.into(),
         openai_api_key: OPENAI_KEY.into(),
         ..settings::Settings::default()
@@ -53,16 +54,15 @@ fn proxy_openai_keeps_the_vendor_and_only_swaps_key_and_host() {
 }
 
 #[test]
-fn an_unknown_provider_falls_back_to_groq() {
+fn an_unknown_provider_falls_back_to_deepgram() {
     let plan = stt_client_plan(&settings_with("elevenlabs", ""));
-    assert_eq!(plan.provider_id, stt::registry::PROVIDER_GROQ);
-    assert_eq!(plan.api_key, GROQ_KEY);
+    assert_eq!(plan.provider_id, stt::registry::PROVIDER_DEEPGRAM);
+    assert_eq!(plan.api_key, "deepgram-key");
 }
 
 const ANTHROPIC_KEY: &str = "anthropic-key";
 const XAI_KEY: &str = "xai-key";
 const DEEPGRAM_KEY: &str = "deepgram-key";
-const XCLIS_KEY: &str = "xclis-key";
 
 fn keyed_settings(anthropic: &str, openai: &str, access_token: &str) -> settings::Settings {
     settings::Settings {
@@ -129,7 +129,7 @@ fn the_router_is_never_left_without_a_provider() {
     let empty = settings::Settings::default();
     let catalog: llm::ModelCatalog = Arc::new(Mutex::new(Vec::new()));
     let client = build_llm_client(&empty, catalog);
-    assert_eq!(client.provider_id(), llm::PROVIDER_ANTHROPIC);
+    assert_eq!(client.provider_id(), llm::openrouter::PROVIDER_OPENROUTER);
     assert!(
         !client.known_models().is_empty(),
         "без провайдеров дефолтная модель чата стала бы немаршрутизируемой"
@@ -146,7 +146,6 @@ fn all_keys_filled() -> settings::Settings {
         xai_api_key: XAI_KEY.into(),
         deepgram_api_key: DEEPGRAM_KEY.into(),
         openrouter_api_key: "openrouter-key".into(),
-        xclis_api_key: XCLIS_KEY.into(),
         ..settings::Settings::default()
     }
 }

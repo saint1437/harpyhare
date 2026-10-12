@@ -1,10 +1,9 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FALLBACK_MODELS, type ModelInfo } from "@/lib/models";
+import { curatedModels, FALLBACK_MODELS, type ModelInfo, withLockedModels } from "@/lib/models";
 import { PROVIDER_ANTHROPIC } from "@/test/providers";
 
 /** Every vendor the backend did not report is appended locked, whoever they are. */
-const LOCKED_OTHERS = FALLBACK_MODELS.filter((m) => m.provider !== PROVIDER_ANTHROPIC);
 import { createQueryWrapper } from "@/test/query-wrapper";
 
 const listModels = vi.fn<() => Promise<ModelInfo[]>>();
@@ -43,7 +42,7 @@ describe("useModels", () => {
     // содержит моделей вендора с динамическим каталогом.
     expect(result.current.pending).toBe(true);
     await waitFor(() => {
-      expect(result.current.models).toEqual([sonnet, ...LOCKED_OTHERS]);
+      expect(result.current.models).toEqual(curatedModels(withLockedModels([sonnet, fable])));
       expect(result.current.pending).toBe(false);
     });
   });

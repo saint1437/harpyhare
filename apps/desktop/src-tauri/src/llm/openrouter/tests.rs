@@ -24,7 +24,7 @@ fn model(id: &str) -> Value {
 
 fn request() -> LlmRequest {
     LlmRequest {
-        model: "openrouter/vendor/model".into(),
+        model: "openrouter/anthropic/claude-sonnet-5.5".into(),
         system: "Be concise".into(),
         messages: vec![user("Hello")],
         options: RequestOptions {
@@ -55,11 +55,11 @@ async fn live_catalog_filters_modalities_namespaces_and_deduplicates() {
     serve_catalog(
         &server,
         json!([
-            model("vendor/b"),
+            model("anthropic/claude-sonnet-5.5"),
             voice,
             image,
-            model("vendor/a"),
-            model("vendor/a")
+            model("anthropic/claude-haiku-5.5"),
+            model("anthropic/claude-haiku-5.5")
         ]),
     )
     .await;
@@ -67,12 +67,15 @@ async fn live_catalog_filters_modalities_namespaces_and_deduplicates() {
     let models = client.list_models().await.unwrap();
     assert_eq!(
         models.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
-        ["openrouter/vendor/a", "openrouter/vendor/b"]
+        [
+            "openrouter/anthropic/claude-haiku-5.5",
+            "openrouter/anthropic/claude-sonnet-5.5",
+        ]
     );
     assert_eq!(models[0].provider, PROVIDER_OPENROUTER);
     assert!(models[0].adaptive);
     assert!(!models[0].code_exec);
-    assert!(client.owns_model("openrouter/vendor/unlisted"));
+    assert!(client.owns_model("openrouter/anthropic/claude-sonnet-5.5"));
     assert!(!client.owns_model("vendor/a"));
     assert!(client.known_models().is_empty());
 }

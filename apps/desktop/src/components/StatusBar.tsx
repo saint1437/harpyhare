@@ -10,6 +10,7 @@ export interface StatusBarProps {
   modeSwitch: ReactNode;
   tabs: ReactNode;
   dockItems: ToolbarDockItem[];
+  leading?: ReactNode;
 }
 
 function recorderOrb(state: RecorderState): OrbState {
@@ -18,12 +19,13 @@ function recorderOrb(state: RecorderState): OrbState {
   return ORB_STATE_IDLE;
 }
 
-export function StatusBar({ state, modeSwitch, tabs, dockItems }: StatusBarProps) {
+export function StatusBar({ state, modeSwitch, tabs, dockItems, leading }: StatusBarProps) {
   const onDragMouseDown = useWindowDrag();
   const orb = recorderOrb(state);
 
   return (
     <header className="flex min-h-7 items-center gap-2" onMouseDown={onDragMouseDown}>
+      {leading}
       <StatusOrb state={orb} />
       {tabs}
       <span className="min-w-0 flex-1" />

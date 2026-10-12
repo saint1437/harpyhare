@@ -40,9 +40,7 @@ fn efforts(spec: &LlmProviderSpec) -> (&'static str, &'static str) {
             effort_on,
             ..
         } => (effort_off, effort_on),
-        LlmWire::Anthropic { .. } | LlmWire::Xclis { .. } | LlmWire::OpenRouter { .. } => {
-            unreachable!("клиент Responses собран из чужого диалекта")
-        }
+        _ => unreachable!("клиент Responses собран из чужого диалекта"),
     }
 }
 

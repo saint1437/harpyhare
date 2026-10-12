@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use super::{openrouter, xclis, ModelInfo, PROVIDER_ANTHROPIC, PROVIDER_OPENAI, PROVIDER_XAI};
+use super::{openrouter, ModelInfo, PROVIDER_ANTHROPIC, PROVIDER_OPENAI, PROVIDER_XAI};
 
 /// A model the app can name before it holds any credential to verify it with.
 ///
@@ -94,13 +94,6 @@ pub enum LlmWire {
         /// `reasoning.effort` meaning "thinking on".
         effort_on: &'static str,
     },
-    /// OpenAI-совместимый `POST /v1/chat/completions`, а НЕ Responses: диалект
-    /// другой, поэтому и вариант отдельный. Рассуждение здесь кодируется не
-    /// полем, а суффиксом `-thinking` у имени модели.
-    Xclis {
-        base_url: &'static str,
-        key_label: &'static str,
-    },
 }
 
 impl LlmWire {
@@ -108,7 +101,6 @@ impl LlmWire {
         match self {
             LlmWire::Anthropic { base_url, .. }
             | LlmWire::Responses { base_url, .. }
-            | LlmWire::Xclis { base_url, .. }
             | LlmWire::OpenRouter { base_url, .. } => base_url,
         }
     }
@@ -117,46 +109,56 @@ impl LlmWire {
         match self {
             LlmWire::Anthropic { key_label, .. }
             | LlmWire::Responses { key_label, .. }
-            | LlmWire::Xclis { key_label, .. }
             | LlmWire::OpenRouter { key_label, .. } => key_label,
         }
     }
 }
 
-/// **Пусто намеренно, и это не заготовка.** Xclis — агрегатор: состав моделей
-/// задаётся группой аккаунта на его стороне и меняется без нашего участия.
-/// Проверено живьём двумя ключами: у одного каталог был целиком GPT, Grok и
-/// deepseek, у другого — целиком Claude, без единого пересечения. Публичной
-/// документации со списком у вендора нет, только «OpenAI API compatible».
-///
-/// Поэтому единственный честный офлайн-ответ про Xclis — «пока не знаю»:
-/// `models()` подмешивает вшитый каталог ТОЛЬКО для вендоров, которых бэкенд
-/// не отдал, так что живой `/v1/models` замещает эту пустоту целиком. Вписать
-/// сюда любую модель значит обещать то, чего у конкретной группы может не быть,
-/// — ровно так дефолт `claude-sonnet-5` и оказался несуществующим.
-const XCLIS_MODELS: &[CatalogModel] = &[];
-
 const CLAUDE_MODELS: &[CatalogModel] = &[
     CatalogModel {
-        id: "claude-opus-4-8",
-        display_name: "Claude Opus 4.8",
+        id: "claude-opus-5.5",
+        display_name: "Claude Opus 5.5",
+        adaptive: true,
+        always_thinks: true,
+        code_exec: true,
+    },
+    CatalogModel {
+        id: "claude-sonnet-5.5",
+        display_name: "Claude Sonnet 5.5",
+        adaptive: true,
+        always_thinks: true,
+        code_exec: true,
+    },
+    CatalogModel {
+        id: "claude-haiku-5.5",
+        display_name: "Claude Haiku 5.5",
         adaptive: true,
         always_thinks: false,
         code_exec: true,
     },
+];
+
+const OPENROUTER_CLAUDE_MODELS: &[CatalogModel] = &[
     CatalogModel {
-        id: "claude-sonnet-5",
-        display_name: "Claude Sonnet 5",
+        id: "openrouter/anthropic/claude-opus-5.5",
+        display_name: "Claude Opus 5.5",
         adaptive: true,
-        always_thinks: false,
+        always_thinks: true,
         code_exec: true,
     },
     CatalogModel {
-        id: super::DEFAULT_MODEL,
-        display_name: "Claude Haiku 4.5",
-        adaptive: false,
+        id: "openrouter/anthropic/claude-sonnet-5.5",
+        display_name: "Claude Sonnet 5.5",
+        adaptive: true,
+        always_thinks: true,
+        code_exec: true,
+    },
+    CatalogModel {
+        id: "openrouter/anthropic/claude-haiku-5.5",
+        display_name: "Claude Haiku 5.5",
+        adaptive: true,
         always_thinks: false,
-        code_exec: false,
+        code_exec: true,
     },
 ];
 
@@ -235,12 +237,25 @@ const GROK_MODELS: &[CatalogModel] = &[
 /// entry is the router's default for a model nobody claims.
 pub const PROVIDERS: &[LlmProviderSpec] = &[
     LlmProviderSpec {
+        id: openrouter::PROVIDER_OPENROUTER,
+        label: "OpenRouter",
+        key_id: "openrouter",
+        families: &[],
+        catalog: OPENROUTER_CLAUDE_MODELS,
+        default_model: super::DEFAULT_MODEL,
+        proxied: false,
+        wire: LlmWire::OpenRouter {
+            base_url: "https://openrouter.ai/api",
+            key_label: "OpenRouter",
+        },
+    },
+    LlmProviderSpec {
         id: PROVIDER_ANTHROPIC,
         label: "Claude",
         key_id: "anthropic",
         families: &["opus", "sonnet", "haiku"],
         catalog: CLAUDE_MODELS,
-        default_model: super::DEFAULT_MODEL,
+        default_model: "claude-haiku-5.5",
         proxied: true,
         wire: LlmWire::Anthropic {
             base_url: "https://api.anthropic.com",
@@ -284,37 +299,6 @@ pub const PROVIDERS: &[LlmProviderSpec] = &[
             effort_on: "high",
         },
     },
-    // Агрегатор чужих моделей под своим ключом. `proxied: false` — у relay нет
-    // его роута, поэтому код доступа его не открывает; у диалекта Xclis нет и
-    // прокси-режима вовсе, что закреплено тестом `the_xclis_dialect_cannot_be_proxied`.
-    LlmProviderSpec {
-        id: xclis::PROVIDER_XCLIS,
-        label: "Xclis",
-        key_id: "xclis",
-        families: &[],
-        catalog: XCLIS_MODELS,
-        // Обещать нечего, пока не пришёл живой каталог: см. XCLIS_MODELS.
-        default_model: "",
-        proxied: false,
-        wire: LlmWire::Xclis {
-            base_url: "https://jp.xclis.ai",
-            key_label: "Xclis",
-        },
-    },
-    LlmProviderSpec {
-        id: openrouter::PROVIDER_OPENROUTER,
-        label: "OpenRouter",
-        key_id: "openrouter",
-        families: &[],
-        // The live catalogue is authoritative; do not promise offline models.
-        catalog: &[],
-        default_model: "",
-        proxied: false,
-        wire: LlmWire::OpenRouter {
-            base_url: "https://openrouter.ai/api",
-            key_label: "OpenRouter",
-        },
-    },
 ];
 
 pub fn spec(provider_id: &str) -> Option<&'static LlmProviderSpec> {
@@ -322,7 +306,7 @@ pub fn spec(provider_id: &str) -> Option<&'static LlmProviderSpec> {
 }
 
 /// Separates a vendor namespace from the upstream id in aggregator model ids
-/// (`xclis/claude-opus-4-6`, `openrouter/openai/gpt-4o-mini`).
+/// (`openrouter/anthropic/claude-sonnet-5.5`).
 const NAMESPACE_SEPARATOR: char = '/';
 
 /// The vendor whose namespace prefixes `model_id` — the one offline fact about

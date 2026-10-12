@@ -270,22 +270,6 @@ fn build_provider(
                 Arc::new(llm::responses::ResponsesClient::direct(spec, api_key))
             }
         },
-        // У диалекта Xclis прокси-режима нет (строка несёт `proxied: false`,
-        // и тест реестра это держит). Строка с перевёрнутым флагом раньше
-        // роняла `setup_app` паникой у каждого держателя кода — теперь вендор
-        // просто пропускается с записью в stderr.
-        llm::registry::LlmWire::Xclis { .. } => match access {
-            ProviderAccess::Direct { api_key } => Arc::new(
-                llm::xclis::XclisClient::new(spec, api_key).with_catalog(Arc::clone(catalog)),
-            ),
-            ProviderAccess::Proxied { .. } => {
-                eprintln!(
-                    "{}: диалект Xclis не ходит через relay — вендор пропущен",
-                    spec.id
-                );
-                return None;
-            }
-        },
     })
 }
 
@@ -305,9 +289,12 @@ pub fn build_llm_client(
         })
         .collect();
     if providers.is_empty() {
-        let fallback = llm::AnthropicClient::new(s.anthropic_api_key.clone())
-            .with_catalog(Arc::clone(&catalog));
-        providers.push(Arc::new(fallback));
+        let spec = llm::registry::spec(llm::openrouter::PROVIDER_OPENROUTER)
+            .expect("OpenRouter registry row");
+        providers.push(Arc::new(llm::openrouter::OpenRouterClient::new(
+            spec,
+            s.openrouter_api_key.clone(),
+        )));
     }
     Arc::new(llm::router::ProviderRouter::new(providers, catalog))
 }

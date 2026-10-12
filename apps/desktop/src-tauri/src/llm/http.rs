@@ -105,8 +105,7 @@ impl LlmHttp {
     }
 
     /// The same pool under another credential — for a vendor whose endpoints
-    /// authenticate differently (Xclis: bearer for chat, `x-api-key` for the
-    /// Anthropic-shaped catalogue and token counter).
+    /// authenticate differently across vendors.
     pub fn with_credential(mut self, credential: Credential) -> Self {
         self.credential = credential;
         self

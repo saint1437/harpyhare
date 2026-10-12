@@ -8,7 +8,7 @@ struct StubProvider {
     models: Vec<ModelInfo>,
     live: bool,
     hang_reachable: bool,
-    /// Неймспейс, который стаб считает своим без каталога (как `xclis/`).
+    /// Неймспейс, который стаб считает своим без каталога.
     namespace: Option<&'static str>,
     streamed: Mutex<Vec<String>>,
 }
@@ -273,7 +273,7 @@ async fn a_hanging_provider_does_not_block_reachability_of_the_others() {
 #[tokio::test]
 async fn a_namespaced_model_reaches_its_owner_before_any_catalog_arrives() {
     let anthropic = StubProvider::new(PROVIDER_ANTHROPIC, &["claude-sonnet-5"], true);
-    let aggregator = StubProvider::namespaced("xclis", "xclis/");
+    let aggregator = StubProvider::namespaced("openrouter", "openrouter/");
     let catalog: ModelCatalog = Arc::new(Mutex::new(Vec::new()));
     let router = ProviderRouter::new(
         vec![Arc::clone(&anthropic) as _, Arc::clone(&aggregator) as _],
@@ -282,14 +282,17 @@ async fn a_namespaced_model_reaches_its_owner_before_any_catalog_arrives() {
 
     router
         .stream(
-            request("xclis/claude-opus-4-6"),
+            request("openrouter/anthropic/claude-opus-5.5"),
             CancellationToken::new(),
             &mut NoopSink,
         )
         .await
         .unwrap();
 
-    assert_eq!(aggregator.calls(), vec!["xclis/claude-opus-4-6"]);
+    assert_eq!(
+        aggregator.calls(),
+        vec!["openrouter/anthropic/claude-opus-5.5"]
+    );
     assert!(anthropic.calls().is_empty());
 }
 

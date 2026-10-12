@@ -9,7 +9,7 @@ Built with Tauri 2, Rust, React 19, TypeScript, Vite, and Nx.
 - System audio and microphone capture with independently selectable devices
 - Speech-to-text via Deepgram, Groq Whisper, OpenAI, or OpenRouter
 - Dynamic OpenRouter STT model catalog with searchable model selection
-- Streaming answers from Anthropic, OpenAI, xAI, Xclis, or OpenRouter
+- Streaming answers from OpenRouter, Anthropic, OpenAI, or xAI
 - Dynamic OpenRouter text model catalog with searchable model selection
 - Context library and reusable presets
 - Screenshot attachments

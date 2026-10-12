@@ -184,7 +184,6 @@ export const en: Dictionary = {
       xai: "Grok answers",
       deepgram: "real-time speech recognition",
       openrouter: "speech recognition and answers via OpenRouter",
-      xclis: "answers via the Xclis aggregator",
     },
     keyLabel: "{{name}} key",
     keyHint: "Needed for {{purpose}}.",
@@ -380,6 +379,12 @@ export const en: Dictionary = {
       title: "Waiting for an internet connection",
       hint: "The app needs internet. Check the network or VPN — this screen goes away by itself.",
       retry: "Check again",
+    },
+    health: {
+      checking: "Checking provider availability",
+      unknown: "Availability has not been checked",
+      attention: "A provider needs attention",
+      ready: "Providers are available",
     },
     quickActions: "Quick actions",
     notes: {

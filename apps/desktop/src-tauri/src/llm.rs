@@ -16,7 +16,7 @@ use tokio_util::sync::CancellationToken;
 use http::{Credential, LlmHttp};
 
 /// The OpenAI Chat Completions dialect: message shape, chunk parser and the
-/// finish-reason policy shared by Xclis and OpenRouter.
+/// finish-reason policy used by OpenRouter.
 pub mod chat_completions;
 /// Transport shared by every vendor: pool, auth, status mapping, SSE pumping.
 pub mod http;
@@ -28,16 +28,13 @@ pub mod registry;
 pub mod responses;
 /// Dispatches each request to the vendor that owns the requested model.
 pub mod router;
-/// OpenAI-compatible Chat Completions as spoken by the Xclis aggregator.
-pub mod xclis;
-
 pub const PROVIDER_ANTHROPIC: &str = "anthropic";
 pub const PROVIDER_OPENAI: &str = "openai";
 pub const PROVIDER_XAI: &str = "xai";
 
 /// New chats start here. Paired with `DEFAULT_MODEL` in `lib/chats.ts`,
 /// which reads it out of the generated registry rather than repeating it.
-pub const DEFAULT_MODEL: &str = "claude-haiku-4-5-20251001";
+pub const DEFAULT_MODEL: &str = "openrouter/anthropic/claude-sonnet-5.5";
 
 const ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com";
 const MESSAGES_PATH: &str = "/v1/messages";
@@ -65,8 +62,8 @@ const HAIKU_PREFIX: &str = "claude-haiku";
 const ALWAYS_THINKING_PREFIXES: [&str; 2] = ["claude-fable", "claude-mythos"];
 
 /// Idle-таймаут чтения стрима — между двумя чанками, а не на весь ответ.
-/// Модели с длинным молчаливым рассуждением (gpt-5.5-pro, часть моделей
-/// Xclis) думают дольше минуты, не присылая ни байта; прежние 60 с роняли
+/// Модели с длинным молчаливым рассуждением (gpt-5.5-pro и часть Claude)
+/// думают дольше минуты, не присылая ни байта; прежние 60 с роняли
 /// такой ответ в «Нет соединения». Мёртвое соединение ловит не он, а
 /// http2 keep-alive (интервал + таймаут ниже).
 pub(crate) const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
@@ -193,9 +190,8 @@ pub trait LlmProvider: Send + Sync {
     fn provider_id(&self) -> &'static str;
     fn known_models(&self) -> Vec<ModelInfo>;
     /// Берётся ли вендор за модель, которой нет ни в живом каталоге, ни в его
-    /// офлайн-таблице. По умолчанию — только за известные; агрегатор со своим
-    /// неймспейсом (`xclis/…`) отвечает по префиксу, иначе после холодного
-    /// старта его модели уезжали бы к первому вендору роутера.
+    /// OpenRouter со своим неймспейсом (`openrouter/…`) отвечает по префиксу,
+    /// иначе после холодного старта его модели уезжали бы к первому вендору.
     fn owns_model(&self, model_id: &str) -> bool {
         self.known_models().iter().any(|m| m.id == model_id)
     }
@@ -263,7 +259,10 @@ fn model_info_from_json(v: &Value) -> Option<ModelInfo> {
 }
 
 pub fn fallback_models() -> Vec<ModelInfo> {
-    registry::catalog_models(PROVIDER_ANTHROPIC)
+    registry::PROVIDERS
+        .iter()
+        .flat_map(|provider| provider.models())
+        .collect()
 }
 
 pub fn thinking_value(info: Option<&ModelInfo>, model_id: &str, requested: bool) -> Option<Value> {
@@ -305,7 +304,7 @@ pub fn web_search_value(
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct HttpClientOptions {
     pub read_timeout: Duration,
-    /// Ходить ли через системный прокси. Xclis намеренно идёт мимо него.
+    /// Ходить ли через системный прокси.
     pub system_proxy: bool,
 }
 

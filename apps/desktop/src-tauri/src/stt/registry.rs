@@ -169,6 +169,25 @@ pub const DEFAULT_OPENROUTER_MODEL: &str = "openai/gpt-4o-mini-transcribe";
 /// Order is UI order, and the first row is the default: an unknown value in
 /// `Settings.stt_provider` resolves to it rather than failing.
 pub const PROVIDERS: &[SttProviderSpec] = &[
+    // Deepgram is the default for new installations: it is the only streaming
+    // engine and starts transcribing while the record key is still held.
+    SttProviderSpec {
+        id: PROVIDER_DEEPGRAM,
+        label: "Deepgram · Nova-3",
+        key_id: "deepgram",
+        proxied: false,
+        supports_translate: false,
+        keyterms: SttKeyterms::Repeated {
+            field: "keyterm",
+            max: 50,
+        },
+        key_label: "Deepgram",
+        wire: SttWire::Deepgram {
+            base_url: "https://api.eu.deepgram.com",
+            listen_path: "/v1/listen",
+            warm_up_path: "/v1/projects",
+        },
+    },
     SttProviderSpec {
         id: PROVIDER_GROQ,
         label: "Groq · Whisper",
@@ -239,33 +258,6 @@ pub const PROVIDERS: &[SttProviderSpec] = &[
             base_url: "https://api.x.ai",
             path: "/v1/stt",
             warm_up_path: "/v1/models",
-        },
-    },
-    // Единственный вендор, который слышит речь ПОКА её говорят: аудио уходит
-    // по WebSocket во время удержания клавиши, а не батчем после отпускания.
-    // Перевода не предлагает; `proxied: false` — у relay нет его роута, поэтому
-    // под кодом доступа он берёт личный ключ.
-    SttProviderSpec {
-        id: PROVIDER_DEEPGRAM,
-        label: "Deepgram · Nova-3",
-        key_id: "deepgram",
-        proxied: false,
-        supports_translate: false,
-        // Keyterm Prompting у Nova-3: повторяющийся `keyterm=` в query.
-        // Настоящий предел вендора — 500 ТОКЕНОВ на все термины разом, а не их
-        // число, посчитать его на клиенте нечем. Берём документированный потолок
-        // рекомендации (20–50 терминов): он заведомо внутри лимита.
-        keyterms: SttKeyterms::Repeated {
-            field: "keyterm",
-            max: 50,
-        },
-        key_label: "Deepgram",
-        wire: SttWire::Deepgram {
-            // Европейский хост выбран намеренно: у Deepgram он отдельный, и
-            // общий api.deepgram.com на европейский ключ отвечает 401.
-            base_url: "https://api.eu.deepgram.com",
-            listen_path: "/v1/listen",
-            warm_up_path: "/v1/projects",
         },
     },
     // The same model as our direct OpenAI row, with OpenRouter billing/auth.

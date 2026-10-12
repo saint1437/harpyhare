@@ -31,7 +31,6 @@ const KEY_PLACEHOLDERS: Record<ApiKeyId, string> = {
   xai: "xai-…",
   deepgram: "…",
   openrouter: "sk-or-v1-…",
-  xclis: "sk-…",
 };
 
 const VENDOR_LIST_SEPARATOR = ", ";

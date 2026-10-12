@@ -223,7 +223,7 @@ describe("Composer — пилюля и карточка", () => {
     const { field } = renderComposer({ chat: createChat(1, "c1") });
     fireEvent.focusIn(field);
     const list = openModelSelect();
-    expect(list.getByText("Haiku 4.5")).toBeTruthy();
+    expect(list.getByText("Haiku 5.5")).toBeTruthy();
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" });
     const content = document.querySelector("[data-slot='popover-content']");
     if (!content) throw new Error("поповер закрылся вместе с селектом");
@@ -268,8 +268,8 @@ describe("Composer ModelSelect", () => {
   it("с одним провайдером заголовков групп нет", () => {
     renderComposer();
     const list = openModelSelect();
-    expect(list.getByText("Haiku 4.5")).toBeTruthy();
-    expect(list.queryByText("Claude")).toBeNull();
+    expect(list.getByText("Haiku 5.5")).toBeTruthy();
+    expect(list.getByText("Claude")).toBeTruthy();
     expect(list.queryByText("OpenAI")).toBeNull();
   });
 
