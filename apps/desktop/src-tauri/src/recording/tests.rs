@@ -118,29 +118,83 @@ fn dropping_a_transcription_job_cancels_all_of_its_channel_transports() {
 #[test]
 fn toggle_mode_turns_the_second_press_into_a_release_and_ignores_the_key_release() {
     assert!(matches!(
-        record_key_event(true, false, PttEvent::Pressed),
-        Some(PttEvent::Pressed)
+        record_key_event(
+            true,
+            false,
+            PttEvent::Pressed {
+                source: RecordingSource::Default
+            }
+        ),
+        Some(PttEvent::Pressed {
+            source: RecordingSource::Default
+        })
     ));
     assert!(matches!(
-        record_key_event(true, true, PttEvent::Pressed),
-        Some(PttEvent::Released)
+        record_key_event(
+            true,
+            true,
+            PttEvent::Pressed {
+                source: RecordingSource::Default
+            }
+        ),
+        Some(PttEvent::Released {
+            source: RecordingSource::Default
+        })
     ));
-    assert!(record_key_event(true, false, PttEvent::Released).is_none());
-    assert!(record_key_event(true, true, PttEvent::Released).is_none());
+    assert!(record_key_event(
+        true,
+        false,
+        PttEvent::Released {
+            source: RecordingSource::Default
+        }
+    )
+    .is_none());
+    assert!(record_key_event(
+        true,
+        true,
+        PttEvent::Released {
+            source: RecordingSource::Default
+        }
+    )
+    .is_none());
 }
 
 #[test]
 fn hold_mode_keeps_both_phases_of_the_record_key() {
     assert!(matches!(
-        record_key_event(false, false, PttEvent::Pressed),
-        Some(PttEvent::Pressed)
+        record_key_event(
+            false,
+            false,
+            PttEvent::Pressed {
+                source: RecordingSource::Default
+            }
+        ),
+        Some(PttEvent::Pressed {
+            source: RecordingSource::Default
+        })
     ));
     assert!(matches!(
-        record_key_event(false, true, PttEvent::Pressed),
-        Some(PttEvent::Pressed)
+        record_key_event(
+            false,
+            true,
+            PttEvent::Pressed {
+                source: RecordingSource::Default
+            }
+        ),
+        Some(PttEvent::Pressed {
+            source: RecordingSource::Default
+        })
     ));
     assert!(matches!(
-        record_key_event(false, true, PttEvent::Released),
-        Some(PttEvent::Released)
+        record_key_event(
+            false,
+            true,
+            PttEvent::Released {
+                source: RecordingSource::Default
+            }
+        ),
+        Some(PttEvent::Released {
+            source: RecordingSource::Default
+        })
     ));
 }

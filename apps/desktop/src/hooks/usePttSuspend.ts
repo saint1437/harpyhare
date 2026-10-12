@@ -13,9 +13,11 @@ function isTextField(target: EventTarget | null): boolean {
   );
 }
 
-export function usePttSuspend(hotkey: string): void {
+export function usePttSuspend(hotkey: string | readonly string[]): void {
+  const hotkeyKey = (Array.isArray(hotkey) ? hotkey : [hotkey]).join("\u0000");
   useEffect(() => {
-    if (!conflictsWithTyping(hotkey)) return;
+    const hotkeys = hotkeyKey.split("\u0000");
+    if (!hotkeys.some(conflictsWithTyping)) return;
     const suspendOnFieldFocus = (e: FocusEvent) => {
       if (isTextField(e.target)) void setPttSuspended(true);
     };
@@ -30,5 +32,5 @@ export function usePttSuspend(hotkey: string): void {
       document.removeEventListener(FOCUS_OUT_EVENT, resumeOnFieldBlur);
       void setPttSuspended(false);
     };
-  }, [hotkey]);
+  }, [hotkeyKey]);
 }

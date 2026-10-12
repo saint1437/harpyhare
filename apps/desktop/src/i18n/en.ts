@@ -81,6 +81,10 @@ export const en: Dictionary = {
         label: "Record system audio",
         hint: "Press to start recording, press again to stop.",
       },
+      record_microphone: {
+        label: "Record microphone",
+        hint: "Hold while you are talking.",
+      },
       cancel_recording: {
         label: "Cancel recording",
         hint: "Listened for only while recording.",

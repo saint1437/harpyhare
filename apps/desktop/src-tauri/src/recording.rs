@@ -61,6 +61,7 @@ pub use transcription::{RecordedAudio, TranscriptReady};
 /// Owns the microphone only between press and release. The system capture
 /// remains separate because it alone supports optional pre-roll.
 pub struct RecordingSession {
+    source: RecordingSource,
     system: bool,
     microphone: Option<capture::AudioCapture>,
     streams: Vec<(AudioSource, SttStream)>,
@@ -86,11 +87,17 @@ type SttBodyChunk = Result<Vec<u8>, std::io::Error>;
 /// «нажато» — запись стартовала, и отпускать её было некому.
 #[derive(Debug, Clone, Copy)]
 pub enum PttEvent {
-    Pressed,
-    Released,
+    Pressed { source: RecordingSource },
+    Released { source: RecordingSource },
     Cancel,
     StopSession,
     MaxDurationReached { generation: u64 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecordingSource {
+    Default,
+    Microphone,
 }
 
 /// Заводит воркер PTT-событий; зовётся один раз из `setup_app`.
@@ -127,8 +134,14 @@ pub fn enqueue_ptt(app: &AppHandle, event: PttEvent) {
 /// handlers.
 fn record_key_event(toggle: bool, recording: bool, event: PttEvent) -> Option<PttEvent> {
     match event {
-        PttEvent::Pressed if toggle && recording => Some(PttEvent::Released),
-        PttEvent::Released if toggle => None,
+        PttEvent::Pressed {
+            source: RecordingSource::Microphone,
+        }
+        | PttEvent::Released {
+            source: RecordingSource::Microphone,
+        } => Some(event),
+        PttEvent::Pressed { source } if toggle && recording => Some(PttEvent::Released { source }),
+        PttEvent::Released { .. } if toggle => None,
         other => Some(other),
     }
 }
@@ -139,9 +152,14 @@ fn is_recording(app: &AppHandle) -> bool {
 
 fn handle_ptt_event(app: &AppHandle, event: PttEvent) {
     let event = match event {
-        PttEvent::Pressed | PttEvent::Released => {
+        PttEvent::Pressed { source } | PttEvent::Released { source } => {
             let toggle = with_settings(app, |s| s.record_toggle);
-            match record_key_event(toggle, is_recording(app), event) {
+            let phase = match event {
+                PttEvent::Pressed { .. } => PttEvent::Pressed { source },
+                PttEvent::Released { .. } => PttEvent::Released { source },
+                _ => unreachable!(),
+            };
+            match record_key_event(toggle, is_recording(app), phase) {
                 Some(event) => event,
                 None => return,
             }
@@ -149,8 +167,8 @@ fn handle_ptt_event(app: &AppHandle, event: PttEvent) {
         other => other,
     };
     match event {
-        PttEvent::Pressed => on_ptt_pressed(app),
-        PttEvent::Released => on_ptt_released(app),
+        PttEvent::Pressed { source } => on_ptt_pressed(app, source),
+        PttEvent::Released { source } => on_ptt_released(app, source),
         PttEvent::Cancel => on_cancel(app),
         PttEvent::StopSession => stop_session(app),
         PttEvent::MaxDurationReached { generation } => on_max_duration_reached(app, generation),
@@ -234,7 +252,7 @@ fn capture_is_dead(st: &App) -> bool {
         .is_some_and(capture::AudioCapture::is_dead)
 }
 
-pub fn on_ptt_pressed(app: &AppHandle) {
+pub fn on_ptt_pressed(app: &AppHandle, source: RecordingSource) {
     let st = app.state::<App>();
     if !st.recording_enabled.load(Ordering::Acquire) {
         return;
@@ -244,14 +262,26 @@ pub fn on_ptt_pressed(app: &AppHandle) {
         return;
     }
     let settings = current_settings(app);
-    if !settings.capture_system_audio && !settings.capture_microphone {
+    let microphone_only = source == RecordingSource::Microphone;
+    if microphone_only && !settings.capture_microphone {
+        events::stt_error(
+            app,
+            AppError::new(
+                ErrorCode::Internal,
+                "Включите запись микрофона в настройках",
+            ),
+        );
+        return;
+    }
+    if !microphone_only && !settings.capture_system_audio && !settings.capture_microphone {
         events::stt_error(
             app,
             AppError::new(ErrorCode::Internal, "Выберите источник звука в настройках"),
         );
         return;
     }
-    if settings.capture_system_audio
+    if !microphone_only
+        && settings.capture_system_audio
         && (st.capture_rebuild_pending.swap(false, Ordering::SeqCst)
             || capture_is_dead(&st)
             || st.capture.lock_unpoisoned().is_none())
@@ -259,7 +289,7 @@ pub fn on_ptt_pressed(app: &AppHandle) {
         rebuild_capture_now(app);
     }
     let trace = diagnostics::transcription_trace(&settings, DiagnosticOrigin::Session);
-    let session = match start_session(app, &settings, trace.clone()) {
+    let session = match start_session(app, &settings, trace.clone(), microphone_only) {
         Ok(session) => session,
         Err(error) => {
             trace.finish(Some(error.code));
@@ -282,9 +312,10 @@ fn start_session(
     app: &AppHandle,
     settings: &crate::settings::Settings,
     trace: Trace,
+    microphone_only: bool,
 ) -> Result<RecordingSession, AppError> {
     let st = app.state::<App>();
-    if settings.capture_system_audio && st.capture.lock_unpoisoned().is_none() {
+    if !microphone_only && settings.capture_system_audio && st.capture.lock_unpoisoned().is_none() {
         return Err(st
             .capture_error
             .lock_unpoisoned()
@@ -309,7 +340,12 @@ fn start_session(
         None
     };
     let mut session = RecordingSession {
-        system: settings.capture_system_audio,
+        source: if microphone_only {
+            RecordingSource::Microphone
+        } else {
+            RecordingSource::Default
+        },
+        system: !microphone_only && settings.capture_system_audio,
         microphone,
         streams: Vec::new(),
         engine: stt_engine(app),
@@ -450,8 +486,16 @@ fn stop_capture_discarding(st: &App) {
     drop(session);
 }
 
-pub fn on_ptt_released(app: &AppHandle) {
+pub fn on_ptt_released(app: &AppHandle, source: RecordingSource) {
     let st = app.state::<App>();
+    if st
+        .recording_session
+        .lock_unpoisoned()
+        .as_ref()
+        .is_some_and(|session| session.source != source)
+    {
+        return;
+    }
     let secs = current_recording_secs(&st);
     let action = st.recorder.lock_unpoisoned().on(state::Event::PttReleased {
         duration_secs: secs,

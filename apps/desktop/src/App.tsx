@@ -267,7 +267,10 @@ export default function App() {
     bumpChatFontSize,
     bumpWindowSize,
   );
-  usePttSuspend(effectiveCombo(settings.hotkeys, "record"));
+  usePttSuspend([
+    effectiveCombo(settings.hotkeys, "record"),
+    effectiveCombo(settings.hotkeys, "record_microphone"),
+  ]);
   const { ref: promptRef, focus: focusPrompt } = usePromptFocus(promptUnavailable);
 
   // Фокус — через гейтованный `focus` хука, не через сырой `ref.focus()`:

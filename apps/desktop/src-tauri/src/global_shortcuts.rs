@@ -72,8 +72,26 @@ pub fn unregister(app: &AppHandle, hotkey: &str) {
 pub fn register_ptt(app: &AppHandle, hotkey: &str) -> Result<(), String> {
     register_shortcut(app, hotkey, |app, state| {
         let event = match state {
-            ShortcutState::Pressed => PttEvent::Pressed,
-            ShortcutState::Released => PttEvent::Released,
+            ShortcutState::Pressed => PttEvent::Pressed {
+                source: recording::RecordingSource::Default,
+            },
+            ShortcutState::Released => PttEvent::Released {
+                source: recording::RecordingSource::Default,
+            },
+        };
+        recording::enqueue_ptt(app, event);
+    })
+}
+
+pub fn register_microphone_ptt(app: &AppHandle, hotkey: &str) -> Result<(), String> {
+    register_shortcut(app, hotkey, |app, state| {
+        let event = match state {
+            ShortcutState::Pressed => PttEvent::Pressed {
+                source: recording::RecordingSource::Microphone,
+            },
+            ShortcutState::Released => PttEvent::Released {
+                source: recording::RecordingSource::Microphone,
+            },
         };
         recording::enqueue_ptt(app, event);
     })

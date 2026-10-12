@@ -134,6 +134,10 @@ type GlobalRegistrar = fn(&AppHandle, &str) -> Result<(), String>;
 const GLOBAL_HOTKEYS: &[(&str, GlobalRegistrar)] = &[
     (hotkeys::ACTION_RECORD, global_shortcuts::register_ptt),
     (
+        hotkeys::ACTION_RECORD_MICROPHONE,
+        global_shortcuts::register_microphone_ptt,
+    ),
+    (
         hotkeys::ACTION_TOGGLE_WINDOW,
         global_shortcuts::register_toggle,
     ),
