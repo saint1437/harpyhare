@@ -173,9 +173,9 @@ export const en: Dictionary = {
     unassigned: "Not assigned",
     unassignedHint: "Not assigned — the action is unavailable right now.",
     recordHoldHint: "Hold while the other person is talking.",
-    recordToggle: "Toggle recording",
+    recordToggle: "Recording toggle",
     recordToggleHint:
-      "Press to start, press again to stop. Turn off to record only while the key is held.",
+      "Off by default: hold the key to record. Turn it on to start with one press and stop with the next.",
     waiting: "Press a shortcut · Esc cancels",
     restoreDefault: "Restore {{combo}}",
     stolen: "{{combo}} was taken from “{{action}}” — that action has no shortcut now.",

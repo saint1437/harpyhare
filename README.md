@@ -14,7 +14,7 @@ Built with Tauri 2, Rust, React 19, TypeScript, Vite, and Nx.
 - Context library and reusable presets
 - Screenshot attachments
 - Configurable global shortcuts
-- Toggle recording by default, with optional push-to-talk mode
+- Push-to-talk recording by default, with optional toggle mode
 - Reusable prompt pipelines with a visual editor and streaming execution
 - Self-rendered system design diagrams from structured LLM output
 - Compact always-on-top HUD
@@ -61,9 +61,9 @@ The text-model and speech-to-text model selectors load the public OpenRouter
 catalog dynamically and support searching. The optional environment variable for
 local development is `OPENROUTER_API_KEY`.
 
-The record key uses toggle mode by default: press once to start recording and
-press again to stop it. Disable `record_toggle` in the launcher to restore
-push-to-talk behavior, where recording lasts while the key is held.
+The record key uses push-to-talk by default: hold it while recording and release
+it to stop. Enable `record_toggle` in the launcher to switch to press-once mode,
+where the next press stops the recording.
 
 For local development, API keys may also be placed in a root `.env` file. Environment files are ignored by Git and must never be committed.
 

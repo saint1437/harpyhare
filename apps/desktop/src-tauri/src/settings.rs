@@ -336,7 +336,7 @@ impl Default for Settings {
             access_token: String::new(),
             prompt_presets: Vec::new(),
             hotkeys: Vec::new(),
-            record_toggle: true,
+            record_toggle: false,
             auto_send: false,
             window_opacity: limits::window::OPACITY.default,
             move_step: limits::window::MOVE_STEP.default,
