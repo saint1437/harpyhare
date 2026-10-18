@@ -420,7 +420,7 @@ export default function App() {
     >
       <LiquidMetalBorder active={activityFrame} />
       <div
-        className="flex shrink-0 flex-col gap-2.5"
+        className="flex min-w-0 flex-1 flex-col gap-2.5"
         style={{ width: chatColumnWidthPx(settings.window_width, previewWidth) }}
       >
         <AppHeader

@@ -1,5 +1,5 @@
 import { Crop, Eraser, NotebookText } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { NoticeDot } from "@/components/NoticeDot";
 import {
@@ -15,8 +15,8 @@ export type ComposerToolbarProps = RequestParamsPopoverProps & {
   onCaptureRegion: () => void;
   hasContext: boolean;
   onOpenContext: () => void;
-  /** Clipped away by the collapsed card, and then inert: nothing in it can be tabbed into or clicked. */
-  shown: boolean;
+  /** Always measured and visible, even with an empty, unfocused draft. */
+  ref?: Ref<HTMLDivElement>;
   /** Keeps clear of the action buttons pinned into the card's corner. */
   className?: string;
 };
@@ -57,8 +57,7 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
   return (
     <div
       data-slot="composer-toolbar"
-      inert={!props.shown}
-      aria-hidden={!props.shown}
+      ref={props.ref}
       className={cn("flex items-center gap-1 px-1.5 pb-1.5", props.className)}
     >
       <ToolbarIconButton

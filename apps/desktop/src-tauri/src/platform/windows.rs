@@ -7,6 +7,7 @@ use windows::Win32::Graphics::Dwm::{
     DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_DISALLOW_PEEK,
     DWMWA_EXCLUDED_FROM_PEEK, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DWMWINDOWATTRIBUTE,
 };
+use windows::Win32::Graphics::Gdi::{RedrawWindow, RDW_ALLCHILDREN, RDW_FRAME, RDW_INVALIDATE};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, VIRTUAL_KEY, VK_CONTROL, VK_DOWN, VK_LEFT, VK_LWIN, VK_MENU, VK_RIGHT,
@@ -42,6 +43,42 @@ pub fn reset_screen_capture_access(_identifier: &str) -> Result<(), String> {
 }
 
 pub fn merge_titlebar_into_content(_app: &AppHandle) {}
+
+/// Switching RESIZABLE changes the non-client frame of the frameless HUD.
+/// Force its final recalculation and explicitly fit WebView2 to the resulting
+/// client area: otherwise it can retain the mini/intermediate viewport until
+/// the next interactive move/resize. No fake 1px resize or synthetic JS event.
+pub fn refresh_hud_frame(window: &tauri::WebviewWindow) {
+    let Ok(hwnd) = window.hwnd() else {
+        return;
+    };
+    unsafe {
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+    }
+    if let Ok(size) = window.inner_size() {
+        let webview: &tauri::Webview = window.as_ref();
+        let _ = webview.set_bounds(tauri::Rect {
+            position: tauri::PhysicalPosition::new(0, 0).into(),
+            size: size.into(),
+        });
+    }
+    unsafe {
+        let _ = RedrawWindow(
+            Some(hwnd),
+            None,
+            None,
+            RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN,
+        );
+    }
+}
 
 fn set_dwm_attribute<T>(hwnd: HWND, attribute: DWMWINDOWATTRIBUTE, value: &T) {
     let _ = unsafe {

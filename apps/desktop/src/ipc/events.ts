@@ -49,28 +49,54 @@ export function onFileDrop(handler: (event: FileDropEvent) => void): Unlisten {
 }
 
 /**
- * Масштаб берётся синхронно из `devicePixelRatio` (в вебвью он равен scale
- * factor окна), а не через IPC `scaleFactor()`: на Windows `WM_SIZE` приходит
- * на каждый пиксель протяжки, и invoke на каждое событие шёл бы до
- * rAF-коалесинга; к тому же N параллельных ответов не обязаны приходить по
- * порядку, и последний размер мог оказаться не последним.
+ * Native logical pixels use the OS scale, not `devicePixelRatio`: WebView2
+ * includes browser zoom in the latter. Cache `scaleFactor()` once and update
+ * it on monitor/DPI changes, rather than invoking on every resize pixel.
  */
 export function onWindowResized(handler: (size: LogicalWindowSize) => void): Unlisten {
   let live = true;
-  let off: Unlisten = noopUnlisten;
-  void getCurrentWindow()
-    .onResized(({ payload }) => {
+  let offResize: Unlisten = noopUnlisten;
+  let offScale: Unlisten = noopUnlisten;
+  let scale: number | null = null;
+  let pending: LogicalWindowSize | null = null;
+  const win = getCurrentWindow();
+  const deliver = (size: LogicalWindowSize) => {
+    if (!live) return;
+    if (scale === null) {
+      pending = size;
+      return;
+    }
+    pending = null;
+    handler({ width: size.width / scale, height: size.height / scale });
+  };
+  void win
+    .onScaleChanged(({ payload }) => {
       if (!live) return;
-      const scale = window.devicePixelRatio || 1;
-      handler({ width: payload.width / scale, height: payload.height / scale });
+      scale = payload.scaleFactor;
+      deliver(payload.size);
     })
     .then((unlisten) => {
-      if (live) off = unlisten;
+      if (live) offScale = unlisten;
       else unlisten();
     });
+  void win
+    .onResized(({ payload }) => {
+      deliver(payload);
+    })
+    .then((unlisten) => {
+      if (live) offResize = unlisten;
+      else unlisten();
+    });
+  void win.scaleFactor().then((initialScale) => {
+    if (!live) return;
+    // A DPI event may already have arrived while this initial read was pending.
+    scale ??= initialScale;
+    if (pending !== null) deliver(pending);
+  });
   return () => {
     live = false;
-    off();
+    offResize();
+    offScale();
   };
 }
 

@@ -22,6 +22,7 @@ interface Heights {
   row: number;
   content: number;
   bar: number;
+  toolbar: number;
 }
 
 function elementsWith(heights: Heights): { refs: ComposerZoneRefs; heights: Heights } {
@@ -31,7 +32,13 @@ function elementsWith(heights: Heights): { refs: ComposerZoneRefs; heights: Heig
     return { current: el };
   };
   return {
-    refs: { card: make("card"), row: make("row"), content: make("content"), bar: make("bar") },
+    refs: {
+      card: make("card"),
+      row: make("row"),
+      content: make("content"),
+      bar: make("bar"),
+      toolbar: make("toolbar"),
+    },
     heights,
   };
 }
@@ -47,33 +54,50 @@ afterEach(() => {
 });
 
 describe("useComposerZone", () => {
-  it("свёрнутая карточка: слот равен строке поля, выноса нет, полоса без действий не считается", () => {
-    const { refs } = elementsWith({ card: 40, row: 40, content: 120, bar: 0 });
+  it("пустая карточка: слот включает поле и постоянный тулбар, выноса нет", () => {
+    const { refs } = elementsWith({ card: 74, row: 40, toolbar: 34, content: 120, bar: 0 });
     const onOverflow = vi.fn();
     const { result } = renderHook(() => useComposerZone(refs, false, BAR_GAP, onOverflow));
-    expect(result.current).toEqual({ slot: 40, cardHeight: 40 });
+    expect(result.current).toEqual({ slot: 74, cardHeight: 74 });
     expect(onOverflow).toHaveBeenLastCalledWith(0);
   });
 
-  it("раскрытая карточка растёт до содержимого, а вынос над лентой — на сколько она выше строки", () => {
-    const { refs, heights } = elementsWith({ card: 40, row: 40, content: 120, bar: 24 });
+  it("раскрытая карточка растёт до содержимого, а вынос не включает постоянный тулбар", () => {
+    const { refs, heights } = elementsWith({
+      card: 74,
+      row: 40,
+      toolbar: 34,
+      content: 120,
+      bar: 24,
+    });
     const onOverflow = vi.fn();
     const { result, rerender } = renderHook(
       ({ expanded }) => useComposerZone(refs, expanded, BAR_GAP, onOverflow),
       { initialProps: { expanded: false } },
     );
-    expect(result.current.slot).toBe(24 + BAR_GAP + 40);
+    expect(result.current.slot).toBe(24 + BAR_GAP + 74);
     heights.card = 120;
     rerender({ expanded: true });
     act(() => {
       fire?.();
     });
-    expect(result.current).toEqual({ slot: 24 + BAR_GAP + 40, cardHeight: 120 });
-    expect(onOverflow).toHaveBeenLastCalledWith(80);
+    expect(result.current).toEqual({ slot: 24 + BAR_GAP + 74, cardHeight: 120 });
+    expect(onOverflow).toHaveBeenLastCalledWith(46);
+  });
+
+  it("изменение высоты тулбара меняет постоянный слот, не пряча кнопки", () => {
+    const { refs, heights } = elementsWith({ card: 74, row: 40, toolbar: 34, content: 74, bar: 0 });
+    const { result } = renderHook(() => useComposerZone(refs, false, BAR_GAP, vi.fn()));
+    heights.toolbar = 40;
+    heights.card = heights.content = 80;
+    act(() => {
+      fire?.();
+    });
+    expect(result.current).toEqual({ slot: 80, cardHeight: 80 });
   });
 
   it("повторный замер с теми же числами не порождает ни нового состояния, ни нового вызова", () => {
-    const { refs } = elementsWith({ card: 40, row: 40, content: 120, bar: 0 });
+    const { refs } = elementsWith({ card: 74, row: 40, toolbar: 34, content: 120, bar: 0 });
     const onOverflow = vi.fn();
     const { result } = renderHook(() => useComposerZone(refs, false, BAR_GAP, onOverflow));
     const before = result.current;
@@ -91,6 +115,7 @@ describe("useComposerZone", () => {
       row: { current: null },
       content: { current: null },
       bar: { current: null },
+      toolbar: { current: null },
     };
     const { result } = renderHook(() => useComposerZone(refs, true, BAR_GAP, vi.fn()));
     expect(result.current).toEqual({ slot: null, cardHeight: null });

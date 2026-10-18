@@ -24,8 +24,6 @@ const MINI_WINDOW_WIDTH_LOGICAL_PX: f64 = 168.0;
 const MINI_WINDOW_HEIGHT_LOGICAL_PX: f64 = 48.0;
 /// Gap between the mini capsule and the work-area edges after the panic key.
 const PANIC_CORNER_MARGIN_LOGICAL_PX: f64 = 10.0;
-const MINI_MIN_SIZE_RESTORE_DELAY: Duration =
-    RESIZE_TWEEN_FRAME_INTERVAL.saturating_mul(RESIZE_TWEEN_STEPS * 2);
 
 pub fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(MAIN_WINDOW_LABEL)
@@ -333,48 +331,47 @@ pub fn close_app(app: AppHandle) {
 #[tauri::command]
 #[specta::specta]
 pub fn collapse_main_window(app: AppHandle) {
-    let Some(w) = main_window(&app) else {
-        return;
-    };
-    app.state::<App>().window_mini.store(true, Ordering::SeqCst);
-    let _ = w.set_min_size(Some(tauri::LogicalSize::new(
-        MINI_WINDOW_WIDTH_LOGICAL_PX,
-        MINI_WINDOW_HEIGHT_LOGICAL_PX,
-    )));
-    let _ = w.set_resizable(false);
-    set_window_size(
-        app,
-        MINI_WINDOW_WIDTH_LOGICAL_PX,
-        MINI_WINDOW_HEIGHT_LOGICAL_PX,
-    );
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(w) = main_window(&handle) else {
+            return;
+        };
+        handle
+            .state::<App>()
+            .window_mini
+            .store(true, Ordering::SeqCst);
+        let _ = w.set_min_size(Some(tauri::LogicalSize::new(
+            MINI_WINDOW_WIDTH_LOGICAL_PX,
+            MINI_WINDOW_HEIGHT_LOGICAL_PX,
+        )));
+        let _ = w.set_resizable(false);
+        // Style changes alter the client/frame allowance on Windows. Read
+        // the starting geometry only after they have run on this thread.
+        set_window_size_now(
+            handle,
+            w,
+            MINI_WINDOW_WIDTH_LOGICAL_PX,
+            MINI_WINDOW_HEIGHT_LOGICAL_PX,
+        );
+    });
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn expand_main_window(app: AppHandle, width: f64, height: f64) {
-    let Some(w) = main_window(&app) else {
-        return;
-    };
-    app.state::<App>()
-        .window_mini
-        .store(false, Ordering::SeqCst);
-    let _ = w.set_resizable(true);
-    let _ = w.show();
-    let _ = w.set_focus();
-    set_window_size(app.clone(), width, height);
-    // A timer, not a thread: the delay only lets the expand tween finish
-    // before the full minimum size is restored underneath it.
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(MINI_MIN_SIZE_RESTORE_DELAY).await;
-        if app.state::<App>().window_mini.load(Ordering::SeqCst) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(w) = main_window(&handle) else {
             return;
-        }
-        if let Some(w) = main_window(&app) {
-            let _ = w.set_min_size(Some(tauri::LogicalSize::new(
-                settings::limits::window::WIDTH.min,
-                settings::limits::window::HEIGHT.min,
-            )));
-        }
+        };
+        handle
+            .state::<App>()
+            .window_mini
+            .store(false, Ordering::SeqCst);
+        let _ = w.set_resizable(true);
+        let _ = w.show();
+        let _ = w.set_focus();
+        set_window_size_now(handle, w, width, height);
     });
 }
 
@@ -431,9 +428,18 @@ const RESIZE_FRAME_ACK_TIMEOUT: Duration = Duration::from_millis(500);
 #[tauri::command]
 #[specta::specta]
 pub fn set_window_size(app: AppHandle, width: f64, height: f64) {
-    let Some(w) = main_window(&app) else {
-        return;
-    };
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(w) = main_window(&handle) {
+            set_window_size_now(handle, w, width, height);
+        }
+    });
+}
+
+/// Main thread only: style setters, geometry reads and tween creation must
+/// be ordered, not independent IPC round-trips racing one another.
+fn set_window_size_now(app: AppHandle, w: WebviewWindow, width: f64, height: f64) {
+    let my_gen = app.state::<App>().resize_gen.fetch_add(1, Ordering::SeqCst) + 1;
     let scale = w.scale_factor().unwrap_or(1.0);
     let (width, height) = clamped_to_work_area(&w, scale, width, height);
     let from_width = w
@@ -451,10 +457,10 @@ pub fn set_window_size(app: AppHandle, width: f64, height: f64) {
     if (from_width - width).abs() < RESIZE_EPSILON_LOGICAL_PX
         && (from_height - height).abs() < RESIZE_EPSILON_LOGICAL_PX
     {
+        finish_resize_now(&app, &w, my_gen);
         return;
     }
 
-    let my_gen = app.state::<App>().resize_gen.fetch_add(1, Ordering::SeqCst) + 1;
     let tween = ResizeTween {
         from_width,
         to_width: width,
@@ -534,12 +540,38 @@ fn run_resize_tween(app: AppHandle, w: WebviewWindow, tween: ResizeTween, my_gen
     for step in 1..=RESIZE_TWEEN_STEPS {
         let frame = tween_frame(&tween, step);
         if !apply_frame_if_still_ours(&app, &w, my_gen, applied, frame) {
+            finish_resize(&app, &w, my_gen);
             return;
         }
         applied = Some(frame);
         std::thread::sleep(RESIZE_TWEEN_FRAME_INTERVAL);
     }
     apply_frame_if_still_ours(&app, &w, my_gen, applied, tween.target());
+    finish_resize(&app, &w, my_gen);
+}
+
+fn finish_resize(app: &AppHandle, w: &WebviewWindow, my_gen: u64) {
+    let handle = app.clone();
+    let win = w.clone();
+    let _ = app.run_on_main_thread(move || finish_resize_now(&handle, &win, my_gen));
+}
+
+/// Complete only the latest transition. A wall-clock timer can restore the
+/// HUD minimum halfway through a slow tween (or a later collapse/expand).
+/// If a mouse resize interrupted us, leave its geometry alone and only
+/// restore constraints and synchronize the viewport to the actual size.
+fn finish_resize_now(app: &AppHandle, w: &WebviewWindow, my_gen: u64) {
+    let state = app.state::<App>();
+    if state.resize_gen.load(Ordering::SeqCst) != my_gen {
+        return;
+    }
+    if !state.window_mini.load(Ordering::SeqCst) {
+        let _ = w.set_min_size(Some(tauri::LogicalSize::new(
+            settings::limits::window::WIDTH.min,
+            settings::limits::window::HEIGHT.min,
+        )));
+    }
+    platform::refresh_hud_frame(w);
 }
 
 fn apply_frame_if_still_ours(

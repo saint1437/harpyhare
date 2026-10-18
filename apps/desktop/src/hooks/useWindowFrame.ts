@@ -84,6 +84,9 @@ function useSettingsFromNativeResize(
       if (pending !== 0) return;
       pending = requestAnimationFrame(() => {
         pending = 0;
+        // A frame queued before F12 can run after a rapid collapse/expand.
+        // Recheck the guard here so it cannot persist an intermediate size.
+        if (!readyRef.current || Date.now() < guardUntilRef.current) return;
         if (miniModeRef.current) return;
         const latest = nativeSizeRef.current;
         const base = latest.width - (previewOpenRef.current ? PREVIEW_EXTRA_WIDTH_PX : 0);

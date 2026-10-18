@@ -6,6 +6,7 @@ import { HotkeysSection } from "./HotkeysSection";
 
 const TOGGLE_HINT = "Нажмите, чтобы начать запись, и ещё раз, чтобы закончить.";
 const HOLD_HINT = "Удерживайте, пока говорит собеседник.";
+const TOGGLE_LABEL = "Переключатель записи";
 
 afterEach(cleanup);
 
@@ -16,24 +17,24 @@ function renderSection(overrides: Partial<Settings> = {}) {
 }
 
 describe("HotkeysSection — режим клавиши записи", () => {
-  it("по умолчанию запись по нажатию: тумблер включён, подсказка клавиши про два нажатия", () => {
+  it("по умолчанию запись с удержанием: toggle выключен", () => {
     renderSection();
-    expect(
-      screen.getByRole("switch", { name: "Запись по нажатию" }).getAttribute("aria-checked"),
-    ).toBe("true");
-    expect(screen.getByText(TOGGLE_HINT)).toBeTruthy();
-    expect(screen.queryByText(HOLD_HINT)).toBeNull();
-  });
-
-  it("с выключенным тумблером подсказка клавиши говорит про удержание", () => {
-    renderSection({ record_toggle: false });
+    expect(screen.getByRole("switch", { name: TOGGLE_LABEL }).getAttribute("aria-checked")).toBe(
+      "false",
+    );
     expect(screen.getByText(HOLD_HINT)).toBeTruthy();
     expect(screen.queryByText(TOGGLE_HINT)).toBeNull();
   });
 
+  it("toggle можно явно включить: подсказка говорит про два нажатия", () => {
+    renderSection({ record_toggle: true });
+    expect(screen.getByText(TOGGLE_HINT)).toBeTruthy();
+    expect(screen.queryByText(HOLD_HINT)).toBeNull();
+  });
+
   it("тумблер пишет record_toggle в черновик", () => {
     const set = renderSection();
-    fireEvent.click(screen.getByRole("switch", { name: "Запись по нажатию" }));
-    expect(set).toHaveBeenCalledWith("record_toggle", false);
+    fireEvent.click(screen.getByRole("switch", { name: TOGGLE_LABEL }));
+    expect(set).toHaveBeenCalledWith("record_toggle", true);
   });
 });

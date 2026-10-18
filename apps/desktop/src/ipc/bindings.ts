@@ -119,22 +119,6 @@ export type AudioDevices = {
 	outputs: AudioDeviceInfo[],
 };
 
-export type HealthStatus = "ok" | "missingKey" | "invalidKey" | "billing" | "rateLimited" | "serviceUnavailable" | "accessDenied" | "modelUnavailable" | "timeout" | "network" | "skipped" | "error";
-
-export type HealthCheck = {
-	provider: string,
-	model: string,
-	status: HealthStatus,
-	errorCode: ErrorCode | null,
-	httpStatus: number | null,
-};
-
-export type StartupHealthReport = {
-	network: HealthCheck,
-	openrouter: HealthCheck,
-	speech: HealthCheck,
-};
-
 export type AudioLevel = {
 	source: CheckStep,
 	percent: number,
@@ -200,6 +184,16 @@ export type ErrorCode = "network" | "badApiKey" | "badAccessCode" | "retryable" 
  *  overflow, refusal). What arrived is real text, but not a whole answer.
  */
 "incomplete";
+
+export type HealthCheck = {
+	provider: string,
+	model: string,
+	status: HealthStatus,
+	errorCode: ErrorCode | null,
+	httpStatus: number | null,
+};
+
+export type HealthStatus = "ok" | "missingKey" | "invalidKey" | "billing" | "rateLimited" | "serviceUnavailable" | "accessDenied" | "modelUnavailable" | "timeout" | "network" | "skipped" | "error";
 
 export type HotkeyAction = {
 	id: string,
@@ -368,6 +362,12 @@ export type Settings = {
 	buffer_seconds?: number,
 	quick_actions?: QuickAction[],
 	quick_action_attachments?: boolean,
+};
+
+export type StartupHealthReport = {
+	network: HealthCheck,
+	openrouter: HealthCheck,
+	speech: HealthCheck,
 };
 
 export type SttModelInfo = {

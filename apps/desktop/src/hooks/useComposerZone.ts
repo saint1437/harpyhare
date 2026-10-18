@@ -6,6 +6,7 @@ export interface ComposerZoneRefs {
   row: RefObject<HTMLDivElement | null>;
   content: RefObject<HTMLDivElement | null>;
   bar: RefObject<HTMLDivElement | null>;
+  toolbar: RefObject<HTMLDivElement | null>;
 }
 
 export interface ComposerZoneState {
@@ -17,7 +18,12 @@ export interface ComposerZoneState {
 
 function sameMeasure(a: ComposerMeasure | null, b: ComposerMeasure): boolean {
   return (
-    a !== null && a.card === b.card && a.row === b.row && a.content === b.content && a.bar === b.bar
+    a !== null &&
+    a.card === b.card &&
+    a.row === b.row &&
+    a.content === b.content &&
+    a.bar === b.bar &&
+    a.toolbar === b.toolbar
   );
 }
 
@@ -35,30 +41,32 @@ export function useComposerZone(
   onOverflow: (px: number) => void,
 ): ComposerZoneState {
   const [measure, setMeasure] = useState<ComposerMeasure | null>(null);
-  const { card, row, content, bar } = refs;
+  const { card, row, content, bar, toolbar } = refs;
 
   useEffect(() => {
     const cardEl = card.current;
     const rowEl = row.current;
     const contentEl = content.current;
     const barEl = bar.current;
-    if (!cardEl || !rowEl || !contentEl || !barEl) return;
+    const toolbarEl = toolbar.current;
+    if (!cardEl || !rowEl || !contentEl || !barEl || !toolbarEl) return;
     const read = () => {
       const next = {
         card: cardEl.offsetHeight,
         row: rowEl.offsetHeight,
         content: contentEl.offsetHeight,
         bar: barEl.offsetHeight,
+        toolbar: toolbarEl.offsetHeight,
       };
       setMeasure((prev) => (sameMeasure(prev, next) ? prev : next));
     };
     const observer = new ResizeObserver(read);
-    for (const el of [cardEl, rowEl, contentEl, barEl]) observer.observe(el);
+    for (const el of [cardEl, rowEl, contentEl, barEl, toolbarEl]) observer.observe(el);
     read();
     return () => {
       observer.disconnect();
     };
-  }, [card, row, content, bar]);
+  }, [card, row, content, bar, toolbar]);
 
   const zone = measure === null ? null : composerZone(measure, barGap);
   const overflow = zone === null ? 0 : zone.overflow;

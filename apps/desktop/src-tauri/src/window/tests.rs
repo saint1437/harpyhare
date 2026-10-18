@@ -59,3 +59,42 @@ fn the_tween_starts_at_the_origin_frame_and_lands_exactly_on_the_target() {
     assert_eq!((target.x, target.y), (40, 12));
     assert_eq!((target.width, target.height), (800.0, 500.0));
 }
+
+#[test]
+fn panic_collapse_and_expand_have_exact_inverse_size_targets() {
+    let collapse = ResizeTween {
+        from_width: 960.0,
+        to_width: MINI_WINDOW_WIDTH_LOGICAL_PX,
+        from_height: 680.0,
+        to_height: MINI_WINDOW_HEIGHT_LOGICAL_PX,
+        from_x: 1742,
+        to_x: 1742,
+        y: 10,
+    };
+    let expand = ResizeTween {
+        from_width: collapse.to_width,
+        to_width: collapse.from_width,
+        from_height: collapse.to_height,
+        to_height: collapse.from_height,
+        from_x: collapse.to_x,
+        to_x: 960,
+        y: collapse.y,
+    };
+    for step in 1..=RESIZE_TWEEN_STEPS {
+        let mini = tween_frame(&collapse, step);
+        assert!(mini.width >= MINI_WINDOW_WIDTH_LOGICAL_PX);
+        assert!(mini.height >= MINI_WINDOW_HEIGHT_LOGICAL_PX);
+        assert_eq!((mini.x, mini.y), (1742, 10));
+        let hud = tween_frame(&expand, step);
+        assert!(hud.width <= 960.0 && hud.height <= 680.0);
+        assert!(hud.x >= 960 && hud.x <= 1742);
+        assert_eq!(hud.y, 10);
+    }
+    let mini = collapse.target();
+    assert_eq!((mini.width, mini.height), (168.0, 48.0));
+    let hud = expand.target();
+    assert_eq!(
+        (hud.width, hud.height, hud.x, hud.y),
+        (960.0, 680.0, 960, 10)
+    );
+}

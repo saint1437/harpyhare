@@ -149,6 +149,14 @@ pub fn clip_native_window_corners(app: &AppHandle) {
     backend::clip_native_window_corners(app);
 }
 
+/// Main thread only, after the last native size/style change of a transition.
+pub fn refresh_hud_frame(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "windows")]
+    windows::refresh_hud_frame(window);
+    #[cfg(not(target_os = "windows"))]
+    let _ = window;
+}
+
 /// Keeps the HUD out of the OS window switcher and taskbar (Windows: Alt+Tab
 /// and the taskbar button). Main thread only, right after the window is
 /// built and before it is first shown — see `platform/windows.rs` for why a

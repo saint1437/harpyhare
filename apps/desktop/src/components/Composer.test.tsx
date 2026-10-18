@@ -94,7 +94,7 @@ describe("Composer PromptTextarea", () => {
   });
 });
 
-describe("Composer — пилюля и карточка", () => {
+describe("Composer — постоянный тулбар", () => {
   const PARAMS = "Параметры запроса";
   const expanded = () => document.querySelector("[data-expanded]")?.getAttribute("data-expanded");
   const toolbarHidden = () =>
@@ -103,13 +103,21 @@ describe("Composer — пилюля и карточка", () => {
     fireEvent.focusOut(field, { relatedTarget: to });
   };
 
-  it("с пустым черновиком и без фокуса — пилюля: тулбар скрыт и инертен, отправка выключена", () => {
+  it("с пустым черновиком и без фокуса все четыре кнопки видны и доступны", () => {
     renderComposer({ chat: createChat(1, "c1") });
     expect(expanded()).toBe("false");
-    expect(toolbarHidden()).toBe("true");
+    expect(toolbarHidden()).not.toBe("true");
     expect(document.querySelector("[data-slot='composer-toolbar']")?.hasAttribute("inert")).toBe(
-      true,
+      false,
     );
+    for (const label of [
+      "Очистить историю чата",
+      "Контекст чата",
+      "Снимок области экрана",
+      PARAMS,
+    ]) {
+      expect(screen.getByRole("button", { name: label }).hasAttribute("disabled")).toBe(false);
+    }
     expect(screen.getByLabelText("Отправить").hasAttribute("disabled")).toBe(true);
   });
 
@@ -117,9 +125,22 @@ describe("Composer — пилюля и карточка", () => {
     const { field } = renderComposer({ chat: createChat(1, "c1") });
     fireEvent.focusIn(field);
     expect(expanded()).toBe("true");
-    expect(toolbarHidden()).toBe("false");
+    expect(toolbarHidden()).not.toBe("true");
     leaveFocus(field, null);
     expect(expanded()).toBe("false");
+    expect(toolbarHidden()).not.toBe("true");
+  });
+
+  it("кнопка скриншота работает без фокуса и после ухода из поля", () => {
+    const onCaptureRegion = vi.fn();
+    const { field } = renderComposer({ chat: createChat(1, "c1"), onCaptureRegion });
+    const capture = () =>
+      fireEvent.click(screen.getByRole("button", { name: "Снимок области экрана" }));
+    capture();
+    fireEvent.focusIn(field);
+    leaveFocus(field, null);
+    capture();
+    expect(onCaptureRegion).toHaveBeenCalledTimes(2);
   });
 
   it("клик по телу карточки раскрывает её и возвращает каретку в поле", () => {
@@ -159,6 +180,8 @@ describe("Composer — пилюля и карточка", () => {
     fireEvent.keyDown(field, { key: "Enter" });
     expect(onSend).toHaveBeenCalledTimes(1);
     expect(expanded()).toBe("false");
+    expect(screen.getByRole("button", { name: "Снимок области экрана" })).toBeTruthy();
+    expect(toolbarHidden()).not.toBe("true");
     fireEvent.mouseDown(field);
     expect(expanded()).toBe("true");
   });
@@ -261,6 +284,8 @@ describe("Composer — пилюля и карточка", () => {
     expect(onStop).toHaveBeenCalledTimes(1);
     expect(expanded()).toBe("false");
     expect(screen.queryByLabelText("Отправить")).toBeNull();
+    expect(screen.getByRole("button", { name: "Снимок области экрана" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: PARAMS })).toBeTruthy();
   });
 });
 

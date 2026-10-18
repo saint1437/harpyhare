@@ -40,14 +40,8 @@ export interface ComposerProps {
   onQuickAction: (action: QuickAction) => void;
 }
 
-/** One line of the field: the card's collapsed height, and the source of its corner radius. */
-const PILL_HEIGHT_PX = PROMPT_ROW_HEIGHT_PX;
-/**
- * The same radius in both states — the pill is round only because it is as
- * tall as two radii. A radius that switched with the state read as a bigger
- * border on the pill and had to be animated between two shapes.
- */
-const CARD_RADIUS_PX = PILL_HEIGHT_PX / 2;
+/** Keep the card's corners independent of its measured content height. */
+const CARD_RADIUS_PX = PROMPT_ROW_HEIGHT_PX / 2;
 /** Between the quick actions and the card, when the actions are there. */
 const BAR_GAP_PX = 6;
 /** Opening and closing overshoot a little, like a sheet; typing grows the card plainly. */
@@ -58,15 +52,10 @@ const ACTION_ROOM_CLASS = "pr-12";
 const ACTION_ROOM_WITH_RETRY_CLASS = "pr-20";
 
 /**
- * A compact pill while the draft is empty and the field is not in use; a card
- * with the toolbar once the field is focused or clicked, or once there is
- * something in it (`useComposerEngagement`). The card opens upward over the
- * chat ledger instead of pushing it: the composer keeps a slot of its
- * collapsed height in the column, measures how far the open card reaches
- * above that slot (`useComposerZone`) and reports it, so the ledger only pads
- * its bottom by that much and never changes size itself. The toolbar stays
- * mounted in both states — the card's animated height clips it, exactly as in
- * the original — so opening and closing are the same motion played both ways.
+ * The input and toolbar are permanent bottom rows, including when the draft
+ * is empty, unfocused or just sent. Extra content can open upward over the
+ * ledger; `useComposerZone` reserves both permanent rows and reports only
+ * that extra overhang for the ledger's bottom inset.
  *
  * `memo`: во время стрима `App` рендерится на каждый rAF-кадр раскрытия, а
  * входы композера при этом не меняются. Работает, пока App передаёт
@@ -85,8 +74,9 @@ export const Composer = memo(function Composer(props: ComposerProps) {
   const rowRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const { slot, cardHeight } = useComposerZone(
-    { card: cardRef, row: rowRef, content: contentRef, bar: barRef },
+    { card: cardRef, row: rowRef, content: contentRef, bar: barRef, toolbar: toolbarRef },
     expanded,
     BAR_GAP_PX,
     props.onOverflowChange,
@@ -162,7 +152,7 @@ export const Composer = memo(function Composer(props: ComposerProps) {
               onRemove={props.onRemoveAttachment}
             />
             <ComposerToolbar
-              shown={expanded}
+              ref={toolbarRef}
               className={actionRoom}
               chat={chat}
               onPatch={onPatch}
